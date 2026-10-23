@@ -1,0 +1,12 @@
+#!/usr/bin/with-contenv bashio
+# s6 longrun for the Switchboard host process.
+#
+# No bashio::config and no Supervisor API call here, on purpose: the same image runs
+# standalone under plain Docker (no Supervisor), and the application reads
+# /data/options.json and its environment itself.
+
+# The publish directory must be the working directory: ASP.NET resolves its content root,
+# and with it wwwroot, from it. Started from anywhere else, static files and the SPA
+# fallback 404 — and only behind the real ingress, as Argus found out.
+cd /opt/switchboard || bashio::exit.nok "Publish directory /opt/switchboard is missing."
+exec dotnet Switchboard.Host.dll

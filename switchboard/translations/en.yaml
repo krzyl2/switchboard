@@ -1,0 +1,10 @@
+configuration:
+  mode:
+    name: Mode
+    description: >-
+      shadow (default): Switchboard computes and logs its decisions but never
+      switches anything. active: reserved for a later version; this version
+      contains no command path and switches nothing.
+  log_level:
+    name: Log level
+    description: How much detail to write to the Switchboard log.

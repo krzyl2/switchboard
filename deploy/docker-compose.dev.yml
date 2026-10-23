@@ -1,0 +1,74 @@
+# Switchboard local dev stack: Home Assistant + Mosquitto + the add-on image, standalone
+# (no Supervisor). Everything is reachable from this machine only: ports are published on
+# 127.0.0.1, and the broker is not published at all.
+#
+# Usage:
+#   1. Copy deploy/dev-ha/configuration.yaml to deploy/dev-data/ha/configuration.yaml.
+#   2. docker compose -f deploy/docker-compose.dev.yml up -d mosquitto homeassistant
+#   3. Onboard HA at http://127.0.0.1:8123, add the MQTT integration (host "mosquitto",
+#      port 1883), create a long-lived token (profile → Security) and put it in deploy/.env:
+#          SWITCHBOARD_HA_TOKEN=<token>
+#          SWITCHBOARD_LOG_LEVEL=info        # optional: debug | info | warning
+#   4. docker compose -f deploy/docker-compose.dev.yml up -d --build switchboard
+#      Status page: http://127.0.0.1:8099   Health entity: binary_sensor.switchboard_healthy
+#
+# Automated alternative to steps 1-4 plus the Stage 0 checks: pwsh -File deploy/e2e/stage0.ps1
+# (fresh dev-data, onboards HA itself, leaves the stack down; see its header).
+#
+# deploy/dev-data/ and deploy/.env are gitignored; never commit a real token.
+
+name: switchboard-dev
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.10.0
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Warsaw
+    volumes:
+      - ./dev-data/ha:/config
+    ports:
+      - "127.0.0.1:8123:8123"
+
+  switchboard:
+    build:
+      context: ..
+      dockerfile: switchboard/Dockerfile
+    image: switchboard:dev
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - homeassistant
+    environment:
+      # No SUPERVISOR_TOKEN, so the app runs in standalone mode and reads these.
+      SWITCHBOARD_HA_URL: http://homeassistant:8123
+      # Read from deploy/.env by compose; empty until you have created the token (step 3),
+      # in which case the app logs an authentication failure and backs off.
+      SWITCHBOARD_HA_TOKEN: ${SWITCHBOARD_HA_TOKEN:-}
+      SWITCHBOARD_MQTT_HOST: mosquitto
+      SWITCHBOARD_MQTT_PORT: "1883"
+      SWITCHBOARD_MODE: shadow
+      SWITCHBOARD_LOG_LEVEL: ${SWITCHBOARD_LOG_LEVEL:-info}
+      # Dev only: a host browser arrives from the bridge gateway, not from the Supervisor's
+      # ingress proxy, and would otherwise get 403. Never set this outside this file.
+      SWITCHBOARD_DEV_TRUST_ALL_REQUESTS: "true"
+    volumes:
+      - ./dev-data/switchboard:/data
+    ports:
+      - "127.0.0.1:8099:8099"
+    # The Supervisor's default stop timeout for an add-on, so a graceful stop here gets the same
+    # time it gets in production rather than whatever the local Docker daemon defaults to.
+    stop_grace_period: 10s
+    healthcheck:
+      # Loopback inside the container passes the ingress guard without the dev flag.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8099/api/status"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s

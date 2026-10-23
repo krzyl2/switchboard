@@ -1,0 +1,23 @@
+# Build context filter for switchboard/Dockerfile (BuildKit reads <Dockerfile>.dockerignore
+# next to the Dockerfile in preference to a root .dockerignore).
+# Allow-list: the context is the repository root, which also holds deploy/dev-data (a live
+# Home Assistant config), deploy/.env (an HA token) and host build output. None of that may
+# reach the image or the builder.
+*
+!Switchboard.slnx
+!global.json
+!Directory.Build.props
+!Directory.Packages.props
+!BannedSymbols.txt
+!src/
+!web/
+!switchboard/rootfs/
+
+# Host build output inside the allowed folders: Windows obj/ restore assets break a Linux
+# restore, and wwwroot is produced by the ui-build stage.
+src/**/bin/
+src/**/obj/
+src/Switchboard.Host/wwwroot/
+web/node_modules/
+web/dist/
+**/*.user

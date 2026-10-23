@@ -1,0 +1,11 @@
+configuration:
+  mode:
+    name: Tryb pracy
+    description: >-
+      shadow – obserwacja (domyślnie): Switchboard liczy decyzje i zapisuje je
+      w dzienniku, ale niczego nie przełącza. active – zarezerwowane dla
+      przyszłej wersji; ta wersja nie ma ścieżki sterowania i niczego nie
+      przełącza.
+  log_level:
+    name: Poziom logowania
+    description: Szczegółowość wpisów w logu Switchboard.

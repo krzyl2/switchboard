@@ -1,0 +1,40 @@
+#!/usr/bin/with-contenv bashio
+# Runs when the Switchboard process exits, for any reason.
+#   $1 = exit code, or 256 when the process was killed by a signal
+#   $2 = signal number when $1 is 256
+#
+# The container is halted instead of letting s6 restart the process in place: the
+# Supervisor then sees the add-on stop, reports it, and its watchdog restarts it.
+# Health on the HA side is covered either way — the MQTT last will marks the health
+# entity unavailable as soon as the broker notices the connection is gone.
+# s6-overlay v3 form; `s6-svscanctl -t` (v2) has no effect on these base images.
+
+exit_code="${1:-0}"
+signal="${2:-0}"
+
+if [ "${exit_code}" -eq 256 ]; then
+    container_exit_code=$((128 + signal))
+    # A graceful stop (SIGTERM) exits 0 and lands below. Only SIGTERM itself is expected here;
+    # everything else is a crash: an unhandled .NET exception aborts (6), OOM kills (9).
+    if [ "${signal}" -eq 15 ]; then
+        bashio::log.info "Switchboard stopped by signal ${signal}."
+    else
+        bashio::log.fatal "Switchboard was killed by signal ${signal}; halting the container."
+    fi
+elif [ "${exit_code}" -eq 0 ]; then
+    container_exit_code=0
+    bashio::log.info "Switchboard exited with code 0."
+else
+    container_exit_code="${exit_code}"
+    bashio::log.fatal "Switchboard exited with code ${exit_code}; halting the container."
+fi
+
+# halt is asynchronous: without -O, s6-supervise starts the process once more before the
+# shutdown reaches it — a second Switchboard briefly connecting to HA and MQTT — and that
+# instance's own finish then overwrites the exit code recorded below.
+# s6-supervise runs this script in the service directory, hence ".".
+s6-svc -O .
+
+# Let the container's own exit code carry the process' result.
+echo "${container_exit_code}" > /run/s6-linux-init-container-results/exitcode
+exec /run/s6/basedir/bin/halt

@@ -1,0 +1,12 @@
+# Minimal Home Assistant configuration for the local dev stack (docker-compose.dev.yml).
+# Template only: it is copied into deploy/dev-data/ha/ (gitignored) before HA's first start.
+# The MQTT integration is a config entry, not YAML: point it at host "mosquitto", port 1883.
+default_config:
+
+homeassistant:
+  name: Switchboard dev
+  unit_system: metric
+  time_zone: Europe/Warsaw
+
+logger:
+  default: info

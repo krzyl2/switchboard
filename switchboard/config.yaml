@@ -1,0 +1,28 @@
+name: "Switchboard"
+description: "Phase-aware load dispatch: keeps every phase under its breaker and sends power where it is worth most. Best-effort; not a protective device."
+version: "0.1.0"
+slug: switchboard
+url: "https://github.com/krzyl2/switchboard"
+image: "ghcr.io/krzyl2/switchboard"
+arch: [amd64, aarch64]
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:transmission-tower"
+panel_title: "Switchboard"
+homeassistant_api: true
+services:
+  - mqtt:need
+map:
+  - type: data
+watchdog: "tcp://[HOST]:8099"
+
+options:
+  mode: "shadow"
+  log_level: "info"
+
+schema:
+  mode: list(shadow|active)
+  log_level: list(debug|info|warning)
