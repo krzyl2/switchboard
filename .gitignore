@@ -1,0 +1,22 @@
+# .NET build output
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Coverage output
+coverage/
+coverage*.xml
+*.coverage
+
+# Node dependencies (web/)
+node_modules/
+
+# SPA build output: produced by `npm run build` in web/ (and by the add-on image build).
+# Never hand-edited, never committed.
+src/Switchboard.Host/wwwroot/
+
+# Local dev stack: live HA config + add-on /data, and the HA token
+deploy/dev-data/
+deploy/.env

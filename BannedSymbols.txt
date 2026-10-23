@@ -1,0 +1,18 @@
+P:System.DateTime.Now;Read time from the injected TimeProvider
+P:System.DateTime.UtcNow;Read time from the injected TimeProvider
+P:System.DateTime.Today;Read time from the injected TimeProvider
+P:System.DateTimeOffset.Now;Read time from the injected TimeProvider
+P:System.DateTimeOffset.UtcNow;Read time from the injected TimeProvider
+M:System.Threading.Thread.Sleep(System.Int32);Wait with Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Thread.Sleep(System.TimeSpan);Wait with Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task.Delay(System.Int32);Use Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan);Use Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task.Delay(System.Int32,System.Threading.CancellationToken);Use Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan,System.Threading.CancellationToken);Use Task.Delay(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.PeriodicTimer.#ctor(System.TimeSpan);Use new PeriodicTimer(TimeSpan, TimeProvider)
+M:System.Threading.Tasks.Task.WaitAsync(System.TimeSpan);Use WaitAsync(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task.WaitAsync(System.TimeSpan,System.Threading.CancellationToken);Use WaitAsync(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan);Use WaitAsync(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan,System.Threading.CancellationToken);Use WaitAsync(TimeSpan, TimeProvider, CancellationToken)
+M:System.Threading.CancellationTokenSource.#ctor(System.TimeSpan);Use new CancellationTokenSource(TimeSpan, TimeProvider)
+M:System.Threading.CancellationTokenSource.#ctor(System.Int32);Use new CancellationTokenSource(TimeSpan, TimeProvider)

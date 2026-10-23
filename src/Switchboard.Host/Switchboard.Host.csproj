@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Switchboard.Host</RootNamespace>
+    <AssemblyName>Switchboard.Host</AssemblyName>
+    <!-- The add-on base image is not guaranteed to ship ICU; nothing here is culture-sensitive. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- s6 starts `dotnet Switchboard.Host.dll`; without a native launcher the publish output is the same for every arch. -->
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Switchboard.Application\Switchboard.Application.csproj" />
+    <ProjectReference Include="..\Switchboard.Infrastructure\Switchboard.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Switchboard.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Switchboard.Application/Switchboard.Application.csproj" />
+    <Project Path="src/Switchboard.Infrastructure/Switchboard.Infrastructure.csproj" />
+    <Project Path="src/Switchboard.Host/Switchboard.Host.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Switchboard.Tests/Switchboard.Tests.csproj" />
+  </Folder>
+</Solution>

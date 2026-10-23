@@ -1,0 +1,13 @@
+# Normalise text files; let each platform check out its native line endings by default.
+* text=auto
+
+# Files that run or are parsed inside the Linux container must stay LF whatever the local
+# core.autocrlf says: a CRLF shebang makes s6 exec "bashio\r" and the add-on crash-loops
+# (cost Argus a release). The Dockerfile strips CR defensively as well.
+*.sh text eol=lf
+switchboard/rootfs/** text eol=lf
+Dockerfile* text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+*.png binary
