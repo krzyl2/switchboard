@@ -1,0 +1,963 @@
+<title>Rozdzielnica Mocy</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Układ: lewa szyna nawigacji + kolumna treści; na telefonie szyna zwija się w poziomy pasek nad treścią. */
+:root{
+  --bg:#f4f5f3;
+  --surface:#ffffff;
+  --surface-2:#eceeea;
+  --line:#d4d8d2;
+  --fg:#1a1f1c;
+  --fg-dim:#5d665f;
+  --accent:#b35c00;
+  --ok:#2f7d4f;
+  --warn:#b07908;
+  --crit:#b3302a;
+  --pv:#c79100;
+  --font-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#141715;--surface:#1c201e;--surface-2:#252a27;--line:#343a36;
+    --fg:#e8ebe7;--fg-dim:#9aa49d;--accent:#e8913c;--ok:#5fc287;--warn:#e0b341;--crit:#e8706a;--pv:#e4c24a;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141715;--surface:#1c201e;--surface-2:#252a27;--line:#343a36;
+  --fg:#e8ebe7;--fg-dim:#9aa49d;--accent:#e8913c;--ok:#5fc287;--warn:#e0b341;--crit:#e8706a;--pv:#e4c24a;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0;font-weight:600;letter-spacing:-.01em}
+h1{font-size:1.5rem}
+h2{font-size:1.18rem}
+h3{font-size:.97rem}
+p{margin:0}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);gap:0;min-height:100%}
+/* --- szyna nawigacji --- */
+.rail{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;
+  padding-block:20px 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:12px}
+.brand{display:flex;flex-direction:column;gap:2px;margin-bottom:18px}
+.brand .name{font-family:var(--font-display);font-size:1.05rem;font-weight:600;letter-spacing:.01em}
+.brand .sub{font-size:.7rem;color:var(--fg-dim);letter-spacing:.08em;text-transform:uppercase}
+.navbtn{appearance:none;background:none;border:0;border-radius:3px;color:var(--fg-dim);cursor:pointer;
+  font:inherit;font-size:.88rem;text-align:left;padding:7px 10px;display:flex;align-items:center;gap:9px;width:100%}
+.navbtn:hover{background:var(--surface-2);color:var(--fg)}
+.navbtn[aria-current="true"]{background:var(--surface-2);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent)}
+.navbtn .idx{font-family:var(--font-mono);font-size:.7rem;color:var(--accent);min-width:1.2em}
+.railnote{margin-top:auto;padding:10px;border:1px dashed var(--line);border-radius:4px;font-size:.72rem;color:var(--fg-dim);line-height:1.4}
+/* --- treść --- */
+.main{min-width:0;padding-block:22px 56px;
+  padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.page{display:flex;flex-direction:column;gap:18px;max-width:980px}
+.pagehead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.pagehead p{color:var(--fg-dim);font-size:.85rem;max-width:62ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:16px}
+.card>header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin-bottom:14px}
+.card>header p{color:var(--fg-dim);font-size:.78rem}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+.label{font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:var(--fg-dim)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;padding:2px 8px;border-radius:999px;
+  border:1px solid var(--line);color:var(--fg-dim);background:var(--surface-2)}
+.pill.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.pill.crit{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+/* --- paski faz --- */
+.phase{display:grid;grid-template-columns:34px minmax(0,1fr) 92px;gap:10px;align-items:center;padding-block:9px}
+.phase+.phase{border-top:1px solid var(--line)}
+.phase .pname{font-family:var(--font-display);font-weight:600;font-size:.95rem}
+.phase .pname small{display:block;font-size:.62rem;color:var(--fg-dim);font-weight:400;letter-spacing:.04em}
+.bar{position:relative;height:22px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:.64rem;
+  font-family:var(--font-mono);color:#fff;white-space:nowrap;overflow:hidden}
+.seg.base{background:#6b7a71}
+.seg.ctrl{background:var(--accent)}
+.seg.ext{background:var(--crit)}
+.tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fg)}
+.tick.soft{background:var(--warn);width:1px;border-left:1px dashed var(--warn)}
+.phase .pval{text-align:right;font-family:var(--font-mono);font-size:.85rem;font-variant-numeric:tabular-nums}
+.phase .pval small{display:block;font-size:.65rem;color:var(--fg-dim)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.7rem;color:var(--fg-dim);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+/* --- tabele --- */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.82rem;min-width:420px}
+th{text-align:left;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-dim);
+  font-weight:500;padding:0 10px 7px 0;border-bottom:1px solid var(--line)}
+td{padding:8px 10px 8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;padding-right:14px}
+.why{font-size:.74rem;color:var(--fg-dim)}
+/* --- kolejka urządzeń --- */
+.dev{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:11px 0;align-items:center}
+.dev+.dev{border-top:1px solid var(--line)}
+.dev .top{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.dev .nm{font-weight:600;font-size:.9rem}
+.dev .meta{grid-column:1/-1;font-size:.74rem;color:var(--fg-dim)}
+.dev .pw{font-family:var(--font-mono);font-size:1rem;text-align:right}
+.dev .pw small{color:var(--fg-dim);font-size:.68rem}
+/* --- onboarding --- */
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.step{font-size:.72rem;padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--fg-dim);
+  background:var(--surface);cursor:pointer;font-family:inherit}
+.step[aria-current="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.step.done{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+.field label{font-size:.78rem;font-weight:600}
+.field .hint{font-size:.72rem;color:var(--fg-dim)}
+input[type=text],input[type=number],select{font:inherit;font-size:.85rem;padding:7px 9px;border:1px solid var(--line);
+  border-radius:3px;background:var(--bg);color:var(--fg);width:100%;max-width:100%}
+.row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.btn{font:inherit;font-size:.84rem;padding:8px 15px;border-radius:3px;border:1px solid var(--accent);
+  background:var(--accent);color:#fff;cursor:pointer}
+.btn.ghost{background:none;color:var(--fg);border-color:var(--line)}
+.btnrow{display:flex;flex-wrap:wrap;gap:9px;margin-top:4px}
+.choice{display:flex;gap:11px;align-items:flex-start;padding:11px;border:1px solid var(--line);border-radius:4px;cursor:pointer;background:var(--surface)}
+.choice+.choice{margin-top:9px}
+.choice[data-sel="1"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.choice .t{font-weight:600;font-size:.86rem}
+.choice .d{font-size:.75rem;color:var(--fg-dim)}
+.note{border-left:3px solid var(--accent);background:var(--surface-2);padding:11px 13px;border-radius:0 4px 4px 0;font-size:.8rem}
+.note strong{font-family:var(--font-display)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:.82rem}
+.kv dt{color:var(--fg-dim)}
+.kv dd{margin:0;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.budget{height:10px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-top:6px}
+.budget i{display:block;height:100%}
+.flowstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.bignum{font-family:var(--font-display);font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.bignum small{font-size:.8rem;font-weight:400;color:var(--fg-dim)}
+svg{display:block;max-width:100%}
+.scroll{overflow-x:auto}
+@media (max-width:760px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .rail{flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line);
+    padding-block:12px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .brand{width:100%;margin-bottom:8px}
+  .navbtn{width:auto}
+  .railnote{display:none}
+  .phase{grid-template-columns:30px minmax(0,1fr);row-gap:4px}
+  .phase .pval{grid-column:2;text-align:left}
+}
+@media (prefers-reduced-motion:no-preference){.seg{transition:width .3s ease}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<div class="shell">
+  <nav class="rail" aria-label="Ekrany prototypu">
+    <div class="brand">
+      <span class="name">Rozdzielnica Mocy</span>
+      <span class="sub">Prototyp · dane przykładowe</span>
+    </div>
+    <button class="navbtn" data-go="pulpit"><span class="idx">01</span>Pulpit</button>
+    <button class="navbtn" data-go="przeplywy"><span class="idx">02</span>Przepływy</button>
+    <button class="navbtn" data-go="instalacja"><span class="idx">03</span>Konfiguracja wstępna</button>
+    <button class="navbtn" data-go="urzadzenie"><span class="idx">04</span>Karta urządzenia</button>
+    <button class="navbtn" data-go="limity"><span class="idx">05</span>Limity i przeciążenia</button>
+    <button class="navbtn" data-go="plan"><span class="idx">06</span>Plan doby</button>
+    <button class="navbtn" data-go="dziennik"><span class="idx">07</span>Dziennik decyzji</button>
+    <p class="railnote">Klikalna makieta. Żadna akcja nie steruje urządzeniami — wszystkie liczby są przykładowe.</p>
+  </nav>
+
+  <main class="main">
+
+    <!-- ============ PULPIT ============ -->
+    <section class="page" id="pulpit">
+      <div class="pagehead">
+        <h1>Pulpit</h1>
+        <span class="pill ok"><span class="dot"></span>Sterowanie aktywne</span>
+        <span class="pill">Cykl 30 s · ostatni 00:12 temu</span>
+      </div>
+
+      <div class="card">
+        <header>
+          <h2>Obciążenie faz</h2>
+          <p>Bezpiecznik główny 25 A na fazę · zapas bezpieczeństwa 2,5 kW · napięcie 230 V</p>
+        </header>
+
+        <div class="phase">
+          <div class="pname">L1<small>WALLBOX</small></div>
+          <div class="bar" title="L1">
+            <div class="seg base" style="left:0;width:14%">dom 0,9</div>
+            <div class="seg ctrl" style="left:14%;width:31%">go-e 2,0 kW</div>
+            <div class="tick soft" style="left:61%"></div>
+            <div class="tick" style="left:100%"></div>
+          </div>
+          <div class="pval">12,6 A<small>50% limitu</small></div>
+        </div>
+
+        <div class="phase">
+          <div class="pname">L2<small>GRZAŁKA 2</small></div>
+          <div class="bar" title="L2">
+            <div class="seg base" style="left:0;width:6%">0,4</div>
+            <div class="seg ctrl" style="left:6%;width:26%">grzałka 1,5 kW</div>
+            <div class="tick soft" style="left:61%"></div>
+            <div class="tick" style="left:100%"></div>
+          </div>
+          <div class="pval">8,3 A<small>33% limitu</small></div>
+        </div>
+
+        <div class="phase">
+          <div class="pname">L3<small>GRZAŁKA 3</small></div>
+          <div class="bar" title="L3">
+            <div class="seg base" style="left:0;width:5%">0,3</div>
+            <div class="seg ctrl" style="left:5%;width:26%">grzałka 1,5 kW</div>
+            <div class="seg ext" style="left:31%;width:35%">czajnik 2,0 kW</div>
+            <div class="tick soft" style="left:61%"></div>
+            <div class="tick" style="left:100%"></div>
+          </div>
+          <div class="pval">16,5 A<small>66% limitu</small></div>
+        </div>
+
+        <div class="legend">
+          <span><i style="background:#6b7a71"></i>obciążenie bazowe</span>
+          <span><i style="background:var(--accent)"></i>sterowane przez system</span>
+          <span><i style="background:var(--crit)"></i>obce, niesterowane</span>
+          <span><i style="background:var(--warn);height:2px;border-radius:0"></i>próg zapasu (15,2 A)</span>
+          <span><i style="background:var(--fg);height:2px;border-radius:0"></i>bezpiecznik 25 A</span>
+        </div>
+
+        <div class="note" style="margin-top:14px">
+          <strong>L3 przekroczyła próg zapasu.</strong> Czajnik (2,0 kW) wszedł poza systemem 40 s temu.
+          Grzałka 3 zostanie wyłączona w najbliższym cyklu, chyba że czajnik zniknie wcześniej.
+          Prąd 16,5 A mieści się pod bezpiecznikiem, więc redukcja nie jest natychmiastowa.
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <header><h2>Bilans mocy</h2><p>stan chwilowy</p></header>
+          <dl class="kv">
+            <dt>Produkcja PV</dt><dd>4,32 kW</dd>
+            <dt>Zużycie domu</dt><dd>3,60 kW</dd>
+            <dt>Sterowane odbiorniki</dt><dd>5,00 kW</dd>
+            <dt>Magazyn</dt><dd>−0,45 kW (rozładowanie)</dd>
+            <dt>Sieć</dt><dd>3,83 kW (pobór)</dd>
+            <dt>Bilans godzinny</dt><dd>+0,42 kWh</dd>
+          </dl>
+          <p class="why" style="margin-top:11px">Pobór z sieci jest dopuszczony, bo bilans godziny pozostaje dodatni do 15:00.</p>
+        </div>
+
+        <div class="card">
+          <header><h2>Rozdział mocy</h2><p>priorytet wynika z wartości kWh</p></header>
+
+          <div class="dev">
+            <div class="top"><span class="nm">Ładowarka go-e</span><span class="pill ok"><span class="dot"></span>pracuje</span></div>
+            <div class="pw">2,00 <small>kW</small></div>
+            <div class="meta">L1 · 8,7 A z 16 A · wartość 2,03 zł/kWh · cel 50% SoC do 06:30 (osiągnięty 14:10)</div>
+          </div>
+
+          <div class="dev">
+            <div class="top"><span class="nm">Grzałka CWU 2</span><span class="pill ok"><span class="dot"></span>pracuje</span></div>
+            <div class="pw">1,50 <small>kW</small></div>
+            <div class="meta">L2 · wartość 0,35 zł/kWh · zbiornik 51 °C</div>
+          </div>
+
+          <div class="dev">
+            <div class="top"><span class="nm">Grzałka CWU 3</span><span class="pill warn"><span class="dot"></span>do wyłączenia</span></div>
+            <div class="pw">1,50 <small>kW</small></div>
+            <div class="meta">L3 · najniższa wartość kWh w kolejce, więc zrzucana pierwsza</div>
+          </div>
+
+          <div class="dev">
+            <div class="top"><span class="nm">Grzałka CWU 1</span><span class="pill"><span class="dot"></span>blokada 4:12</span></div>
+            <div class="pw">0,00 <small>kW</small></div>
+            <div class="meta">L1 · minimalny czas postoju przekaźnika po wyłączeniu o 14:38</div>
+          </div>
+
+          <div class="dev">
+            <div class="top"><span class="nm">Magazyn 16 kWh</span><span class="pill ok"><span class="dot"></span>rozładowanie</span></div>
+            <div class="pw">0,45 <small>kW</small></div>
+            <div class="meta">SoC 62% · pokrywa deficyt, żeby nie przerywać ładowania auta</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRZEPŁYWY ============ -->
+    <section class="page" id="przeplywy" hidden>
+      <div class="pagehead">
+        <h1>Przepływy</h1>
+        <span class="pill ok"><span class="dot"></span>na żywo · 14:42:30</span>
+        <p>Grubość ścieżki odpowiada mocy. Każda faza rozliczana jest osobno, bo osobno zabezpiecza ją bezpiecznik.</p>
+      </div>
+
+      <div class="card">
+        <div class="flowstats">
+          <div><p class="label">Produkcja PV</p><p class="bignum" style="color:var(--pv)">4,32 <small>kW</small></p></div>
+          <div><p class="label">Pobór z sieci</p><p class="bignum">3,83 <small>kW</small></p></div>
+          <div><p class="label">Magazyn · SoC 62%</p><p class="bignum" style="color:var(--ok)">0,45 <small>kW</small></p></div>
+          <div><p class="label">Najciaśniejsza faza</p><p class="bignum" style="color:var(--warn)">L3 · 16,5 <small>A</small></p></div>
+        </div>
+
+        <div class="scroll" style="margin-top:4px">
+          <svg viewBox="0 0 820 520" style="min-width:680px" role="img"
+               aria-label="Schemat przepływu mocy: PV, sieć i magazyn zasilają rozdzielnicę, z której moc rozchodzi się na trzy fazy i podłączone odbiorniki">
+            <defs>
+              <style>
+                .flow{fill:none;stroke-linecap:round}
+                .anim{stroke-dasharray:12 10;animation:march 1.4s linear infinite}
+                @keyframes march{to{stroke-dashoffset:-22}}
+                @media (prefers-reduced-motion:reduce){.anim{animation:none}}
+                .nbox{fill:var(--surface-2);stroke:var(--line)}
+                .nttl{font-family:"IBM Plex Sans",sans-serif;font-size:12px;font-weight:600;fill:var(--fg)}
+                .nsub{font-family:"IBM Plex Sans",sans-serif;font-size:9.5px;fill:var(--fg-dim)}
+                .nval{font-family:"IBM Plex Mono",monospace;font-size:12px;fill:var(--fg)}
+                .phl{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:600;fill:#fff}
+                .phv{font-family:"IBM Plex Mono",monospace;font-size:10.5px;fill:#fff;opacity:.9}
+              </style>
+            </defs>
+
+            <!-- ŹRÓDŁA -->
+            <g>
+              <rect class="nbox" x="10" y="70" width="140" height="56" rx="4"/>
+              <text class="nttl" x="22" y="90">Fotowoltaika</text>
+              <text class="nsub" x="22" y="104">SolarEdge 7 kW</text>
+              <text class="nval" x="138" y="118" text-anchor="end" fill="var(--pv)">4,32 kW</text>
+
+              <rect class="nbox" x="10" y="232" width="140" height="56" rx="4"/>
+              <text class="nttl" x="22" y="252">Sieć</text>
+              <text class="nsub" x="22" y="266">Tauron G13 · strefa nocna</text>
+              <text class="nval" x="138" y="280" text-anchor="end">3,83 kW</text>
+
+              <rect class="nbox" x="10" y="394" width="140" height="56" rx="4"/>
+              <text class="nttl" x="22" y="414">Magazyn</text>
+              <text class="nsub" x="22" y="428">16 kWh · rozładowanie</text>
+              <text class="nval" x="138" y="442" text-anchor="end" fill="var(--ok)">0,45 kW</text>
+            </g>
+
+            <!-- TRUNKI DO WĘZŁA -->
+            <path class="flow anim" d="M150,98 C205,98 210,270 252,270" stroke="var(--pv)" stroke-width="11.5" opacity=".9"/>
+            <path class="flow anim" d="M150,260 C200,260 210,270 252,270" stroke="#8a9790" stroke-width="10.4" opacity=".9"/>
+            <path class="flow anim" d="M150,422 C205,422 210,270 252,270" stroke="var(--ok)" stroke-width="3" opacity=".9"/>
+
+            <!-- LICZNIK -->
+            <g>
+              <rect x="176" y="302" width="92" height="26" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="nsub" x="222" y="319" text-anchor="middle">licznik główny</text>
+              <line x1="222" y1="302" x2="222" y2="268" stroke="var(--line)" stroke-dasharray="3 3"/>
+            </g>
+
+            <!-- WĘZEŁ -->
+            <circle cx="255" cy="270" r="7" fill="var(--accent)"/>
+            <text class="nsub" x="255" y="252" text-anchor="middle">rozdzielnica</text>
+
+            <!-- GAŁĘZIE NA FAZY -->
+            <path class="flow anim" d="M258,270 C280,270 282,95 298,95" stroke="var(--accent)" stroke-width="8.4" opacity=".85"/>
+            <path class="flow anim" d="M258,270 C280,270 282,260 298,260" stroke="var(--accent)" stroke-width="6.2" opacity=".85"/>
+            <path class="flow anim" d="M258,270 C280,270 282,425 298,425" stroke="var(--accent)" stroke-width="10.4" opacity=".85"/>
+
+            <!-- SZYNY FAZOWE -->
+            <g>
+              <rect x="300" y="60" width="88" height="70" rx="4" fill="#6b7a71"/>
+              <text class="phl" x="316" y="88">L1</text>
+              <text class="phv" x="316" y="106">12,6 A</text>
+              <text class="phv" x="316" y="120">2,90 kW</text>
+              <rect x="300" y="124" width="88" height="6" fill="var(--ok)" opacity=".9"/>
+
+              <rect x="300" y="225" width="88" height="70" rx="4" fill="#6b7a71"/>
+              <text class="phl" x="316" y="253">L2</text>
+              <text class="phv" x="316" y="271">8,3 A</text>
+              <text class="phv" x="316" y="285">1,90 kW</text>
+              <rect x="300" y="289" width="58" height="6" fill="var(--ok)" opacity=".9"/>
+
+              <rect x="300" y="390" width="88" height="70" rx="4" fill="#6b7a71"/>
+              <text class="phl" x="316" y="418">L3</text>
+              <text class="phv" x="316" y="436">16,5 A</text>
+              <text class="phv" x="316" y="450">3,80 kW</text>
+              <rect x="300" y="454" width="88" height="6" fill="var(--warn)"/>
+            </g>
+
+            <!-- POŁĄCZENIA DO ODBIORNIKÓW -->
+            <path class="flow anim" d="M388,95 C440,95 450,68 498,68" stroke="var(--accent)" stroke-width="6.4"/>
+            <path class="flow anim" d="M388,95 C440,95 450,124 498,124" stroke="#8a9790" stroke-width="3"/>
+            <path class="flow" d="M388,95 C440,95 450,176 498,176" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 4"/>
+
+            <path class="flow anim" d="M388,260 C440,260 450,233 498,233" stroke="var(--accent)" stroke-width="5.3"/>
+            <path class="flow anim" d="M388,260 C440,260 450,289 498,289" stroke="#8a9790" stroke-width="2.4"/>
+
+            <path class="flow anim" d="M388,425 C440,425 450,370 498,370" stroke="var(--accent)" stroke-width="5.3"/>
+            <path class="flow anim" d="M388,425 C440,425 450,426 498,426" stroke="var(--crit)" stroke-width="6.4"/>
+            <path class="flow anim" d="M388,425 C440,425 450,482 498,482" stroke="#8a9790" stroke-width="2.2"/>
+
+            <!-- ODBIORNIKI -->
+            <g>
+              <rect class="nbox" x="500" y="48" width="200" height="40" rx="4" stroke="var(--accent)"/>
+              <text class="nttl" x="512" y="66">Ładowarka go-e</text>
+              <text class="nsub" x="512" y="80">8,7 A z 16 A · cel osiągnięty</text>
+              <text class="nval" x="760" y="73" text-anchor="end">2,00 kW</text>
+
+              <rect class="nbox" x="500" y="104" width="200" height="40" rx="4"/>
+              <text class="nttl" x="512" y="122">Dom — faza L1</text>
+              <text class="nsub" x="512" y="136">obciążenie niesterowane</text>
+              <text class="nval" x="760" y="129" text-anchor="end">0,90 kW</text>
+
+              <rect class="nbox" x="500" y="156" width="200" height="40" rx="4" stroke-dasharray="4 3"/>
+              <text class="nttl" x="512" y="174" fill="var(--fg-dim)">Grzałka CWU 1</text>
+              <text class="nsub" x="512" y="188">blokada postoju 4:12</text>
+              <text class="nval" x="760" y="181" text-anchor="end" fill="var(--fg-dim)">0,00 kW</text>
+
+              <rect class="nbox" x="500" y="213" width="200" height="40" rx="4" stroke="var(--accent)"/>
+              <text class="nttl" x="512" y="231">Grzałka CWU 2</text>
+              <text class="nsub" x="512" y="245">zbiornik 51 °C</text>
+              <text class="nval" x="760" y="238" text-anchor="end">1,50 kW</text>
+
+              <rect class="nbox" x="500" y="269" width="200" height="40" rx="4"/>
+              <text class="nttl" x="512" y="287">Dom — faza L2</text>
+              <text class="nsub" x="512" y="301">obciążenie niesterowane</text>
+              <text class="nval" x="760" y="294" text-anchor="end">0,40 kW</text>
+
+              <rect class="nbox" x="500" y="350" width="200" height="40" rx="4" stroke="var(--warn)"/>
+              <text class="nttl" x="512" y="368">Grzałka CWU 3</text>
+              <text class="nsub" x="512" y="382" fill="var(--warn)">do wyłączenia w tym cyklu</text>
+              <text class="nval" x="760" y="375" text-anchor="end">1,50 kW</text>
+
+              <rect class="nbox" x="500" y="406" width="200" height="40" rx="4" stroke="var(--crit)"/>
+              <text class="nttl" x="512" y="424">Czajnik</text>
+              <text class="nsub" x="512" y="438" fill="var(--crit)">obcy odbiornik, wykryty 40 s temu</text>
+              <text class="nval" x="760" y="431" text-anchor="end">2,00 kW</text>
+
+              <rect class="nbox" x="500" y="462" width="200" height="40" rx="4"/>
+              <text class="nttl" x="512" y="480">Dom — faza L3</text>
+              <text class="nsub" x="512" y="494">obciążenie niesterowane</text>
+              <text class="nval" x="760" y="487" text-anchor="end">0,30 kW</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="legend">
+          <span><i style="background:var(--pv)"></i>produkcja PV</span>
+          <span><i style="background:#8a9790"></i>sieć i odbiorniki niesterowane</span>
+          <span><i style="background:var(--ok)"></i>magazyn</span>
+          <span><i style="background:var(--accent)"></i>sterowane przez system</span>
+          <span><i style="background:var(--crit)"></i>obcy odbiornik</span>
+          <span><i style="background:var(--line)"></i>urządzenie zatrzymane</span>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <header><h2>Zapas na fazach</h2><p>limit 25 A · zapas 2,5 kW, czyli 10,9 A</p></header>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Faza</th><th>Teraz</th><th>Wolne do progu</th><th>Wolne do bezpiecznika</th><th>Stan</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">L1</td><td class="num">12,6 A</td><td class="num">2,6 A</td><td class="num">12,4 A</td><td><span class="pill ok"><span class="dot"></span>można dokładać</span></td></tr>
+                <tr><td class="mono">L2</td><td class="num">8,3 A</td><td class="num">6,9 A</td><td class="num">16,7 A</td><td><span class="pill ok"><span class="dot"></span>można dokładać</span></td></tr>
+                <tr><td class="mono">L3</td><td class="num">16,5 A</td><td class="num">−1,3 A</td><td class="num">8,5 A</td><td><span class="pill warn"><span class="dot"></span>zrzut w tym cyklu</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="why" style="margin-top:10px">Grzałka 3 zejdzie z L3, a nie z L1, bo tylko L3 jest ciasna. System nie przenosi obciążeń między fazami — przenosi je tylko między urządzeniami.</p>
+        </div>
+
+        <div class="card">
+          <header><h2>Dokąd idzie energia z PV</h2><p>ostatnie 60 minut</p></header>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Odbiorca</th><th>Energia</th><th>Udział</th></tr></thead>
+              <tbody>
+                <tr><td>Ładowarka</td><td class="num">2,10 kWh</td><td class="num">49%</td></tr>
+                <tr><td>Dom</td><td class="num">1,05 kWh</td><td class="num">24%</td></tr>
+                <tr><td>Grzałki CWU</td><td class="num">0,80 kWh</td><td class="num">19%</td></tr>
+                <tr><td>Magazyn</td><td class="num">0,20 kWh</td><td class="num">5%</td></tr>
+                <tr><td>Eksport do sieci</td><td class="num">0,15 kWh</td><td class="num">3%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="why" style="margin-top:10px">Eksport poniżej 5% oznacza, że rozdział działa. Każda oddana kWh jest warta 0,30 zł, a ta sama kWh w aucie 2,03 zł.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ONBOARDING ============ -->
+    <section class="page" id="instalacja" hidden>
+      <div class="pagehead">
+        <h1>Konfiguracja wstępna</h1>
+        <p>Pięć kroków. Do pierwszego uruchomienia wystarczy pomiar przyłącza i jedno urządzenie.</p>
+      </div>
+
+      <div class="steps">
+        <button class="step done" data-step="s1">1 · Pomiar</button>
+        <button class="step" aria-current="true" data-step="s2">2 · Przyłącze</button>
+        <button class="step" data-step="s3">3 · Źródła</button>
+        <button class="step" data-step="s4">4 · Odbiorniki</button>
+        <button class="step" data-step="s5">5 · Tryb pracy</button>
+      </div>
+
+      <div class="card" id="s1" hidden>
+        <header><h2>Licznik główny</h2><p>Krok 1 z 5 · to jedyny pomiar, bez którego system nie ruszy</p></header>
+
+        <div class="field">
+          <label for="ob-meter">Urządzenie pomiarowe na przyłączu</label>
+          <select id="ob-meter"><option>SolarEdge Modbus Meter M1 — wykryto, 3 fazy</option><option>Shelly Pro 3EM</option><option>Wskaż encje ręcznie</option></select>
+          <span class="hint">Musi mierzyć całe gospodarstwo za bezpiecznikiem głównym, a nie pojedynczy obwód. Znaleziono 3 kandydatów.</span>
+        </div>
+
+        <div class="field">
+          <label>Encje prądu na każdej fazie</label>
+          <span class="hint">To są wartości, na których opiera się ochrona bezpiecznika. Przypisz fazy dokładnie tak, jak są opisane w rozdzielnicy.</span>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Faza</th><th>Encja</th><th>Jednostka</th><th>Odczyt</th><th>Wiek</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="mono">L1</td>
+                <td><input type="text" id="ob-l1" value="sensor.solaredge_m1_l1_current" aria-label="Encja prądu L1"></td>
+                <td class="mono">A</td><td class="num">12,6</td><td class="num">4 s</td>
+              </tr>
+              <tr>
+                <td class="mono">L2</td>
+                <td><input type="text" id="ob-l2" value="sensor.solaredge_m1_l2_current" aria-label="Encja prądu L2"></td>
+                <td class="mono">A</td><td class="num">8,3</td><td class="num">4 s</td>
+              </tr>
+              <tr>
+                <td class="mono">L3</td>
+                <td><input type="text" id="ob-l3" value="sensor.solaredge_m1_l3_current" aria-label="Encja prądu L3"></td>
+                <td class="mono">A</td><td class="num">16,5</td><td class="num">4 s</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="row3" style="margin-top:14px">
+          <div class="field">
+            <label for="ob-sign">Kierunek i znak</label>
+            <select id="ob-sign"><option>Dodatni = pobór z sieci</option><option>Dodatni = oddawanie do sieci</option><option>Bez znaku, osobne encje kierunku</option></select>
+          </div>
+          <div class="field">
+            <label for="ob-dir">Encja kierunku przepływu</label>
+            <select id="ob-dir"><option>sensor.solaredge_m1_l1_power (ze znaku mocy)</option><option>Nie mam — tryb ostrożny</option></select>
+            <span class="hint">Potrzebna, gdy prąd jest podawany bez znaku.</span>
+          </div>
+          <div class="field">
+            <label for="ob-rate">Odświeżanie</label>
+            <input id="ob-rate" type="text" value="30 s (wykryto)">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Moc na fazę — opcjonalnie</label>
+          <span class="hint">Jeśli licznik podaje też moc czynną na fazę, system użyje jej do rozdziału mocy, a prądu wyłącznie do ochrony bezpiecznika. Bez tego moc liczona jest z prądu i napięcia, co przy odbiornikach o niskim współczynniku mocy zawyża wynik.</span>
+        </div>
+
+        <div class="note">
+          <strong>Co system sprawdzi, zanim pozwoli ruszyć dalej.</strong>
+          Czy trzy encje istnieją i mają sensowne wartości, czy odświeżają się w deklarowanym rytmie,
+          czy suma faz zgadza się z całkowitym poborem, oraz czy przypisanie faz jest prawdziwe —
+          to ostatnie przez włączenie jednego znanego odbiornika i sprawdzenie, na której fazie wzrósł prąd.
+          Odwrotnie przypisana faza to najgroźniejszy błąd konfiguracji: system odciąża wtedy nie tę fazę, która jest przeciążona.
+        </div>
+
+        <div class="note" style="margin-top:11px;border-left-color:var(--warn)">
+          <strong>Licznik główny widzi przepływ netto.</strong>
+          Przy produkcji PV prąd zmierzony na fazie jest różnicą między zużyciem a produkcją na tej fazie — i to dokładnie
+          ten prąd płynie przez bezpiecznik. Do ochrony przyłącza wystarczy więc sam licznik. Do rozdziału mocy system
+          potrzebuje dodatkowo wiedzieć, ile wytwarza falownik, inaczej nie odróżni fazy bez obciążenia od fazy,
+          której obciążenie pokrywa własna produkcja.
+        </div>
+
+        <div class="btnrow"><button class="btn">Sprawdź pomiar i przejdź dalej</button><button class="btn ghost">Uruchom test przypisania faz</button></div>
+      </div>
+
+      <div class="card" id="s2">
+        <header><h2>Parametry przyłącza</h2><p>Krok 2 z 5</p></header>
+        <div class="field">
+          <label>Układ instalacji</label>
+          <div class="choice" data-sel="1"><div><div class="t">Trójfazowy, limit na każdą fazę osobno</div><div class="d">Bezpiecznik główny działa niezależnie na L1, L2 i L3. Wymaga pomiaru prądu każdej fazy.</div></div></div>
+          <div class="choice"><div><div class="t">Trójfazowy, limit sumaryczny</div><div class="d">Gdy miernik podaje tylko moc łączną. Mniej dokładne, zalecany większy zapas.</div></div></div>
+          <div class="choice"><div><div class="t">Jednofazowy</div><div class="d">Jeden limit prądu.</div></div></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="ob-i">Prąd bezpiecznika</label><input id="ob-i" type="number" value="25"><span class="hint">amperów na fazę</span></div>
+          <div class="field"><label for="ob-char">Charakterystyka</label><select id="ob-char"><option>B (mieszkaniowa)</option><option>C</option><option>Nie wiem — tryb ostrożny</option></select></div>
+          <div class="field"><label for="ob-u">Napięcie fazowe</label><input id="ob-u" type="number" value="230"><span class="hint">woltów</span></div>
+        </div>
+        <div class="field">
+          <label for="ob-res">Zapas mocy na fazę</label>
+          <input id="ob-res" type="number" value="2,5" inputmode="decimal">
+          <span class="hint">Ile mocy zostawić wolnej na odbiorniki, których system nie kontroluje. Ustaw co najmniej tyle, ile bierze największe urządzenie włączane ręcznie — zwykle czajnik, piekarnik albo kuchenka indukcyjna.</span>
+        </div>
+        <div class="note">
+          <strong>25 A na fazie to 5,75 kW.</strong> Z zapasem 2,5 kW system rozdzieli między swoje odbiorniki
+          maksymalnie 3,25 kW na fazę. Czajnik włączony w najgorszym momencie podniesie prąd do około 27,8 A,
+          czyli 1,11 raza powyżej limitu — bezpiecznik to zniesie przez kilkanaście minut, a system zdąży zdjąć obciążenie w ciągu jednego cyklu.
+        </div>
+        <div class="btnrow"><button class="btn">Dalej</button><button class="btn ghost">Wstecz</button></div>
+      </div>
+
+      <div class="card" id="s3" hidden>
+        <header><h2>Źródła i magazyny</h2><p>Krok 3 z 5</p></header>
+        <div class="field"><label for="ob-pv">Falownik PV</label><select id="ob-pv"><option>SolarEdge SE7K-RWS — wykryto, 7,0 kW</option><option>Dodaj ręcznie</option><option>Brak PV</option></select></div>
+        <div class="field"><label for="ob-bat">Magazyn energii</label><select id="ob-bat"><option>Brak</option><option selected>Dodaj magazyn ręcznie</option></select></div>
+        <div class="row3">
+          <div class="field"><label for="ob-cap">Pojemność</label><input id="ob-cap" type="number" value="16"><span class="hint">kWh</span></div>
+          <div class="field"><label for="ob-pch">Moc ładowania</label><input id="ob-pch" type="number" value="5"><span class="hint">kW</span></div>
+          <div class="field"><label for="ob-soc">Minimalny SoC</label><input id="ob-soc" type="number" value="10"><span class="hint">procent</span></div>
+        </div>
+        <div class="btnrow"><button class="btn">Dalej</button><button class="btn ghost">Wstecz</button></div>
+      </div>
+
+      <div class="card" id="s4" hidden>
+        <header><h2>Odbiorniki</h2><p>Krok 4 z 5 · wybierz szablon, resztę system uzupełni</p></header>
+        <div class="choice" data-sel="1"><div><div class="t">Ładowarka samochodu</div><div class="d">Regulacja prądu, jedna lub trzy fazy, cel naładowania z terminem.</div></div></div>
+        <div class="choice"><div><div class="t">Grzałka bojlera</div><div class="d">Włącz/wyłącz lub stopnie mocy, czujnik temperatury, blokady przekaźnika.</div></div></div>
+        <div class="choice"><div><div class="t">Pompa ciepła lub klimatyzacja</div><div class="d">Sterowanie przez temperaturę zadaną, minimalne czasy pracy.</div></div></div>
+        <div class="choice"><div><div class="t">Dowolne urządzenie włącz/wyłącz</div><div class="d">Gniazdo, przekaźnik, cokolwiek z encją przełącznika.</div></div></div>
+        <div class="note" style="margin-top:14px">Dodane: <strong>go-e Charger</strong> (L1), <strong>Grzałka CWU 1</strong> (L1), <strong>Grzałka CWU 2</strong> (L2), <strong>Grzałka CWU 3</strong> (L3).</div>
+        <div class="btnrow"><button class="btn">Dalej</button><button class="btn ghost">Wstecz</button></div>
+      </div>
+
+      <div class="card" id="s5" hidden>
+        <header><h2>Tryb pracy</h2><p>Krok 5 z 5</p></header>
+        <div class="choice" data-sel="1"><div><div class="t">Obserwacja — zalecane na start</div><div class="d">System liczy decyzje i pokazuje je w dzienniku, ale niczego nie przełącza. Zostaw na kilka dni i sprawdź, czy decyzje mają sens.</div></div></div>
+        <div class="choice"><div><div class="t">Sterowanie aktywne</div><div class="d">System wysyła komendy do urządzeń.</div></div></div>
+        <div class="note">
+          <strong>To nie jest zabezpieczenie elektryczne.</strong> System ogranicza pobór mocy najlepiej jak potrafi na podstawie
+          danych z Home Assistant, ale nie zastępuje bezpieczników ani zabezpieczeń ładowarki. Przy braku lub przeterminowaniu
+          pomiaru wyłącza wszystkie sterowane odbiorniki.
+        </div>
+        <div class="btnrow"><button class="btn">Zakończ konfigurację</button><button class="btn ghost">Wstecz</button></div>
+      </div>
+    </section>
+
+    <!-- ============ KARTA URZĄDZENIA ============ -->
+    <section class="page" id="urzadzenie" hidden>
+      <div class="pagehead">
+        <h1>Ładowarka go-e</h1>
+        <span class="pill ok"><span class="dot"></span>pracuje · 2,00 kW</span>
+        <span class="pill">L1 · regulacja prądu</span>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <header><h2>Podłączenie</h2></header>
+          <div class="field"><label for="d-ent">Encja sterująca</label><input id="d-ent" type="text" value="number.go_e_charger_current"></div>
+          <div class="row3">
+            <div class="field"><label for="d-ph">Faza</label><select id="d-ph"><option>L1</option><option>L2</option><option>L3</option><option>Trzy fazy</option></select></div>
+            <div class="field"><label for="d-min">Prąd minimalny</label><input id="d-min" type="number" value="6"><span class="hint">A</span></div>
+            <div class="field"><label for="d-max">Prąd maksymalny</label><input id="d-max" type="number" value="16"><span class="hint">A</span></div>
+          </div>
+          <div class="field">
+            <label for="d-settle">Czas reakcji</label>
+            <input id="d-settle" type="number" value="20"><span class="hint">Sekundy od komendy do ustabilizowania poboru. System nie podejmuje kolejnej decyzji w górę, zanim nie zobaczy efektu.</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Wartość energii i cel</h2></header>
+          <div class="field">
+            <label for="d-val">Ile warta jest 1 kWh dla tego urządzenia</label>
+            <input id="d-val" type="text" value="2,03 zł">
+            <span class="hint">Wyliczone z kalkulatora: 4,7 l/100 km × 7,99 zł ÷ 18,5 kWh/100 km. Ta liczba decyduje o kolejności w rozdziale mocy.</span>
+          </div>
+          <div class="field">
+            <label for="d-goal">Cel</label>
+            <select id="d-goal"><option>Naładuj do 50% do godziny 06:30</option><option>Naładuj do pełna, bez terminu</option><option>Tylko z nadwyżki</option></select>
+          </div>
+          <div class="field">
+            <label for="d-src">Dozwolone źródła</label>
+            <select id="d-src"><option>Dowolne — wartość kWh przewyższa cenę prądu</option><option>Tylko nadwyżka PV</option><option>PV i strefa nocna</option></select>
+            <span class="hint">Przy 2,03 zł/kWh ładowanie opłaca się nawet w szczycie (1,50 zł/kWh), dlatego ograniczanie źródeł nie jest tu potrzebne.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><h2>Kontrola wykonania</h2><p>ostatnie 6 komend</p></header>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Czas</th><th>Komenda</th><th>Oczekiwano</th><th>Zmierzono</th><th>Wynik</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">14:42:00</td><td>8,7 A</td><td class="num">+0,00 kW</td><td class="num">+0,02 kW</td><td><span class="pill ok"><span class="dot"></span>zgodne</span></td></tr>
+              <tr><td class="mono">14:38:30</td><td>8,7 A</td><td class="num">+0,46 kW</td><td class="num">+0,44 kW</td><td><span class="pill ok"><span class="dot"></span>zgodne</span></td></tr>
+              <tr><td class="mono">14:36:00</td><td>6,7 A</td><td class="num">−0,46 kW</td><td class="num">−0,48 kW</td><td><span class="pill ok"><span class="dot"></span>zgodne</span></td></tr>
+              <tr><td class="mono">14:12:30</td><td>10,0 A</td><td class="num">+0,76 kW</td><td class="num">+0,04 kW</td><td><span class="pill warn"><span class="dot"></span>brak reakcji</span></td></tr>
+              <tr><td class="mono">14:13:00</td><td>powtórzenie</td><td class="num">+0,76 kW</td><td class="num">+0,74 kW</td><td><span class="pill ok"><span class="dot"></span>zgodne</span></td></tr>
+              <tr><td class="mono">13:50:00</td><td>start</td><td class="num">+1,38 kW</td><td class="num">+1,35 kW</td><td><span class="pill ok"><span class="dot"></span>zgodne</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="why" style="margin-top:10px">Brak reakcji o 14:12 to typowy objaw przerwy po stronie auta. Po trzech takich zdarzeniach z rzędu urządzenie zostanie pominięte w rozdziale mocy i oznaczone do sprawdzenia.</p>
+      </div>
+    </section>
+
+    <!-- ============ LIMITY ============ -->
+    <section class="page" id="limity" hidden>
+      <div class="pagehead">
+        <h1>Limity i przeciążenia</h1>
+        <p>System dopuszcza krótkie przekroczenia prądu znamionowego, bo bezpiecznik termiczny też je dopuszcza. Prowadzi przy tym własny budżet czasu, żeby nie zbliżyć się do zadziałania.</p>
+      </div>
+
+      <div class="card">
+        <header><h2>Profil bezpiecznika B25</h2><p>progi i dopuszczalny czas trwania</p></header>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Krotność</th><th>Prąd</th><th>Moc na fazie</th><th>Dopuszczalny czas</th><th>Reakcja systemu</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">do 0,90×</td><td class="num">22,5 A</td><td class="num">5,18 kW</td><td>bez ograniczeń</td><td class="why">wolno dokładać obciążenie</td></tr>
+              <tr><td class="mono">0,90–1,00×</td><td class="num">25,0 A</td><td class="num">5,75 kW</td><td>bez ograniczeń</td><td class="why">utrzymuj, nic nie dokładaj</td></tr>
+              <tr><td class="mono">1,00–1,13×</td><td class="num">28,3 A</td><td class="num">6,50 kW</td><td class="num">15 min</td><td class="why">redukcja w zwykłym cyklu</td></tr>
+              <tr><td class="mono">1,13–1,25×</td><td class="num">31,3 A</td><td class="num">7,19 kW</td><td class="num">3 min</td><td class="why">redukcja w następnym cyklu</td></tr>
+              <tr><td class="mono">1,25–1,45×</td><td class="num">36,3 A</td><td class="num">8,34 kW</td><td class="num">30 s</td><td class="why">natychmiastowy zrzut jednego odbiornika</td></tr>
+              <tr><td class="mono">ponad 1,45×</td><td class="num">—</td><td class="num">—</td><td class="num">0 s</td><td class="why">zrzut wszystkiego sterowanego na tej fazie</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:14px">
+          Wartości czasów są celowo ostrożniejsze niż norma. Norma gwarantuje tylko, że przy 1,13× bezpiecznik nie zadziała przez godzinę,
+          a przy 1,45× zadziała w ciągu godziny — producenci nie podają jednego punktu pośrodku. System traktuje 1,13× jako granicę
+          bezpiecznej pracy ciągłej, a wszystko powyżej jako dług czasowy do szybkiej spłaty.
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <header><h2>Budżet przeciążenia</h2><p>pamięć cieplna, odbudowa 1% na 6 s pracy poniżej limitu</p></header>
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;font-size:.8rem"><span>L1</span><span class="mono">100%</span></div>
+            <div class="budget"><i style="width:100%;background:var(--ok)"></i></div>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;font-size:.8rem"><span>L2</span><span class="mono">100%</span></div>
+            <div class="budget"><i style="width:100%;background:var(--ok)"></i></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:.8rem"><span>L3</span><span class="mono">76%</span></div>
+            <div class="budget"><i style="width:76%;background:var(--warn)"></i></div>
+            <p class="why" style="margin-top:7px">Zużyte o 09:14 i o 12:40, gdy piekarnik i czajnik pracowały jednocześnie. Pełna odbudowa za około 24 minuty.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Przebieg z dzisiejszego poranka</h2><p>L3, godziny 09:10–09:22</p></header>
+          <svg viewBox="0 0 320 170" role="img" aria-label="Wykres prądu na fazie L3 z przekroczeniem limitu i reakcją systemu">
+            <g font-family="IBM Plex Mono, monospace" font-size="8" fill="currentColor" opacity=".65">
+              <text x="2" y="26">36 A</text><text x="2" y="58">28 A</text><text x="2" y="90">25 A</text><text x="2" y="146">0</text>
+            </g>
+            <g stroke="currentColor" opacity=".18"><line x1="34" y1="23" x2="316" y2="23"/><line x1="34" y1="143" x2="316" y2="143"/></g>
+            <line x1="34" y1="87" x2="316" y2="87" stroke="var(--crit)" stroke-width="1.5"/>
+            <text x="316" y="83" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="8" fill="var(--crit)">bezpiecznik 25 A</text>
+            <line x1="34" y1="55" x2="316" y2="55" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="316" y="51" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="8" fill="var(--warn)">1,13× · granica pracy ciągłej</text>
+            <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"
+              points="34,118 70,118 92,118 93,66 150,66 151,44 186,44 187,96 230,96 231,112 316,112"/>
+            <circle cx="151" cy="44" r="3" fill="var(--crit)"/>
+            <circle cx="187" cy="96" r="3" fill="var(--ok)"/>
+            <g font-family="IBM Plex Sans, sans-serif" font-size="7.5" fill="currentColor" opacity=".8">
+              <text x="96" y="62">czajnik</text>
+              <text x="140" y="36">+ piekarnik 31 A</text>
+              <text x="190" y="112">zrzut grzałki 3</text>
+            </g>
+            <g font-family="IBM Plex Mono, monospace" font-size="7.5" fill="currentColor" opacity=".55">
+              <text x="34" y="156">09:10</text><text x="140" y="156">09:15</text><text x="280" y="156">09:22</text>
+            </g>
+          </svg>
+          <p class="why" style="margin-top:10px">Szczyt 31 A trwał 24 sekundy. Bezpiecznik nawet go nie odnotował, a system zdjął grzałkę zamiast przerywać ładowanie auta, bo kWh dla auta jest sześć razy więcej warta.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <header><h2>Co system zrzuca najpierw</h2><p>kolejność wynika z wartości kWh, można ją nadpisać</p></header>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Kolejność</th><th>Urządzenie</th><th>Faza</th><th>Wartość kWh</th><th>Czas zrzutu</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">1</td><td>Grzałka CWU 3</td><td>L3</td><td class="num">0,35 zł</td><td class="num">&lt; 1 s</td></tr>
+              <tr><td class="mono">2</td><td>Grzałka CWU 2</td><td>L2</td><td class="num">0,35 zł</td><td class="num">&lt; 1 s</td></tr>
+              <tr><td class="mono">3</td><td>Grzałka CWU 1</td><td>L1</td><td class="num">0,35 zł</td><td class="num">&lt; 1 s</td></tr>
+              <tr><td class="mono">4</td><td>Magazyn — przerwij ładowanie</td><td>wszystkie</td><td class="num">1,35 zł</td><td class="num">~3 s</td></tr>
+              <tr><td class="mono">5</td><td>Ładowarka — zejdź do 6 A</td><td>L1</td><td class="num">2,03 zł</td><td class="num">~20 s</td></tr>
+              <tr><td class="mono">6</td><td>Ładowarka — zatrzymaj</td><td>L1</td><td class="num">2,03 zł</td><td class="num">~20 s</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PLAN ============ -->
+    <section class="page" id="plan" hidden>
+      <div class="pagehead">
+        <h1>Plan doby</h1>
+        <p>Przeliczany co 15 minut. Wykonywany jest zawsze tylko najbliższy odcinek — reszta to zamiar, który zmieni się wraz z prognozą.</p>
+      </div>
+
+      <div class="card">
+        <header><h2>23 października, od teraz do jutra 18:00</h2><p>prognoza PV 18,4 kWh · taryfa G13</p></header>
+        <div class="scroll">
+          <svg viewBox="0 0 640 220" style="min-width:560px" role="img" aria-label="Plan doby: produkcja PV, strefy taryfowe i praca urządzeń w kolejnych godzinach">
+            <g font-family="IBM Plex Mono, monospace" font-size="9" fill="currentColor" opacity=".6">
+              <text x="0" y="14">kW</text>
+              <text x="0" y="40">6</text><text x="0" y="76">4</text><text x="0" y="112">2</text><text x="0" y="122">0</text>
+            </g>
+            <!-- strefy taryfowe -->
+            <g opacity=".14">
+              <rect x="22" y="126" width="88" height="14" fill="var(--ok)"/>
+              <rect x="110" y="126" width="132" height="14" fill="var(--warn)"/>
+              <rect x="242" y="126" width="110" height="14" fill="var(--ok)"/>
+              <rect x="352" y="126" width="110" height="14" fill="var(--crit)"/>
+              <rect x="462" y="126" width="176" height="14" fill="var(--ok)"/>
+            </g>
+            <g font-family="IBM Plex Sans, sans-serif" font-size="8" fill="currentColor" opacity=".75">
+              <text x="30" y="136">nocna</text><text x="150" y="136">przedpołudniowa</text><text x="270" y="136">nocna</text>
+              <text x="382" y="136">szczyt 16–21</text><text x="500" y="136">nocna</text>
+            </g>
+            <!-- pv -->
+            <path d="M22,120 L110,120 L150,96 L200,62 L250,40 L300,44 L350,72 L400,104 L440,120 L638,120"
+              fill="none" stroke="var(--pv)" stroke-width="2"/>
+            <text x="252" y="32" font-family="IBM Plex Sans, sans-serif" font-size="8.5" fill="var(--pv)">produkcja PV</text>
+            <!-- paski urządzeń -->
+            <g font-family="IBM Plex Sans, sans-serif" font-size="9" fill="currentColor">
+              <text x="22" y="162">Auto</text>
+              <rect x="80" y="153" width="120" height="11" rx="2" fill="var(--accent)" opacity=".85"/>
+              <rect x="210" y="153" width="120" height="11" rx="2" fill="var(--accent)"/>
+              <text x="86" y="162" font-size="7.5" fill="#fff">z sieci, nocna</text>
+              <text x="216" y="162" font-size="7.5" fill="#fff">z nadwyżki PV</text>
+
+              <text x="22" y="182">Magazyn</text>
+              <rect x="200" y="173" width="150" height="11" rx="2" fill="var(--ok)" opacity=".8"/>
+              <rect x="352" y="173" width="108" height="11" rx="2" fill="var(--crit)" opacity=".65"/>
+              <text x="206" y="182" font-size="7.5" fill="#fff">ładowanie z PV</text>
+              <text x="358" y="182" font-size="7.5" fill="#fff">rozładowanie w szczycie</text>
+
+              <text x="22" y="202">CWU</text>
+              <rect x="250" y="193" width="78" height="11" rx="2" fill="var(--pv)" opacity=".85"/>
+              <text x="256" y="202" font-size="7.5" fill="#1a1f1c">nadwyżka 2 grzałki</text>
+            </g>
+            <g font-family="IBM Plex Mono, monospace" font-size="8" fill="currentColor" opacity=".55">
+              <text x="22" y="216">15:00</text><text x="200" y="216">21:00</text><text x="360" y="216">06:00</text><text x="560" y="216">14:00</text>
+            </g>
+          </svg>
+        </div>
+        <div class="grid2" style="margin-top:16px">
+          <div>
+            <p class="label">Decyzja planu</p>
+            <p style="font-size:.86rem;margin-top:5px">Auto dobiera dziś z sieci tylko 6 kWh w strefie nocnej. Resztę zostawia na jutrzejszą nadwyżkę, bo prognoza daje 18,4 kWh produkcji, a różnica 0,33 zł/kWh pokrywa ryzyko gorszej pogody.</p>
+          </div>
+          <div>
+            <p class="label">Koszt doby</p>
+            <dl class="kv" style="margin-top:5px">
+              <dt>Plan</dt><dd>12,40 zł</dd>
+              <dt>Bez sterowania</dt><dd>21,80 zł</dd>
+              <dt>Różnica</dt><dd style="color:var(--ok)">−9,40 zł</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DZIENNIK ============ -->
+    <section class="page" id="dziennik" hidden>
+      <div class="pagehead">
+        <h1>Dziennik decyzji</h1>
+        <p>Każda decyzja zapisuje powód. Bez tego nie da się rozstrzygnąć, czy system zachował się dobrze.</p>
+      </div>
+
+      <div class="card">
+        <header><h2>Dzisiaj</h2><p>42 cykle · 7 zmian stanu</p></header>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Czas</th><th>Urządzenie</th><th>Zmiana</th><th>Powód</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">14:42:30</td><td>Grzałka CWU 3</td><td>1,5 → 0 kW</td><td class="why">próg zapasu na L3 przekroczony przez obce obciążenie 2,0 kW</td></tr>
+              <tr><td class="mono">14:38:30</td><td>go-e</td><td>6,7 → 8,7 A</td><td class="why">nadwyżka PV wzrosła, okno ustalania zamknięte, wszystkie sygnały świeże</td></tr>
+              <tr><td class="mono">14:38:00</td><td>Grzałka CWU 1</td><td>1,5 → 0 kW</td><td class="why">zwolnienie mocy na L1 pod wyższy prąd ładowania, wartość kWh niższa</td></tr>
+              <tr><td class="mono">14:36:00</td><td>go-e</td><td>8,7 → 6,7 A</td><td class="why">chmura, deficyt 0,5 kW, redukcja bez czekania na okno</td></tr>
+              <tr><td class="mono">14:12:30</td><td>go-e</td><td>brak reakcji</td><td class="why">komenda 10 A nie dała przyrostu mocy; powtórzona po 30 s</td></tr>
+              <tr><td class="mono">12:40:10</td><td>Grzałka CWU 2, 3</td><td>3,0 → 0 kW</td><td class="why">budżet przeciążenia L3 spadł do 70%, zrzut dwóch odbiorników</td></tr>
+              <tr><td class="mono">09:14:50</td><td>Grzałka CWU 3</td><td>1,5 → 0 kW</td><td class="why">prąd L3 31 A przez 24 s, przekroczony próg 1,25×</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <header><h2>Stan sygnałów</h2></header>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Sygnał</th><th>Wiek</th><th>Stan</th></tr></thead>
+              <tbody>
+                <tr><td>Prąd L1 / L2 / L3</td><td class="num">4 s</td><td><span class="pill ok"><span class="dot"></span>świeży</span></td></tr>
+                <tr><td>Produkcja PV</td><td class="num">11 s</td><td><span class="pill ok"><span class="dot"></span>świeży</span></td></tr>
+                <tr><td>SoC magazynu</td><td class="num">38 s</td><td><span class="pill ok"><span class="dot"></span>świeży</span></td></tr>
+                <tr><td>Temperatura CWU góra</td><td class="num">4 min</td><td><span class="pill warn"><span class="dot"></span>opóźniony</span></td></tr>
+                <tr><td>SoC samochodu</td><td class="num">18 min</td><td><span class="pill crit"><span class="dot"></span>przeterminowany</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="why" style="margin-top:10px">Przeterminowany SoC auta nie zatrzymuje ładowania, bo cel został osiągnięty o 14:10. Gdyby cel był otwarty, system przeszedłby na ładowanie stałym prądem minimalnym.</p>
+        </div>
+
+        <div class="card">
+          <header><h2>Podsumowanie dnia</h2></header>
+          <dl class="kv">
+            <dt>Autokonsumpcja PV</dt><dd>84%</dd>
+            <dt>Energia do auta</dt><dd>11,2 kWh</dd>
+            <dt>Energia do CWU</dt><dd>4,5 kWh</dd>
+            <dt>Zrzuty obciążenia</dt><dd>3</dd>
+            <dt>Zadziałania bezpiecznika</dt><dd>0</dd>
+            <dt>Oszczędność</dt><dd style="color:var(--ok)">9,40 zł</dd>
+          </dl>
+          <p class="why" style="margin-top:11px">Oszczędność liczona względem scenariusza bez sterowania, przy tej samej produkcji i tym samym zużyciu domu.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  var pages = ["pulpit","przeplywy","instalacja","urzadzenie","limity","plan","dziennik"];
+  function show(id){
+    if(pages.indexOf(id) < 0){ id = "pulpit"; }
+    pages.forEach(function(p){
+      var el = document.getElementById(p);
+      if(el){ el.hidden = (p !== id); }
+    });
+    document.querySelectorAll(".navbtn").forEach(function(b){
+      b.setAttribute("aria-current", b.dataset.go === id ? "true" : "false");
+    });
+    try { if(location.hash.slice(1) !== id){ history.replaceState(null, "", "#" + id); } } catch(e){}
+    window.scrollTo(0,0);
+  }
+  document.querySelectorAll(".navbtn").forEach(function(b){
+    b.addEventListener("click", function(){ show(b.dataset.go); });
+  });
+
+  var steps = ["s1","s2","s3","s4","s5"];
+  document.querySelectorAll(".step").forEach(function(s){
+    s.addEventListener("click", function(){
+      var target = s.dataset.step;
+      steps.forEach(function(k){
+        var el = document.getElementById(k);
+        if(el){ el.hidden = (k !== target); }
+      });
+      document.querySelectorAll(".step").forEach(function(o){
+        o.setAttribute("aria-current", o === s ? "true" : "false");
+        o.classList.toggle("done", steps.indexOf(o.dataset.step) < steps.indexOf(target));
+      });
+    });
+  });
+
+  document.querySelectorAll(".choice").forEach(function(c){
+    c.addEventListener("click", function(){
+      c.parentNode.querySelectorAll(".choice").forEach(function(o){ o.removeAttribute("data-sel"); });
+      c.setAttribute("data-sel","1");
+    });
+  });
+
+  show(location.hash.slice(1) || "pulpit");
+})();
+</script>
