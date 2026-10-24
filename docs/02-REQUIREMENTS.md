@@ -8,14 +8,14 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Signals and metering
 
-- [ ] **SIG-01**: Signal layer maps logical signals to HA entities; no core component references an entity ID
-- [ ] **SIG-02**: Per-phase current from the main meter, one entity per phase, with unit normalization (A, mA) and configurable sign convention
-- [ ] **SIG-03**: Direction of flow resolved either from a signed current, or from a separate power/direction entity, or declared unavailable (cautious mode)
-- [ ] **SIG-04**: Optional per-phase active power; when present, power is used for dispatch and current for protection — never the reverse
+- [x] **SIG-01**: Signal layer maps logical signals to HA entities; no core component references an entity ID
+- [x] **SIG-02**: Per-phase current from the main meter, one entity per phase, with unit normalization (A, mA) and configurable sign convention
+- [x] **SIG-03**: Direction of flow resolved either from a signed current, or from a separate power/direction entity, or declared unavailable (cautious mode)
+- [x] **SIG-04**: Optional per-phase active power; when present, power is used for dispatch and current for protection — never the reverse
 - [ ] **SIG-05**: Every signal carries `max_age`; a signal past `max_age` is `stale` and marks dependent devices unsafe
-- [ ] **SIG-06**: Freshness is computed from the HA `last_reported` timestamp, not `last_changed`
+- [x] **SIG-06**: Freshness is computed from the HA `last_reported` timestamp, not `last_changed`
 - [ ] **SIG-07**: Refresh interval auto-detected and surfaced; the minimum safe reserve is derived from it and shown during onboarding
-- [ ] **SIG-08**: Inverter production signal, where present, used to distinguish an idle phase from a phase whose load is covered by local generation
+- [x] **SIG-08**: Inverter production signal, where present, used to distinguish an idle phase from a phase whose load is covered by local generation
 - [ ] **SIG-09**: Balance consistency check: residual of `generation + import − measured loads − controlled loads` beyond a configurable threshold rejects the sample, never the decision
 
 ## Connection model
