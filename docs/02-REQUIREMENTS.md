@@ -87,10 +87,10 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Packaging and distribution
 
-- [ ] **PKG-01**: HA add-on: `repository.yaml` + add-on folder with `config.yaml`, options schema, ingress enabled, `homeassistant_api: true`
-- [ ] **PKG-02**: Multi-arch image (amd64, aarch64) published to GHCR
+- [x] **PKG-01**: HA add-on: `repository.yaml` + add-on folder with `config.yaml`, options schema, ingress enabled, `homeassistant_api: true`
+- [x] **PKG-02**: Multi-arch image (amd64, aarch64) published to GHCR
 - [ ] **PKG-03**: MQTT discovery publishes runtime entities (per-phase headroom, overload budget, mode, health, per-device state)
-- [ ] **PKG-04**: Supervisor-provided MQTT credentials; no manual broker configuration in the common case
+- [x] **PKG-04**: Supervisor-provided MQTT credentials; no manual broker configuration in the common case
 - [x] **PKG-05**: No exposed network port beyond ingress; no outbound telemetry
 - [ ] **PKG-06**: Add-on survives HA restarts and MQTT broker restarts without manual intervention
 

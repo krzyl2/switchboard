@@ -45,6 +45,8 @@ homeassistant_api: true
 services:
   - mqtt:need
 map:
+  - type: addon_config
+    read_only: false
   - type: data
 
 options:
@@ -70,7 +72,7 @@ Keys left at their Supervisor defaults are omitted (`startup: application`, `boo
 
 ## Persistence
 
-`/data` holds the configuration document, applied device states, overload budgets and the decision log. Everything written there is treated as untrusted on read (schema-validated), because a user may edit it.
+`/config/switchboard.yaml` (the add-on config folder, `/addon_configs/<slug>/` on the host) holds the configuration document, so it can be edited by hand and is part of backups. `/data` holds applied device states, overload budgets and the decision log. Everything written there is treated as untrusted on read (schema-validated), because a user may edit it.
 
 All timers restart from process start. Persisted lockout *expiry* timestamps are not trusted across a restart — a device that was locked out stays locked out for a fresh full interval instead.
 

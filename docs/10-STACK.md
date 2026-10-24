@@ -68,7 +68,7 @@ Filled 2026-10-23 (Stage 0). Two-week cutoff: 2026-10-09.
 | Microsoft.NET.Test.Sdk | 18.10.1 | 2026-09-15 | VSTest host. MIT |
 | Microsoft.Extensions.TimeProvider.Testing | 10.10.0 | 2026-09-09 | `FakeTimeProvider` — the virtual clock. MIT |
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.12 | 2026-09-08 | In-memory host tests. MIT |
-| YamlDotNet | 18.1.0 | 2026-06-26 | Packaging tests (config.yaml, translations). MIT |
+| YamlDotNet | 18.1.0 | 2026-06-26 | Runtime since Stage 1: configuration document parser (Infrastructure); packaging tests. MIT |
 | preact | 10.29.8 | 2026-08-01 | The only package shipped in the SPA bundle. MIT |
 | vite | 8.3.4 | 2026-10-08 | Bundler. MIT |
 | @preact/preset-vite | 2.10.6 | 2026-07-18 | Preact JSX for Vite. MIT |

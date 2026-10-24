@@ -166,18 +166,21 @@ A new ranking is only adopted after `N` consecutive cycles agreeing (default 3, 
 
 Every decision carries one. The list is closed and versioned; the UI renders a human sentence per code.
 
+**Version 2** (2026-10-24): added `headroom_available` (a start, increase or restore permitted by headroom and rank — v1 had no code for the positive case) and `kill_switch` (SAFE-03, distinct from `safe_state` so the log says who stopped everything).
+
 ```
 guard_tier_exceeded         guard_budget_low          guard_stale_signal
 reserve_threshold           headroom_insufficient     lockout_min_on
 lockout_min_off             settling_window_open      awaiting_confirmation
 value_rank_below_cutoff     goal_met                  guard_expression_false
 device_unresponsive         manual_override           mode_shadow
-safe_state                  plan_slot_target
+safe_state                  plan_slot_target          headroom_available
+kill_switch
 ```
 
 ## 7. Default parameters
 
-Carried over from the working Node-RED flow; they are starting values, not truths.
+Carried over from the working Node-RED flow; they are starting values, not truths. The complete parameter list, including signal and reserve-derivation parameters, is the embedded `control-defaults.yaml` (`src/Switchboard.Infrastructure/Configuration/`).
 
 | Parameter | Default | Origin |
 |---|---|---|
