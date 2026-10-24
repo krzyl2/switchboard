@@ -1,9 +1,9 @@
 namespace Switchboard.Infrastructure.Mqtt;
 
 /// <summary>
-/// PROVISIONAL — awaiting the maintainer's approval. The MQTT discovery identity scheme is an API:
-/// changing it after release orphans every entity users put on dashboards (07-PITFALLS.md). It is
-/// kept in this one class so the change, if requested, is a single edit.
+/// Approved by the maintainer 2026-10-24. The MQTT discovery identity scheme is an API: changing
+/// it after release orphans every entity users put on dashboards (07-PITFALLS.md). Do not change
+/// it; new entities follow the same pattern.
 /// <para>
 /// unique_id <c>switchboard_&lt;object_id&gt;</c>; suggested entity id <c>&lt;component&gt;.switchboard_&lt;object_id&gt;</c>
 /// via default_entity_id; discovery <c>&lt;prefix&gt;/&lt;component&gt;/&lt;BaseTopic&gt;/&lt;object_id&gt;/config</c>;

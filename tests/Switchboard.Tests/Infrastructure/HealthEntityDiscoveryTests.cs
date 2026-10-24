@@ -22,7 +22,7 @@ public sealed class HealthEntityDiscoveryTests
     }
 
     [Fact]
-    public void Identity_is_the_provisional_stable_scheme()
+    public void Identity_is_the_stable_scheme()
     {
         Assert.Equal("switchboard_healthy", _config.GetProperty("unique_id").GetString());
         Assert.Equal("binary_sensor.switchboard_healthy", _config.GetProperty("default_entity_id").GetString());

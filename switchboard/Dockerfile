@@ -103,6 +103,14 @@ COPY switchboard/rootfs/ /
 RUN find /etc/services.d/switchboard -type f -exec sed -i 's/\r$//' {} + \
     && chmod +x /etc/services.d/switchboard/run /etc/services.d/switchboard/finish
 
+# Liveness for the Supervisor (replaces the manifest's tcp:// watchdog, which still connects to
+# a hung process: the kernel accepts the TCP handshake while the app answers nothing). Loopback
+# passes the ingress guard. /api/status answers 200 whether or not HA and MQTT are connected, so
+# an HA outage never restart-loops the add-on; only an unresponsive process fails the probe.
+# The port must equal Switchboard:Ingress:Port (checked by the packaging tests).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS -o /dev/null --max-time 4 http://127.0.0.1:8099/api/status || exit 1
+
 ARG BUILD_DATE
 ARG BUILD_REF
 ARG BUILD_VERSION

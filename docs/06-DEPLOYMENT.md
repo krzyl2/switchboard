@@ -37,11 +37,8 @@ slug: switchboard
 url: "https://github.com/<owner>/switchboard"
 image: "ghcr.io/<owner>/switchboard"
 arch: [amd64, aarch64]
-startup: application
-boot: auto
 init: false
 ingress: true
-ingress_port: 8099
 panel_icon: "mdi:transmission-tower"
 panel_title: "Switchboard"
 homeassistant_api: true
@@ -49,7 +46,6 @@ services:
   - mqtt:need
 map:
   - type: data
-watchdog: "tcp://[HOST]:8099"
 
 options:
   mode: "shadow"
@@ -63,6 +59,8 @@ schema:
 Deliberately minimal. Everything else — meter mapping, phases, devices — is configured in the ingress UI and persisted under `/data`, because an options form cannot express per-device structures or run a phase-assignment test. Argus took the same path when it moved from YAML options to the ingress config UI; start there instead of repeating the migration.
 
 `mode` stays in the manifest options so a user can force shadow mode without opening the UI.
+
+Keys left at their Supervisor defaults are omitted (`startup: application`, `boot: auto`, `ingress_port: 8099`); if the process ever listens elsewhere, `ingress_port` must come back. Liveness is a Docker `HEALTHCHECK` in the image (HTTP `GET /api/status` from loopback), not a `watchdog:` key: a `tcp://` watchdog still connects to a hung process. The probe answers 200 regardless of HA/MQTT connectivity, so an HA outage never restart-loops the add-on.
 
 ## Authentication
 

@@ -83,4 +83,4 @@ Filled 2026-10-23 (Stage 0). Two-week cutoff: 2026-10-09.
 | ghcr.io/home-assistant/home-assistant | 2026.10.0 | 2026-10-07 | Dev stack / e2e only |
 | eclipse-mosquitto | 2.0.22 | 2025-07-11 | Dev stack / e2e only. The tag is rebuilt upstream; pin by digest if byte-identical rebuilds matter |
 
-Build-only npm transitive dependencies outside MIT/BSD/Apache (never shipped in `wwwroot`): `lightningcss` (MPL-2.0, hard dependency of Vite 8), `caniuse-lite` (CC-BY-4.0), `lru-cache` (BlueOak-1.0.0), `mdn-data` (CC0-1.0). Open question for the maintainer — see the Stage 0 report.
+Build-only npm transitive dependencies outside MIT/BSD/Apache (never shipped in `wwwroot`): `lightningcss` (MPL-2.0, hard dependency of Vite 8), `caniuse-lite` (CC-BY-4.0), `lru-cache` (BlueOak-1.0.0), `mdn-data` (CC0-1.0). Accepted by the maintainer 2026-10-24 for build-time use only.

@@ -24,8 +24,11 @@ public sealed class AddonPackagingTests
     [Fact]
     public void Ingress_is_enabled_on_the_port_the_process_listens_on()
     {
+        // ingress_port is omitted while it equals the Supervisor default; if the shipped port
+        // changes, the manifest must declare it again or ingress points at nothing.
         Assert.Equal("true", Scalar(Config.Value, "ingress"));
-        Assert.Equal(ShippedIngressPort().ToString(System.Globalization.CultureInfo.InvariantCulture), Scalar(Config.Value, "ingress_port"));
+        var ingressPort = Scalar(Config.Value, "ingress_port") ?? SupervisorDefaultIngressPort;
+        Assert.Equal(ShippedIngressPort().ToString(System.Globalization.CultureInfo.InvariantCulture), ingressPort);
     }
 
     [Fact]
@@ -113,12 +116,15 @@ public sealed class AddonPackagingTests
     }
 
     [Fact]
-    public void Watchdog_probes_the_ingress_port()
+    public void Liveness_is_an_http_probe_of_the_ingress_port_not_a_tcp_watchdog()
     {
-        var watchdog = Scalar(Config.Value, "watchdog");
+        // A tcp:// watchdog still connects to a hung process (the kernel completes the handshake);
+        // only an HTTP request proves the app answers. Loopback passes the ingress guard.
+        Assert.False(Config.Value.ContainsKey("watchdog"), "config.yaml must not declare a watchdog; the image HEALTHCHECK replaces it.");
 
-        Assert.StartsWith("tcp://", watchdog, StringComparison.Ordinal);
-        Assert.EndsWith(":" + ShippedIngressPort(), watchdog, StringComparison.Ordinal);
+        var probe = Regex.Match(Dockerfile(), @"HEALTHCHECK\b[^\n]*\\\r?\n\s*CMD curl [^\n]*http://127\.0\.0\.1:(\d+)/api/status");
+        Assert.True(probe.Success, "switchboard/Dockerfile has no HEALTHCHECK probing http://127.0.0.1:<port>/api/status.");
+        Assert.Equal(ShippedIngressPort().ToString(System.Globalization.CultureInfo.InvariantCulture), probe.Groups[1].Value);
     }
 
     [Theory]
@@ -146,6 +152,9 @@ public sealed class AddonPackagingTests
             Assert.False(string.IsNullOrWhiteSpace(Scalar(repository, key)), $"repository.yaml has no '{key}'.");
         }
     }
+
+    // The Supervisor's ingress_port when the manifest does not declare one.
+    private const string SupervisorDefaultIngressPort = "8099";
 
     private static int ShippedIngressPort()
     {

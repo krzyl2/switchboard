@@ -65,10 +65,4 @@ services:
     # The Supervisor's default stop timeout for an add-on, so a graceful stop here gets the same
     # time it gets in production rather than whatever the local Docker daemon defaults to.
     stop_grace_period: 10s
-    healthcheck:
-      # Loopback inside the container passes the ingress guard without the dev flag.
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8099/api/status"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 20s
+    # Health comes from the image's own HEALTHCHECK (switchboard/Dockerfile), same as under the Supervisor.
