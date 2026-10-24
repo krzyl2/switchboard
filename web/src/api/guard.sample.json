@@ -339,6 +339,15 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": "mode_shadow",
+      "origin": "guard",
+      "group": null,
+      "target": {
+        "relays": [
+          false
+        ],
+        "setpointA": null,
+        "enabled": true
+      },
       "inputs": {
         "phase": {
           "phase": "L1",
@@ -370,7 +379,8 @@
         },
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -386,6 +396,13 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": "mode_shadow",
+      "origin": "guard",
+      "group": null,
+      "target": {
+        "relays": null,
+        "setpointA": 6,
+        "enabled": true
+      },
       "inputs": {
         "phase": {
           "phase": "L1",
@@ -417,7 +434,8 @@
         },
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -433,6 +451,13 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": "mode_shadow",
+      "origin": "guard",
+      "group": null,
+      "target": {
+        "relays": null,
+        "setpointA": 6,
+        "enabled": true
+      },
       "inputs": {
         "phase": {
           "phase": "L1",
@@ -464,7 +489,8 @@
         },
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -480,6 +506,9 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": null,
+      "origin": null,
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": {
           "phase": "L2",
@@ -500,7 +529,8 @@
         "device": null,
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -516,6 +546,9 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": null,
+      "origin": null,
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": {
           "phase": "L3",
@@ -536,7 +569,8 @@
         "device": null,
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -552,6 +586,9 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": "mode_shadow",
+      "origin": "guard",
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": {
           "phase": "L3",
@@ -583,7 +620,208 @@
         },
         "mode": null,
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000036",
+      "at": "2026-10-24T09:20:00.001+00:00",
+      "scope": "device",
+      "device": "heater_l2",
+      "stage": null,
+      "phase": "L2",
+      "action": "switch_on",
+      "reason": "headroom_available",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "origin": "dispatch",
+      "group": null,
+      "target": {
+        "relays": [
+          true
+        ],
+        "setpointA": null,
+        "enabled": true
+      },
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null,
+        "dispatch": {
+          "headroom": [
+            {
+              "group": null,
+              "phase": "L2",
+              "envelopeA": 8.6,
+              "remainingA": 8.6
+            }
+          ],
+          "startHysteresisA": 1.3043478260869565,
+          "stopHysteresisA": -0.8695652173913043,
+          "startRank": 3,
+          "contribution": [
+            {
+              "phase": "L2",
+              "currentA": 0
+            }
+          ],
+          "inFlight": [
+            {
+              "group": null,
+              "phase": "L2",
+              "currentA": 0
+            }
+          ],
+          "settling": "open",
+          "verification": null,
+          "minOnRemainingS": 0,
+          "minOffRemainingS": 0,
+          "deferredSince": null,
+          "override": "auto"
+        }
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000035",
+      "at": "2026-10-24T09:10:00.004+00:00",
+      "scope": "device",
+      "device": "heater_l3",
+      "stage": null,
+      "phase": "L3",
+      "action": "marked_unresponsive",
+      "reason": "device_unresponsive",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "origin": "dispatch",
+      "group": null,
+      "target": {
+        "relays": [
+          false
+        ],
+        "setpointA": null,
+        "enabled": true
+      },
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null,
+        "dispatch": {
+          "headroom": [
+            {
+              "group": null,
+              "phase": "L3",
+              "envelopeA": 9.1,
+              "remainingA": null
+            }
+          ],
+          "startHysteresisA": 1.3043478260869565,
+          "stopHysteresisA": -0.8695652173913043,
+          "startRank": 5,
+          "contribution": [
+            {
+              "phase": "L3",
+              "currentA": 0
+            }
+          ],
+          "inFlight": [
+            {
+              "group": null,
+              "phase": "L3",
+              "currentA": 0
+            }
+          ],
+          "settling": "closed",
+          "verification": {
+            "expected": 1700,
+            "measured": 12,
+            "unit": "watts",
+            "verdict": "mismatch"
+          },
+          "minOnRemainingS": 0,
+          "minOffRemainingS": 0,
+          "deferredSince": null,
+          "override": "auto"
+        }
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000034",
+      "at": "2026-10-24T09:05:00.000+00:00",
+      "scope": "device",
+      "device": "ev_charger",
+      "stage": null,
+      "phase": "L1",
+      "action": "set_setpoint",
+      "reason": "manual_override",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "origin": "override",
+      "group": "carport",
+      "target": {
+        "relays": null,
+        "setpointA": 6,
+        "enabled": true
+      },
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null,
+        "dispatch": {
+          "headroom": [
+            {
+              "group": null,
+              "phase": "L1",
+              "envelopeA": 1.53,
+              "remainingA": 11.13
+            },
+            {
+              "group": "carport",
+              "phase": "L1",
+              "envelopeA": 4,
+              "remainingA": 4
+            }
+          ],
+          "startHysteresisA": 1.3043478260869565,
+          "stopHysteresisA": -0.8695652173913043,
+          "startRank": 1,
+          "contribution": [
+            {
+              "phase": "L1",
+              "currentA": 9.6
+            }
+          ],
+          "inFlight": [
+            {
+              "group": null,
+              "phase": "L1",
+              "currentA": 0
+            },
+            {
+              "group": "carport",
+              "phase": "L1",
+              "currentA": 0
+            }
+          ],
+          "settling": "open",
+          "verification": null,
+          "minOnRemainingS": 60,
+          "minOffRemainingS": 0,
+          "deferredSince": null,
+          "override": "force_off"
+        }
       }
     },
     {
@@ -599,12 +837,16 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": null,
+      "origin": null,
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": null,
         "device": null,
         "mode": null,
         "killSwitch": "mqtt",
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -620,12 +862,16 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": null,
+      "origin": null,
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": null,
         "device": null,
         "mode": null,
         "killSwitch": "mqtt",
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     },
     {
@@ -641,6 +887,9 @@
       "mode": "shadow",
       "commanded": false,
       "refusedBy": null,
+      "origin": null,
+      "group": null,
+      "target": null,
       "inputs": {
         "phase": null,
         "device": null,
@@ -650,7 +899,8 @@
           "note": "none"
         },
         "killSwitch": null,
-        "safeStateCause": null
+        "safeStateCause": null,
+        "dispatch": null
       }
     }
   ]

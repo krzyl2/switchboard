@@ -1,9 +1,11 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
@@ -11,6 +13,9 @@ using Switchboard.Application.State;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Signals;
+using Switchboard.Domain.Units;
 using Switchboard.Host.Web;
 using Switchboard.Tests.Support;
 
@@ -50,6 +55,11 @@ public sealed partial class GuardSpaContractTests
         { DecisionsContract, "TIER_REACTIONS", Snake<TierReaction>() },
         { DecisionsContract, "DEVICE_STATE_INVALID_REASONS", Snake<DeviceStateInvalidReason>() },
         { DecisionsContract, "RELAY_STATES", [ApiText.Applied(new RelayApplied(true))!, ApiText.Applied(new RelayApplied(false))!] },
+        { DecisionsContract, "DECISION_ORIGINS", Snake<DecisionOrigin>() },
+        { DecisionsContract, "SETTLING_STATES", Snake<SettlingState>() },
+        { DecisionsContract, "VERDICTS", Snake<Verdict>() },
+        { DecisionsContract, "MEASURE_UNITS", Snake<MeasureUnit>() },
+        { DecisionsContract, "OVERRIDE_MODES", Snake<OverrideMode>() },
     };
 
     [Theory]
@@ -89,7 +99,9 @@ public sealed partial class GuardSpaContractTests
     /// <summary>
     /// The reference installation with an overload on L1 and the kill switch engaged, through the
     /// real store, guard and runtime state, so every nested object of both answers is written:
-    /// the breaker, last known states, and decisions with phase, device, mode and kill switch inputs.
+    /// the breaker, last known states, and decisions with phase, device, mode and kill switch inputs;
+    /// plus one dispatch decision with every nested part of format 2 (target, headroom on a main
+    /// phase and a circuit group, contribution, in-flight change, verification).
     /// </summary>
     private static void Publish(SwitchboardHostFactory factory)
     {
@@ -105,7 +117,28 @@ public sealed partial class GuardSpaContractTests
         harness.Runner.Step();
         factory.Services.GetRequiredService<SignalSnapshotHolder>().Publish(harness.Holder.Current);
         factory.Services.GetRequiredService<GuardStatusHolder>().Publish(harness.Status.Current);
-        factory.Services.GetRequiredService<IDecisionRecorder>().Record(harness.Recorder.Decisions);
+        factory.Services.GetRequiredService<IDecisionRecorder>().Record([.. harness.Recorder.Decisions, DispatchDecision(harness.Now)]);
+    }
+
+    private static Decision DispatchDecision(DateTimeOffset at)
+    {
+        var carport = GroupName.Parse("carport");
+        var inputs = new DispatchDecisionInputs(
+            [new ConstraintHeadroom(ConstraintKey.Main(Phase.L1), new Amperes(9.4), new Amperes(9.4)), new ConstraintHeadroom(new ConstraintKey(carport, Phase.L1), new Amperes(4), null)],
+            new Amperes(1.3),
+            new Amperes(-0.87),
+            4,
+            ImmutableDictionary<Phase, Amperes>.Empty.Add(Phase.L1, Amperes.Zero),
+            ImmutableDictionary<ConstraintKey, Amperes>.Empty.Add(ConstraintKey.Main(Phase.L1), Amperes.Zero).Add(new ConstraintKey(carport, Phase.L1), Amperes.Zero),
+            SettlingState.Closed,
+            new VerificationInputs(1500, 12, MeasureUnit.Watts, Verdict.Mismatch),
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(42),
+            at,
+            OverrideMode.Auto);
+        return new Decision(
+            "contract-000000001", at, DecisionScope.Device, DeviceName.Parse("heater_l1"), null, Phase.L1, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive, null,
+            OperatingMode.Shadow, false, null, DecisionInputs.None with { Dispatch = inputs }, DecisionOrigin.Dispatch, carport, DeviceLevel.Relay(false));
     }
 
     /// <summary>Every object in the documents by its path (array items as <c>[]</c>), with its keys in order.</summary>

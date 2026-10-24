@@ -10,33 +10,38 @@ using Range = Switchboard.Application.Configuration.ConfigRead.Range;
 namespace Switchboard.Application.Configuration;
 
 /// <summary>
-/// Reads <c>devices:</c> (schema version 1, the subset protection needs; dispatch only adds keys).
-/// A device names the one entity that may ever be commanded for it (its actuator, SAFE-05) and
-/// where its applied state is read; each stage's state becomes a signal with role device_state, so
-/// freshness and units go through the signal layer like any measurement (SIG-05). Untrusted input:
-/// every key is checked and every problem is reported with its position.
+/// Reads <c>devices:</c> (schema version 1; dispatch only added keys). A device names the entities
+/// that may ever be commanded for it (its actuator, and a modulating device's stop actuator,
+/// SAFE-05) and where its applied state is read; each stage's state becomes a signal with role
+/// device_state, and a declared draw becomes device_current / device_power signals, so freshness
+/// and units go through the signal layer like any measurement (SIG-05). Untrusted input: every key
+/// is checked and every problem is reported with its position.
 /// </summary>
 internal static class DeviceSectionParser
 {
-    /// <summary>Prefix of the state signals created here; refused for signals declared under <c>signals:</c>.</summary>
+    /// <summary>Prefix of the signals created here; refused for signals declared under <c>signals:</c>.</summary>
     public const string SignalPrefix = "device_";
 
     private const string Key = "devices";
     private const string ThreePhase = "three_phase";
-    private const string StorageType = "storage";
     private const string DefaultUnit = "A";
+    private const string DefaultPowerUnit = "W";
+    private const string SensorDomain = "sensor";
 
     // Schema bound, not a control parameter: a house with more is a typo or a generated file.
     private const int MaxDevices = 64;
 
-    private static readonly string[] CommonKeys = ["id", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age"];
+    private static readonly string[] CommonKeys = ["id", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group"];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
-    private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit"];
+    private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
+    private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator"];
+    private static readonly string[] StorageKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit"];
     private static readonly string[] SteppedKeys = ["stages"];
+    private static readonly string[] DrawKeys = ["current", "power", "max_age", "current_unit", "power_unit"];
 
-    // Dispatch (Stage 3) keys of 03-ARCHITECTURE: accepted with a warning so a document written for
+    // Keys of 03-ARCHITECTURE for later versions: accepted with a warning so a document written for
     // a later version still loads. A power range would duplicate the setpoint range, so it is refused.
-    private static readonly string[] LaterKeys = ["circuit_group", "sources", "goal", "guards"];
+    private static readonly string[] LaterKeys = ["sources", "goal", "guards"];
     private static readonly string[] PowerRangeKeys = ["power_min", "power_max"];
 
     private static readonly ImmutableDictionary<string, DeviceType> Types = new Dictionary<string, DeviceType>
@@ -44,6 +49,13 @@ internal static class DeviceSectionParser
         ["onoff"] = DeviceType.OnOff,
         ["stepped"] = DeviceType.Stepped,
         ["modulating"] = DeviceType.Modulating,
+        ["storage"] = DeviceType.Storage,
+    }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    private static readonly ImmutableDictionary<string, StateFreshness> StateReports = new Dictionary<string, StateFreshness>
+    {
+        ["age"] = StateFreshness.Age,
+        ["on_change"] = StateFreshness.OnChange,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
     private static readonly ImmutableArray<string> RelayActuatorDomains = ["switch", "input_boolean"];
@@ -58,12 +70,16 @@ internal static class DeviceSectionParser
         ["L3"] = Phase.L3,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
-    /// <param name="signalEntities">Entities already mapped under <c>signals:</c>; a state entity may not be one of them.</param>
+    /// <param name="signalEntities">Entities already mapped under <c>signals:</c> and by circuit groups; a device entity may not be one of them.</param>
+    /// <param name="groups">The valid circuit groups, for membership and phase checks.</param>
+    /// <param name="groupIds">Every group id declared (valid or not), so a device naming a broken group is not reported twice.</param>
     public static (ImmutableArray<DeviceDefinition> Devices, ImmutableArray<SignalDefinition> Signals) Read(
         ConfigMapping root,
         ConnectionProfile? connection,
         ControlParameters? control,
-        IReadOnlyDictionary<EntityId, SignalName> signalEntities,
+        IReadOnlyDictionary<EntityId, string> signalEntities,
+        IReadOnlyDictionary<GroupName, CircuitGroupDefinition> groups,
+        IReadOnlySet<GroupName> groupIds,
         ConfigIssues issues)
     {
         if (root.Find(Key) is not { } entry || ConfigRead.IsNull(entry.Value))
@@ -82,7 +98,7 @@ internal static class DeviceSectionParser
             issues.Error(ConfigurationIssueCodes.OutOfRange, Key, sequence, $"At most {MaxDevices} devices may be declared.");
         }
 
-        var context = new Context(connection, control, issues);
+        var context = new Context(connection, control, issues, groups, groupIds);
         var drafts = new List<DeviceDraft>();
         for (var i = 0; i < sequence.Items.Length; i++)
         {
@@ -93,6 +109,7 @@ internal static class DeviceSectionParser
         }
 
         CheckUniqueness(drafts, signalEntities, issues);
+        CheckRotationGroups(drafts, issues);
         if (control is null || drafts.Any(d => !d.Valid))
         {
             return ([], []);
@@ -106,7 +123,26 @@ internal static class DeviceSectionParser
             devices.Add(definition);
             foreach (var stage in definition.Stages)
             {
-                signals.Add(StateSignal(definition, stage, control));
+                signals.Add(StateSignal(definition, stage.StateSignal, stage.StateEntity, control));
+            }
+
+            if (definition.StopActuator is { } stop)
+            {
+                signals.Add(StateSignal(definition, definition.StopSignal!.Value, stop, control, relay: true));
+            }
+
+            signals.AddRange(draft.DrawSignals(definition, control));
+        }
+
+        // Derived names can collide when one device's id extends another's (a_stage1 and a stepped a).
+        var seen = new Dictionary<SignalName, string>();
+        foreach (var signal in signals)
+        {
+            if (!seen.TryAdd(signal.Name, signal.Path))
+            {
+                var owner = drafts.Single(d => d.Path == signal.Path);
+                issues.Error(ConfigurationIssueCodes.InvalidDeviceId, $"{owner.Path}.id", owner.IdNode, $"The signal name '{signal.Name}' derived from this id is already derived by {seen[signal.Name]}; choose another id.");
+                return ([], []);
             }
         }
 
@@ -119,11 +155,56 @@ internal static class DeviceSectionParser
             ? $"{SignalPrefix}{device.Value}"
             : string.Create(CultureInfo.InvariantCulture, $"{SignalPrefix}{device.Value}_stage{stage}"));
 
-    private static SignalDefinition StateSignal(DeviceDefinition device, StageDefinition stage, ControlParameters control) =>
-        device.Type == DeviceType.Modulating
+    /// <summary>The draw signal of a device phase: <c>device_&lt;id&gt;_current</c> (or <c>_power</c>), with <c>_l&lt;n&gt;</c> for a device on several phases.</summary>
+    public static SignalName DrawSignalName(DeviceName device, string kind, Phase phase, bool perPhase) =>
+        SignalName.Parse(perPhase ? $"{SignalPrefix}{device.Value}_{kind}_{phase.ToString().ToLowerInvariant()}" : $"{SignalPrefix}{device.Value}_{kind}");
+
+    /// <summary>Every id declared under <c>circuit_groups:</c> that is a valid group name.</summary>
+    public static IReadOnlySet<GroupName> DeclaredGroupIds(ConfigMapping root)
+    {
+        var ids = new HashSet<GroupName>();
+        if (root.Find("circuit_groups")?.Value is ConfigSequence sequence)
+        {
+            foreach (var item in sequence.Items)
+            {
+                if (item is ConfigMapping group && ConfigRead.Optional(group, "id") is ConfigScalar { IsNull: false } id && GroupName.TryParse(id.Value, out var name))
+                {
+                    ids.Add(name.Value);
+                }
+            }
+        }
+
+        return ids;
+    }
+
+    /// <summary>A direct device sensor: the sensor domain only, so an actuator or a helper can never stand in for a measurement.</summary>
+    public static EntityId? ReadSensor(ConfigNode node, string path, ConfigIssues issues)
+    {
+        if (ConfigRead.String(node, path, issues) is not { } text)
+        {
+            return null;
+        }
+
+        if (!EntityId.TryParse(text, out var entity))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidEntityId, path, node, $"'{text}' is not a Home Assistant entity ID (domain.object_id).");
+            return null;
+        }
+
+        if (Domain(entity.Value) != SensorDomain)
+        {
+            issues.Error(ConfigurationIssueCodes.SensorDomainRequired, path, node, $"{entity} is not a sensor; a draw or sub-meter is read from a direct device sensor (sensor.).");
+            return null;
+        }
+
+        return entity;
+    }
+
+    private static SignalDefinition StateSignal(DeviceDefinition device, SignalName name, EntityId entity, ControlParameters control, bool relay = false) =>
+        device.IsSetpointDevice() && !relay
             ? new SignalDefinition(
-                stage.StateSignal,
-                stage.StateEntity,
+                name,
+                entity,
                 SignalKind.Current,
                 device.RangeUnit,
                 SignConvention.PositiveImport,
@@ -135,9 +216,12 @@ internal static class DeviceSectionParser
                 null,
                 false,
                 device.Path)
+            {
+                Freshness = device.StateReports,
+            }
             : new SignalDefinition(
-                stage.StateSignal,
-                stage.StateEntity,
+                name,
+                entity,
                 SignalKind.State,
                 null,
                 null,
@@ -148,7 +232,12 @@ internal static class DeviceSectionParser
                 SignalRole.DeviceState,
                 null,
                 false,
-                device.Path);
+                device.Path)
+            {
+                Freshness = device.StateReports,
+            };
+
+    private static bool IsSetpointDevice(this DeviceDefinition device) => device.Type is DeviceType.Modulating or DeviceType.Storage;
 
     private static DeviceDraft? ReadDevice(ConfigNode node, int index, Context context)
     {
@@ -181,18 +270,8 @@ internal static class DeviceSectionParser
 
         DeviceType? type = null;
         var typePath = ConfigRead.Join(path, "type");
-        if (ConfigRead.Required(mapping, "type", path, issues) is { } typeNode && ConfigRead.String(typeNode, typePath, issues) is { } typeText)
+        if (ConfigRead.Required(mapping, "type", path, issues) is { } typeNode && ConfigRead.String(typeNode, typePath, issues) is not null)
         {
-            if (typeText == StorageType)
-            {
-                issues.Warning(
-                    ConfigurationIssueCodes.ReservedKeyIgnored,
-                    typePath,
-                    typeNode,
-                    "Device type 'storage' is reserved for a later version; this device is ignored by this one.");
-                return null;
-            }
-
             type = ConfigRead.Choice(typeNode, typePath, issues, Types);
         }
 
@@ -203,6 +282,7 @@ internal static class DeviceSectionParser
 
         CheckDeviceKeys(mapping, path, deviceType, issues);
         var control = context.Control;
+        var setpoint = deviceType is DeviceType.Modulating or DeviceType.Storage;
         var valuePerKwh = ConfigRead.Required(mapping, "value_per_kwh", path, issues) is { } valueNode
             ? ConfigRead.Number(valueNode, ConfigRead.Join(path, "value_per_kwh"), issues, Range.AtLeast(0))
             : null;
@@ -215,10 +295,11 @@ internal static class DeviceSectionParser
             ? ConfigRead.Boolean(noShedNode, ConfigRead.Join(path, "no_shed"), issues)
             : false;
         var minOn = OptionalDuration(mapping, "min_on", path, issues, positive: false)
-            ?? (deviceType == DeviceType.Modulating ? control?.Devices.ModulatingMinOn : control?.Dispatch.RelayMinOn);
+            ?? (setpoint ? control?.Devices.ModulatingMinOn : control?.Dispatch.RelayMinOn);
         var minOff = OptionalDuration(mapping, "min_off", path, issues, positive: false)
-            ?? (deviceType == DeviceType.Modulating ? control?.Devices.ModulatingMinOff : control?.Dispatch.RelayMinOff);
-        var stateMaxAge = ReadStateMaxAge(mapping, path, control, issues);
+            ?? (setpoint ? control?.Devices.ModulatingMinOff : control?.Dispatch.RelayMinOff);
+        var stateReports = ReadStateReports(mapping, path, issues);
+        var stateMaxAge = ReadStateMaxAge(mapping, path, control, stateReports, issues);
 
         var stages = new List<StageDraft>();
         ModulatingRange? range = null;
@@ -228,8 +309,8 @@ internal static class DeviceSectionParser
             case DeviceType.OnOff:
                 stages.Add(ReadStage(mapping, path, 1, deviceType, context));
                 break;
-            case DeviceType.Modulating:
-                (range, unit) = ReadRange(mapping, path, context);
+            case DeviceType.Modulating or DeviceType.Storage:
+                (range, unit) = ReadRange(mapping, path, deviceType, context);
                 stages.Add(ReadStage(mapping, path, 1, deviceType, context, range?.Max));
                 break;
             case DeviceType.Stepped:
@@ -237,10 +318,16 @@ internal static class DeviceSectionParser
                 break;
         }
 
+        var phases = stages.Where(s => s.Valid).SelectMany(s => s.Phases).Distinct().Order().ToImmutableArray();
+        var stop = deviceType == DeviceType.Modulating ? ReadStopActuator(mapping, path, issues) : (null, null);
+        var draw = ReadDraw(mapping, path, phases, context);
+        var rotation = ReadGroupName(mapping, "rotation_group", path, issues);
+        var circuit = ReadCircuitGroup(mapping, path, phases, context);
+
         var valid = issues.Errors.Count == errorsBefore
             && id is not null && valuePerKwh is not null && reactionTime is not null && noShed is not null
-            && minOn is not null && minOff is not null && stateMaxAge is not null
-            && stages.Count > 0 && stages.All(s => s.Valid) && (deviceType != DeviceType.Modulating || range is not null);
+            && minOn is not null && minOff is not null && stateMaxAge is not null && stateReports is not null
+            && stages.Count > 0 && stages.All(s => s.Valid) && (!setpoint || range is not null);
         return new DeviceDraft(
             index,
             id,
@@ -256,16 +343,27 @@ internal static class DeviceSectionParser
             minOn ?? TimeSpan.Zero,
             minOff ?? TimeSpan.Zero,
             stateMaxAge ?? TimeSpan.Zero,
-            valid);
+            valid)
+        {
+            StateReports = stateReports ?? StateFreshness.Age,
+            Stop = stop.Entity,
+            StopNode = stop.Node,
+            Draw = draw,
+            RotationGroup = rotation.Name,
+            RotationNode = rotation.Node,
+            CircuitGroup = circuit,
+            ShedPriorityDeclared = shedPriority is not null,
+        };
     }
 
-    /// <summary>Each type has an exact key set; dispatch keys warn, a power range is refused, anything else is unknown.</summary>
+    /// <summary>Each type has an exact key set; later keys warn, a power range is refused, anything else is unknown.</summary>
     private static void CheckDeviceKeys(ConfigMapping mapping, string path, DeviceType type, ConfigIssues issues)
     {
         var allowed = type switch
         {
-            DeviceType.OnOff => CommonKeys.Concat(StageKeys),
+            DeviceType.OnOff => CommonKeys.Concat(OnOffKeys),
             DeviceType.Modulating => CommonKeys.Concat(ModulatingKeys),
+            DeviceType.Storage => CommonKeys.Concat(StorageKeys),
             _ => CommonKeys.Concat(SteppedKeys),
         };
         var keys = allowed.ToArray();
@@ -287,9 +385,19 @@ internal static class DeviceSectionParser
                     ConfigurationIssueCodes.KeyNotAllowed,
                     keyPath,
                     entry,
-                    type == DeviceType.Modulating
-                        ? $"'{entry.Key}' is not used: a modulating device's range is min, max and step in its actuator's unit."
+                    type is DeviceType.Modulating or DeviceType.Storage
+                        ? $"'{entry.Key}' is not used: a setpoint device's range is min, max and step in its actuator's unit."
                         : $"'{entry.Key}' applies to modulating devices only, and is not used: their range is min, max and step.");
+            }
+            else if (entry.Key is "rotation_group" or "stop_actuator")
+            {
+                issues.ErrorAtKey(
+                    ConfigurationIssueCodes.KeyNotAllowed,
+                    keyPath,
+                    entry,
+                    entry.Key == "rotation_group"
+                        ? "rotation_group applies to onoff devices only (identical elements, one per phase)."
+                        : "stop_actuator applies to modulating devices only.");
             }
             else
             {
@@ -298,7 +406,12 @@ internal static class DeviceSectionParser
         }
     }
 
-    private static TimeSpan? ReadStateMaxAge(ConfigMapping mapping, string path, ControlParameters? control, ConfigIssues issues)
+    private static StateFreshness? ReadStateReports(ConfigMapping mapping, string path, ConfigIssues issues) =>
+        ConfigRead.Optional(mapping, "state_reports") is { } node
+            ? ConfigRead.Choice(node, ConfigRead.Join(path, "state_reports"), issues, StateReports)
+            : StateFreshness.Age;
+
+    private static TimeSpan? ReadStateMaxAge(ConfigMapping mapping, string path, ControlParameters? control, StateFreshness? reports, ConfigIssues issues)
     {
         if (ConfigRead.Optional(mapping, "state_max_age") is not { } node)
         {
@@ -306,6 +419,13 @@ internal static class DeviceSectionParser
         }
 
         var keyPath = ConfigRead.Join(path, "state_max_age");
+        if (reports == StateFreshness.OnChange)
+        {
+            // An on-change state has no age limit by declaration; an age next to it would be ignored silently.
+            issues.Error(ConfigurationIssueCodes.KeyNotAllowed, keyPath, node, "state_max_age does not apply to state_reports: on_change (freshness then comes from availability); remove one of them.");
+            return null;
+        }
+
         var maxAge = ConfigRead.PositiveDuration(node, keyPath, issues);
         if (maxAge > control?.Signals.MaxAgeLimit)
         {
@@ -362,12 +482,12 @@ internal static class DeviceSectionParser
         }
     }
 
-    /// <param name="modulatingMax">A modulating device's maximum setpoint in A: its rated current.</param>
-    private static StageDraft ReadStage(ConfigMapping mapping, string path, int index, DeviceType type, Context context, Amperes? modulatingMax = null)
+    /// <param name="setpointMax">A setpoint device's maximum in A: its rated current.</param>
+    private static StageDraft ReadStage(ConfigMapping mapping, string path, int index, DeviceType type, Context context, Amperes? setpointMax = null)
     {
         var issues = context.Issues;
         var errorsBefore = issues.Errors.Count;
-        var relay = type != DeviceType.Modulating;
+        var relay = type is DeviceType.OnOff or DeviceType.Stepped;
 
         var actuatorNode = ConfigRead.Required(mapping, "actuator", path, issues);
         var actuator = ReadEntity(actuatorNode, ConfigRead.Join(path, "actuator"), relay ? RelayActuatorDomains : ModulatingActuatorDomains, ConfigurationIssueCodes.ActuatorDomainNotAllowed, "an actuator", issues);
@@ -380,8 +500,9 @@ internal static class DeviceSectionParser
 
         var phases = ReadPhases(mapping, path, context);
 
-        Amperes? rated = modulatingMax;
+        Amperes? rated = setpointMax;
         Watts? power = null;
+        double? ratedCurrent = null;
         if (relay)
         {
             var rating = context.Connection?.BreakerRating.Value ?? double.PositiveInfinity;
@@ -389,6 +510,7 @@ internal static class DeviceSectionParser
                 && ConfigRead.Number(currentNode, ConfigRead.Join(path, "rated_current_a"), issues, new Range(0, rating, MinExclusive: true)) is { } current)
             {
                 rated = new Amperes(current);
+                ratedCurrent = current;
             }
 
             if (ConfigRead.Required(mapping, "rated_power_w", path, issues) is { } powerNode
@@ -440,9 +562,11 @@ internal static class DeviceSectionParser
 
     /// <summary>
     /// The setpoint range in the actuator's unit (A or mA), converted to amperes by the signal
-    /// layer's factor. It must be reachable in whole steps and stay within the breaker rating.
+    /// layer's factor. It must be reachable in whole steps and stay within the breaker rating. A
+    /// modulating range starts above zero (a stop actuator switches it off); a storage range
+    /// includes zero on its step grid (min ≤ 0 &lt; max), so zero charge is always reachable.
     /// </summary>
-    private static (ModulatingRange? Range, string? Unit) ReadRange(ConfigMapping mapping, string path, Context context)
+    private static (ModulatingRange? Range, string? Unit) ReadRange(ConfigMapping mapping, string path, DeviceType type, Context context)
     {
         var issues = context.Issues;
         var unit = DefaultUnit;
@@ -460,7 +584,7 @@ internal static class DeviceSectionParser
                     ConfigurationIssueCodes.UnitNotAllowedForKind,
                     unitPath,
                     unitNode,
-                    $"'{text}' is not a current unit; a modulating device sets a current in one of: {string.Join(", ", SignalUnits.AllowedFor(SignalKind.Current))}.");
+                    $"'{text}' is not a current unit; a setpoint device sets a current in one of: {string.Join(", ", SignalUnits.AllowedFor(SignalKind.Current))}.");
                 return (null, null);
             }
 
@@ -480,13 +604,16 @@ internal static class DeviceSectionParser
 
         var factor = SignalUnits.Factor(unit);
         var rating = context.Connection?.BreakerRating.Value ?? double.PositiveInfinity;
+        var storage = type == DeviceType.Storage;
         var (problem, at, key) = (lo, hi, by) switch
         {
-            _ when lo <= 0 => ("min must be greater than 0 (a stop actuator is not part of this version).", minNode, "min"),
+            _ when !storage && lo <= 0 => ("min must be greater than 0 (a modulating device stops through its stop_actuator).", minNode, "min"),
+            _ when storage && (lo > 0 || hi <= 0) => (lo > 0 ? "A storage range must include 0 (min ≤ 0): zero charge is where protection brings it." : "max must be greater than 0: charging is the only load a storage device adds.", lo > 0 ? minNode : maxNode, lo > 0 ? "min" : "max"),
             _ when hi <= lo => ("max must be greater than min.", maxNode, "max"),
             _ when hi * factor > rating => ($"max must not exceed the breaker rating ({rating.ToString(CultureInfo.InvariantCulture)} A).", maxNode, "max"),
             _ when by <= 0 => ("step must be greater than 0.", stepNode, "step"),
             _ when !WholeSteps(hi - lo, by) => ("(max − min) must be a whole number of steps, or max is never reachable.", stepNode, "step"),
+            _ when storage && !WholeSteps(-lo, by) => ("0 must be a whole number of steps above min, or zero charge is never reachable.", stepNode, "step"),
             _ => ((string?)null, (ConfigNode?)null, (string?)null),
         };
         if (problem is not null)
@@ -503,6 +630,177 @@ internal static class DeviceSectionParser
     {
         var steps = span / step;
         return Math.Abs(steps - Math.Round(steps)) <= 1e-9 * Math.Max(1, steps);
+    }
+
+    private static (EntityId? Entity, ConfigNode? Node) ReadStopActuator(ConfigMapping mapping, string path, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(mapping, "stop_actuator") is not { } node)
+        {
+            return (null, null);
+        }
+
+        return (ReadEntity(node, ConfigRead.Join(path, "stop_actuator"), RelayActuatorDomains, ConfigurationIssueCodes.ActuatorDomainNotAllowed, "a stop actuator", issues), node);
+    }
+
+    /// <summary>
+    /// <c>draw:</c>: the device's own sensors, a current (A or mA) and/or a power (W or kW), each
+    /// either one entity (a single-phase device) or one per phase of the device, exactly.
+    /// </summary>
+    private static DrawDraft? ReadDraw(ConfigMapping mapping, string path, ImmutableArray<Phase> phases, Context context)
+    {
+        var issues = context.Issues;
+        if (ConfigRead.Optional(mapping, "draw") is not { } node)
+        {
+            return null;
+        }
+
+        var drawPath = ConfigRead.Join(path, "draw");
+        if (ConfigRead.Mapping(node, drawPath, issues) is not { } draw)
+        {
+            return null;
+        }
+
+        ConfigRead.CheckKeys(draw, drawPath, DrawKeys, issues);
+        var current = ReadDrawEntities(draw, "current", drawPath, phases, issues);
+        var power = ReadDrawEntities(draw, "power", drawPath, phases, issues);
+        if (ConfigRead.Optional(draw, "current") is null && ConfigRead.Optional(draw, "power") is null)
+        {
+            issues.Error(ConfigurationIssueCodes.MissingKey, ConfigRead.Join(drawPath, "current"), draw, "A draw needs current, power or both.");
+        }
+
+        var currentUnit = ReadUnit(draw, "current_unit", drawPath, SignalKind.Current, DefaultUnit, issues);
+        var powerUnit = ReadUnit(draw, "power_unit", drawPath, SignalKind.Power, DefaultPowerUnit, issues);
+        TimeSpan? maxAge = context.Control?.Devices.DrawMaxAge;
+        if (ConfigRead.Optional(draw, "max_age") is { } maxAgeNode)
+        {
+            maxAge = ConfigRead.PositiveDuration(maxAgeNode, ConfigRead.Join(drawPath, "max_age"), issues);
+            if (maxAge > context.Control?.Signals.MaxAgeLimit)
+            {
+                issues.Error(ConfigurationIssueCodes.OutOfRange, ConfigRead.Join(drawPath, "max_age"), maxAgeNode, "max_age may not exceed control.signals.max_age_limit: a frozen draw counts as fresh for its whole max_age.");
+                maxAge = null;
+            }
+        }
+
+        return current is null || power is null || currentUnit is null || powerUnit is null || maxAge is null
+            ? null
+            : new DrawDraft(current, power, currentUnit, powerUnit, maxAge.Value, phases.Length > 1);
+    }
+
+    private static ImmutableDictionary<Phase, (EntityId Entity, ConfigNode Node)>? ReadDrawEntities(ConfigMapping draw, string key, string drawPath, ImmutableArray<Phase> phases, ConfigIssues issues)
+    {
+        var keyPath = ConfigRead.Join(drawPath, key);
+        if (ConfigRead.Optional(draw, key) is not { } node)
+        {
+            return ImmutableDictionary<Phase, (EntityId, ConfigNode)>.Empty;
+        }
+
+        if (node is ConfigScalar)
+        {
+            if (phases.Length > 1)
+            {
+                issues.Error(ConfigurationIssueCodes.WrongType, keyPath, node, $"A device on {string.Join(", ", phases)} maps its {key} per phase: {{ L1: sensor…, L2: … }}.");
+                return null;
+            }
+
+            return ReadSensor(node, keyPath, issues) is { } entity && !phases.IsEmpty
+                ? ImmutableDictionary<Phase, (EntityId, ConfigNode)>.Empty.Add(phases[0], (entity, node))
+                : null;
+        }
+
+        if (ConfigRead.Mapping(node, keyPath, issues) is not { } perPhase)
+        {
+            return null;
+        }
+
+        var builder = ImmutableDictionary.CreateBuilder<Phase, (EntityId, ConfigNode)>();
+        var ok = true;
+        foreach (var entry in perPhase.Entries)
+        {
+            var entryPath = ConfigRead.Join(keyPath, entry.Key);
+            if (!PhaseNames.TryGetValue(entry.Key, out var phase) || !phases.Contains(phase))
+            {
+                issues.ErrorAtKey(ConfigurationIssueCodes.PhaseNotInTopology, entryPath, entry, $"'{entry.Key}' is not a phase of this device ({string.Join(", ", phases)}).");
+                ok = false;
+            }
+            else if (ReadSensor(entry.Value, entryPath, issues) is { } entity)
+            {
+                builder[phase] = (entity, entry.Value);
+            }
+            else
+            {
+                ok = false;
+            }
+        }
+
+        if (ok && phases.Any(p => !builder.ContainsKey(p)))
+        {
+            issues.Error(ConfigurationIssueCodes.MissingKey, keyPath, node, $"Map the {key} of every phase of this device ({string.Join(", ", phases)}).");
+            ok = false;
+        }
+
+        return ok ? builder.ToImmutable() : null;
+    }
+
+    private static string? ReadUnit(ConfigMapping draw, string key, string drawPath, SignalKind kind, string fallback, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(draw, key) is not { } node)
+        {
+            return fallback;
+        }
+
+        if (ConfigRead.String(node, ConfigRead.Join(drawPath, key), issues) is not { } unit)
+        {
+            return null;
+        }
+
+        if (!SignalUnits.AllowedFor(kind).Contains(unit))
+        {
+            issues.Error(ConfigurationIssueCodes.UnitNotAllowedForKind, ConfigRead.Join(drawPath, key), node, $"'{unit}' is not allowed here; use one of: {string.Join(", ", SignalUnits.AllowedFor(kind))}.");
+            return null;
+        }
+
+        return unit;
+    }
+
+    private static (GroupName? Name, ConfigNode? Node) ReadGroupName(ConfigMapping mapping, string key, string path, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(mapping, key) is not { } node || ConfigRead.String(node, ConfigRead.Join(path, key), issues) is not { } text)
+        {
+            return (null, null);
+        }
+
+        if (!GroupName.TryParse(text, out var name))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(path, key), node, $"'{text}' is not a valid group name: lower-case letters, digits and '_', starting with a letter, at most 40 characters.");
+            return (null, node);
+        }
+
+        return (name, node);
+    }
+
+    /// <summary>A circuit group named by a device must be declared, and every phase of the device must be a phase of the group.</summary>
+    private static GroupName? ReadCircuitGroup(ConfigMapping mapping, string path, ImmutableArray<Phase> phases, Context context)
+    {
+        var (name, node) = ReadGroupName(mapping, "circuit_group", path, context.Issues);
+        if (name is not { } group)
+        {
+            return null;
+        }
+
+        var keyPath = ConfigRead.Join(path, "circuit_group");
+        if (!context.GroupIds.Contains(group))
+        {
+            context.Issues.Error(ConfigurationIssueCodes.UnknownCircuitGroup, keyPath, node, $"No circuit group '{group}' is declared under circuit_groups.");
+            return null;
+        }
+
+        if (context.Groups.TryGetValue(group, out var declared) && phases.Where(p => !declared.Phases.Contains(p)).ToList() is { Count: > 0 } outside)
+        {
+            context.Issues.Error(ConfigurationIssueCodes.PhaseNotInTopology, keyPath, node, $"{string.Join(", ", outside)} is not a phase of circuit group '{group}' ({string.Join(", ", declared.Phases)}).");
+            return null;
+        }
+
+        return group;
     }
 
     private static EntityId? ReadEntity(ConfigNode? node, string path, ImmutableArray<string> domains, string domainCode, string what, ConfigIssues issues)
@@ -530,14 +828,38 @@ internal static class DeviceSectionParser
     private static string Domain(EntityId entity) => entity.Value[..entity.Value.IndexOf('.', StringComparison.Ordinal)];
 
     /// <summary>
-    /// Ids are unique; an actuator is declared once across all devices and stages; a state entity is
-    /// read by one stage only and is not also mapped under <c>signals:</c> (one entity feeds one signal).
+    /// Ids are unique; an actuator (or stop actuator) is declared once across all devices and stages;
+    /// every entity read (state, stop actuator, draw) feeds one signal only and is not also mapped
+    /// under <c>signals:</c> or by a circuit group.
     /// </summary>
-    private static void CheckUniqueness(List<DeviceDraft> drafts, IReadOnlyDictionary<EntityId, SignalName> signalEntities, ConfigIssues issues)
+    private static void CheckUniqueness(List<DeviceDraft> drafts, IReadOnlyDictionary<EntityId, string> signalEntities, ConfigIssues issues)
     {
         var ids = new Dictionary<DeviceName, int>();
         var actuators = new Dictionary<EntityId, string>();
-        var states = new Dictionary<EntityId, string>();
+        var read = new Dictionary<EntityId, string>();
+        void Read(DeviceDraft draft, EntityId entity, string path, ConfigNode? node, string what)
+        {
+            if (signalEntities.TryGetValue(entity, out var signal))
+            {
+                issues.Error(ConfigurationIssueCodes.DuplicateEntity, path, node, $"{entity} is already mapped by {signal}; one entity feeds one signal.");
+                draft.Valid = false;
+            }
+            else if (!read.TryAdd(entity, path))
+            {
+                issues.Error(ConfigurationIssueCodes.DuplicateEntity, path, node, $"{entity} already reports {what} of {read[entity]}; one entity feeds one signal.");
+                draft.Valid = false;
+            }
+        }
+
+        void Command(DeviceDraft draft, EntityId entity, string owner, string path, ConfigNode? node)
+        {
+            if (!actuators.TryAdd(entity, owner))
+            {
+                issues.Error(ConfigurationIssueCodes.DuplicateActuator, path, node, $"{entity} is already the actuator of {actuators[entity]}; an entity is commanded for one device stage only.");
+                draft.Valid = false;
+            }
+        }
+
         foreach (var draft in drafts)
         {
             if (draft.Id is { } id && !ids.TryAdd(id, draft.Index))
@@ -549,32 +871,72 @@ internal static class DeviceSectionParser
             foreach (var stage in draft.Stages)
             {
                 var owner = draft.Stages.Count == 1 ? draft.Path : $"{draft.Path}.stages[{stage.Index - 1}]";
-                if (stage.Actuator is { } actuator && !actuators.TryAdd(actuator, owner))
+                if (stage.Actuator is { } actuator)
                 {
-                    issues.Error(ConfigurationIssueCodes.DuplicateActuator, $"{owner}.actuator", stage.ActuatorNode, $"{actuator} is already the actuator of {actuators[actuator]}; an entity is commanded for one device stage only.");
-                    draft.Valid = false;
+                    Command(draft, actuator, owner, $"{owner}.actuator", stage.ActuatorNode);
                 }
 
-                if (stage.State is not { } state)
+                if (stage.State is { } state)
                 {
-                    continue;
+                    Read(draft, state, $"{owner}.state_entity", stage.StateNode, "the state");
                 }
+            }
 
-                if (signalEntities.TryGetValue(state, out var signal))
+            if (draft.Stop is { } stop)
+            {
+                Command(draft, stop, $"{draft.Path} (stop)", $"{draft.Path}.stop_actuator", draft.StopNode);
+                Read(draft, stop, $"{draft.Path}.stop_actuator", draft.StopNode, "the state");
+            }
+
+            if (draft.Draw is { } draw)
+            {
+                foreach (var (kind, entities) in new[] { ("current", draw.Current), ("power", draw.Power) })
                 {
-                    issues.Error(ConfigurationIssueCodes.DuplicateEntity, $"{owner}.state_entity", stage.StateNode, $"{state} is already mapped by signal '{signal}'; one entity feeds one signal.");
-                    draft.Valid = false;
-                }
-                else if (!states.TryAdd(state, owner))
-                {
-                    issues.Error(ConfigurationIssueCodes.DuplicateEntity, $"{owner}.state_entity", stage.StateNode, $"{state} already reports the state of {states[state]}; one entity feeds one signal.");
-                    draft.Valid = false;
+                    foreach (var (phase, (entity, node)) in entities.OrderBy(e => e.Key))
+                    {
+                        Read(draft, entity, $"{draft.Path}.draw.{kind}{(draw.PerPhase ? "." + phase : string.Empty)}", node, "the draw");
+                    }
                 }
             }
         }
     }
 
-    private sealed record Context(ConnectionProfile? Connection, ControlParameters? Control, ConfigIssues Issues);
+    /// <summary>
+    /// A rotation group (DISP-10) holds identical elements, one per phase, whose order is free: at
+    /// least two onoff devices on distinct single phases with equal rated current, rated power and
+    /// value per kWh, and no shed priority (which would make their order not free).
+    /// </summary>
+    private static void CheckRotationGroups(List<DeviceDraft> drafts, ConfigIssues issues)
+    {
+        foreach (var group in drafts.Where(d => d.RotationGroup is not null).GroupBy(d => d.RotationGroup!.Value))
+        {
+            var members = group.ToList();
+            var first = members[0];
+            string? Problem(DeviceDraft d) =>
+                members.Count < 2 ? $"Rotation group '{group.Key}' has a single member; it needs at least two identical elements."
+                : d.Type != DeviceType.OnOff || d.Stages.Count != 1 || d.Stages[0].Phases.Length != 1 ? "A rotation group member is an onoff device on one phase."
+                : members.Count(m => m.Stages[0].Phases.SequenceEqual(d.Stages[0].Phases)) > 1 ? $"Two members of rotation group '{group.Key}' are on {d.Stages[0].Phases[0]}; one element per phase."
+                : d.Stages[0].RatedCurrent != first.Stages[0].RatedCurrent || d.Stages[0].RatedPower != first.Stages[0].RatedPower || d.ValuePerKwh != first.ValuePerKwh
+                    ? $"Members of rotation group '{group.Key}' must have equal rated_current_a, rated_power_w and value_per_kwh."
+                : d.ShedPriorityDeclared ? "A rotation group member takes no shed_priority: the phase ranking orders the elements."
+                : null;
+            foreach (var member in members)
+            {
+                if (Problem(member) is { } problem)
+                {
+                    issues.Error(ConfigurationIssueCodes.RotationGroupMismatch, $"{member.Path}.rotation_group", member.RotationNode, problem);
+                    member.Valid = false;
+                }
+            }
+        }
+    }
+
+    private sealed record Context(
+        ConnectionProfile? Connection,
+        ControlParameters? Control,
+        ConfigIssues Issues,
+        IReadOnlyDictionary<GroupName, CircuitGroupDefinition> Groups,
+        IReadOnlySet<GroupName> GroupIds);
 
     private static TimeSpan? OptionalDuration(ConfigMapping mapping, string key, string path, ConfigIssues issues, bool positive)
     {
@@ -602,6 +964,14 @@ internal static class DeviceSectionParser
         public static StageDraft Invalid { get; } = new(0, null, null, null, null, [], Amperes.Zero, null, false);
     }
 
+    private sealed record DrawDraft(
+        ImmutableDictionary<Phase, (EntityId Entity, ConfigNode Node)> Current,
+        ImmutableDictionary<Phase, (EntityId Entity, ConfigNode Node)> Power,
+        string CurrentUnit,
+        string PowerUnit,
+        TimeSpan MaxAge,
+        bool PerPhase);
+
     private sealed class DeviceDraft(
         int index,
         DeviceName? id,
@@ -627,9 +997,29 @@ internal static class DeviceSectionParser
 
         public ConfigNode? IdNode => idNode;
 
+        public DeviceType Type => type;
+
+        public double ValuePerKwh => valuePerKwh;
+
         public List<StageDraft> Stages => stages;
 
         public bool Valid { get; set; } = valid;
+
+        public StateFreshness StateReports { get; init; }
+
+        public EntityId? Stop { get; init; }
+
+        public ConfigNode? StopNode { get; init; }
+
+        public DrawDraft? Draw { get; init; }
+
+        public GroupName? RotationGroup { get; init; }
+
+        public ConfigNode? RotationNode { get; init; }
+
+        public GroupName? CircuitGroup { get; init; }
+
+        public bool ShedPriorityDeclared { get; init; }
 
         public DeviceDefinition Build()
         {
@@ -647,14 +1037,63 @@ internal static class DeviceSectionParser
                     s.RatedPower,
                     StateSignalName(name, s.Index, stages.Count)))],
                 range,
-                type == DeviceType.Modulating ? unit : null,
+                type is DeviceType.Modulating or DeviceType.Storage ? unit : null,
                 valuePerKwh,
                 shedPriority,
                 reactionTime,
                 noShed,
                 minOn,
                 minOff,
-                stateMaxAge);
+                stateMaxAge)
+            {
+                StateReports = StateReports,
+                StopActuator = Stop,
+                StopSignal = Stop is null ? null : SignalName.Parse($"{SignalPrefix}{name.Value}_stop"),
+                Draw = Draw is null ? null : new DeviceDrawDefinition(
+                    Draw.Current.ToImmutableDictionary(c => c.Key, c => DrawSignalName(name, "current", c.Key, Draw.PerPhase)),
+                    Draw.Power.ToImmutableDictionary(p => p.Key, p => DrawSignalName(name, "power", p.Key, Draw.PerPhase)),
+                    Draw.MaxAge),
+                RotationGroup = RotationGroup,
+                CircuitGroup = CircuitGroup,
+            };
         }
+
+        /// <summary>The draw signals: measurements, always judged by age (on_change is refused for them).</summary>
+        public IEnumerable<SignalDefinition> DrawSignals(DeviceDefinition device, ControlParameters control)
+        {
+            if (Draw is null || device.Draw is null)
+            {
+                yield break;
+            }
+
+            foreach (var (phase, (entity, _)) in Draw.Current.OrderBy(c => c.Key))
+            {
+                yield return Measurement(device.Draw.Current[phase], entity, SignalKind.Current, Draw.CurrentUnit, SignalRole.DeviceCurrent, phase, control);
+            }
+
+            foreach (var (phase, (entity, _)) in Draw.Power.OrderBy(p => p.Key))
+            {
+                yield return Measurement(device.Draw.Power[phase], entity, SignalKind.Power, Draw.PowerUnit, SignalRole.DevicePower, phase, control);
+            }
+        }
+
+        private SignalDefinition Measurement(SignalName name, EntityId entity, SignalKind kind, string unit, SignalRole role, Phase phase, ControlParameters control) =>
+            new(
+                name,
+                entity,
+                kind,
+                unit,
+                SignConvention.PositiveImport,
+                null,
+                false,
+                Draw!.MaxAge,
+                control.Signals.DefaultSigma.GetValueOrDefault(kind),
+                role,
+                phase,
+                false,
+                Path)
+            {
+                MaxAgeKey = $"{Path}.draw.max_age",
+            };
     }
 }

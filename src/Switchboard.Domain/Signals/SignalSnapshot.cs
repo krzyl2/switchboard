@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -63,4 +64,12 @@ public sealed record SignalSnapshot(
     DispatchInputs Dispatch,
     ImmutableArray<PhaseBalance> Balance,
     ImmutableArray<ReserveDerivation> Reserve,
-    RejectionCounters Rejections);
+    RejectionCounters Rejections)
+{
+    /// <summary>
+    /// The configuration dispatch reads beside its port, built from the same document as the
+    /// protection setup of this cycle; null without a valid configuration. It travels next to
+    /// <see cref="Dispatch"/>, never inside it (dispatch inputs carry watts only, SIG-04).
+    /// </summary>
+    public DispatchSetup? DispatchSetup { get; init; }
+}

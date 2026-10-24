@@ -1,4 +1,7 @@
-import type { Decision } from './api/decisions';
+import { useState } from 'preact/hooks';
+import type { Decision, OverrideMode } from './api/decisions';
+import { OVERRIDE_MODES } from './api/decisions';
+import type { DispatchDevice, DispatchPhase, DispatchStatus, OverrideRefusal } from './api/dispatch';
 import type {
   Breaker,
   DeviceGuardState,
@@ -9,10 +12,11 @@ import type {
   PhaseGuardState,
   Tier,
 } from './api/guard';
-import { formatAge, formatNumber, formatQuantity } from './format';
+import { formatAge, formatCountdown, formatNumber, formatQuantity } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
-import { describeDecision, modeLabel, reasonSentence } from './reasons';
+import { describeDecision, levelText, modeLabel, reasonSentence, verificationText } from './reasons';
 import { StateLabel, Timestamp, type Tone } from './ui';
+import { useDispatch, type DispatchView } from './useDispatch';
 import { useGuard } from './useGuard';
 
 // Shedding and safe state are the conditions the user must not miss; hold and reducing are the
@@ -426,6 +430,319 @@ function DevicesCard({ guard, ...props }: { guard: GuardStatus } & Props) {
   );
 }
 
+/** Who decided what the device is intended at: a protective hold, dispatch, or a manual override. */
+function intendedTone(device: DispatchDevice): Tone {
+  if (device.intended === null) return 'muted';
+  return device.matches ? 'ok' : 'warn';
+}
+
+function DispatchPhases({ dispatch, t, lang }: { dispatch: DispatchStatus } & Props) {
+  if (dispatch.phases.length === 0) return null;
+  const line = (phase: DispatchPhase) => {
+    const parts: string[] = [];
+    if (phase.envelopeA !== null) parts.push(fill(t.envelope, { value: amperes(phase.envelopeA, lang) }));
+    if (phase.inFlightA !== 0) parts.push(fill(t.inFlight, { value: amperes(phase.inFlightA, lang) }));
+    if (phase.foreignW !== null) parts.push(fill(t.foreignLoad, { value: formatQuantity(phase.foreignW, 'W', lang) }));
+    if (phase.rank !== null) parts.push(fill(t.phaseRank, { rank: String(phase.rank) }));
+    return parts;
+  };
+  return (
+    <>
+      <h3>{t.dispatchPhasesTitle}</h3>
+      <ul class="dispatchphases">
+        {dispatch.phases.map((phase) => (
+          <li key={phase.phase} data-dispatch-phase={phase.phase}>
+            <span class="mono pname">{phase.phase}</span>
+            {!phase.dataValid && (
+              <StateLabel
+                tone="crit"
+                label={phase.invalidReason === null ? t.meterDataInvalid : t[`dispatchInvalid.${phase.invalidReason}`]}
+              />
+            )}
+            {line(phase).map((part) => (
+              <span key={part}>{part}</span>
+            ))}
+            {phase.groups.map((group) => (
+              <span key={group.group} class="sub">
+                <span class="mono">{group.group}</span>{' '}
+                {group.envelopeA === null ? NO_VALUE : fill(t.envelope, { value: amperes(group.envelopeA, lang) })}
+              </span>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function deferredLabel(device: DispatchDevice, at: Date, t: Messages): string | null {
+  const deferred = device.deferred;
+  if (deferred === null) return null;
+  const left = deferred.dueAt === null ? 0 : ageAt(at, deferred.dueAt);
+  switch (deferred.refusedBy) {
+    case 'lockout_min_off':
+    case 'lockout_min_on':
+      return fill(t[`deferred.${deferred.refusedBy}`], { time: formatCountdown(left) });
+    case 'headroom_insufficient':
+    case 'guard_budget_low':
+      return t[`deferred.${deferred.refusedBy}`];
+    default:
+      return `${t.deferredOther}: ${reasonSentence(t, deferred.refusedBy)}`;
+  }
+}
+
+function Waiting({ device, at, t, lang }: { device: DispatchDevice; at: Date } & Props) {
+  const deferred = deferredLabel(device, at, t);
+  const lockout = device.lockout;
+  const nothing =
+    device.unresponsive === null &&
+    deferred === null &&
+    device.settling === 'none' &&
+    device.pending === null &&
+    device.mismatches === 0 &&
+    lockout.minOnRemainingS <= 0 &&
+    lockout.minOffRemainingS <= 0;
+  if (nothing) return <>{NO_VALUE}</>;
+  return (
+    <>
+      {device.unresponsive !== null && (
+        <span class="line">
+          <StateLabel tone="crit" label={t.badgeUnresponsive} />
+          {device.unresponsive.retryAt !== null && (
+            <span class="sub">
+              {t.unresponsiveRetry} <Timestamp at={device.unresponsive.retryAt} lang={lang} />
+            </span>
+          )}
+        </span>
+      )}
+      {device.mismatches > 0 && <span class="sub">{fill(t.mismatches, { count: String(device.mismatches) })}</span>}
+      {deferred !== null && (
+        <span class="line">
+          <StateLabel tone="warn" label={deferred} />
+        </span>
+      )}
+      {device.settling === 'open' && (
+        <span class="line">
+          <StateLabel tone="muted" label={t.badgeSettlingOpen} />
+        </span>
+      )}
+      {device.settling === 'timed_out' && (
+        <span class="line">
+          <StateLabel tone="warn" label={t.badgeSettlingTimedOut} />
+        </span>
+      )}
+      {device.pending !== null && (
+        <span class="sub">
+          {t.pendingIncrease}: {reasonSentence(t, device.pending)}
+        </span>
+      )}
+      {lockout.minOnRemainingS > 0 && (
+        <span class="sub">{fill(t.lockoutMinOn, { time: formatAge(lockout.minOnRemainingS, lang) })}</span>
+      )}
+      {lockout.minOffRemainingS > 0 && (
+        <span class="sub">{fill(t.lockoutMinOff, { time: formatAge(lockout.minOffRemainingS, lang) })}</span>
+      )}
+    </>
+  );
+}
+
+function OverrideControl({
+  device,
+  setOverride,
+  t,
+  lang,
+}: { device: DispatchDevice; setOverride: (device: string, mode: OverrideMode) => Promise<OverrideRefusal | null> } & Props) {
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState<OverrideRefusal | null>(null);
+  const current = device.override;
+  const change = async (mode: OverrideMode) => {
+    setSaving(true);
+    setRefusal(null);
+    const result = await setOverride(device.id, mode);
+    setSaving(false);
+    setRefusal(result);
+  };
+  return (
+    <>
+      <select
+        aria-label={fill(t.overrideLabel, { device: device.id })}
+        value={current.mode}
+        disabled={saving}
+        onChange={(event) => void change((event.currentTarget as HTMLSelectElement).value as OverrideMode)}
+      >
+        {OVERRIDE_MODES.map((mode) => (
+          <option key={mode} value={mode}>
+            {t[`override.${mode}`]}
+          </option>
+        ))}
+      </select>
+      {saving && <span class="sub">{t.overrideSaving}</span>}
+      {refusal !== null && (
+        <span class="sub" role="status">
+          {t[`overrideRefused.${refusal}`]}
+        </span>
+      )}
+      {current.source !== null && (
+        <span class="sub">
+          {t[`overrideSource.${current.source}`]}
+          {current.changedAt !== null && (
+            <>
+              , <Timestamp at={current.changedAt} lang={lang} />
+            </>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+function DispatchRow({
+  device,
+  at,
+  setOverride,
+  ...props
+}: { device: DispatchDevice; at: Date; setOverride: (device: string, mode: OverrideMode) => Promise<OverrideRefusal | null> } & Props) {
+  const { t, lang } = props;
+  const draw = device.draw;
+  const drawParts: string[] = [];
+  if (draw !== null && draw.currentA !== null) drawParts.push(amperes(draw.currentA, lang));
+  if (draw !== null && draw.powerW !== null) drawParts.push(formatQuantity(draw.powerW, 'W', lang));
+  const last = device.history[0];
+  return (
+    <tr data-dispatch-device={device.id}>
+      <td>
+        <span class="mono">{device.id}</span>
+        <span class="sub">
+          {t[`deviceType.${device.type}`]} · <span class="mono">{device.phases.join(', ')}</span>
+        </span>
+        {device.rotationGroup !== null && (
+          <span class="sub">{fill(t.rotationGroup, { group: device.rotationGroup })}</span>
+        )}
+        {device.circuitGroup !== null && <span class="sub">{fill(t.groupDetail, { group: device.circuitGroup })}</span>}
+      </td>
+      <td>
+        <StateLabel
+          tone={intendedTone(device)}
+          label={device.intended === null ? t.intendedFollows : levelText(device.intended, t, lang)}
+        />
+        {!device.matches && <span class="sub">{t.intendedDiffers}</span>}
+        {device.origin !== null && !(device.origin === 'override' && device.reason === 'manual_override') && (
+          <span class="sub">{t[`origin.${device.origin}`]}</span>
+        )}
+        {device.reason !== null && <span class="sub">{reasonSentence(t, device.reason)}</span>}
+        {device.startRank !== null && <span class="sub">{fill(t.startRank, { rank: String(device.startRank) })}</span>}
+      </td>
+      <td>
+        {device.reported === null ? (
+          <StateLabel tone="crit" label={t.stateUnknown} />
+        ) : (
+          <span>{levelText(device.reported, t, lang)}</span>
+        )}
+        {draw !== null &&
+          (draw.fresh && drawParts.length > 0 ? (
+            <span class="sub">{fill(t.drawValue, { value: drawParts.join(', ') })}</span>
+          ) : (
+            <span class="sub">{t.drawStale}</span>
+          ))}
+      </td>
+      <td>
+        <Waiting device={device} at={at} {...props} />
+      </td>
+      <td>
+        <OverrideControl device={device} setOverride={setOverride} {...props} />
+      </td>
+      <td>
+        {last === undefined ? (
+          NO_VALUE
+        ) : (
+          <>
+            <span class="line">
+              {t[`historyKind.${last.kind}`]}, <Timestamp at={last.at} lang={lang} />
+            </span>
+            <span class="sub">{verificationText(last, t, lang)}</span>
+          </>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * Dispatch's view of every device next to what Home Assistant reports (DISP-04 … DISP-10,
+ * SAFE-04, UI-10): a device that is not running keeps its row and its reason. In this version
+ * nothing is switched, so "intended" is only what Switchboard would have the device at.
+ */
+function DispatchCard({
+  view,
+  setOverride,
+  ...props
+}: { view: DispatchView; setOverride: (device: string, mode: OverrideMode) => Promise<OverrideRefusal | null> } & Props) {
+  const { t, lang } = props;
+  if (view.kind === 'loading') {
+    return (
+      <section class="card">
+        <h2>{t.dispatchTitle}</h2>
+        <p>{t.dispatchLoading}</p>
+      </section>
+    );
+  }
+  if (view.kind === 'unavailable') {
+    // Not an alert: protection is shown above; only dispatch's view is missing.
+    return (
+      <section class="card">
+        <h2>{t.dispatchTitle}</h2>
+        <div role="status">
+          <p class="unavailable">
+            <StateLabel tone="crit" label={t.dispatchUnavailable} />
+          </p>
+          <p class="updated">
+            {t.lastSuccessfulUpdate}:{' '}
+            {view.lastSuccessAt ? <Timestamp at={view.lastSuccessAt} lang={lang} /> : t.never}
+          </p>
+        </div>
+      </section>
+    );
+  }
+  const { dispatch } = view;
+  // Dispatch's start order: the device given headroom first comes first; one it never starts last.
+  const devices = [...dispatch.devices].sort((a, b) => (a.startRank ?? Infinity) - (b.startRank ?? Infinity));
+  return (
+    <section class="card">
+      <h2>{t.dispatchTitle}</h2>
+      {!dispatch.commandPath && <p class="sub">{t.dispatchShadow}</p>}
+      {dispatch.mode.note !== 'none' && <p class="sub">{t[`modeNote.${dispatch.mode.note}`]}</p>}
+      <DispatchPhases dispatch={dispatch} {...props} />
+      {devices.length === 0 ? (
+        <p>{t.noDispatchDevices}</p>
+      ) : (
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">{t.colDevice}</th>
+                <th scope="col">{t.colIntended}</th>
+                <th scope="col">{t.colReported}</th>
+                <th scope="col">{t.colWaiting}</th>
+                <th scope="col">{t.colOverride}</th>
+                <th scope="col">{t.colLastCheck}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.map((device) => (
+                <DispatchRow key={device.id} device={device} at={dispatch.at} setOverride={setOverride} {...props} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p class="note">{t.overrideNote}</p>
+      <p class="updated">
+        {t.lastUpdated}: <Timestamp at={view.updatedAt} lang={lang} />
+      </p>
+    </section>
+  );
+}
+
 function localDay(at: Date, lang: Lang): string {
   return new Intl.DateTimeFormat(lang, { day: '2-digit', month: '2-digit' }).format(at);
 }
@@ -453,6 +770,11 @@ function DecisionRow({ decision, evaluatedAt, ...props }: { decision: Decision; 
           </>
         ) : decision.scope === 'phase' && decision.phase !== null ? (
           <span class="mono">{decision.phase}</span>
+        ) : decision.scope === 'group' && decision.group !== null ? (
+          <>
+            <span class="mono">{decision.group}</span>
+            {decision.phase !== null && <span class="sub mono">{decision.phase}</span>}
+          </>
         ) : (
           <span>{t.subjectSystem}</span>
         )}
@@ -551,6 +873,9 @@ function TiersCard({ guard, ...props }: { guard: GuardStatus } & Props) {
 export function GuardPage({ lang }: { lang: Lang }) {
   const t = messages[lang];
   const view = useGuard();
+  // Polled with the page, shown only next to a live guard: intentions without protection's picture
+  // would read as a calm installation.
+  const dispatch = useDispatch();
 
   if (view.kind === 'loading') {
     return (
@@ -581,6 +906,7 @@ export function GuardPage({ lang }: { lang: Lang }) {
       <Overview {...props} />
       <PhasesCard {...props} />
       <DevicesCard {...props} />
+      <DispatchCard view={dispatch.view} setOverride={dispatch.setOverride} t={t} lang={lang} />
       <DecisionsCard {...props} updatedAt={view.updatedAt} />
       <TiersCard {...props} />
     </>

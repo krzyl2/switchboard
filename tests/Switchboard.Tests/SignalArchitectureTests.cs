@@ -87,8 +87,8 @@ public sealed partial class SignalArchitectureTests
     [Fact]
     public void Consumer_views_carry_no_entity_ids()
     {
-        // DeviceName is a leaf: its text matches ^[a-z][a-z0-9_]{0,39}$ and can never hold a '.',
-        // so it can never be an entity ID (GuardArchitectureTests proves the pattern).
+        // DeviceName and GroupName are leaves: their text matches ^[a-z][a-z0-9_]{0,39}$ and can
+        // never hold a '.', so neither can be an entity ID (GuardArchitectureTests proves the pattern).
         foreach (var root in new[] { typeof(ProtectionInputs), typeof(DispatchInputs) })
         {
             var graph = TypeGraph(root);
@@ -163,7 +163,7 @@ public sealed partial class SignalArchitectureTests
 
     /// <summary>
     /// Every type reachable through public properties and generic arguments, staying inside our own
-    /// assemblies. A device name is a leaf (see <see cref="Consumer_views_carry_no_entity_ids"/>).
+    /// assemblies. A device or group name is a leaf (see <see cref="Consumer_views_carry_no_entity_ids"/>).
     /// </summary>
     internal static HashSet<Type> TypeGraph(Type root)
     {
@@ -182,7 +182,8 @@ public sealed partial class SignalArchitectureTests
             }
 
             if (type.Assembly.GetName().Name?.StartsWith("Switchboard", StringComparison.Ordinal) != true
-                || type == typeof(Switchboard.Domain.Devices.DeviceName))
+                || type == typeof(Switchboard.Domain.Devices.DeviceName)
+                || type == typeof(Switchboard.Domain.Connection.GroupName))
             {
                 continue;
             }

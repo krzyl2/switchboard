@@ -34,16 +34,38 @@ public sealed record SignalDefinition(
     /// <summary>The dotted path of this signal in the document, for issues raised at run time.</summary>
     public string Path => DeclaredAt ?? $"signals.{Name}";
 
+    private readonly StateFreshness _freshness;
+
+    /// <summary>
+    /// Age (the default) or on-change. On-change is refused for anything but a device state: a
+    /// measurement or protection input that stops reporting must go stale (SIG-05).
+    /// </summary>
+    public StateFreshness Freshness
+    {
+        get => _freshness;
+        init => _freshness = value == StateFreshness.OnChange && Role != SignalRole.DeviceState
+            ? throw new ArgumentException($"Signal {Name} has role {Role}: only a device state may report on change.", nameof(value))
+            : value;
+    }
+
     /// <summary>The dotted path of the key that sets this signal's max_age.</summary>
-    public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : $"{Path}.state_max_age";
+    public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : MaxAgeKey ?? $"{Path}.state_max_age";
+
+    /// <summary>For a signal created by a device or group: the full path of the key that sets its max_age, when it is not state_max_age.</summary>
+    public string? MaxAgeKey { get; init; }
 }
 
 /// <summary>
 /// A validated configuration document (schema version 1). <see cref="Signals"/> holds the signals
-/// declared under <c>signals:</c> followed by one applied-state signal per device stage.
+/// declared under <c>signals:</c> followed by the signals devices and groups create (applied
+/// states, draws, sub-meters).
 /// </summary>
 public sealed record SwitchboardConfiguration(
     ConnectionProfile Connection,
     ImmutableArray<SignalDefinition> Signals,
     ControlParameters Control,
-    ImmutableArray<DeviceDefinition> Devices);
+    ImmutableArray<DeviceDefinition> Devices)
+{
+    /// <summary>The circuit groups (CONN-03); empty when none is declared.</summary>
+    public ImmutableArray<CircuitGroupDefinition> Groups { get; init; } = [];
+}

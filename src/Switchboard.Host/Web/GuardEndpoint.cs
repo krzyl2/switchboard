@@ -240,9 +240,12 @@ internal static class GuardEndpoint
     }
 
     /// <summary>The signals a device depends on (its phases' currents, its own state) that are not fresh now.</summary>
+    // A device's own draw is left out: stale, it is no longer trusted for relief or increases, but it
+    // never makes the device unsafe or holds it off (the Signals page labels it "not trusted").
     private static List<string> UnsafeSignals(SignalDiagnostics diagnostics, DeviceGuardStatus device) =>
         [.. diagnostics.Snapshot.Signals
-            .Where(s => s.Name is not null && s.State != SignalState.Fresh && !s.Dependents.IsDefault && s.Dependents.Contains(device.Id))
+            .Where(s => s.Name is not null && s.State != SignalState.Fresh && s.Role is not (SignalRole.DeviceCurrent or SignalRole.DevicePower)
+                && !s.Dependents.IsDefault && s.Dependents.Contains(device.Id))
             .Select(s => s.Name!.Value.Value)
             .Order(StringComparer.Ordinal)];
 

@@ -28,7 +28,6 @@ public static class SwitchboardDocumentParser
     private static readonly Range VoltageRange = new(100, 300);
 
     private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey];
-    private static readonly string[] ReservedKeys = ["circuit_groups"];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero"];
 
@@ -85,30 +84,35 @@ public static class SwitchboardDocumentParser
 
         var connection = ReadConnection(root, control, issues);
         var userSignals = ReadSignals(root, connection?.Topology, control, issues);
-        var signalEntities = new Dictionary<EntityId, SignalName>();
+        var signalEntities = new Dictionary<EntityId, string>();
         foreach (var signal in userSignals)
         {
-            signalEntities.TryAdd(signal.Entity, signal.Name);
+            signalEntities.TryAdd(signal.Entity, $"signal '{signal.Name}'");
         }
 
-        var (devices, deviceSignals) = DeviceSectionParser.Read(root, connection, control, signalEntities, issues);
-        var signals = userSignals.AddRange(deviceSignals);
-
-        foreach (var key in ReservedKeys)
+        foreach (var (entity, at, node) in CircuitGroupSectionParser.Entities(root))
         {
-            if (root.Find(key) is { } reserved && !IsEmpty(reserved.Value))
+            if (!signalEntities.TryAdd(entity, at))
             {
-                issues.Warning(
-                    ConfigurationIssueCodes.ReservedKeyIgnored,
-                    key,
-                    reserved.Value,
-                    $"'{key}' is reserved for a later version and is ignored by this one.");
+                issues.Error(ConfigurationIssueCodes.DuplicateEntity, at, node, $"{entity} is already mapped by {signalEntities[entity]}; one entity feeds one signal.");
             }
         }
 
+        var (groups, groupSignals) = CircuitGroupSectionParser.Read(root, connection, control, issues);
+        var (devices, deviceSignals) = DeviceSectionParser.Read(
+            root,
+            connection,
+            control,
+            signalEntities,
+            groups.ToDictionary(g => g.Id),
+            DeviceSectionParser.DeclaredGroupIds(root),
+            issues);
+        groups = [.. groups.Select(g => g with { Members = [.. devices.Where(d => d.CircuitGroup == g.Id).Select(d => d.Id)] })];
+        var signals = userSignals.AddRange(groupSignals).AddRange(deviceSignals);
+
         var configuration = issues.HasErrors || connection is null || control is null
             ? null
-            : new SwitchboardConfiguration(connection, signals, control, devices);
+            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups };
         return Finish(configuration, issues, path, loadedAt);
     }
 
@@ -670,13 +674,6 @@ public static class SwitchboardDocumentParser
     private static T? Read<T>(ConfigMapping mapping, string key, string path, ConfigIssues issues, Func<ConfigNode, string, T?> read)
         where T : struct =>
         ConfigRead.Required(mapping, key, path, issues) is { } node ? read(node, ConfigRead.Join(path, key)) : null;
-
-    private static bool IsEmpty(ConfigNode node) => node switch
-    {
-        ConfigMapping m => m.Entries.IsEmpty,
-        ConfigSequence s => s.Items.IsEmpty,
-        _ => ConfigRead.IsNull(node),
-    };
 
     private static ImmutableDictionary<string, T> Choices<T>(params (string Key, T Value)[] choices) =>
         choices.ToImmutableDictionary(c => c.Key, c => c.Value, StringComparer.Ordinal);

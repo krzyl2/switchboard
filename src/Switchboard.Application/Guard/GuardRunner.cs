@@ -1,35 +1,47 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
 
 namespace Switchboard.Application.Guard;
 
-/// <summary>One guard step as listeners (state persistence) see it.</summary>
-public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decision> Decisions, GuardMemory Memory);
+/// <summary>One step as listeners (state persistence, the MQTT entities) see it.</summary>
+public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decision> Decisions, GuardMemory Memory)
+{
+    /// <summary>Dispatch's evaluation of the same step; null only in steps built by tests without dispatch.</summary>
+    public DispatchEvaluation? Dispatch { get; init; }
+
+    public DispatchStatus? DispatchStatus { get; init; }
+}
 
 /// <summary>
-/// The guard's only reader. It wakes on every protection snapshot the signal store publishes, on
-/// the kill switch, on its own deadline timer (cycle boundaries, band timers, budget thresholds) and
-/// at shutdown; each step evaluates the latest inputs once, passes the result through the effector
-/// gate and records the decisions. It runs on the signal clock, so the budget follows the meter's
-/// timeline even in development replay. Nothing here can reach Home Assistant: the gate's output
-/// is a decision record, and the recorder only queues it.
+/// The control loop's only reader. It wakes on every store cycle the signal store publishes, on the
+/// kill switch, on an override change, on its own deadline timer (cycle boundaries, band timers,
+/// budget thresholds, settling timeouts, lockout expiries) and at shutdown. Each step reads the
+/// control inputs once (protection and dispatch views of the same cycle), evaluates the guard first,
+/// then dispatch against the guard's envelope, passes both through the effector gate and records
+/// the decisions: protection always comes first in the same step. It runs on the signal clock, so
+/// the budget follows the meter's timeline even in development replay. Nothing here can reach Home
+/// Assistant: the gate built in production holds no command port, and the recorder only queues.
 /// </summary>
 public sealed class GuardRunner : IDisposable
 {
     private readonly GuardInbox _inbox;
-    private readonly IProtectionInputSource _protection;
+    private readonly IControlInputSource _inputs;
     private readonly TimeProvider _time;
     private readonly GuardEngine _engine;
+    private readonly DispatchEngine _dispatch;
     private readonly EffectorGate _gate;
     private readonly LockoutClocks _lockouts;
     private readonly IDecisionRecorder _recorder;
     private readonly GuardStatusHolder _holder;
+    private readonly DispatchStatusHolder _dispatchHolder;
     private readonly IModeSource _mode;
     private readonly IKillSwitchView _killSwitch;
+    private readonly IDeviceOverrideView _overrides;
     private readonly ILogger<GuardRunner> _logger;
     private readonly object _sync = new();
     private DateTimeOffset? _lastStep;
@@ -38,31 +50,37 @@ public sealed class GuardRunner : IDisposable
 
     public GuardRunner(
         GuardInbox inbox,
-        IProtectionInputSource protection,
+        IControlInputSource inputs,
         SignalClock clock,
         GuardEngine engine,
+        DispatchEngine dispatch,
         EffectorGate gate,
         LockoutClocks lockouts,
         IDecisionRecorder recorder,
         GuardStatusHolder holder,
+        DispatchStatusHolder dispatchHolder,
         IModeSource mode,
         IKillSwitchView killSwitch,
+        IDeviceOverrideView overrides,
         ILogger<GuardRunner> logger)
     {
-        ArgumentNullException.ThrowIfNull(protection);
+        ArgumentNullException.ThrowIfNull(inputs);
         ArgumentNullException.ThrowIfNull(clock);
         _inbox = inbox;
-        _protection = protection;
+        _inputs = inputs;
         _time = clock.Time;
         _engine = engine;
+        _dispatch = dispatch;
         _gate = gate;
         _lockouts = lockouts;
         _recorder = recorder;
         _holder = holder;
+        _dispatchHolder = dispatchHolder;
         _mode = mode;
         _killSwitch = killSwitch;
+        _overrides = overrides;
         _logger = logger;
-        _protection.Published += OnPublished;
+        _inputs.Published += OnPublished;
     }
 
     /// <summary>Raised after every step, on the guard's thread; handlers must not block.</summary>
@@ -118,15 +136,29 @@ public sealed class GuardRunner : IDisposable
             }
 
             _lastStep = now;
-            var protection = _protection.Current;
+            var inputs = _inputs.Current;
+            var protection = inputs.Protection;
+            var overrides = _overrides.Current;
             _lockouts.Observe(protection.Setup ?? _engine.Setup, protection.DeviceStates, now);
+            _gate.BeginStep(inputs, now);
             var evaluation = _engine.Evaluate(new GuardInput(trigger, protection, _killSwitch.Status, mode), now);
-            decisions.AddRange(_gate.Apply(evaluation, mode, now));
+            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode), now);
+            decisions.AddRange(_gate.Apply(evaluation, dispatch, overrides, mode, inputs, now));
             Record(decisions.ToImmutable());
             _holder.Publish(evaluation.Status);
-            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export()));
+            var dispatchStatus = DispatchStatusFactory.Build(evaluation, dispatch, _gate.Ledger, overrides, _lockouts, inputs, mode, now);
+            _dispatchHolder.Publish(dispatchStatus);
+            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export()) { Dispatch = dispatch, DispatchStatus = dispatchStatus });
             return now;
         }
+    }
+
+    /// <summary>The next moment a step is due without new input: the earliest of the guard's and the gate's deadlines.</summary>
+    public DateTimeOffset? NextDeadline(DateTimeOffset now)
+    {
+        var guard = _engine.NextDeadline(now);
+        var gate = _gate.NextDeadline(now);
+        return guard is { } g && gate is { } e ? (g < e ? g : e) : guard ?? gate;
     }
 
     /// <summary>
@@ -141,13 +173,13 @@ public sealed class GuardRunner : IDisposable
         return Task.CompletedTask;
     }
 
-    public void Dispose() => _protection.Published -= OnPublished;
+    public void Dispose() => _inputs.Published -= OnPublished;
 
-    private void OnPublished(object? sender, Domain.Signals.ProtectionInputs inputs) => _inbox.Post(GuardTrigger.Snapshot);
+    private void OnPublished(object? sender, ControlInputs inputs) => _inbox.Post(GuardTrigger.Snapshot);
 
     private void Arm(ITimer timer, DateTimeOffset now)
     {
-        var deadline = _engine.NextDeadline(now);
+        var deadline = NextDeadline(now);
         timer.Change(deadline is { } due ? SignalStoreRunner.DueTime(due - now) : Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 

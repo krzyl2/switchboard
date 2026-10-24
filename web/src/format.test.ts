@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAge, formatInterval, formatQuantity } from './format';
+import { formatAge, formatCountdown, formatInterval, formatQuantity } from './format';
 
 // Ages are what lets a user tell a frozen sensor from a calm one, so they must read the same way
 // everywhere and never hide a long silence behind a small number.
@@ -42,5 +42,20 @@ describe('formatQuantity', () => {
 
   it('never prints a negative zero', () => {
     expect(formatQuantity(-0.2, 'W', 'en')).toBe('0 W');
+  });
+});
+
+// A lockout countdown reads like the mockup's "blokada postoju 4:12" and never shows 0:00 while
+// time is still left (rounded up), nor a negative time once it expired.
+describe('formatCountdown', () => {
+  it.each([
+    [252, '4:12'],
+    [42, '0:42'],
+    [0.2, '0:01'],
+    [0, '0:00'],
+    [-3, '0:00'],
+    [3600, '60:00'],
+  ])('%s s reads as %s', (seconds, text) => {
+    expect(formatCountdown(seconds)).toBe(text);
   });
 });

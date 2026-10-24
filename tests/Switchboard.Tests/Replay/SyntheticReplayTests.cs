@@ -13,6 +13,11 @@ public sealed class SyntheticReplayTests
     private static readonly DateTimeOffset Start = new(2026, 10, 21, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset ExportFrom = Start.AddMinutes(12);
 
+    // The example without the charger's draw: the fixture's charger (16 A) is not part of the meter's
+    // L1 load, so as a controlled-load term (SIG-09) it would make every L1 balance impossible. These
+    // checks are about the meter's signals alone.
+    private static string MeterOnly => TestConfigurations.ExampleWithoutDraw;
+
     [Fact]
     public void Detected_refresh_matches_synthetic_10s_meter_30s_inverter_and_2_5s_charger()
     {
@@ -31,7 +36,7 @@ public sealed class SyntheticReplayTests
     [Fact]
     public void Out_of_step_inverter_row_is_rejected()
     {
-        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, TestConfigurations.Example);
+        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, MeterOnly);
 
         harness.RunUntil(Start.AddMinutes(18).AddSeconds(1));
 
@@ -47,7 +52,7 @@ public sealed class SyntheticReplayTests
     public void Frozen_L2_current_goes_stale_within_max_age_and_recovers()
     {
         var frozenAt = Start.AddMinutes(8).AddMilliseconds(11);
-        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, TestConfigurations.Example);
+        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, MeterOnly);
         var observed = new Dictionary<DateTimeOffset, PhaseProtection>();
 
         harness.RunUntil(
@@ -66,7 +71,7 @@ public sealed class SyntheticReplayTests
     public void Synthetic_current_direction_follows_power_sign_in_import_and_export_periods()
     {
         var data = ReplayFixtures.SyntheticData;
-        var harness = new ReplayHarness(data, TestConfigurations.Example);
+        var harness = new ReplayHarness(data, MeterOnly);
         var checkpoints = data.Rows
             .Where(r => r.Entity.Value.StartsWith("sensor.solaredge_m1_ac_current_", StringComparison.Ordinal))
             .Select(r => r.Timestamp + TimeSpan.FromSeconds(2))
@@ -102,7 +107,7 @@ public sealed class SyntheticReplayTests
     [Fact]
     public void Unavailable_rows_make_the_signal_unavailable_and_dispatch_drops_it()
     {
-        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, TestConfigurations.Example);
+        var harness = new ReplayHarness(ReplayFixtures.SyntheticData, MeterOnly);
         SignalReading? during = null;
         Switchboard.Domain.Units.Volts? voltageDuring = null;
 

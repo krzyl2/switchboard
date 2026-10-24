@@ -68,4 +68,28 @@ public sealed record BreakerProfile
     public double LowerBound(int band) => band == 0 ? 0 : Tiers.Bands[band - 1].UpTo!.Value;
 
     public bool IsAboveContinuous(double multiple) => multiple > ContinuousMultiple;
+
+    /// <summary>
+    /// The top of the may_add region (the up_to of the last may_add band counted from the bottom),
+    /// as a multiple of In; 0 when the first band does not allow adding. Dispatch never plans load
+    /// above it (04 §3 "breaker_tier_allowance").
+    /// </summary>
+    public double MayAddUpTo
+    {
+        get
+        {
+            var top = 0.0;
+            foreach (var band in Tiers.Bands)
+            {
+                if (band.Reaction != TierReaction.MayAdd || band.UpTo is not { } upTo)
+                {
+                    break;
+                }
+
+                top = upTo;
+            }
+
+            return top;
+        }
+    }
 }

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Switchboard.Application;
+using Switchboard.Application.Decisions;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 using Switchboard.Infrastructure.Mqtt;
@@ -146,6 +148,44 @@ public sealed class GuardEntitiesTests
         Assert.Equal("kill_switch", JsonDocument.Parse(entities["device_heater_l1_state"].Attributes!).RootElement.GetProperty("reason").GetString());
         Assert.False(JsonDocument.Parse(entities["device_ev_charger_state"].Attributes!).RootElement.GetProperty("can_switch_off").GetBoolean());
         Assert.Equal("kill_switch", entities["last_decision"].State);
+    }
+
+    [Fact]
+    public void Kill_switch_release_is_distinguishable()
+    {
+        // The release keeps the reason of the condition it ends (kill_switch), so as a reason code
+        // the last-decision state would read exactly like engaging it; an automation watching it
+        // could not tell the add-on may act again. The state names the action instead.
+        _scenario.SampleAll(8, 8, 8);
+        _scenario.KillSwitch = new KillSwitchStatus(true, _scenario.Now, KillSwitchSource.Api);
+        _scenario.Evaluate(GuardTrigger.KillSwitch);
+        _decisions.Record(_scenario.Decisions);
+        Assert.Equal("kill_switch", States()["last_decision"]);
+
+        _scenario.Time.Advance(TimeSpan.FromSeconds(10));
+        _scenario.KillSwitch = new KillSwitchStatus(false, _scenario.Now, KillSwitchSource.Api);
+        var recorded = _scenario.Decisions.Count;
+        _scenario.Evaluate(GuardTrigger.KillSwitch);
+        _decisions.Record(_scenario.Decisions.Skip(recorded).ToList());
+
+        var last = Entities().Current().Entities.Single(e => e.ObjectId == "last_decision");
+        Assert.Equal("kill_switch_disengaged", last.State);
+        using var attributes = JsonDocument.Parse(last.Attributes!);
+        Assert.Equal(("kill_switch_disengaged", "kill_switch"), (attributes.RootElement.GetProperty("action").GetString(), attributes.RootElement.GetProperty("reason").GetString()));
+    }
+
+    [Fact]
+    public void Last_decision_options_are_reason_codes_or_condition_ending_actions_verbatim()
+    {
+        // The state is a reason code of list version 2, except for the two decisions that end a
+        // condition, which use their action's own name: never an invented value.
+        var reasons = ReasonCodes.All.Select(ReasonCodes.Name).ToHashSet(StringComparer.Ordinal);
+        var actions = Enum.GetValues<DecisionAction>().Select(a => JsonNamingPolicy.SnakeCaseLower.ConvertName(a.ToString())).ToHashSet(StringComparer.Ordinal);
+        var extra = GuardEntities.LastDecisionStates.Where(o => !reasons.Contains(o)).ToList();
+
+        Assert.Equal(["kill_switch_disengaged", "safe_state_exited"], extra);
+        Assert.All(extra, o => Assert.Contains(o, actions));
+        Assert.True(reasons.IsSubsetOf(GuardEntities.LastDecisionStates));
     }
 
     [Fact]

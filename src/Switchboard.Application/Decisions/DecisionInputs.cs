@@ -1,7 +1,10 @@
+using System.Collections.Immutable;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -9,12 +12,14 @@ namespace Switchboard.Application.Decisions;
 
 /// <summary>The inputs that produced a decision (MODE-03); each part is present where it applies.</summary>
 /// <param name="SafeStateCause">What caused a system-wide safe state, on its events and on the device holds it made.</param>
+/// <param name="Dispatch">Headroom, hysteresis, settling and verification behind a dispatch decision.</param>
 public sealed record DecisionInputs(
     PhaseDecisionInputs? Phase,
     DeviceDecisionInputs? Device,
     ModeDecisionInputs? Mode,
     KillSwitchSource? KillSwitch,
-    SafeStateCause? SafeStateCause)
+    SafeStateCause? SafeStateCause,
+    DispatchDecisionInputs? Dispatch = null)
 {
     public static DecisionInputs None { get; } = new(null, null, null, null, null);
 }
@@ -56,3 +61,41 @@ public sealed record DeviceDecisionInputs(
     bool CanSwitchOff);
 
 public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiChoice, ModeNote Note);
+
+/// <summary>The headroom on one constraint at a dispatch decision.</summary>
+/// <param name="Envelope">E from the guard (null without valid data).</param>
+/// <param name="Remaining">What was left there when the device's turn came in the allocation (null when it was not allocated).</param>
+public sealed record ConstraintHeadroom(ConstraintKey Key, Amperes? Envelope, Amperes? Remaining);
+
+/// <summary>The unit a verification compares in.</summary>
+public enum MeasureUnit
+{
+    Amperes,
+    Watts,
+}
+
+/// <summary>A verification at the close of a settling window (DISP-07).</summary>
+/// <param name="Expected">The expected change (a step), or the new ceiling (a setpoint).</param>
+/// <param name="Measured">The measured change, or the draw after the window.</param>
+public sealed record VerificationInputs(double Expected, double Measured, MeasureUnit Unit, Verdict Verdict);
+
+/// <summary>What a dispatch decision was made from (MODE-03).</summary>
+/// <param name="StartRank">Position in the start order (1 is given headroom first); null for a no_shed device.</param>
+/// <param name="Contribution">The device's share of the measured current per phase.</param>
+/// <param name="InFlight">The in-flight change counted for it per constraint.</param>
+/// <param name="Settling">The device's settling window at the decision.</param>
+/// <param name="MinOnRemaining">On the target timeline (the lockouts dispatch is held to).</param>
+/// <param name="DeferredSince">When the change was first refused, for a deferral or a deferred change applied at expiry.</param>
+public sealed record DispatchDecisionInputs(
+    ImmutableArray<ConstraintHeadroom> Headroom,
+    Amperes StartHysteresis,
+    Amperes StopHysteresis,
+    int? StartRank,
+    ImmutableDictionary<Phase, Amperes> Contribution,
+    ImmutableDictionary<ConstraintKey, Amperes> InFlight,
+    SettlingState? Settling,
+    VerificationInputs? Verification,
+    TimeSpan MinOnRemaining,
+    TimeSpan MinOffRemaining,
+    DateTimeOffset? DeferredSince,
+    OverrideMode Override);

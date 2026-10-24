@@ -1,5 +1,6 @@
 using System.Reflection;
 using Switchboard.Application;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Signals;
@@ -19,10 +20,15 @@ public sealed class GuardArchitectureTests
     [Fact]
     public void Gate_has_no_path_to_a_command_sender()
     {
-        // Everything the gate and the runner hold or receive comes from Application, Domain, the
-        // BCL or logging: no transport, no client, nothing named like a sender of commands.
-        var offenders = new[] { typeof(EffectorGate), typeof(GuardRunner), typeof(GuardEngine), typeof(KillSwitchState), typeof(LockoutClocks) }
-            .SelectMany(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Select(f => f.FieldType)
+        // Everything the gate, the engines and the runner hold or receive comes from Application,
+        // Domain, the BCL or logging: no transport, no client, nothing named like a sender of
+        // commands. The one exception is the gate's command port, set only by its internal
+        // constructor (tests); the public constructors carry no port, and production builds the
+        // gate through them (Only_tests_can_hand_the_gate_a_port).
+        var types = new[] { typeof(EffectorGate), typeof(GuardRunner), typeof(GuardEngine), typeof(DispatchEngine), typeof(KillSwitchState), typeof(LockoutClocks), typeof(DeviceOverrides) };
+        var portField = typeof(EffectorGate).GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Single(f => f.FieldType == typeof(IDeviceCommandPort));
+        var offenders = types
+            .SelectMany(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Where(f => f != portField).Select(f => f.FieldType)
                 .Concat(t.GetConstructors().SelectMany(c => c.GetParameters()).Select(p => p.ParameterType)))
             .SelectMany(Unwrap)
             .Where(type => !Allowed(type) || type.Name.Contains("Command", StringComparison.Ordinal) || type.Name.Contains("Mqtt", StringComparison.Ordinal) || type.Name.Contains("HomeAssistant", StringComparison.Ordinal))
@@ -31,6 +37,7 @@ public sealed class GuardArchitectureTests
             .ToList();
 
         Assert.Empty(offenders);
+        Assert.Single(typeof(EffectorGate).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic), c => c.IsAssembly && c.GetParameters().Any(p => p.ParameterType == typeof(IDeviceCommandPort)));
     }
 
     [Fact]
@@ -49,10 +56,10 @@ public sealed class GuardArchitectureTests
     [Fact]
     public void Protection_device_names_cannot_be_entity_ids()
     {
-        // A device name has no '.', an entity ID always has one: no string is both.
-        foreach (var candidate in new[] { "switch.heater", "heater", "number.goe_amp", "ev_charger", "a", "sensor.x_y" })
+        // A device or group name has no '.', an entity ID always has one: no string is both.
+        foreach (var candidate in new[] { "switch.heater", "heater", "number.goe_amp", "ev_charger", "a", "sensor.x_y", "carport" })
         {
-            var isName = DeviceName.TryParse(candidate, out _);
+            var isName = DeviceName.TryParse(candidate, out _) || Switchboard.Domain.Connection.GroupName.TryParse(candidate, out _);
             var isEntity = EntityId.TryParse(candidate, out _);
             Assert.False(isName && isEntity, candidate);
         }
@@ -62,14 +69,18 @@ public sealed class GuardArchitectureTests
     }
 
     [Fact]
-    public void The_guard_reads_the_protection_port_only()
+    public void The_guard_reads_the_control_port_only()
     {
-        // SIG-04: the runner depends on IProtectionInputSource, never on the diagnostics view.
+        // SIG-04: the runner's one input port is IControlInputSource (protection and dispatch views
+        // of one store cycle); it never depends on the diagnostics view or the snapshot holder, and
+        // the control inputs expose no full snapshot.
         var parameters = typeof(GuardRunner).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
 
-        Assert.Contains(typeof(IProtectionInputSource), parameters);
+        Assert.Contains(typeof(IControlInputSource), parameters);
+        Assert.DoesNotContain(typeof(IProtectionInputSource), parameters);
         Assert.DoesNotContain(typeof(ISignalDiagnosticsSource), parameters);
         Assert.DoesNotContain(typeof(SignalSnapshotHolder), parameters);
+        Assert.DoesNotContain(typeof(Switchboard.Domain.Signals.SignalSnapshot), SignalArchitectureTests.TypeGraph(typeof(ControlInputs)));
     }
 
     private static bool Allowed(Type type)

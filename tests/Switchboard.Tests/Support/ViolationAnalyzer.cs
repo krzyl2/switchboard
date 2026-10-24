@@ -26,8 +26,11 @@ namespace Switchboard.Tests.Support;
 /// entering safe state, has its decision record in the same step.</item>
 /// </list>
 /// "Sheddable" is computed here from the recorded device states and the recorded decisions: a stage
-/// not already held off whose state is not known to be off (an unknown or stale state counts as on;
-/// a modulating device stays sheddable until it is switched off).
+/// whose last recorded target (any origin: a dispatch would-stop counts, a guard release hands the
+/// device back to its reported state) does not already have it off, and whose state is not known to
+/// be off (an unknown or stale state counts as on). A device that cannot switch off is no longer
+/// sheddable once it is held at its floor. Only protection's decisions count as sheds: the check
+/// is about the guard, from the measured current alone, never from the load model's estimate.
 /// </summary>
 internal sealed class ViolationAnalyzer
 {
@@ -158,7 +161,9 @@ internal sealed class ViolationAnalyzer
     }
 
     private static bool IsShed(Decision decision) =>
-        decision.Scope == DecisionScope.Device && decision.Action is DecisionAction.SwitchOff or DecisionAction.ReduceToMinimum;
+        decision.Scope == DecisionScope.Device
+        && decision.Origin is null or DecisionOrigin.Guard
+        && decision.Action is DecisionAction.SwitchOff or DecisionAction.ReduceToMinimum;
 
     private IEnumerable<string> Check(Phase phase, int band, TimeSpan allowed, Interval interval)
     {
@@ -172,7 +177,11 @@ internal sealed class ViolationAnalyzer
 
             foreach (var (device, stage) in Sheddable(phase, interval.Start, inclusive: false))
             {
-                if (!_decisions.Any(d => d.Device == device && (d.Stage ?? 1) == stage && d.Action == DecisionAction.SwitchOff && d.At >= interval.Previous && d.At <= interval.Start))
+                // A device that cannot switch off has given everything at its floor.
+                var floorOnly = _setup.Device(device) is { CanSwitchOff: false };
+                if (!_decisions.Any(d => IsShed(d) && d.Device == device && (d.Stage ?? 1) == stage
+                    && (d.Action == DecisionAction.SwitchOff || (floorOnly && d.Action == DecisionAction.ReduceToMinimum))
+                    && d.At >= interval.Previous && d.At <= interval.Start))
                 {
                     yield return $"{label}: {device} stage {stage} was not switched off at the entering sample";
                 }
@@ -221,8 +230,11 @@ internal sealed class ViolationAnalyzer
         {
             foreach (var stage in device.Stages.Where(s => s.Phases.Contains(phase)))
             {
-                var last = _decisions.LastOrDefault(d => d.Device == device.Id && (d.Stage ?? 1) == stage.Index && d.Scope == DecisionScope.Device && (inclusive ? d.At <= at : d.At < at));
-                if (last?.Action == DecisionAction.SwitchOff)
+                var last = _decisions.LastOrDefault(d => d.Device == device.Id && d.Scope == DecisionScope.Device
+                    && (d.Target is not null || (d.Stage ?? 1) == stage.Index)
+                    && (inclusive ? d.At <= at : d.At < at));
+                if (last is { Target: { } target } ? Off(device, target, stage.Index)
+                    : last?.Action == DecisionAction.SwitchOff || (last?.Action == DecisionAction.ReduceToMinimum && !device.CanSwitchOff))
                 {
                     continue;
                 }
@@ -244,6 +256,12 @@ internal sealed class ViolationAnalyzer
 
         return result;
     }
+
+    /// <summary>A stage a target already has off (a device that cannot switch off counts once it is at its floor).</summary>
+    private static bool Off(DeviceSpec device, DeviceLevel target, int stage) =>
+        device.IsSetpoint
+            ? !target.Enabled || target.Setpoint is not { } setpoint || setpoint.Value <= 0 || (!device.CanSwitchOff && setpoint <= device.SetpointFloor)
+            : target.Relays.IsDefault || stage - 1 >= target.Relays.Length || !target.Relays[stage - 1];
 
     /// <summary>Maximal runs of valid samples above <paramref name="lowerBound"/>; invalid data ends a run.</summary>
     private IEnumerable<Interval> Intervals(List<Event> events, double lowerBound)

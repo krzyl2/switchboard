@@ -234,6 +234,26 @@ describe('signals page', () => {
     expect(screen.getByRole('columnheader', { name: 'Dependent devices' })).toBeTruthy();
   });
 
+  // A stale device draw holds nothing off: the copy must not claim a protection state that does not exist.
+  it('marks the device of a stale draw as not trusted, never as held unsafe', async () => {
+    serve(() =>
+      respond(
+        payload((p) => {
+          const row = p.signals.find((s: any) => s.entity === 'sensor.meter_current_b');
+          row.role = 'device_current';
+          row.dependentDevices = ['ev_charger'];
+        }),
+      ),
+    );
+    await openSignals();
+
+    const cell = rowWith('sensor.meter_current_b').cells[8];
+    expect(cell?.textContent).toContain('ev_charger');
+    expect(cell?.textContent).toContain('not trusted: no relief, no increases');
+    expect(cell?.textContent).not.toContain('held as unsafe');
+    expect(cell?.querySelector('.state')?.getAttribute('data-tone')).toBe('warn');
+  });
+
   it('labels the applied state of a declared device as its own role', async () => {
     serve(() => respond(payload()));
     await openSignals();

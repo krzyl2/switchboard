@@ -16,13 +16,13 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **SIG-06**: Freshness is computed from the HA `last_reported` timestamp, not `last_changed`
 - [ ] **SIG-07**: Refresh interval auto-detected and surfaced; the minimum safe reserve is derived from it and shown during onboarding
 - [x] **SIG-08**: Inverter production signal, where present, used to distinguish an idle phase from a phase whose load is covered by local generation
-- [ ] **SIG-09**: Balance consistency check: residual of `generation + import − measured loads − controlled loads` beyond a configurable threshold rejects the sample, never the decision
+- [x] **SIG-09**: Balance consistency check: residual of `generation + import − measured loads − controlled loads` beyond a configurable threshold rejects the sample, never the decision
 
 ## Connection model
 
 - [ ] **CONN-01**: Three-phase installations supported with an independent limit per phase; single-phase and summed-only are configurable alternatives
 - [ ] **CONN-02**: Each device is assigned to a phase (or to all three); the assignment drives every protection decision
-- [ ] **CONN-03**: Sub-breaker groups: a set of devices sharing a downstream breaker with its own per-phase limit, enforced alongside the main limit
+- [x] **CONN-03**: Sub-breaker groups: a set of devices sharing a downstream breaker with its own per-phase limit, enforced alongside the main limit
 - [ ] **CONN-04**: Configurable power reserve per phase, reserved for loads the system does not control
 - [ ] **CONN-05**: Phase-assignment self-test — energize one known device, observe which phase rose, report a mismatch
 - [ ] **CONN-06**: Mapping validation before the wizard completes: entities exist, values are plausible, phases sum to the total, refresh matches the declaration
@@ -37,24 +37,24 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Dispatch
 
-- [ ] **DISP-01**: Device types implemented: `onoff`, `stepped` (N × P), `modulating` (continuous within [min, max]), `storage`
+- [x] **DISP-01**: Device types implemented: `onoff`, `stepped` (N × P), `modulating` (continuous within [min, max]), `storage`
 - [x] **DISP-02**: Shed order derived from configured value per kWh, overridable per device
-- [ ] **DISP-03**: Restore order is the reverse, gated by available headroom and by each device's minimum-off time
-- [ ] **DISP-04**: Asymmetric action rule — reductions execute immediately, including mid-settling; increases require a closed settling window plus confirmation
-- [ ] **DISP-05**: Settling window closes when every balance signal has a sample newer than `command time + device reaction time`, with a hard timeout
-- [ ] **DISP-06**: Model-based estimate (`last measurement + Σ ΔP of commands in flight`) drives decisions while the window is open
-- [ ] **DISP-07**: Effector verification — measured change compared against the expected ΔP; repeated mismatch marks the device unresponsive and excludes it from dispatch
-- [ ] **DISP-08**: Configurable limit on simultaneous increases per window (default 1); decreases unlimited
-- [ ] **DISP-09**: Per-device minimum on-time and off-time honoured, with a deferred-intent reconciliation loop that applies pending changes once a lockout expires
-- [ ] **DISP-10**: Phase-priority rotation for multi-element loads on different phases, stabilized over N cycles
+- [x] **DISP-03**: Restore order is the reverse, gated by available headroom and by each device's minimum-off time
+- [x] **DISP-04**: Asymmetric action rule — reductions execute immediately, including mid-settling; increases require a closed settling window plus confirmation
+- [x] **DISP-05**: Settling window closes when every balance signal has a sample newer than `command time + device reaction time`, with a hard timeout
+- [x] **DISP-06**: Model-based estimate (`last measurement + Σ ΔP of commands in flight`) drives decisions while the window is open
+- [x] **DISP-07**: Effector verification — measured change compared against the expected ΔP; repeated mismatch marks the device unresponsive and excludes it from dispatch
+- [x] **DISP-08**: Configurable limit on simultaneous increases per window (default 1); decreases unlimited
+- [x] **DISP-09**: Per-device minimum on-time and off-time honoured, with a deferred-intent reconciliation loop that applies pending changes once a lockout expires
+- [x] **DISP-10**: Phase-priority rotation for multi-element loads on different phases, stabilized over N cycles
 
 ## Safety
 
 - [x] **SAFE-01**: Safe state is every controlled device off; entered on missing data, stale signals, HA disconnection or add-on shutdown
 - [x] **SAFE-02**: Watchdog heartbeat entity so an HA-side automation can shed loads if the add-on dies
 - [x] **SAFE-03**: Global kill switch respected within one cycle
-- [ ] **SAFE-04**: Manual override per device (force on / force off) that outranks dispatch but never outranks protection
-- [ ] **SAFE-05**: Add-on never commands an entity the user has not explicitly declared as a device actuator
+- [x] **SAFE-04**: Manual override per device (force on / force off) that outranks dispatch but never outranks protection
+- [x] **SAFE-05**: Add-on never commands an entity the user has not explicitly declared as a device actuator
 - [ ] **SAFE-06**: Onboarding states plainly that this is not a protective device
 - [x] **SAFE-07**: State restored after restart; all lockout timers restart from the restart instant, never from persisted expiry
 
@@ -96,8 +96,8 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Verification
 
-- [ ] **VER-01**: Control logic unit-tested on a virtual clock: lockouts, hysteresis, change limits, budget consumption and recovery, phase rotation
-- [ ] **VER-02**: Settling-window scenarios: delayed sample, lost sample, unresponsive effector, foreign load arriving mid-window
+- [x] **VER-01**: Control logic unit-tested on a virtual clock: lockouts, hysteresis, change limits, budget consumption and recovery, phase rotation
+- [x] **VER-02**: Settling-window scenarios: delayed sample, lost sample, unresponsive effector, foreign load arriving mid-window
 - [x] **VER-03**: Every row of the fail-safe table has a test
-- [ ] **VER-04**: Replay harness — run the dispatcher against recorded history and assert no limit violation
+- [x] **VER-04**: Replay harness — run the dispatcher against recorded history and assert no limit violation
 - [ ] **VER-05**: Live verification on the maintainer's 3×25 A installation in shadow mode for at least one week before `active` is recommended

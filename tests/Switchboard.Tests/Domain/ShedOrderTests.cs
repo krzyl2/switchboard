@@ -80,20 +80,76 @@ public sealed class ShedOrderTests
     [Fact]
     public void Modulating_reduced_to_minimum_before_stopped()
     {
-        // 04 §2: "first reduced to their minimum, and only stopped if that is not enough".
-        var steps = ShedOrder.For(Phase.L1, [Candidate(Charger(), new SetpointApplied(new Amperes(16)))]);
+        // 04 §2: "first reduced to their minimum, and only stopped if that is not enough" - stopped
+        // only through a stop actuator (DISP-01).
+        var steps = ShedOrder.For(Phase.L1, [Candidate(Charger() with { HasStopActuator = true }, new SetpointApplied(new Amperes(16)))]);
 
         Assert.Equal([(ShedAction.ReduceToMinimum, 10.0), (ShedAction.SwitchOff, 6.0)], steps.Select(s => (s.Action, s.Relief.Value)));
     }
 
     [Fact]
-    public void Modulating_already_at_minimum_has_only_the_stop_left()
+    public void Shed_order_never_spends_a_step_on_a_modulating_device_that_cannot_switch_off()
+    {
+        // Stage 2 open issue: a charger without a stop actuator has a setpoint range that excludes
+        // zero. Once at its minimum, a "switch off" step would relieve nothing, so the next real
+        // candidate is taken instead (here the boiler, worth more per kWh).
+        var limited = ImmutableDictionary<int, StageLimit>.Empty.Add(1, StageLimit.AtMinimum);
+
+        var steps = ShedOrder.For(Phase.L1, [new ShedCandidate(Charger() with { ValuePerKwh = 0.1 }, [new SetpointApplied(new Amperes(16))], false, limited), Candidate(Relay("boiler", 0.35))]);
+
+        Assert.Equal([("boiler", ShedAction.SwitchOff)], steps.Select(s => (s.Device.Value, s.Action)));
+        Assert.Equal([(ShedAction.ReduceToMinimum, 10.0)], ShedOrder.For(Phase.L1, [Candidate(Charger(), new SetpointApplied(new Amperes(16)))]).Select(s => (s.Action, s.Relief.Value)));
+    }
+
+    [Fact]
+    public void An_idle_charger_whose_draw_is_at_its_floor_never_takes_a_shed_step_before_a_real_candidate()
+    {
+        // Relief never exceeds a measured draw: the cheapest device on L1 is a charger at a 16 A
+        // setpoint whose car draws nothing. Reducing it relieves 0 A, so the one step of a shed-one
+        // reaction goes to the boiler; the charger's step comes last (still taken when everything
+        // on the phase is shed). With a real draw of 10 A it is first again, relieving 4 A.
+        var charger = Charger() with { ValuePerKwh = 0.1, CurrentDrawPhases = [Phase.L1] };
+        var idle = Candidate(charger, new SetpointApplied(new Amperes(16))) with { Draw = Amperes.Zero };
+
+        var steps = ShedOrder.For(Phase.L1, [idle, Candidate(Relay("boiler", 0.35))]);
+
+        Assert.Equal([("boiler", false), ("charger", true)], steps.Select(s => (s.Device.Value, s.Idle)));
+        Assert.Equal(0, steps[1].Relief.Value);
+        var drawing = ShedOrder.For(Phase.L1, [idle with { Draw = new Amperes(10) }, Candidate(Relay("boiler", 0.35))]);
+        Assert.Equal([("charger", 4.0), ("boiler", 6.6)], drawing.Select(s => (s.Device.Value, s.Relief.Value)));
+    }
+
+    [Fact]
+    public void Stop_actuator_lets_a_modulating_device_be_switched_off_after_reduction()
     {
         var limited = ImmutableDictionary<int, StageLimit>.Empty.Add(1, StageLimit.AtMinimum);
 
-        var steps = ShedOrder.For(Phase.L1, [new ShedCandidate(Charger(), [new SetpointApplied(new Amperes(16))], false, limited)]);
+        var steps = ShedOrder.For(Phase.L1, [new ShedCandidate(Charger() with { HasStopActuator = true }, [new SetpointApplied(new Amperes(16))], false, limited)]);
 
         Assert.Equal([(ShedAction.SwitchOff, 6.0)], steps.Select(s => (s.Action, s.Relief.Value)));
+    }
+
+    [Fact]
+    public void Storage_sheds_to_zero_charge_never_into_discharge()
+    {
+        // A battery charging at 10 A is reduced to zero charge (its floor), never switched off and
+        // never pushed into discharge; one already discharging is no candidate at all (stopping a
+        // discharge would raise the current).
+        var battery = new DeviceSpec(
+            DeviceName.Parse("battery"),
+            DeviceType.Storage,
+            [new StageSpec(1, [Phase.L1], new Amperes(16))],
+            new ModulatingRange(new Amperes(-16), new Amperes(16), new Amperes(1)),
+            1.5,
+            null,
+            TimeSpan.FromSeconds(20),
+            false,
+            TimeSpan.FromSeconds(60),
+            TimeSpan.FromSeconds(60));
+
+        Assert.Equal([(ShedAction.ReduceToMinimum, 10.0)], ShedOrder.For(Phase.L1, [Candidate(battery, new SetpointApplied(new Amperes(10)))]).Select(s => (s.Action, s.Relief.Value)));
+        Assert.Empty(ShedOrder.For(Phase.L1, [Candidate(battery, new SetpointApplied(new Amperes(-5)))]));
+        Assert.False(battery.CanSwitchOff);
     }
 
     [Fact]
@@ -122,7 +178,7 @@ public sealed class ShedOrderTests
         // A stale "off" could be a heater that is on: protection assumes the worst.
         var steps = ShedOrder.For(Phase.L1, [Candidate(Relay("boiler", 0.35), (AppliedState?)null), Candidate(Charger(), (AppliedState?)null)]);
 
-        Assert.Equal([("boiler", 6.6), ("charger", 14.0), ("charger", 6.0)], steps.Select(s => (s.Device.Value, s.Relief.Value)));
+        Assert.Equal([("boiler", 6.6), ("charger", 14.0)], steps.Select(s => (s.Device.Value, s.Relief.Value)));
     }
 
     [Fact]

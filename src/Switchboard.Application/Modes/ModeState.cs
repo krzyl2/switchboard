@@ -5,8 +5,17 @@ public enum ModeNote
 {
     None,
 
-    /// <summary>The add-on option allows active mode, but this version has no command path: it stays shadow.</summary>
+    /// <summary>
+    /// Written by 0.3.x when the option allowed active mode. Kept so decision lines of that version
+    /// (30 days of retention) still read; never written any more.
+    /// </summary>
     ActiveUnavailableBeforeStage3,
+
+    /// <summary>
+    /// The add-on option allows active mode, but commanding is not enabled in this version: dispatch
+    /// decisions are computed and logged, nothing is switched, and the effective mode stays shadow.
+    /// </summary>
+    ActiveNotEnabled,
 }
 
 /// <summary>
@@ -24,9 +33,10 @@ public interface IModeSource
 }
 
 /// <summary>
-/// Holds the mode for the process. In this version the effective mode is always shadow: there is
-/// no command path at all, so even an active ceiling with an active UI choice only produces the
-/// note that active mode is not available yet.
+/// Holds the mode for the process. In this version the effective mode is always shadow: no
+/// production command path exists (the maintainer's rule: nothing may command a Home Assistant
+/// entity outside a test double), so an active ceiling only produces the note that commanding is
+/// not enabled.
 /// </summary>
 public sealed class ModeState : IModeSource
 {
@@ -37,10 +47,19 @@ public sealed class ModeState : IModeSource
 
     public ModeStatus Current { get; }
 
-    public static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice) =>
-        new(
+    public static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice) => Resolve(ceiling, uiChoice, commandPathEnabled: false);
+
+    /// <summary>
+    /// Active only with both deliberate acts (option and UI choice) and a command path; production
+    /// always passes false. Tests pass true to drive active semantics through a test double.
+    /// </summary>
+    internal static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice, bool commandPathEnabled)
+    {
+        var active = commandPathEnabled && ceiling == OperatingMode.Active && uiChoice == OperatingMode.Active;
+        return new(
             ceiling,
             uiChoice,
-            OperatingMode.Shadow,
-            ceiling == OperatingMode.Active ? ModeNote.ActiveUnavailableBeforeStage3 : ModeNote.None);
+            active ? OperatingMode.Active : OperatingMode.Shadow,
+            ceiling == OperatingMode.Active && !commandPathEnabled ? ModeNote.ActiveNotEnabled : ModeNote.None);
+    }
 }

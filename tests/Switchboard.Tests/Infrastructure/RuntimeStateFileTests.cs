@@ -104,7 +104,8 @@ public sealed class RuntimeStateFileTests : IDisposable
     [InlineData("\"L1\":{", "\"L4\":{")]
     [InlineData("\"heater_l1\":{", "\"switch.heater\":{")]
     [InlineData("\"applied\":\"on\"", "\"applied\":\"maybe\"")]
-    [InlineData("\"setpoint_a\":16", "\"setpoint_a\":-16")]
+    [InlineData("\"setpoint_a\":16", "\"setpoint_a\":\"16\"")]
+    [InlineData("\"setpoint_a\":16", "\"setpoint_a\":1e999")]
     [InlineData("\"kill_switch\":true", "\"kill_switch\":\"yes\"")]
     [InlineData("\"clean_shutdown\":true,", "\"clean_shutdown\":true,\"lockout_until\":\"2026-10-24T12:00:00.0000000Z\",")]
     [InlineData("\"clean_shutdown\":true,", "\"clean_shutdown\":true,\"clean_shutdown\":true,")]
@@ -124,6 +125,26 @@ public sealed class RuntimeStateFileTests : IDisposable
 
         Assert.Equal(StateFileStatus.ResetCorrupt, load.Status);
         Assert.Equal(RuntimeState.Fresh, load.State);
+    }
+
+    [Fact]
+    public void A_discharging_storage_device_survives_a_restart_with_the_kill_switch()
+    {
+        // A battery discharging at −10 A when the state is saved is a known state (the signal layer
+        // accepts a negative storage setpoint). Refusing it would reset the whole file at the next
+        // start: an engaged kill switch released, budgets refilled, overrides gone.
+        var file = File();
+        var state = Full() with
+        {
+            Devices = Full().Devices.Add(DeviceName.Parse("battery"), [new StageLastKnown(new SetpointApplied(new Amperes(-10)), At.AddMinutes(-1))]),
+        };
+
+        file.Save(state);
+        var load = file.Load();
+
+        Assert.Equal(StateFileStatus.Loaded, load.Status);
+        Assert.True(load.State.KillSwitch);
+        Assert.Equal(new SetpointApplied(new Amperes(-10)), load.State.Devices[DeviceName.Parse("battery")][0]!.Applied);
     }
 
     [Fact]

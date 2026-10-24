@@ -4,10 +4,11 @@ using Switchboard.Domain.Signals;
 namespace Switchboard.Application.Signals;
 
 /// <summary>
-/// Reads a device stage's applied state from its state signal (SIG-05). A relay state must be
-/// exactly <c>on</c> or <c>off</c>; a modulating setpoint arrives as a current the signal layer has
-/// already unit-checked and normalized to A, and must not be negative. Anything else, and any
-/// signal that is not fresh, leaves the state unknown, which protection counts as on.
+/// Reads a device stage's applied state from its state signal (SIG-05). A relay state (and a stop
+/// actuator's) must be exactly <c>on</c> or <c>off</c>; a setpoint arrives as a current the signal
+/// layer has already unit-checked and normalized to A, and must not be negative, except for a
+/// storage device, whose negative setpoint is a discharge. Anything else, and any signal that is
+/// not fresh, leaves the state unknown, which protection counts as on.
 /// </summary>
 public static class DeviceStateInterpreter
 {
@@ -21,7 +22,8 @@ public static class DeviceStateInterpreter
         SignalState state,
         SignalDetail detail,
         SignalValue? value,
-        DateTimeOffset? reportedAt)
+        DateTimeOffset? reportedAt,
+        bool allowNegativeSetpoint = false)
     {
         if (source != SignalSourceStatus.Connected)
         {
@@ -47,7 +49,7 @@ public static class DeviceStateInterpreter
         {
             StateValue { State: OnState } => new RelayApplied(true),
             StateValue { State: OffState } => new RelayApplied(false),
-            CurrentValue current when current.Current.Value >= 0 => new SetpointApplied(current.Current),
+            CurrentValue current when current.Current.Value >= 0 || allowNegativeSetpoint => new SetpointApplied(current.Current),
             _ => null,
         };
         return applied is null

@@ -1,14 +1,17 @@
 using System.Buffers;
 using System.Collections.Frozen;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -19,12 +22,22 @@ namespace Switchboard.Infrastructure.Persistence;
 /// reason code as 04 §6 writes it, the list version (<c>codes</c>) and the inputs that produced it.
 /// Reading is the reverse and treats the file as untrusted: a line that is not exactly a decision
 /// of a known shape (a partial line after a crash, a gap marker, an edit) is not a decision.
+/// <para>
+/// Format 2 (Stage 3) adds <c>origin</c>, <c>group</c> and <c>target</c> on every line and the
+/// dispatch inputs; lines of format 1 (0.3.x, kept for the retention period) still read, without them.
+/// </para>
 /// </summary>
 public static class DecisionJson
 {
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
+
+    /// <summary>The format 0.3.x wrote: no origin, group, target or dispatch inputs.</summary>
+    public const int LegacyFormatVersion = 1;
 
     private const string TimeFormat = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
+
+    // A bound on untrusted content, far above any stepped device a configuration declares.
+    private const int MaxStages = 64;
 
     private static readonly FrozenDictionary<string, ReasonCode> ReasonsByName =
         ReasonCodes.All.ToFrozenDictionary(ReasonCodes.Name, StringComparer.Ordinal);
@@ -48,6 +61,9 @@ public static class DecisionJson
             writer.WriteString("mode", Snake(decision.Mode));
             writer.WriteBoolean("commanded", decision.Commanded);
             WriteOptional(writer, "refused_by", decision.RefusedBy is { } refused ? ReasonCodes.Name(refused) : null);
+            WriteOptional(writer, "origin", decision.Origin is { } origin ? Snake(origin) : null);
+            WriteOptional(writer, "group", decision.Group?.Value);
+            WriteLevel(writer, "target", decision.Target);
             writer.WriteStartObject("inputs");
             WriteInputs(writer, decision.Inputs);
             writer.WriteEndObject();
@@ -78,12 +94,13 @@ public static class DecisionJson
             using var document = JsonDocument.Parse(line, new JsonDocumentOptions { MaxDepth = 8 });
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
-                || Int(root, "v") != FormatVersion
+                || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
                 || Int(root, "codes") != ReasonCodes.ListVersion)
             {
                 return null;
             }
 
+            var current = Int(root, "v") == FormatVersion;
             var device = OptionalString(root, "device") is { } name ? DeviceName.Parse(name) : (DeviceName?)null;
             return new Decision(
                 String(root, "id"),
@@ -98,7 +115,10 @@ public static class DecisionJson
                 EnumValue<OperatingMode>(root, "mode"),
                 Bool(root, "commanded"),
                 OptionalString(root, "refused_by") is { } refused ? Reason(refused) : null,
-                Inputs(Property(root, "inputs", JsonValueKind.Object)));
+                Inputs(Property(root, "inputs", JsonValueKind.Object), current),
+                current ? OptionalEnum<DecisionOrigin>(root, "origin") : null,
+                current && OptionalString(root, "group") is { } group ? GroupName.Parse(group) : null,
+                current ? Level(root, "target") : null);
         }
         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or InvalidOperationException or KeyNotFoundException or OverflowException)
         {
@@ -162,10 +182,198 @@ public static class DecisionJson
         {
             writer.WriteString("safe_state_cause", Snake(cause));
         }
+
+        if (inputs.Dispatch is { } dispatch)
+        {
+            WriteDispatch(writer, dispatch);
+        }
     }
 
-    private static DecisionInputs Inputs(JsonElement element)
+    private static void WriteDispatch(Utf8JsonWriter writer, DispatchDecisionInputs dispatch)
     {
+        writer.WriteStartObject("dispatch");
+        writer.WriteStartArray("headroom");
+        foreach (var headroom in dispatch.Headroom.IsDefault ? [] : dispatch.Headroom)
+        {
+            writer.WriteStartObject();
+            WriteKey(writer, headroom.Key);
+            WriteOptional(writer, "envelope_a", headroom.Envelope?.Value);
+            WriteOptional(writer, "remaining_a", headroom.Remaining?.Value);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteNumber("start_hysteresis_a", dispatch.StartHysteresis.Value);
+        writer.WriteNumber("stop_hysteresis_a", dispatch.StopHysteresis.Value);
+        WriteOptional(writer, "start_rank", dispatch.StartRank);
+        writer.WriteStartObject("contribution_a");
+        foreach (var (phase, current) in dispatch.Contribution.OrderBy(c => c.Key))
+        {
+            writer.WriteNumber(phase.ToString(), current.Value);
+        }
+
+        writer.WriteEndObject();
+        writer.WriteStartArray("in_flight_a");
+        foreach (var (key, current) in dispatch.InFlight.OrderBy(c => c.Key.Group?.Value, StringComparer.Ordinal).ThenBy(c => c.Key.Phase))
+        {
+            writer.WriteStartObject();
+            WriteKey(writer, key);
+            writer.WriteNumber("current_a", current.Value);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        WriteOptional(writer, "settling", dispatch.Settling is { } settling ? Snake(settling) : null);
+        if (dispatch.Verification is { } verification)
+        {
+            writer.WriteStartObject("verification");
+            writer.WriteNumber("expected", verification.Expected);
+            writer.WriteNumber("measured", verification.Measured);
+            writer.WriteString("unit", Snake(verification.Unit));
+            writer.WriteString("verdict", Snake(verification.Verdict));
+            writer.WriteEndObject();
+        }
+        else
+        {
+            writer.WriteNull("verification");
+        }
+
+        writer.WriteNumber("min_on_remaining_s", dispatch.MinOnRemaining.TotalSeconds);
+        writer.WriteNumber("min_off_remaining_s", dispatch.MinOffRemaining.TotalSeconds);
+        WriteOptional(writer, "deferred_since", dispatch.DeferredSince is { } since ? FormatTime(since) : null);
+        writer.WriteString("override", Snake(dispatch.Override));
+        writer.WriteEndObject();
+    }
+
+    private static void WriteKey(Utf8JsonWriter writer, ConstraintKey key)
+    {
+        WriteOptional(writer, "group", key.Group?.Value);
+        writer.WriteString("phase", key.Phase.ToString());
+    }
+
+    /// <summary>A device level: relay flags (null for a setpoint device), the setpoint in A and the stop actuator's enabled flag.</summary>
+    private static void WriteLevel(Utf8JsonWriter writer, string name, DeviceLevel? level)
+    {
+        if (level is null)
+        {
+            writer.WriteNull(name);
+            return;
+        }
+
+        writer.WriteStartObject(name);
+        if (level.Setpoint is null)
+        {
+            writer.WriteStartArray("relays");
+            foreach (var relay in level.Relays.IsDefault ? [] : level.Relays)
+            {
+                writer.WriteBooleanValue(relay);
+            }
+
+            writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteNull("relays");
+        }
+
+        WriteOptional(writer, "setpoint_a", level.Setpoint?.Value);
+        writer.WriteBoolean("enabled", level.Enabled);
+        writer.WriteEndObject();
+    }
+
+    private static DeviceLevel? Level(JsonElement element, string name)
+    {
+        var value = element.GetProperty(name);
+        if (value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Count() != 3)
+        {
+            throw new FormatException(name);
+        }
+
+        var setpoint = OptionalAmperes(value, "setpoint_a");
+        var enabled = Bool(value, "enabled");
+        if (setpoint is { } amps)
+        {
+            return IsNull(value, "relays") ? DeviceLevel.At(amps, enabled) : throw new FormatException($"{name}.relays");
+        }
+
+        var relays = Property(value, "relays", JsonValueKind.Array);
+        if (relays.GetArrayLength() is 0 or > MaxStages || !enabled)
+        {
+            throw new FormatException($"{name}.relays");
+        }
+
+        return DeviceLevel.Relay([.. relays.EnumerateArray().Select(r => r.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new FormatException($"{name}.relays"),
+        })]);
+    }
+
+    private static DispatchDecisionInputs Dispatch(JsonElement d)
+    {
+        if (d.ValueKind != JsonValueKind.Object)
+        {
+            throw new FormatException("inputs.dispatch");
+        }
+
+        var headroom = Property(d, "headroom", JsonValueKind.Array).EnumerateArray()
+            .Select(h => new ConstraintHeadroom(Key(h), OptionalAmperes(h, "envelope_a"), OptionalAmperes(h, "remaining_a")))
+            .ToImmutableArray();
+        var contribution = ImmutableDictionary.CreateBuilder<Phase, Amperes>();
+        foreach (var property in Property(d, "contribution_a", JsonValueKind.Object).EnumerateObject())
+        {
+            var phase = Enum.GetValues<Phase>().Single(p => p.ToString() == property.Name);
+            contribution.Add(phase, new Amperes(Finite(property.Value, "inputs.dispatch.contribution_a")));
+        }
+
+        var inFlight = ImmutableDictionary.CreateBuilder<ConstraintKey, Amperes>();
+        foreach (var entry in Property(d, "in_flight_a", JsonValueKind.Array).EnumerateArray())
+        {
+            inFlight.Add(Key(entry), new Amperes(Double(entry, "current_a")));
+        }
+
+        VerificationInputs? verification = null;
+        if (!IsNull(d, "verification"))
+        {
+            var v = Property(d, "verification", JsonValueKind.Object);
+            verification = new VerificationInputs(Double(v, "expected"), Double(v, "measured"), EnumValue<MeasureUnit>(v, "unit"), EnumValue<Verdict>(v, "verdict"));
+        }
+
+        return new DispatchDecisionInputs(
+            headroom,
+            new Amperes(Double(d, "start_hysteresis_a")),
+            new Amperes(Double(d, "stop_hysteresis_a")),
+            OptionalInt(d, "start_rank"),
+            contribution.ToImmutable(),
+            inFlight.ToImmutable(),
+            OptionalEnum<SettlingState>(d, "settling"),
+            verification,
+            Seconds(d, "min_on_remaining_s"),
+            Seconds(d, "min_off_remaining_s"),
+            OptionalString(d, "deferred_since") is { } since ? ParseTime(since) : null,
+            EnumValue<OverrideMode>(d, "override"));
+    }
+
+    private static ConstraintKey Key(JsonElement element) =>
+        new(
+            OptionalString(element, "group") is { } group ? GroupName.Parse(group) : null,
+            OptionalPhase(element, "phase") ?? throw new FormatException("phase"));
+
+    private static double Finite(JsonElement element, string path)
+    {
+        var value = element.ValueKind == JsonValueKind.Number ? element.GetDouble() : throw new FormatException(path);
+        return double.IsFinite(value) ? value : throw new FormatException(path);
+    }
+
+    private static DecisionInputs Inputs(JsonElement element, bool current)
+    {
+        DispatchDecisionInputs? dispatch = null;
         PhaseDecisionInputs? phase = null;
         DeviceDecisionInputs? device = null;
         ModeDecisionInputs? mode = null;
@@ -223,12 +431,15 @@ public static class DecisionJson
                 case "safe_state_cause" when cause is null:
                     cause = Parse<SafeStateCause>(property.Value.GetString());
                     break;
+                case "dispatch" when dispatch is null && current:
+                    dispatch = Dispatch(property.Value);
+                    break;
                 default:
                     throw new FormatException($"inputs.{property.Name}");
             }
         }
 
-        return new DecisionInputs(phase, device, mode, killSwitch, cause);
+        return new DecisionInputs(phase, device, mode, killSwitch, cause, dispatch);
     }
 
     private static string Write(Action<Utf8JsonWriter> write)

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
@@ -21,6 +22,7 @@ internal sealed class GuardService(
     RuntimeStateCoordinator state,
     JsonlDecisionLog log,
     KillSwitchState killSwitch,
+    DeviceOverrides overrides,
     GuardStatusHolder status,
     IModeSource mode,
     IOptions<PersistenceOptions> options,
@@ -42,13 +44,15 @@ internal sealed class GuardService(
         log.Start();
         var loaded = state.Loaded;
         state.Attach(runner, killSwitch);
+        state.Attach(overrides);
         runner.Restore(loaded.State.GuardMemory);
         killSwitch.Restore(loaded.State.KillSwitch, loaded.State.KillSwitchChangedAt);
+        overrides.Restore(loaded.State.Overrides);
         status.Published += OnPublished;
 
         var current = mode.Current;
         logger.LogInformation(
-            "Guard starting in {Effective} mode (option {Ceiling}); it commands nothing in this version. state.json: {State}, previous stop {Stop}",
+            "Guard and dispatch starting in {Effective} mode (option {Ceiling}); decisions are computed and logged, nothing is switched in this version. state.json: {State}, previous stop {Stop}",
             current.Effective,
             current.Ceiling,
             loaded.Status,

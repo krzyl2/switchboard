@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { REASON_CODES, SAFE_STATE_CAUSES, parseDecisionsPage } from './decisions';
+import { DECISION_ACTIONS, DECISION_ORIGINS, MODE_NOTES, REASON_CODES, SAFE_STATE_CAUSES, parseDecisionsPage } from './decisions';
 import sample from './decisions.sample.json';
 
 // The sample has the keys GET api/decisions really writes (GuardSpaContractTests compares them).
+/** The first sample item with this action. */
+function at(p: any, action: string): any {
+  return p.items.find((d: any) => d.action === action);
+}
+
 function payload(change?: (p: any) => void): unknown {
   const copy = JSON.parse(JSON.stringify(sample));
   change?.(copy);
@@ -41,7 +46,12 @@ describe('parseDecisionsPage', () => {
     ['an overridden rule outside the list', (p: any) => (p.items[0].overridden = 'lockout')],
     ['a refusal outside the list', (p: any) => (p.items[0].refusedBy = 'shadow')],
     ['an unknown action', (p: any) => (p.items[0].action = 'turn_off')],
-    ['an unknown scope', (p: any) => (p.items[0].scope = 'group')],
+    ['an unknown scope', (p: any) => (p.items[0].scope = 'circuit')],
+    ['an unknown origin', (p: any) => (p.items[0].origin = 'planner')],
+    ['an unknown settling state in the dispatch inputs', (p: any) => (at(p, 'switch_on').inputs.dispatch.settling = 'pending')],
+    ['an unknown verdict in the dispatch inputs', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.verification.verdict = 'ok')],
+    ['an unknown unit in the dispatch inputs', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.verification.unit = 'W')],
+    ['an unknown override in the dispatch inputs', (p: any) => (at(p, 'switch_on').inputs.dispatch.override = 'manual')],
     ['an unknown mode', (p: any) => (p.items[0].mode = 'Shadow')],
     ['an unknown tier reaction in the inputs', (p: any) => (p.items[0].inputs.phase.reaction = 'shed')],
     ['an unknown kill switch source in the inputs', (p: any) => (p.items[0].inputs.killSwitch = 'ui')],
@@ -57,6 +67,13 @@ describe('parseDecisionsPage', () => {
     ['a missing cursor key', () => payload((p) => delete p.next)],
     ['a missing input part', () => payload((p) => delete p.items[0].inputs.mode)],
     ['a missing safe-state cause key', () => payload((p) => delete p.items[0].inputs.safeStateCause)],
+    ['a missing dispatch input key', () => payload((p) => delete p.items[0].inputs.dispatch)],
+    ['a missing target key', () => payload((p) => delete p.items[0].target)],
+    ['a group decision without its group', () => payload((p) => Object.assign(p.items[0], { scope: 'group', group: null }))],
+    // A target is relays or a setpoint, exactly one of them.
+    ['a target with relays and a setpoint', () => payload((p) => (at(p, 'switch_on').target.setpointA = 6))],
+    ['a target with neither', () => payload((p) => (at(p, 'set_setpoint').target.setpointA = null))],
+    ['a start rank of zero in the dispatch inputs', () => payload((p) => (at(p, 'switch_on').inputs.dispatch.startRank = 0))],
     ['a device decision without its device', () => payload((p) => (p.items[0].device = null))],
     ['a phase decision without its phase', () => payload((p) => Object.assign(p.items[0], { scope: 'phase', phase: null }))],
     ['valid phase data that names a reason', () => payload((p) => (p.items[0].inputs.phase.invalidReason = 'current_stale'))],
@@ -66,5 +83,47 @@ describe('parseDecisionsPage', () => {
     ['a time that is not one', () => payload((p) => (p.items[0].at = 'today'))],
   ])('rejects %s', (_case, make) => {
     expect(() => parseDecisionsPage(make())).toThrow();
+  });
+});
+
+// Decision log format 2 (Stage 3): who decided, the group, the target, and dispatch's inputs.
+describe('parseDecisionsPage, dispatch decisions', () => {
+  it.each(DECISION_ACTIONS)('accepts the action %s', (action) => {
+    expect(parseDecisionsPage(payload((p) => (p.items[0].action = action))).items[0]?.action).toBe(action);
+  });
+
+  it.each(DECISION_ORIGINS)('accepts the origin %s', (origin) => {
+    expect(parseDecisionsPage(payload((p) => (p.items[0].origin = origin))).items[0]?.origin).toBe(origin);
+  });
+
+  it('keeps the target and the inputs dispatch decided from', () => {
+    const items = parseDecisionsPage(payload()).items;
+    const start = items.find((d) => d.action === 'switch_on');
+    const unresponsive = items.find((d) => d.action === 'marked_unresponsive');
+    const forced = items.find((d) => d.action === 'set_setpoint');
+
+    expect(start).toMatchObject({ origin: 'dispatch', target: { relays: [true], setpointA: null, enabled: true }, refusedBy: 'mode_shadow' });
+    expect(start?.inputs.dispatch?.headroom).toEqual([{ group: null, phase: 'L2', envelopeA: 8.6, remainingA: 8.6 }]);
+    expect(start?.inputs.dispatch?.settling).toBe('open');
+    expect(unresponsive?.inputs.dispatch?.verification).toEqual({ expected: 1700, measured: 12, unit: 'watts', verdict: 'mismatch' });
+    expect(forced).toMatchObject({ origin: 'override', group: 'carport', target: { relays: null, setpointA: 6 } });
+    expect(forced?.inputs.dispatch?.override).toBe('force_off');
+    expect(forced?.inputs.dispatch?.inFlight).toContainEqual({ group: 'carport', phase: 'L1', currentA: 0 });
+  });
+
+  it('accepts a group decision that names its group', () => {
+    const parsed = parseDecisionsPage(payload((p) => Object.assign(p.items[3], { scope: 'group', group: 'carport' })));
+
+    expect(parsed.items[3]).toMatchObject({ scope: 'group', group: 'carport' });
+  });
+
+  // 0.3.x wrote active_unavailable_before_stage3; its lines stay in the log for the retention period
+  // and must still read, or the whole decision list would turn "unavailable" after an update.
+  it.each(MODE_NOTES)('accepts the mode note %s, the 0.3.x one included', (note) => {
+    const parsed = parseDecisionsPage(
+      payload((p) => (at(p, 'mode_resolved').inputs.mode = { ceiling: 'active', uiChoice: 'active', note })),
+    );
+
+    expect(parsed.items.find((d) => d.action === 'mode_resolved')?.inputs.mode?.note).toBe(note);
   });
 });

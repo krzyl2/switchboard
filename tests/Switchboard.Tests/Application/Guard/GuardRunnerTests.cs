@@ -31,7 +31,7 @@ public sealed class GuardRunnerTests
 
         var mode = Assert.Single(h.Recorder.Decisions, d => d.Action == DecisionAction.ModeResolved);
         Assert.Equal((DecisionScope.System, ReasonCode.ModeShadow, OperatingMode.Shadow), (mode.Scope, mode.Reason, mode.Mode));
-        Assert.Equal(new ModeDecisionInputs(OperatingMode.Active, OperatingMode.Active, ModeNote.ActiveUnavailableBeforeStage3), mode.Inputs.Mode);
+        Assert.Equal(new ModeDecisionInputs(OperatingMode.Active, OperatingMode.Active, ModeNote.ActiveNotEnabled), mode.Inputs.Mode);
         Assert.Equal(OperatingMode.Shadow, h.Status.Current.Mode.Effective);
     }
 
@@ -135,24 +135,11 @@ public sealed class GuardRunnerTests
             [],
             []), now);
         var holder = new SignalSnapshotHolder(new SignalDiagnostics(store.Snapshot(now), store.ConfigurationResult, [], []));
-        var inbox = new GuardInbox();
         var lockouts = new LockoutClocks();
         lockouts.Observe(Switchboard.Application.Configuration.ProtectionSetupFactory.Build(store.ConfigurationResult!.Configuration!), [], now - TimeSpan.FromHours(1));
-        var mode = new ModeState(OperatingMode.Shadow, OperatingMode.Shadow);
-        var status = new GuardStatusHolder(GuardStatus.Initial(now, mode.Current), NullLogger<GuardStatusHolder>.Instance);
-        var recorder = new RecordingDecisionRecorder();
-        var runner = new GuardRunner(
-            inbox,
-            holder,
-            clock,
-            new GuardEngine(lockouts, NullLogger<GuardEngine>.Instance),
-            new EffectorGate(lockouts, new DecisionIdGenerator("boot2"), NullLogger<EffectorGate>.Instance),
-            lockouts,
-            recorder,
-            status,
-            mode,
-            new KillSwitchState(inbox, clock, NullLogger<KillSwitchState>.Instance),
-            NullLogger<GuardRunner>.Instance);
+        var loop = new ControlLoop(holder, clock, new ModeState(OperatingMode.Shadow, OperatingMode.Shadow), "boot2", lockouts: lockouts);
+        var status = loop.Status;
+        var runner = loop.Runner;
         var shed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         status.Published += (_, s) =>
         {

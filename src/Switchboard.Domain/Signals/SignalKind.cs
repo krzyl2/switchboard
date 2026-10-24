@@ -57,4 +57,26 @@ public enum SignalRole
     /// under <c>signals:</c>): a relay's on/off, or a modulating device's setpoint.
     /// </summary>
     DeviceState,
+
+    /// <summary>A device's own measured current on one phase (its declared draw), created from <c>devices:</c>.</summary>
+    DeviceCurrent,
+
+    /// <summary>A device's own measured power on one phase (its declared draw), created from <c>devices:</c>.</summary>
+    DevicePower,
+
+    /// <summary>A circuit group's sub-meter current on one phase, created from <c>circuit_groups:</c>.</summary>
+    GroupCurrent,
+}
+
+/// <summary>
+/// How a signal's freshness is judged. Every measurement is fresh only within its max_age of the
+/// last report (SIG-05). A device state may instead be declared to report only on change (a
+/// Modbus relay): it is then fresh while it is available, with no age limit.
+/// </summary>
+public enum StateFreshness
+{
+    Age,
+
+    /// <summary>Fresh while the state is neither unavailable nor unknown, the entity exists and the source is connected.</summary>
+    OnChange,
 }

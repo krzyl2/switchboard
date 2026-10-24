@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Signals;
 using Switchboard.Host.Hosting;
 using Switchboard.Tests.Support;
 
@@ -51,8 +52,8 @@ public sealed class GuardEndpointTests
         Assert.Equal(["writable", "lastError", "dropped"], Names(body.GetProperty("decisionLog")));
         Assert.Equal(["status", "warning"], Names(body.GetProperty("stateFile")));
         var decision = body.GetProperty("decisions")[0];
-        Assert.Equal(["id", "at", "scope", "device", "stage", "phase", "action", "reason", "overridden", "mode", "commanded", "refusedBy", "inputs"], Names(decision));
-        Assert.Equal(["phase", "device", "mode", "killSwitch", "safeStateCause"], Names(decision.GetProperty("inputs")));
+        Assert.Equal(["id", "at", "scope", "device", "stage", "phase", "action", "reason", "overridden", "mode", "commanded", "refusedBy", "origin", "group", "target", "inputs"], Names(decision));
+        Assert.Equal(["phase", "device", "mode", "killSwitch", "safeStateCause", "dispatch"], Names(decision.GetProperty("inputs")));
     }
 
     [Fact]
@@ -109,6 +110,29 @@ public sealed class GuardEndpointTests
 
         Assert.Equal("unsafe", heater.GetProperty("guardState").GetString());
         Assert.Contains("grid_current_l2", heater.GetProperty("unsafeSignals").EnumerateArray().Select(s => s.GetString()));
+    }
+
+    [Fact]
+    public async Task A_stale_draw_is_never_named_as_making_its_device_unsafe()
+    {
+        // The charger's own draw has not reported: it is not trusted for relief or increases, but
+        // it holds nothing off, so the charger stays allowed and the draw is not among the signals
+        // that make it unsafe (the published copy must match the behaviour).
+        using var root = new TempWebRoot();
+        using var factory = new SwitchboardHostFactory(root.Path);
+        _ = factory.Server;
+        var harness = new GuardRunnerHarness(TestDevices.Document(TestDevices.ReferenceWithChargerDraw));
+        harness.PushReference(l1: 8);
+        harness.Runner.Step();
+        factory.Services.GetRequiredService<SignalSnapshotHolder>().Publish(harness.Holder.Current);
+        factory.Services.GetRequiredService<GuardStatusHolder>().Publish(harness.Status.Current);
+        Assert.Contains(harness.Holder.Current.Snapshot.Signals, s => s.Name?.Value == "device_ev_charger_current" && s.State != SignalState.Fresh);
+
+        using var json = JsonDocument.Parse((await SendAsync(factory, "GET", "/api/guard")).Response.Body);
+        var charger = json.RootElement.GetProperty("devices").EnumerateArray().Single(d => d.GetProperty("id").GetString() == "ev_charger");
+
+        Assert.Equal("allowed", charger.GetProperty("guardState").GetString());
+        Assert.Empty(charger.GetProperty("unsafeSignals").EnumerateArray());
     }
 
     [Theory]

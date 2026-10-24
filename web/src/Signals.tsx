@@ -293,9 +293,12 @@ function DirectionCell({ direction, t }: { direction: Direction | null; t: Messa
   );
 }
 
-// SIG-05: while a signal is not fresh, every device that depends on it is unsafe (held off, counted as on).
+// SIG-05: while a signal is not fresh, every device that depends on it is unsafe (held off). A
+// device's own draw is the exception: stale, it is no longer trusted (no relief, no increases), but
+// nothing is held off because of it.
 function DependentsCell({ signal, t }: { signal: Signal; t: Messages }) {
   if (signal.dependentDevices.length === 0) return <td>{NO_VALUE}</td>;
+  const draw = signal.role === 'device_current' || signal.role === 'device_power';
   return (
     <td>
       {signal.dependentDevices.map((device) => (
@@ -305,7 +308,7 @@ function DependentsCell({ signal, t }: { signal: Signal; t: Messages }) {
       ))}
       {signal.state !== 'fresh' && signal.state !== 'unmapped' && (
         <span class="sub">
-          <StateLabel tone="crit" label={t.dependentsUnsafe} />
+          {draw ? <StateLabel tone="warn" label={t.dependentsUntrusted} /> : <StateLabel tone="crit" label={t.dependentsUnsafe} />}
         </span>
       )}
     </td>

@@ -51,8 +51,12 @@ export const ISSUE_CODES = [
   'state_entity_domain_not_allowed',
   'duplicate_actuator',
   'modulating_range_invalid',
+  'sensor_domain_required',
+  'rotation_group_mismatch',
+  'unknown_circuit_group',
   'reserved_key_ignored',
   'direction_unavailable_cautious',
+  'group_rating_above_main',
   'max_age_short_for_probe',
 ] as const;
 export const TOPOLOGIES = ['three_phase', 'three_phase_summed', 'single_phase'] as const;
@@ -80,6 +84,9 @@ export const SIGNAL_ROLES = [
   'total_current',
   'total_power',
   'device_state',
+  'device_current',
+  'device_power',
+  'group_current',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [

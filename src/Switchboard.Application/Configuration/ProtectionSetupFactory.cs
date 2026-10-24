@@ -38,6 +38,33 @@ public static class ProtectionSetupFactory
             maxAge,
             control.Budget,
             new GuardTiming(control.Dispatch.Cycle, control.Dispatch.PersistenceDownCycles, control.Dispatch.PersistenceUpCycles, control.Dispatch.MaxStepChangeStages),
-            [.. configuration.Devices.Select(d => d.ToSpec())]);
+            [.. configuration.Devices.Select(d => d.ToSpec())])
+        {
+            Groups = [.. configuration.Groups.Select(g => Group(g, configuration, maxAge))],
+        };
+    }
+
+    /// <summary>
+    /// A circuit group through the same breaker model as the main breaker: its own rating and
+    /// characteristic, the shipped tier table and continuous multiple of that characteristic (inside
+    /// the same safety envelope), its reserve converted at the nominal voltage. An estimated group's
+    /// current is recomputed with each main-meter sample, so it ages with the main phase current.
+    /// </summary>
+    private static CircuitGroupSpec Group(CircuitGroupDefinition group, SwitchboardConfiguration configuration, ImmutableDictionary<Phase, TimeSpan> mainMaxAge)
+    {
+        var control = configuration.Control;
+        var breaker = new BreakerProfile(
+            group.BreakerRating,
+            group.Characteristic,
+            control.Breaker.ContinuousMultiple[group.Characteristic],
+            control.Breaker.Tiers[group.Characteristic]);
+        return new CircuitGroupSpec(
+            group.Id,
+            breaker,
+            group.Phases,
+            group.Phases.ToImmutableDictionary(p => p, p => SignalUnits.CurrentAt(group.Reserve[p], configuration.Connection.Voltage)),
+            group.Phases.ToImmutableDictionary(p => p, p => group.CurrentMaxAge ?? mainMaxAge[p]),
+            !group.Current.IsEmpty,
+            group.Members);
     }
 }

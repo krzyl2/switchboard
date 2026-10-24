@@ -17,6 +17,12 @@ export function formatAge(seconds: number, lang: Lang): string {
   return `${whole(seconds / HOUR_S)} h`;
 }
 
+/** A countdown as a clock shows it, "4:12" (minutes:seconds, rounded up so it reaches 0:00 at expiry). */
+export function formatCountdown(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(total / MINUTE_S)}:${String(total % MINUTE_S).padStart(2, '0')}`;
+}
+
 /** A detected refresh interval keeps one decimal: a 2.5 s charger is not a 2 s one. */
 export function formatInterval(seconds: number, lang: Lang): string {
   return seconds < SECONDS_UP_TO_S ? `${formatNumber(seconds, lang, 1)} s` : formatAge(seconds, lang);

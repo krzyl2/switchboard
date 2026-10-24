@@ -1,6 +1,9 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.State;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -87,6 +90,54 @@ public sealed class RuntimeStateCoordinatorTests
         await coordinator.FlushAsync(CancellationToken.None);
         Assert.Equal(2, _store.Saved.Count);
         Assert.Equal(1 - (10.0 / 180), _store.Saved[^1].Budgets[Phase.L1].Budget, 9);
+    }
+
+    [Fact]
+    public async Task Circuit_group_budget_drop_or_crossing_is_written_at_once()
+    {
+        // CONN-03 groups use the main breaker's model, so they get its crash bound too: a group
+        // budget that drops by StateBudgetSaveStep or crosses a threshold is written in the same
+        // step (an unclean restart must not restore the fuller budget of before the overload),
+        // even while every main budget is unchanged. Smaller drifts wait for the save interval.
+        var coordinator = Coordinator();
+        Step(coordinator);
+        await coordinator.FlushAsync(CancellationToken.None);
+        var main = _scenario.Engine.Export().Budgets;
+        var stop = _scenario.Setup.Budget.StopIncreasesBelow;
+
+        GroupStep(coordinator, main, stop + 0.02);
+        await coordinator.FlushAsync(CancellationToken.None);
+        Assert.Equal(2, _store.Saved.Count);
+
+        GroupStep(coordinator, main, stop - 0.01);
+        await coordinator.FlushAsync(CancellationToken.None);
+        Assert.Equal(3, _store.Saved.Count);
+        Assert.Equal(stop - 0.01, _store.Saved[^1].GroupBudgets[GroupName.Parse("carport")][Phase.L1].Budget, 9);
+        Assert.Equal(main, _store.Saved[^1].Budgets);
+
+        GroupStep(coordinator, main, stop - 0.03);
+        await coordinator.FlushAsync(CancellationToken.None);
+        Assert.Equal(3, _store.Saved.Count);
+    }
+
+    [Fact]
+    public async Task An_older_override_snapshot_arriving_late_never_overwrites_a_newer_one()
+    {
+        // The MQTT select and the API set overrides on different threads; their notifications may
+        // arrive out of order. The newer set is what holds in memory, so it is what must be saved.
+        var coordinator = Coordinator();
+        var at = _scenario.Now;
+        var older = new OverrideSnapshot(5, ImmutableDictionary<DeviceName, DeviceOverride>.Empty
+            .Add(DeviceName.Parse("heater_l2"), new DeviceOverride(OverrideMode.ForceOff, at, OverrideSource.Mqtt)));
+        var newer = new OverrideSnapshot(6, older.Devices
+            .Add(DeviceName.Parse("ev_charger"), new DeviceOverride(OverrideMode.ForceOn, at, OverrideSource.Api)));
+
+        coordinator.OnOverridesChanged(newer);
+        coordinator.OnOverridesChanged(older);
+        await coordinator.FlushAsync(CancellationToken.None);
+
+        Assert.Equal(newer.Devices, coordinator.Current.Overrides);
+        Assert.Equal(newer.Devices, _store.Saved[^1].Overrides);
     }
 
     [Fact]
@@ -196,6 +247,13 @@ public sealed class RuntimeStateCoordinatorTests
 
         coordinator.OnStepped(new GuardStep(_scenario.Last, [], _scenario.Engine.Export()));
     }
+
+    private void GroupStep(RuntimeStateCoordinator coordinator, ImmutableDictionary<Phase, BudgetMemory> main, double budget) =>
+        coordinator.OnStepped(new GuardStep(_scenario.Last, [], new GuardMemory(main, false)
+        {
+            GroupBudgets = ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>>.Empty
+                .Add(GroupName.Parse("carport"), ImmutableDictionary<Phase, BudgetMemory>.Empty.Add(Phase.L1, new BudgetMemory(budget, _scenario.Now))),
+        }));
 
     /// <summary>Keeps every saved state; can fail like a full disk.</summary>
     private sealed class MemoryStateStore : IRuntimeStateStore

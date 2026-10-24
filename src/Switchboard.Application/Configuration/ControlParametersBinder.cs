@@ -32,7 +32,11 @@ internal static class ControlParametersBinder
             ["onoff"] = DeviceType.OnOff,
             ["stepped"] = DeviceType.Stepped,
             ["modulating"] = DeviceType.Modulating,
+            ["storage"] = DeviceType.Storage,
         }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    // Schema bound, not a control parameter: more mismatches than this before acting is a typo.
+    private const int MaxMismatchLimit = 100;
 
     private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics =
         new Dictionary<string, BreakerCharacteristic>
@@ -114,7 +118,30 @@ internal static class ControlParametersBinder
                 "The start threshold must be strictly higher than the stop threshold.");
         }
 
-        var settling = new SettlingParameters(root.Child("settling").PositiveDuration("hard_timeout") ?? TimeSpan.Zero);
+        var settlingSection = root.Child("settling");
+        var settling = new SettlingParameters(
+            settlingSection.PositiveDuration("hard_timeout") ?? TimeSpan.Zero,
+            settlingSection.Number("verification_tolerance", new Range(0, 1, MinExclusive: true)) ?? 0,
+            settlingSection.Number("verification_sigma_multiplier", Range.AtLeast(0)) ?? 0,
+            settlingSection.Integer("mismatch_limit", 1, MaxMismatchLimit) ?? 0,
+            settlingSection.PositiveDuration("unresponsive_retry_after") ?? TimeSpan.Zero);
+        if (settling.UnresponsiveRetryAfter < settling.HardTimeout)
+        {
+            // A probe before the previous window could even time out would judge nothing.
+            issues.Error(
+                ConfigurationIssueCodes.OutOfRange,
+                ConfigRead.Join(settlingSection.Path, "unresponsive_retry_after"),
+                settlingSection.Node("unresponsive_retry_after"),
+                "unresponsive_retry_after must be at least hard_timeout.");
+        }
+
+        var foreignSection = root.Child("foreign_load");
+        var foreignLoad = new ForeignLoadParameters(
+            foreignSection.PositiveDuration("baseline_time_constant") ?? TimeSpan.Zero,
+            new Watts(foreignSection.Number("step_threshold_w", Range.Above(0)) ?? 0),
+            foreignSection.Number("rearm_fraction", new Range(0, 1, MinExclusive: true, MaxExclusive: true)) ?? 0);
+
+        var circuitGroups = new CircuitGroupDefaults(new Watts(root.Child("circuit_groups").Number("default_reserve_w", Range.AtLeast(0)) ?? 0));
 
         var signals = root.Child("signals");
         var sigma = signals.Child("default_sigma");
@@ -193,7 +220,8 @@ internal static class ControlParametersBinder
                 .Where(t => t.Time is not null)
                 .ToImmutableDictionary(t => t.Value, t => t.Time!.Value),
             modulatingLockout.NonNegativeDuration("min_on") ?? TimeSpan.Zero,
-            modulatingLockout.NonNegativeDuration("min_off") ?? TimeSpan.Zero);
+            modulatingLockout.NonNegativeDuration("min_off") ?? TimeSpan.Zero,
+            devices.PositiveDuration("draw_max_age") ?? TimeSpan.Zero);
         if (maxAgeLimit > TimeSpan.Zero && deviceDefaults.StateMaxAge > maxAgeLimit)
         {
             issues.Error(
@@ -201,6 +229,15 @@ internal static class ControlParametersBinder
                 ConfigRead.Join(devices.Path, "state_max_age"),
                 devices.Node("state_max_age"),
                 "state_max_age may not exceed signals.max_age_limit: a frozen device state counts as fresh for its whole max_age.");
+        }
+
+        if (maxAgeLimit > TimeSpan.Zero && deviceDefaults.DrawMaxAge > maxAgeLimit)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.OutOfRange,
+                ConfigRead.Join(devices.Path, "draw_max_age"),
+                devices.Node("draw_max_age"),
+                "draw_max_age may not exceed signals.max_age_limit: a frozen draw counts as fresh for its whole max_age.");
         }
 
         var decisionLog = new DecisionLogParameters(root.Child("decision_log").Integer("retention_days", 1, MaxRetentionDays) ?? 0);
@@ -250,7 +287,9 @@ internal static class ControlParametersBinder
             reserveParameters,
             deviceDefaults,
             decisionLog,
-            envelope);
+            envelope,
+            foreignLoad,
+            circuitGroups);
     }
 
     private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)

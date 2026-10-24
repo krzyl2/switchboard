@@ -10,9 +10,10 @@ using Switchboard.Domain.Signals;
 namespace Switchboard.Tests.Support;
 
 /// <summary>
-/// The guard as production wires it: the real signal store publishes snapshots into a holder, the
-/// guard runner reads them through the protection port, the effector gate and a recording decision
-/// recorder take the result. Steps are explicit on a steppable virtual clock.
+/// The control loop as production wires it: the real signal store publishes snapshots into a
+/// holder, the guard runner reads them through the control port, runs guard, dispatch and the
+/// effector gate, and a recording decision recorder takes the result. Steps are explicit on a
+/// steppable virtual clock.
 /// </summary>
 internal sealed class GuardRunnerHarness
 {
@@ -25,13 +26,10 @@ internal sealed class GuardRunnerHarness
         Store.ApplyConfiguration(Configuration, Now);
         Store.ApplySourceStatus(SignalSourceStatus.Connected);
         Holder = new SignalSnapshotHolder(new SignalDiagnostics(Store.Snapshot(Now), null, [], []));
-        Mode = new ModeState(ceiling, uiChoice);
-        KillSwitch = new KillSwitchState(Inbox, clock, NullLogger<KillSwitchState>.Instance);
-        Engine = new GuardEngine(Lockouts, NullLogger<GuardEngine>.Instance);
-        Gate = new EffectorGate(Lockouts, new DecisionIdGenerator("boot1"), NullLogger<EffectorGate>.Instance);
-        Status = new GuardStatusHolder(GuardStatus.Initial(Now, Mode.Current), NullLogger<GuardStatusHolder>.Instance);
-        Runner = new GuardRunner(Inbox, Holder, clock, Engine, Gate, Lockouts, Recorder, Status, Mode, KillSwitch, NullLogger<GuardRunner>.Instance);
+        Loop = new ControlLoop(Holder, clock, new ModeState(ceiling, uiChoice), "boot1");
     }
+
+    public ControlLoop Loop { get; }
 
     public SteppableTime Time { get; }
 
@@ -43,23 +41,23 @@ internal sealed class GuardRunnerHarness
 
     public SignalSnapshotHolder Holder { get; }
 
-    public GuardInbox Inbox { get; } = new();
+    public GuardInbox Inbox => Loop.Inbox;
 
-    public ModeState Mode { get; }
+    public IModeSource Mode => Loop.Mode;
 
-    public KillSwitchState KillSwitch { get; }
+    public KillSwitchState KillSwitch => Loop.KillSwitch;
 
-    public LockoutClocks Lockouts { get; } = new();
+    public LockoutClocks Lockouts => Loop.Lockouts;
 
-    public GuardEngine Engine { get; }
+    public GuardEngine Engine => Loop.Engine;
 
-    public EffectorGate Gate { get; }
+    public EffectorGate Gate => Loop.Gate;
 
-    public GuardStatusHolder Status { get; }
+    public GuardStatusHolder Status => Loop.Status;
 
-    public RecordingDecisionRecorder Recorder { get; } = new();
+    public RecordingDecisionRecorder Recorder => Loop.Recorder;
 
-    public GuardRunner Runner { get; }
+    public GuardRunner Runner => Loop.Runner;
 
     /// <summary>Pushes states as Home Assistant would (reported now) and publishes one store cycle.</summary>
     public void Push(params (string Entity, string State, string? Unit)[] states)

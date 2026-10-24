@@ -2,6 +2,35 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0
+
+Dispatch, in shadow mode only. Switchboard now also works out which device it would start, raise, lower or stop to use the headroom the guard leaves, and records it, but it **still switches nothing**: dispatch decisions are computed and logged, no command is sent to any device, whatever the `mode` option says (with `active` it stays in shadow mode and says that commanding is not enabled). Not a protective device; your breakers remain the protection.
+
+### Added
+
+- Dispatch: per phase it fills the headroom up to the reserve threshold, worth the most per kWh first (the reverse of the shed order), with separate start and stop thresholds, six calm cycles before a start, one increase in flight at a time, one stage per cycle, and relay lockouts. A change a lockout refuses is recorded once as deferred; a reduction is carried out when the lockout ends, a start or increase at the next cycle if the guard still allows it. After each change it waits for the meter to report again (settling window, at most 90 s) before the next increase. For every device it keeps what it would have it at next to what Home Assistant reports, and records an intention only when it changes. Devices the guard held off (safe state, kill switch, overload) are brought back as recorded starts, most valuable first, one at a time.
+- Effector verification: when someone else switches a device, the meter's (or the device's own) measured step is recorded next to the expected one; in shadow mode nothing of Switchboard's is verified, because nothing was applied.
+- Foreign load events: power that appears on a phase without a change of Switchboard's.
+- Device type `storage` (a battery's charging current; only charging is ever planned, a battery discharging on its own is left alone, and a planned charge is budgeted including the discharge it ends) and new device keys: `draw` (the device's own current and/or power sensor), `state_reports: on_change` (a relay that Home Assistant reports only when it changes), `stop_actuator` (a switch that stops a modulating device), `rotation_group` (identical elements on different phases, started on the phase with the most headroom first) and `circuit_group`.
+- `circuit_groups:` in `switchboard.yaml`: a downstream breaker with its own rating, tier table and overload budget, enforced alongside the main limit on its members only. An optional sub-meter must never read negative; a negative reading holds the members off.
+- Manual override per device (force on, force off, automatic) on the Limits page and as `select.switchboard_device_<id>_override`; it outranks dispatch, never protection, and survives a restart.
+- `sensor.switchboard_device_<id>_dispatch`: what Switchboard would have the device at, with the reported state, reason, deferral, settling window and override as attributes.
+- The **Signals** page lists each device's own draw signals; while one is not fresh its device is shown as *not trusted* (no relief, no increases). A stale draw holds nothing off.
+- The Limits page shows dispatch: the headroom it works with per phase, and per device the intended state next to the reported one, what it waits for, the override and the last check of a change.
+
+### Changed
+
+- How much a reduction relieves is counted only where it can be real: never more than a device's measured draw, nothing for a setpoint without a draw (a charger at 20 A that draws nothing relieves nothing), a relay's rating only while it reports on. In 0.3.x an idle charger's setpoint could hide a later overload from the guard.
+- A modulating device without a stop actuator no longer takes a shed step that could not happen, and a device whose own draw shows it relieves nothing (an idle charger at a high setpoint) is shed only after the devices that really draw; the next real candidate is shed instead.
+- "Nothing to reduce: the phase is exporting" is recorded once per export episode.
+- `sensor.switchboard_last_decision` shows `kill_switch_disengaged` or `safe_state_exited` when a kill switch or a safe state ends, instead of the reason of the condition that ended.
+- The decision log records who decided (guard, dispatch or override), the circuit group and the intended level; lines written by 0.3.x stay readable.
+- The example configuration declares each heater element on the meter phase its switching moves in the recorded history, the heaters as `on_change` in a rotation group (instead of `state_max_age: 24h`) rated 7.0 A / 1700 W as measured, and the charger's own draw.
+
+### Downgrade
+
+- Going back to 0.3.x keeps `state.json` as long as no override is set, no circuit group is declared and no storage device was discharging when it was last saved; otherwise 0.3.x sets it aside as damaged and starts with full overload budgets and the kill switch off.
+
 ## 0.3.1
 
 Still shadow only; controls nothing.

@@ -31,6 +31,13 @@ public sealed record CurrentReading(
 
 public sealed record PhaseProtection(Phase Phase, bool DataValid, ProtectionInvalidReason? InvalidReason, CurrentReading? Current);
 
+/// <summary>
+/// One phase of a circuit group (CONN-03). A sub-metered group carries its own current reading; an
+/// estimated one (<see cref="Estimated"/>) carries none, and the guard derives its worst-case
+/// current from the members' states and draws in the same snapshot.
+/// </summary>
+public sealed record GroupProtection(GroupName Group, Phase Phase, bool DataValid, ProtectionInvalidReason? InvalidReason, CurrentReading? Current, bool Estimated);
+
 /// <summary>The summed current of the three_phase_summed topology.</summary>
 public sealed record TotalProtection(bool DataValid, ProtectionInvalidReason? InvalidReason, CurrentReading? Current);
 
@@ -62,6 +69,12 @@ public sealed record ProtectionInputs(
     ImmutableArray<DeviceStateSample> DeviceStates,
     SetupAbsence? SetupAbsence)
 {
+    /// <summary>The declared draw currents of devices, per phase (a stale draw carries no value and is never relief).</summary>
+    public ImmutableArray<DeviceDrawSample> DeviceDraws { get; init; } = [];
+
+    /// <summary>The phases of every declared circuit group.</summary>
+    public ImmutableArray<GroupProtection> Groups { get; init; } = [];
+
     public PhaseProtection? For(Phase phase) => Phases.FirstOrDefault(p => p.Phase == phase);
 
     public bool IsDataValid(Phase phase) => For(phase) is { DataValid: true };

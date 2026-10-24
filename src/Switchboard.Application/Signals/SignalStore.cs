@@ -3,6 +3,7 @@ using System.Globalization;
 using Switchboard.Application.Configuration;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -16,8 +17,10 @@ public sealed record SignalStoreSettings(TimeSpan ProbeLatencyAllowance);
 /// The signal mapping layer's state machine: the only place where entity IDs meet logical signals
 /// (SIG-01). Normalizes units and signs (SIG-02), resolves direction (SIG-03), keeps freshness from
 /// report times (SIG-05, SIG-06), detects refresh intervals (SIG-07), derives per-phase house load
-/// (SIG-08) and runs the balance check (SIG-09). Deterministic: it never reads a clock, every call
-/// is handed <c>now</c>, and it is driven by exactly one reader.
+/// (SIG-08) and runs the balance check (SIG-09). It also reads the devices' applied states (a
+/// state declared on_change is fresh while available, with no age limit), their declared draws and
+/// the circuit groups' sub-meters. Deterministic: it never reads a clock, every call is handed
+/// <c>now</c>, and it is driven by exactly one reader.
 /// </summary>
 public sealed class SignalStore
 {
@@ -31,8 +34,12 @@ public sealed class SignalStore
     private Dictionary<SignalName, SignalRuntime> _byName = [];
     private ImmutableArray<TrackedEntity> _tracked = [];
     private ProtectionSetup? _setup;
+    private DispatchSetup? _dispatchSetup;
     private ImmutableDictionary<SignalName, ImmutableArray<DeviceName>> _dependents = ImmutableDictionary<SignalName, ImmutableArray<DeviceName>>.Empty;
-    private ImmutableArray<(DeviceName Device, StageDefinition Stage)> _deviceStages = [];
+    private ImmutableArray<(DeviceName Device, int Stage, SignalName Signal, bool Storage)> _deviceStates = [];
+    private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _currentDraws = [];
+    private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _powerDraws = [];
+    private ImmutableArray<(GroupName Group, Phase Phase, SignalName? Signal)> _groupPhases = [];
     private bool _trackedChanged;
     private bool _resyncPending;
     private long _sequence;
@@ -70,8 +77,12 @@ public sealed class SignalStore
             _byEntity = [];
             _byName = [];
             _setup = null;
+            _dispatchSetup = null;
             _dependents = ImmutableDictionary<SignalName, ImmutableArray<DeviceName>>.Empty;
-            _deviceStages = [];
+            _deviceStates = [];
+            _currentDraws = [];
+            _powerDraws = [];
+            _groupPhases = [];
             SetTracked([]);
             return;
         }
@@ -97,10 +108,20 @@ public sealed class SignalStore
             }
         }
 
-        _configuration = result.Configuration;
-        _setup = ProtectionSetupFactory.Build(result.Configuration);
-        _dependents = Dependents(result.Configuration);
-        _deviceStages = [.. result.Configuration.Devices.SelectMany(d => d.Stages.Select(s => (d.Id, s)))];
+        var configuration = result.Configuration;
+        _configuration = configuration;
+        _setup = ProtectionSetupFactory.Build(configuration);
+        _dispatchSetup = DispatchSetupFactory.Build(configuration);
+        _dependents = Dependents(configuration);
+        _deviceStates =
+        [
+            .. configuration.Devices.SelectMany(d => d.Stages
+                .Select(s => (d.Id, s.Index, s.StateSignal, d.Type == DeviceType.Storage))
+                .Concat(d.StopSignal is { } stop ? [(d.Id, DeviceStateSample.StopStage, stop, false)] : [])),
+        ];
+        _currentDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Current.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
+        _powerDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Power.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
+        _groupPhases = [.. configuration.Groups.SelectMany(g => g.Phases.Select(p => (g.Id, p, g.Current.TryGetValue(p, out var name) ? name : (SignalName?)null)))];
         _signals = runtimes.ToImmutable();
         _byEntity = _signals.ToDictionary(s => s.Definition.Entity);
         _byName = _signals.ToDictionary(s => s.Definition.Name);
@@ -260,7 +281,7 @@ public sealed class SignalStore
 
         foreach (var signal in _signals)
         {
-            if (signal.Accepted is { } accepted && signal.RawStatus != RawStatus.Unavailable)
+            if (signal.Accepted is { } accepted && signal.RawStatus != RawStatus.Unavailable && signal.Definition.Freshness == StateFreshness.Age)
             {
                 Consider(accepted.Effective + signal.Definition.MaxAge);
             }
@@ -298,7 +319,7 @@ public sealed class SignalStore
         var warnings = ImmutableArray.CreateBuilder<ConfigurationIssue>();
         foreach (var signal in _signals)
         {
-            if (signal.Refresh.Estimate(parameters.Refresh) is not { } refresh)
+            if (signal.Definition.Freshness == StateFreshness.OnChange || signal.Refresh.Estimate(parameters.Refresh) is not { } refresh)
             {
                 continue;
             }
@@ -364,10 +385,13 @@ public sealed class SignalStore
             configuration.Connection,
             Readings(configuration, now),
             Protection(configuration, sequence, now),
-            new DispatchInputs(sequence, now, [.. phases.Select(p => Dispatch(p, generation, now))]),
+            new DispatchInputs(sequence, now, [.. phases.Select(p => Dispatch(p, generation, now))]) { DevicePowers = DevicePowers(now) },
             [.. phases.Select(p => _balance[p].ToPhaseBalance(p))],
             [.. phases.Select(p => Reserve(configuration, p))],
-            rejections);
+            rejections)
+        {
+            DispatchSetup = _dispatchSetup,
+        };
     }
 
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;
@@ -467,13 +491,17 @@ public sealed class SignalStore
         role is SignalRole.PhasePower or SignalRole.InverterPower or SignalRole.InverterPhaseCurrent;
 
     /// <summary>
-    /// SIG-09: r(p) = net import + generation − measured loads − controlled loads (both load sums are
-    /// empty until devices exist). Phase current is never an input, so protection data is never
-    /// touched. Only inputs reported within max_skew of the triggering sample are compared, and only
-    /// an impossible negative load is refused; a positive residual is foreign load, which is normal.
-    /// Without a measured generation (no inverter mapped, or an inverter asleep counted as zero)
-    /// nothing is compared: an export is then explained by production nobody measures, not by a
-    /// broken sample.
+    /// SIG-09: r(p) = net import + generation − controlled loads, the controlled loads being the
+    /// fresh measured power draws of declared devices on the phase (a model value, such as a heater's
+    /// rated power, is never used: a heater whose thermostat opened would then reject every true
+    /// sample). Phase current is never an input, so protection data is never touched. Only inputs
+    /// reported within max_skew of the triggering sample are compared; a device draw counts when it
+    /// was reported within max_skew of the trigger, or has been unchanged since before trigger −
+    /// max_skew, and is left out otherwise (leaving a term out can only make a sample pass). Device
+    /// draws never trigger the check and are never rejected by it. Only an impossible negative
+    /// residual is refused; a positive residual is foreign load, which is normal. Without a measured
+    /// generation (no inverter mapped, or an inverter asleep counted as zero) nothing is compared:
+    /// an export is then explained by production nobody measures, not by a broken sample.
     /// </summary>
     private bool BalanceAccepts(SignalRuntime trigger, DateTimeOffset now)
     {
@@ -508,7 +536,7 @@ public sealed class SignalStore
                 continue;
             }
 
-            var residual = Value(power) + share.Value;
+            var residual = Value(power) + share.Value - ControlledLoad(phase, triggerTime, parameters.MaxSkew, now);
             balance.Evaluations++;
             balance.LastEvaluated = now;
             balance.Residual = new Watts(residual);
@@ -587,6 +615,28 @@ public sealed class SignalStore
             times);
     }
 
+    /// <summary>Σ of the fresh device power draws on a phase that are aligned with the trigger (see <see cref="BalanceAccepts"/>).</summary>
+    private double ControlledLoad(Phase phase, DateTimeOffset trigger, TimeSpan maxSkew, DateTimeOffset now)
+    {
+        var total = 0.0;
+        foreach (var (_, drawPhase, name) in _powerDraws)
+        {
+            if (drawPhase != phase || _byName[name] is not { } draw || Classify(draw, now).State != SignalState.Fresh)
+            {
+                continue;
+            }
+
+            var accepted = draw.Accepted!;
+            var aligned = (accepted.Effective - trigger).Duration() <= maxSkew || accepted.SampleReported <= trigger - maxSkew;
+            if (aligned)
+            {
+                total += Value(draw);
+            }
+        }
+
+        return total;
+    }
+
     private PhaseDispatch Dispatch(Phase phase, GenerationShares generation, DateTimeOffset now)
     {
         if (Source != SignalSourceStatus.Connected)
@@ -607,8 +657,53 @@ public sealed class SignalStore
             : netImport is null ? DispatchInvalidReason.PowerNotFresh
             : share is null ? DispatchInvalidReason.GenerationUnknown
             : null;
-        return new PhaseDispatch(phase, reason is null, reason, netImport, share, load, voltage);
+        return new PhaseDispatch(phase, reason is null, reason, netImport, share, load, voltage)
+        {
+            PowerReportedAt = netImport is null ? null : power!.Accepted!.Effective,
+        };
     }
+
+    /// <summary>The declared power draws (W), for dispatch; a draw that is not fresh carries no value.</summary>
+    private ImmutableArray<DevicePowerSample> DevicePowers(DateTimeOffset now) =>
+    [
+        .. _powerDraws.Select(d =>
+        {
+            var signal = _byName[d.Signal];
+            var fresh = Source == SignalSourceStatus.Connected && Classify(signal, now).State == SignalState.Fresh;
+            return new DevicePowerSample(d.Device, d.Phase, fresh, fresh ? new Watts(Value(signal)) : null, signal.Accepted?.Effective);
+        }),
+    ];
+
+    /// <summary>The declared current draws (A), for protection; a draw that is not fresh carries no value and is never relief.</summary>
+    private ImmutableArray<DeviceDrawSample> DeviceDraws(DateTimeOffset now) =>
+    [
+        .. _currentDraws.Select(d =>
+        {
+            var signal = _byName[d.Signal];
+            var fresh = Source == SignalSourceStatus.Connected && Classify(signal, now).State == SignalState.Fresh;
+            return new DeviceDrawSample(d.Device, d.Phase, fresh, fresh ? new Amperes(Value(signal)) : null, signal.Accepted?.Effective);
+        }),
+    ];
+
+    /// <summary>
+    /// Circuit group phases: a sub-meter is read like a phase current (stale, unavailable or missing
+    /// means no valid data, and the guard holds the members off); a group without one is estimated by
+    /// the guard from its members, and is valid while the source is connected.
+    /// </summary>
+    private ImmutableArray<GroupProtection> Groups(DateTimeOffset now) =>
+    [
+        .. _groupPhases.Select(g =>
+        {
+            if (g.Signal is not { } name)
+            {
+                return new GroupProtection(g.Group, g.Phase, Source == SignalSourceStatus.Connected, Source == SignalSourceStatus.Connected ? null : ProtectionInvalidReason.SourceDisconnected, null, true);
+            }
+
+            var signal = _byName[name];
+            var reason = ProtectionReason(signal, now);
+            return new GroupProtection(g.Group, g.Phase, reason is null, reason, reason is null ? Reading(signal, now) : null, false);
+        }),
+    ];
 
     private ProtectionInputs Protection(SwitchboardConfiguration configuration, long sequence, DateTimeOffset now)
     {
@@ -632,34 +727,41 @@ public sealed class SignalStore
             phases.Add(new PhaseProtection(phase, reason is null, reason, reading));
         }
 
-        return new ProtectionInputs(sequence, now, topology, phases.ToImmutable(), total, _setup, DeviceStates(now), null);
+        return new ProtectionInputs(sequence, now, topology, phases.ToImmutable(), total, _setup, DeviceStates(now), null)
+        {
+            DeviceDraws = DeviceDraws(now),
+            Groups = Groups(now),
+        };
     }
 
-    /// <summary>The applied state of every declared device stage, from its state signal (SIG-05).</summary>
+    /// <summary>The applied state of every declared device stage and stop actuator, from its state signal (SIG-05).</summary>
     private ImmutableArray<DeviceStateSample> DeviceStates(DateTimeOffset now)
     {
-        var samples = ImmutableArray.CreateBuilder<DeviceStateSample>(_deviceStages.Length);
-        foreach (var (device, stage) in _deviceStages)
+        var samples = ImmutableArray.CreateBuilder<DeviceStateSample>(_deviceStates.Length);
+        foreach (var (device, stage, name, storage) in _deviceStates)
         {
-            var signal = _byName[stage.StateSignal];
+            var signal = _byName[name];
             var (state, detail) = Classify(signal, now);
             samples.Add(DeviceStateInterpreter.Interpret(
                 device,
-                stage.Index,
+                stage,
                 Source,
                 state,
                 detail,
                 state == SignalState.Fresh ? signal.Accepted?.Value : null,
-                signal.Accepted?.Effective ?? signal.Raw?.Reported));
+                signal.Accepted?.Effective ?? signal.Raw?.Reported,
+                allowNegativeSetpoint: storage));
         }
 
         return samples.MoveToImmutable();
     }
 
     /// <summary>
-    /// SIG-05: the devices that become unsafe while a signal is not fresh. A phase current protects
-    /// every device with a stage on its phase (the summed current protects all of them); a state
-    /// signal protects its own device. Direction and power signals only ever cost cautious mode.
+    /// SIG-05: the devices that depend on a signal. A phase current protects every device with a
+    /// stage on its phase (the summed current protects all of them); a state signal protects its own
+    /// device; a group sub-meter protects the group's members. A draw signal lists its device, which
+    /// it does not hold off when stale (protection does not need it): a stale draw is no longer
+    /// trusted for relief or increases. Direction and power signals only ever cost cautious mode.
     /// </summary>
     private static ImmutableDictionary<SignalName, ImmutableArray<DeviceName>> Dependents(SwitchboardConfiguration configuration)
     {
@@ -673,7 +775,10 @@ public sealed class SignalStore
                     [.. devices.Where(d => d.Stages.Any(s => s.Phases.Contains(signal.Phase!.Value))).Select(d => d.Id)],
                 // Protection reads the total only in three_phase_summed; elsewhere it is display-only.
                 SignalRole.TotalCurrent when configuration.Connection.Topology == Topology.ThreePhaseSummed => [.. devices.Select(d => d.Id)],
-                SignalRole.DeviceState => [.. devices.Where(d => d.Stages.Any(s => s.StateSignal == signal.Name)).Select(d => d.Id)],
+                SignalRole.DeviceState => [.. devices.Where(d => d.Stages.Any(s => s.StateSignal == signal.Name) || d.StopSignal == signal.Name).Select(d => d.Id)],
+                SignalRole.DeviceCurrent or SignalRole.DevicePower =>
+                    [.. devices.Where(d => d.Draw is { } draw && (draw.Current.ContainsValue(signal.Name) || draw.Power.ContainsValue(signal.Name))).Select(d => d.Id)],
+                SignalRole.GroupCurrent => [.. configuration.Groups.Where(g => g.Current.ContainsValue(signal.Name)).SelectMany(g => g.Members)],
                 _ => [],
             };
             builder[signal.Name] = dependents;
@@ -830,8 +935,11 @@ public sealed class SignalStore
         }
 
         // Aged from the last accepted report: a signal whose every new sample is rejected goes
-        // stale like a frozen one instead of showing an old value forever.
-        if (now - accepted.Effective >= signal.Definition.MaxAge)
+        // stale like a frozen one instead of showing an old value forever. A device state declared
+        // on_change has no age limit: it reports only when it changes, so its freshness is its
+        // availability (Unavailable, Missing and a disconnected source are all handled above or by
+        // the device-state interpreter).
+        if (signal.Definition.Freshness == StateFreshness.Age && now - accepted.Effective >= signal.Definition.MaxAge)
         {
             return (SignalState.Stale, SignalDetail.MaxAgeExceeded);
         }
@@ -921,8 +1029,10 @@ public sealed class SignalStore
 
     private static double Value(SignalRuntime signal) => SignalNormalizer.Magnitude(signal.Accepted!.Value) ?? 0;
 
+    // An on_change state is never probed: it has no age to confirm.
     private static bool ProbeEligible(SignalRuntime signal) =>
-        signal.Presence == Presence.Present && signal.Raw is not null && signal.RawStatus != RawStatus.Unavailable;
+        signal.Presence == Presence.Present && signal.Raw is not null && signal.RawStatus != RawStatus.Unavailable
+        && signal.Definition.Freshness == StateFreshness.Age;
 
     private DateTimeOffset ProbeDue(SignalRuntime signal)
     {

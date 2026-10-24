@@ -1,8 +1,10 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Modes;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 
@@ -18,6 +20,9 @@ public enum GuardTrigger
     Tick,
 
     KillSwitch,
+
+    /// <summary>A manual override changed (SAFE-04).</summary>
+    Override,
 
     /// <summary>The add-on is stopping: every controlled device goes to safe state (SAFE-01).</summary>
     Shutdown,
@@ -57,10 +62,17 @@ public sealed record GuardIntent(
     Phase? Phase,
     IntentUrgency Urgency,
     ReasonCode? Overridden,
-    DecisionInputs Inputs);
+    DecisionInputs Inputs)
+{
+    /// <summary>The circuit group whose condition produced it (CONN-03); null for the main breaker.</summary>
+    public GroupName? Group { get; init; }
+}
 
-/// <summary>A phase or system state change worth a decision record (safe state, kill switch, reserve request).</summary>
-public sealed record GuardEvent(DecisionScope Scope, Phase? Phase, DecisionAction Action, ReasonCode Reason, DecisionInputs Inputs);
+/// <summary>A phase, group or system state change worth a decision record (safe state, kill switch, reserve request).</summary>
+public sealed record GuardEvent(DecisionScope Scope, Phase? Phase, DecisionAction Action, ReasonCode Reason, DecisionInputs Inputs)
+{
+    public GroupName? Group { get; init; }
+}
 
 /// <summary>
 /// The result of one evaluation. <see cref="Timing"/> and <see cref="CycleIndex"/> travel with it
@@ -72,4 +84,21 @@ public sealed record GuardEvaluation(
     ImmutableArray<GuardIntent> Intents,
     ImmutableArray<GuardEvent> Events,
     GuardTiming? Timing,
-    long CycleIndex);
+    long CycleIndex)
+{
+    /// <summary>What dispatch may use: E per main and group phase, and the load model per device.</summary>
+    public DispatchEnvelope Envelope { get; init; } = DispatchEnvelope.Empty;
+
+    /// <summary>The last valid setup of this process (the declared devices), also during an invalid configuration.</summary>
+    public ProtectionSetup? Setup { get; init; }
+
+    /// <summary>The configuration of this evaluation is valid (not only remembered).</summary>
+    public bool ConfigurationValid { get; init; }
+
+    /// <summary>A cycle boundary was crossed at this evaluation.</summary>
+    public bool AtBoundary { get; init; }
+
+    /// <summary>What protection holds each device stage to after this evaluation.</summary>
+    public ImmutableDictionary<DeviceName, ImmutableDictionary<int, StageLimit>> Limits { get; init; } =
+        ImmutableDictionary<DeviceName, ImmutableDictionary<int, StageLimit>>.Empty;
+}

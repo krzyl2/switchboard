@@ -65,8 +65,9 @@ public sealed class GuardBudgetTests
     public void Budget_exhaustion_sheds_everything_to_the_tick()
     {
         // 1.32 × In from 12:00:00 (30 s band): empty at exactly 12:00:30. One tick earlier the
-        // charger is only at its minimum; at 12:00:30 everything on L1 is off, by the budget.
-        var s = new GuardScenario(TestDevices.Document());
+        // charger is only at its minimum; at 12:00:30 everything on L1 that can still give is off,
+        // by the budget: with a stop actuator the charger goes off then.
+        var s = new GuardScenario(TestDevices.Document(TestDevices.Reference.ReplaceLineEndings("\n") + "\n    stop_actuator: switch.charger_enable"));
         s.Sample(Phase.L1, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(10));
         s.Sample(Phase.L1, 33);
@@ -81,6 +82,26 @@ public sealed class GuardBudgetTests
         Assert.Equal((T0 + TimeSpan.FromSeconds(30), "ev_charger", GuardTarget.Off, ReasonCode.GuardBudgetLow), (at, off.Device.Value, off.Target, off.Reason));
         Assert.Equal(0, s.PhaseStatus(Phase.L1).Budget, 12);
         Assert.Equal(DeviceGuardState.Shed, s.DeviceStatus("ev_charger").GuardState);
+    }
+
+    [Fact]
+    public void Budget_exhaustion_leaves_a_charger_without_stop_path_at_its_floor()
+    {
+        // Without a stop actuator the charger's setpoint range excludes zero: at its 6 A floor it
+        // has nothing more to give, so the empty budget takes no further step on it (no "would
+        // switch off" that could never happen) and it stays reduced.
+        var s = new GuardScenario(TestDevices.Document());
+        s.Sample(Phase.L1, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L1, 33);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(20));
+        s.Sample(Phase.L1, 33);
+
+        s.RunUntil(T0 + TimeSpan.FromSeconds(30));
+
+        Assert.Equal(0, s.PhaseStatus(Phase.L1).Budget, 12);
+        Assert.DoesNotContain(s.Sheds, i => i.Device.Value == "ev_charger" && i.Target == GuardTarget.Off);
+        Assert.Equal(DeviceGuardState.Reduced, s.DeviceStatus("ev_charger").GuardState);
     }
 
     [Fact]
@@ -166,19 +187,26 @@ public sealed class GuardBudgetTests
     }
 
     [Fact]
-    public void Modulating_relief_counts_its_setpoint()
+    public void Modulating_relief_is_its_measured_draw_above_the_floor()
     {
-        // The charger at 12 A: reducing it to its 6 A minimum relieves the 6 A above it (an Off
-        // hold relieves no more before Stage 3, and an unknown setpoint relieves nothing).
-        var s = new GuardScenario(TestDevices.Document());
-        s.SetState("ev_charger", new SetpointApplied(new Amperes(12)));
-        s.SetState("heater_l1", new RelayApplied(false));
-        s.Sample(Phase.L1, 8);
-        s.RunUntil(T0 + TimeSpan.FromSeconds(5));
-        s.Sample(Phase.L1, 30);
-        s.RunUntil(T0 + TimeSpan.FromSeconds(30));
+        // The charger at 12 A: reducing it to its 6 A minimum relieves what it really draws above
+        // 6 A. With its draw signal at 12 A that is 6 A (30 → 24 A); without a draw signal a
+        // setpoint is a ceiling, not a draw, and the hold relieves nothing (30 A stays 30 A).
+        var measured = new GuardScenario(TestDevices.Document(TestDevices.ReferenceWithChargerDraw));
+        var unmeasured = new GuardScenario(TestDevices.Document());
+        foreach (var s in new[] { measured, unmeasured })
+        {
+            s.SetState("ev_charger", new SetpointApplied(new Amperes(12)));
+            s.SetState("heater_l1", new RelayApplied(false));
+            s.SetDraw("ev_charger", Phase.L1, 12);
+            s.Sample(Phase.L1, 8);
+            s.RunUntil(T0 + TimeSpan.FromSeconds(5));
+            s.Sample(Phase.L1, 30);
+            s.RunUntil(T0 + TimeSpan.FromSeconds(30));
+            Assert.Equal(("ev_charger", GuardTarget.AtMinimum), (s.Sheds.Single().Device.Value, s.Sheds.Single().Target));
+        }
 
-        Assert.Equal(("ev_charger", GuardTarget.AtMinimum), (s.Sheds.Single().Device.Value, s.Sheds.Single().Target));
-        Assert.Equal(24, s.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
+        Assert.Equal(24, measured.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
+        Assert.Equal(30, unmeasured.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
     }
 }

@@ -21,10 +21,10 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// The guard's entities (BRK-04, SAFE-03, PKG-03), following the frozen identity scheme of
 /// <see cref="MqttIdentity"/>: per phase in the topology the headroom to the reserve threshold (A
 /// and W), the headroom to the continuous current, the overload budget, the remaining recovery
-/// time and the guard state; the effective mode, the last decision and the kill switch; per declared
-/// device its state. Headroom is computed from the measured current, never from the "as if applied"
-/// estimate: in shadow mode nothing is applied, and an automation must not act on a hypothetical
-/// number. Watts are derived at this presentation edge from the configured voltage only.
+/// time and the guard state; the effective mode, the last decision (its reason code, or the action
+/// for a decision that ends a condition) and the kill switch; per declared device its state.
+/// Headroom is computed from the measured current, never from the "as if applied" estimate: in
+/// shadow mode nothing is applied, and an automation must not act on a hypothetical number. Watts are derived at this presentation edge from the configured voltage only.
 /// <para>
 /// While no valid configuration is known in this process, the phase and device entities announced
 /// earlier (the ledger in state.json) are kept, with unknown state, and nothing is retracted.
@@ -48,6 +48,16 @@ public sealed partial class GuardEntities : IMqttEntitySource
     private static readonly string[] DeviceStates = Snakes<DeviceGuardState>();
     private static readonly string[] ModeStates = ["shadow", "active"];
     private static readonly string[] ReasonNames = [.. ReasonCodes.All.Select(ReasonCodes.Name)];
+
+    /// <summary>
+    /// Decisions that end a condition keep the reason code of the condition that ended (DECISIONS,
+    /// Stage 2): as a state they would read exactly like its start (a released kill switch would show
+    /// kill_switch). The last-decision state names these actions instead, verbatim.
+    /// </summary>
+    private static readonly DecisionAction[] ConditionEnding = [DecisionAction.KillSwitchDisengaged, DecisionAction.SafeStateExited];
+
+    /// <summary>The last-decision options: every reason code, then the condition-ending actions.</summary>
+    public static IReadOnlyList<string> LastDecisionStates { get; } = [.. ReasonNames, .. ConditionEnding.Select(Snake)];
 
     private readonly IGuardStatusSource _status;
     private readonly IDecisionRecorder _decisions;
@@ -160,11 +170,12 @@ public sealed partial class GuardEntities : IMqttEntitySource
         return new MqttEntity(
             Sensor,
             LastDecisionObjectId,
-            Config(Sensor, LastDecisionObjectId, "Last decision", new() { ["device_class"] = "enum", ["options"] = ReasonNames, ["json_attributes_topic"] = AttributesTopic(_mqtt.BaseTopic, LastDecisionObjectId) }),
-            last is null ? Unknown : ReasonCodes.Name(last.Reason),
+            Config(Sensor, LastDecisionObjectId, "Last decision", new() { ["device_class"] = "enum", ["options"] = LastDecisionStates, ["json_attributes_topic"] = AttributesTopic(_mqtt.BaseTopic, LastDecisionObjectId) }),
+            last is null ? Unknown : ConditionEnding.Contains(last.Action) ? Snake(last.Action) : ReasonCodes.Name(last.Reason),
             Json(new Dictionary<string, object?>
             {
                 ["action"] = last is null ? null : Snake(last.Action),
+                ["reason"] = last is null ? null : ReasonCodes.Name(last.Reason),
                 ["device"] = last?.Device?.Value,
                 ["stage"] = last?.Stage,
                 ["phase"] = last?.Phase?.ToString(),

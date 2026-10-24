@@ -9,6 +9,7 @@ internal sealed record MqttOperation(string Kind, string Topic = "", string Payl
     {
         "publish" => $"publish {Topic} {Payload}{(Retain ? " retained" : string.Empty)}",
         "subscribe" => $"subscribe {Topic}",
+        "unsubscribe" => $"unsubscribe {Topic}",
         _ => Kind,
     };
 }
@@ -117,6 +118,12 @@ internal sealed class FakeMqttTransport(MqttTopicGuard guard) : IMqttTransport
     {
         guard.EnsureSubscriptionAllowed(topicFilter);
         Record(new MqttOperation("subscribe", topicFilter));
+        return Task.CompletedTask;
+    }
+
+    public Task UnsubscribeAsync(string topicFilter, CancellationToken cancellationToken)
+    {
+        Record(new MqttOperation("unsubscribe", topicFilter));
         return Task.CompletedTask;
     }
 

@@ -1,10 +1,11 @@
+using System.Text.RegularExpressions;
 using Switchboard.Application.Configuration;
 using Switchboard.Infrastructure.Configuration;
 
 namespace Switchboard.Tests.Support;
 
 /// <summary>Configuration documents for tests, read through the real YAML reader, defaults and validator.</summary>
-internal static class TestConfigurations
+internal static partial class TestConfigurations
 {
     public const string Path = "/config/switchboard.yaml";
 
@@ -17,8 +18,12 @@ internal static class TestConfigurations
     /// <summary>The committed example for the maintainer's installation.</summary>
     public static string Example => File.ReadAllText(RepoPaths.Combine("deploy", "examples", "switchboard.yaml"));
 
-    /// <summary>The example plus the EV charger's L1 current and power as role-less signals (diagnostics only).</summary>
-    public static string ExampleWithCharger => Example.ReplaceLineEndings("\n").Replace(
+    /// <summary>
+    /// The example with the EV charger's L1 current and power as role-less signals (diagnostics
+    /// only) instead of the charger's draw: the Stage 1 view of the same entities, which one entity
+    /// can only feed once.
+    /// </summary>
+    public static string ExampleWithCharger => ExampleWithoutDraw.Replace(
         "\nsignals:\n",
         """
 
@@ -38,6 +43,18 @@ internal static class TestConfigurations
 
         """.ReplaceLineEndings("\n"),
         StringComparison.Ordinal);
+
+    /// <summary>The example without the charger's <c>draw:</c> block.</summary>
+    public static string ExampleWithoutDraw
+    {
+        get
+        {
+            var example = Example.ReplaceLineEndings("\n");
+            var without = DrawBlock().Replace(example, "\n");
+            Assert.NotEqual(example, without);
+            return without;
+        }
+    }
 
     public static ConfigurationResult Parse(string yaml)
     {
@@ -139,4 +156,7 @@ internal static class TestConfigurations
             {(control.Length == 0 ? string.Empty : "control:\n" + control)}
             """.ReplaceLineEndings("\n");
     }
+
+    [GeneratedRegex(@"\n    draw:\n(?:      [^\n]*\n)+")]
+    private static partial Regex DrawBlock();
 }

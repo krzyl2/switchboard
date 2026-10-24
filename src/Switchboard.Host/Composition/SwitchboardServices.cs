@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Switchboard.Application;
 using Switchboard.Application.Connectivity;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
@@ -11,6 +12,7 @@ using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
+using Switchboard.Domain.Devices;
 using Switchboard.Host.Hosting;
 using Switchboard.Host.Web;
 using Switchboard.Infrastructure.Configuration;
@@ -67,7 +69,7 @@ public static class SwitchboardServices
         services.AddSingleton(sp =>
         {
             var mqtt = sp.GetRequiredService<IOptions<MqttOptions>>().Value;
-            return new MqttTopicGuard(mqtt.DiscoveryPrefix, mqtt.BaseTopic);
+            return new MqttTopicGuard(mqtt.DiscoveryPrefix, mqtt.BaseTopic, DeclaredDevices(sp));
         });
         services.AddSingleton<IMqttTransport, MqttNetTransport>();
         services.AddSingleton<MqttLink>();
@@ -109,9 +111,10 @@ public static class SwitchboardServices
     }
 
     /// <summary>
-    /// The guard (on the signal clock, like the store it reads), the effector gate that only records,
-    /// the kill switch, the mode, the decision log and runtime state in the data folder, and the
-    /// guard's MQTT entities. Nothing here holds a Home Assistant command sender.
+    /// The guard and dispatch (on the signal clock, like the store they read), the effector gate that
+    /// only records, the kill switch, the overrides, the mode, the decision log and runtime state in
+    /// the data folder, and the guard's and dispatch's MQTT entities. Nothing here holds a Home
+    /// Assistant command sender, and no command port is registered.
     /// </summary>
     private static IServiceCollection AddGuard(this IServiceCollection services)
     {
@@ -120,8 +123,18 @@ public static class SwitchboardServices
         services.AddSingleton<GuardInbox>();
         services.AddSingleton<LockoutClocks>();
         services.AddSingleton<ILockoutView>(sp => sp.GetRequiredService<LockoutClocks>());
+        services.AddSingleton<DeviceTargets>();
+        services.AddSingleton<IInFlightView>(sp => sp.GetRequiredService<DeviceTargets>());
         services.AddSingleton<GuardEngine>();
+        services.AddSingleton<DispatchEngine>();
+
+        // The gate is built through its public constructor, which takes no command port: this
+        // version commands nothing, and no command port is registered anywhere in production.
+        services.AddSingleton(sp => new EffectorSettings(sp.GetRequiredService<IOptions<GuardOptions>>().Value.DeviceHistoryLength));
         services.AddSingleton<EffectorGate>();
+        services.AddSingleton<DeviceOverrides>();
+        services.AddSingleton<IDeviceOverrideControl>(sp => sp.GetRequiredService<DeviceOverrides>());
+        services.AddSingleton<IDeviceOverrideView>(sp => sp.GetRequiredService<DeviceOverrides>());
         services.AddSingleton<KillSwitchState>();
         services.AddSingleton<IKillSwitchControl>(sp => sp.GetRequiredService<KillSwitchState>());
         services.AddSingleton<IKillSwitchView>(sp => sp.GetRequiredService<KillSwitchState>());
@@ -151,6 +164,10 @@ public static class SwitchboardServices
             sp.GetRequiredService<ILogger<GuardStatusHolder>>()));
         services.AddSingleton<IGuardStatusSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
         services.AddSingleton<IGuardEnvelopeSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
+        services.AddSingleton(sp => new DispatchStatusHolder(
+            DispatchStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().Current),
+            sp.GetRequiredService<ILogger<DispatchStatusHolder>>()));
+        services.AddSingleton<IDispatchStatusSource>(sp => sp.GetRequiredService<DispatchStatusHolder>());
 
         services.AddSingleton<IDecisionFileSystem, DecisionFileSystem>();
         services.AddSingleton(sp =>
@@ -181,8 +198,26 @@ public static class SwitchboardServices
                 sp.GetRequiredService<ILogger<GuardEntities>>());
         });
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<GuardEntities>());
+        services.AddSingleton(sp => new DispatchEntities(
+            sp.GetRequiredService<IDispatchStatusSource>(),
+            sp.GetRequiredService<IDeviceOverrideControl>(),
+            sp.GetRequiredService<IDiscoveryLedger>(),
+            DeclaredDevices(sp),
+            sp.GetRequiredService<IOptions<MqttOptions>>(),
+            sp.GetRequiredService<AppVersion>(),
+            sp.GetRequiredService<ILogger<DispatchEntities>>()));
+        services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<DispatchEntities>());
         return services;
     }
+
+    /// <summary>
+    /// The devices of the current valid configuration (null while there is none): the only devices
+    /// an override can address and whose override command topic the MQTT guard lets in (SAFE-05).
+    /// Read from the published snapshot, not the guard's input port, so a defect there cannot take
+    /// the MQTT link (and with it the health entity going OFF) down too.
+    /// </summary>
+    private static Func<IReadOnlyCollection<DeviceName>?> DeclaredDevices(IServiceProvider sp) => () =>
+        sp.GetRequiredService<ISignalDiagnosticsSource>().Current.Snapshot.Protection.Setup is { } setup ? [.. setup.Devices.Select(d => d.Id)] : null;
 
     /// <summary>
     /// Signal source (Home Assistant or development replay), configuration watcher, store, runner and
@@ -219,6 +254,7 @@ public static class SwitchboardServices
         });
         services.AddSingleton<IProtectionInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<IDispatchInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
+        services.AddSingleton<IControlInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<ISignalDiagnosticsSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<SignalStoreRunner>();
 

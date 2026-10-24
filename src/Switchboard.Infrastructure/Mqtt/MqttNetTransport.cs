@@ -63,6 +63,12 @@ public sealed class MqttNetTransport : IMqttTransport, IDisposable
         await _client.SubscribeAsync(options, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task UnsubscribeAsync(string topicFilter, CancellationToken cancellationToken)
+    {
+        var options = new MqttClientUnsubscribeOptionsBuilder().WithTopicFilter(topicFilter).Build();
+        await _client.UnsubscribeAsync(options, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
         var options = new MqttClientDisconnectOptionsBuilder()

@@ -60,10 +60,14 @@ public static class ConfigurationIssueCodes
     public const string StateEntityDomainNotAllowed = "state_entity_domain_not_allowed";
     public const string DuplicateActuator = "duplicate_actuator";
     public const string ModulatingRangeInvalid = "modulating_range_invalid";
+    public const string SensorDomainRequired = "sensor_domain_required";
+    public const string RotationGroupMismatch = "rotation_group_mismatch";
+    public const string UnknownCircuitGroup = "unknown_circuit_group";
 
     // Warnings: the document is still valid.
     public const string ReservedKeyIgnored = "reserved_key_ignored";
     public const string DirectionUnavailableCautious = "direction_unavailable_cautious";
+    public const string GroupRatingAboveMain = "group_rating_above_main";
 
     /// <summary>Raised at run time, once a refresh interval is detected (see the signal store).</summary>
     public const string MaxAgeShortForProbe = "max_age_short_for_probe";

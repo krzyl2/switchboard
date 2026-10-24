@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
 import { App } from './App';
 import sample from './api/guard.sample.json';
+import dispatchSample from './api/dispatch.sample.json';
 import { GUARD_REFRESH_INTERVAL_MS, GUARD_REQUEST_TIMEOUT_MS } from './config';
 
 const START = new Date('2026-10-24T10:00:02Z');
@@ -22,9 +23,11 @@ function payload(change?: (p: any) => void): unknown {
   return copy;
 }
 
-/** Serves api/guard (swappable per test); anything else would be a request the page must not make. */
-function serve(guard: () => Promise<Response>) {
-  fetchMock.mockImplementation((input) => (input === 'api/guard' ? guard() : respond({}, 404)));
+/** Serves api/guard and api/dispatch (swappable per test); anything else would be a request the page must not make. */
+function serve(guard: () => Promise<Response>, dispatch: () => Promise<Response> = () => respond(dispatchSample)) {
+  fetchMock.mockImplementation((input) =>
+    input === 'api/guard' ? guard() : input === 'api/dispatch' ? dispatch() : respond({}, 404),
+  );
 }
 
 function guardRequests(): number {
@@ -63,6 +66,22 @@ function deviceRow(id: string): HTMLTableRowElement {
   return row;
 }
 
+function dispatchRow(id: string): HTMLTableRowElement {
+  const row = document.querySelector(`tr[data-dispatch-device="${id}"]`);
+  if (!(row instanceof HTMLTableRowElement)) throw new Error(`No dispatch row for device ${id}.`);
+  return row;
+}
+
+function dispatchCard(heading = 'Dispatch: intended and reported state'): HTMLElement {
+  return screen.getByRole('heading', { name: heading }).closest('section') as HTMLElement;
+}
+
+function dispatchPayload(change?: (p: any) => void): unknown {
+  const copy = JSON.parse(JSON.stringify(dispatchSample));
+  change?.(copy);
+  return copy;
+}
+
 function decisionRows(): HTMLTableRowElement[] {
   return [...document.querySelectorAll<HTMLTableRowElement>('tr[data-reason]')];
 }
@@ -87,12 +106,12 @@ afterEach(() => {
 });
 
 describe('limits page', () => {
-  it('requests the relative URL api/guard and nothing else', async () => {
+  it('requests only the relative URLs api/guard and api/dispatch', async () => {
     serve(() => respond(payload()));
     await openGuard();
 
-    // Relative, so the request stays under the ingress prefix; one request carries the whole page.
-    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual(['api/guard']);
+    // Relative, so the requests stay under the ingress prefix: protection's view and dispatch's view.
+    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual(['api/guard', 'api/dispatch']);
   });
 
   it('shows the effective mode, the breaker and when the guard last evaluated', async () => {
@@ -110,7 +129,7 @@ describe('limits page', () => {
   // MODE-01 rule from DECISIONS: an active add-on option is only a ceiling; this version stays shadow.
   it('says why an active add-on option still runs in shadow mode', async () => {
     serve(() =>
-      respond(payload((p) => (p.mode = { ceiling: 'active', uiChoice: 'active', effective: 'shadow', note: 'active_unavailable_before_stage3' }))),
+      respond(payload((p) => (p.mode = { ceiling: 'active', uiChoice: 'active', effective: 'shadow', note: 'active_not_enabled' }))),
     );
     await openGuard();
 
@@ -129,7 +148,7 @@ describe('limits page', () => {
     expect(stateLabel(l1)).toEqual({ label: 'shedding', tone: 'crit' });
     expect(l1.querySelector('.pval')?.textContent).toBe('33 Aimport');
     expect(fact(l1, 'Tier').textContent).toBe(
-      '1.25–1.45× (1.32×)shed one device immediately26.4 A as if the limits already decided were applied',
+      '1.25–1.45× (1.32×)shed one device immediately26.4 A estimated with the changes already decided (relief only where a device really draws)',
     );
     expect(fact(l1, 'Overload budget').textContent).toBe('62%being consumedfull again in 3 min');
     expect(fact(l1, 'Headroom').textContent).toBe(
@@ -278,23 +297,24 @@ describe('limits page', () => {
     expect(deviceRow('boiler').cells[4]?.textContent).toBe('1value 0.35 per kWhshed priority 0.1, instead of the value');
   });
 
-  // A modulating device has no stop path before Stage 3; the page never claims it would be off.
-  it('says that a modulating device cannot be switched off yet', async () => {
+  // A modulating device without a stop actuator has no stop path; the page never claims it would be off.
+  it('says that a modulating device without a stop actuator cannot be switched off', async () => {
     serve(() => respond(payload()));
     await openGuard();
 
-    expect(deviceRow('ev_charger').cells[2]?.textContent).toContain('cannot be switched off yet');
+    expect(deviceRow('ev_charger').cells[2]?.textContent).toContain('cannot be switched off (no stop_actuator declared)');
     expect(deviceRow('heater_l1').cells[2]?.textContent).not.toContain('cannot be switched off');
   });
 
-  // SIG-05: a device with a stale signal is unsafe, counted as on, and the page names the signal.
+  // SIG-05: a device with a stale signal is unsafe, treated as on for shedding but never as relief
+  // (an unknown state relieves nothing), and the page names the signal.
   it('shows an unsafe device, the signals that make it unsafe and its last known state', async () => {
     serve(() => respond(payload()));
     await openGuard();
 
     const boiler = deviceRow('boiler');
     expect(stateLabel(boiler.cells[2] as Element)).toEqual({ label: 'unsafe: state unknown', tone: 'crit' });
-    expect(boiler.cells[3]?.textContent).toContain('stage 2: unknown, counted as on');
+    expect(boiler.cells[3]?.textContent).toContain('stage 2: unknown — treated as on, relieves nothing');
     expect(boiler.cells[3]?.textContent).toContain('state report stale');
     expect(boiler.cells[3]?.textContent).toContain('last known: on');
     expect(boiler.cells[3]?.textContent).toContain('stage 1: off');
@@ -337,7 +357,7 @@ describe('limits page', () => {
     expect(shed?.cells[3]?.textContent).toContain('Phase current above a tier of the breaker profile.');
     expect(shed?.cells[3]?.textContent).toContain('Takes precedence over: Minimum on time not yet elapsed (lockout).');
     expect(shed?.cells[3]?.textContent).toContain('L1 33 A · 1.32 × In · budget 62%');
-    expect(chargerOff?.cells[3]?.textContent).toContain('cannot be switched off yet');
+    expect(chargerOff?.cells[3]?.textContent).toContain('cannot be switched off');
     expect(chargerMin?.cells[2]?.textContent).toContain('Reduce to minimum');
     expect(safe?.cells[1]?.textContent).toBe('L2');
     expect(safe?.cells[2]?.textContent).toBe('Safe state entered');
@@ -433,6 +453,162 @@ describe('limits page', () => {
   });
 });
 
+// DISP-04 … DISP-10, SAFE-04, UI-10 on screen (Stage 4 rebuilds it into the dashboard): per device
+// what Switchboard would have it at next to what Home Assistant reports, what it waits for, and the
+// manual override. In this version nothing is switched, and the card says so.
+describe('dispatch on the limits page', () => {
+  it('shows each device in start order with its intended state next to the reported one', async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    const ids = [...document.querySelectorAll('tr[data-dispatch-device]')].map((r) => r.getAttribute('data-dispatch-device'));
+    expect(ids).toEqual(['ev_charger', 'battery', 'heater_l2', 'heater_l1', 'heater_l3']);
+    const started = dispatchRow('heater_l2');
+    expect(stateLabel(started.cells[1] as Element)).toEqual({ label: 'on', tone: 'warn' });
+    expect(started.cells[1]?.textContent).toBe('onwould be changeddecided by dispatchHeadroom is available again.start order 3');
+    expect(started.cells[2]?.textContent).toBe('off');
+    // Nothing intended: the device simply follows its reported state.
+    expect(stateLabel(dispatchRow('heater_l1').cells[1] as Element)).toEqual({ label: 'nothing to change', tone: 'muted' });
+    expect(dispatchRow('heater_l1').cells[0]?.textContent).toBe('heater_l1on/off · L1rotation group cwu_heaters');
+  });
+
+  // MODE-01 / the maintainer's kickoff rule: nothing can be switched, and the page must not imply it.
+  it('says dispatch decisions are computed and logged and nothing is switched', async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    expect(dispatchCard().textContent).toContain('Dispatch decisions are computed and logged; Switchboard switches nothing.');
+    expect(dispatchCard().textContent).toContain('A manual override outranks dispatch, never protection');
+  });
+
+  it('shows the headroom dispatch works with per phase, and why a phase has none', async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    const l1 = document.querySelector('[data-dispatch-phase="L1"]') as HTMLElement;
+    expect(l1.textContent).toBe('L1may add 3.2 Ain flight -10 Aforeign load 850 Wrotation priority 2carport may add 4 A');
+    expect(document.querySelector('[data-dispatch-phase="L3"]')?.textContent).toBe('L3phase power not freshrotation priority 3');
+  });
+
+  // DISP-07: a device that ignored its commands is excluded and retried; the page says when.
+  it('shows a device that does not respond, its next try and its last check', async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    const row = dispatchRow('heater_l3');
+    expect(stateLabel(row.cells[3] as Element)).toEqual({ label: 'Not responding', tone: 'crit' });
+    expect(row.cells[3]?.textContent).toContain('3 mismatches in a row');
+    expect(row.cells[3]?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-10-24T12:10:00.004Z');
+    expect(row.cells[3]?.textContent).toContain('Settling window timed out');
+    // A state that is not fresh is never shown as current, and relieves nothing.
+    expect(row.cells[2]?.textContent).toBe('unknown — treated as on, relieves nothing');
+    expect(row.cells[5]?.textContent).toContain('last change of ours');
+    expect(row.cells[5]?.textContent).toContain('expected 1,700 W, measured 12 W: no response');
+  });
+
+  // DISP-09: a start refused by min_off waits; the countdown runs on the add-on's clock.
+  it('shows a deferred start with the time left on its lockout', async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    expect(stateLabel(dispatchRow('heater_l1').cells[3] as Element)).toEqual({ label: 'Deferred (minimum off lockout 0:42)', tone: 'warn' });
+    expect(dispatchRow('heater_l2').cells[3]?.textContent).toContain('Settling window open');
+    expect(dispatchRow('heater_l2').cells[3]?.textContent).toContain('minimum on time, 5 min left');
+  });
+
+  it("shows the charger's own draw and the override set on it", async () => {
+    serve(() => respond(payload()));
+    await openGuard();
+
+    const row = dispatchRow('ev_charger');
+    expect(row.cells[2]?.textContent).toBe('16 Adraws 9.6 A, 2,208 W');
+    expect(row.cells[1]?.textContent).toBe('6 Awould be changedManual override.start order 1');
+    const select = within(row).getByRole('combobox', { name: 'Manual override of ev_charger' }) as HTMLSelectElement;
+    expect(select.value).toBe('force_off');
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Automatic', 'Force on', 'Force off']);
+    expect(row.cells[4]?.textContent).toContain('set from this page or the API');
+    expect(dispatchRow('battery').cells[2]?.textContent).toBe('0 Adraw not fresh: relieves nothing');
+  });
+
+  // SAFE-04 from the page: a JSON POST to the declared device, answered after the add-on evaluated it.
+  it('sets an override with a JSON post and shows the evaluated answer at once', async () => {
+    fetchMock.mockImplementation((input, init) => {
+      if (input === 'api/guard') return respond(payload());
+      if (input === 'api/dispatch') return respond(dispatchPayload());
+      if (input === 'api/devices/heater_l2/override' && init?.method === 'POST') {
+        return respond(
+          dispatchPayload((p) => (p.devices[1].override = { mode: 'force_off', changedAt: '2026-10-24T12:01:21.000+00:00', source: 'api' })),
+        );
+      }
+      return respond({}, 404);
+    });
+    await openGuard();
+
+    const select = within(dispatchRow('heater_l2')).getByRole('combobox') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'force_off' } });
+    });
+    await advance();
+
+    const post = fetchMock.mock.calls.find(([input]) => input === 'api/devices/heater_l2/override');
+    expect(post?.[1]?.body).toBe('{"mode":"force_off"}');
+    expect((post?.[1]?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect((within(dispatchRow('heater_l2')).getByRole('combobox') as HTMLSelectElement).value).toBe('force_off');
+    expect(dispatchRow('heater_l2').cells[4]?.textContent).toContain('set from this page or the API');
+  });
+
+  it('says why an override was refused and keeps the mode the add-on reports', async () => {
+    fetchMock.mockImplementation((input) =>
+      input === 'api/guard' ? respond(payload()) : input === 'api/dispatch' ? respond(dispatchPayload()) : respond({}, 409),
+    );
+    await openGuard();
+
+    const select = within(dispatchRow('heater_l2')).getByRole('combobox') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'force_on' } });
+    });
+    await advance();
+
+    expect(within(dispatchRow('heater_l2')).getByRole('status').textContent).toBe('No valid configuration; fix switchboard.yaml first.');
+  });
+
+  // Only dispatch's view is missing: protection stays on screen, and no alert claims otherwise.
+  it('withdraws every dispatch value when its request fails, and keeps protection on screen', async () => {
+    serve(
+      () => respond(payload()),
+      () => respond({}, 500),
+    );
+    await openGuard();
+
+    expect(dispatchCard().textContent).toContain('Dispatch state unavailable');
+    expect(within(dispatchCard()).getByRole('status')).toBeTruthy();
+    expect(document.querySelector('tr[data-dispatch-device]')).toBeNull();
+    expect(screen.queryByRole('alert', { name: /Dispatch/ })).toBeNull();
+    expect(phaseBlock('L1')).toBeTruthy();
+  });
+
+  it('treats a dispatch payload it does not understand as unavailable', async () => {
+    serve(
+      () => respond(payload()),
+      () => respond(dispatchPayload((p) => (p.devices[0].override.mode = 'manual'))),
+    );
+    await openGuard();
+
+    expect(dispatchCard().textContent).toContain('Dispatch state unavailable');
+    expect(document.querySelector('tr[data-dispatch-device]')).toBeNull();
+  });
+
+  it('says why an active add-on option still switches nothing', async () => {
+    serve(
+      () => respond(payload()),
+      () => respond(dispatchPayload((p) => (p.mode = { ceiling: 'active', uiChoice: 'active', effective: 'shadow', note: 'active_not_enabled' }))),
+    );
+    await openGuard();
+
+    expect(dispatchCard().textContent).toContain('commanding is not enabled in this version');
+  });
+});
+
 describe('limits page in Polish', () => {
   it('renders headings, states, sentences and numbers in Polish', async () => {
     serve(() =>
@@ -450,11 +626,29 @@ describe('limits page in Polish', () => {
     expect(fact(l1, 'Próg').textContent).toContain('natychmiastowy zrzut jednego odbiornika');
     expect(fact(l1, 'Budżet przeciążenia').textContent).toBe('62%zużywanypełna odbudowa za 3 min');
     expect(fact(l1, 'Wolne').textContent).toContain('do progu zapasu');
-    expect(deviceRow('ev_charger').cells[2]?.textContent).toContain('nie da się go jeszcze wyłączyć');
+    expect(deviceRow('ev_charger').cells[2]?.textContent).toContain('nie da się go wyłączyć');
     expect(decisionRows()[0]?.cells[3]?.textContent).toContain('Prąd fazy powyżej progu z profilu bezpiecznika.');
     expect(decisionRows()[0]?.cells[2]?.textContent).toContain('Bez komendy: Tryb Obserwacja');
     expect(within(screen.getByRole('navigation')).getByText('Limity').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('note').textContent).toContain('To nie jest urządzenie zabezpieczające.');
+  });
+
+  it('renders dispatch in Polish with the mockup vocabulary', async () => {
+    serve(() => respond(payload()));
+    await openGuard('pl');
+
+    const card = dispatchCard('Rozdział mocy: stan zamierzony i zgłaszany');
+    expect(card.textContent).toContain('Switchboard niczego nie przełącza');
+    expect(stateLabel(dispatchRow('heater_l3').cells[3] as Element).label).toBe('Nie reaguje');
+    expect(stateLabel(dispatchRow('heater_l1').cells[3] as Element).label).toBe('Odroczone (blokada postoju 0:42)');
+    expect(dispatchRow('heater_l2').cells[3]?.textContent).toContain('Okno ustalania otwarte');
+    expect(dispatchRow('heater_l3').cells[5]?.textContent).toContain('brak reakcji');
+    expect(dispatchRow('ev_charger').cells[2]?.textContent).toBe('16 Apobiera 9,6 A, 2208 W');
+    expect([...(within(dispatchRow('ev_charger')).getByRole('combobox') as HTMLSelectElement).options].map((o) => o.textContent)).toEqual([
+      'Automatycznie',
+      'Wymuś włączenie',
+      'Wymuś wyłączenie',
+    ]);
   });
 });
 

@@ -48,10 +48,12 @@ public sealed class DocumentParserTests
     {
         var result = TestConfigurations.Valid(TestConfigurations.Example);
 
-        // 13 mapped signals plus one applied-state signal per device stage (three heaters, the charger).
+        // 13 mapped signals, one applied-state signal per device stage (three heaters, the charger)
+        // and the charger's own draw (current and power).
         Assert.Empty(result.Warnings);
-        Assert.Equal(13, result.Configuration!.Signals.Count(s => s.Role != SignalRole.DeviceState));
+        Assert.Equal(13, result.Configuration!.Signals.Count(s => s.Role is not (SignalRole.DeviceState or SignalRole.DeviceCurrent or SignalRole.DevicePower)));
         Assert.Equal(4, result.Configuration.Signals.Count(s => s.Role == SignalRole.DeviceState));
+        Assert.Equal(2, result.Configuration.Signals.Count(s => s.Role is SignalRole.DeviceCurrent or SignalRole.DevicePower));
     }
 
     [Fact]
@@ -347,13 +349,17 @@ public sealed class DocumentParserTests
     }
 
     [Fact]
-    public void Reserved_sections_are_ignored_with_a_warning()
+    public void Circuit_groups_are_read_since_stage_3()
     {
-        // devices: is read since Stage 2; circuit_groups: stays reserved until dispatch.
-        var result = TestConfigurations.Valid(Base + "circuit_groups:\n  - id: carport\n");
+        // circuit_groups: stopped being reserved with dispatch (CONN-03): a group is validated like
+        // the rest of the document, so an incomplete one is an error with its position, not a warning.
+        var incomplete = TestConfigurations.Parse(Base + "circuit_groups:\n  - id: carport\n");
+        Assert.Equal(ConfigurationStatus.Invalid, incomplete.Status);
+        Assert.Contains(incomplete.Errors, e => (e.Code, e.Path) == ("missing_key", "circuit_groups[0].breaker_rating_a"));
 
-        var warning = Assert.Single(result.Warnings);
-        Assert.Equal(("reserved_key_ignored", "circuit_groups", 17), (warning.Code, warning.Path, warning.Line));
+        var result = TestConfigurations.Valid(Base + "circuit_groups:\n  - { id: carport, breaker_rating_a: 16, characteristic: B, phases: [L1] }\n");
+        Assert.Empty(result.Warnings);
+        Assert.Equal("carport", Assert.Single(result.Configuration!.Groups).Id.Value);
     }
 
     [Fact]

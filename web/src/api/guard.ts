@@ -29,7 +29,7 @@ import { bool, count, fail, field, instant, list, nullable, number, object, oneO
 export const SAFE_STATE_SCOPES = ['none', 'phases', 'all'] as const;
 export const BUDGET_TRENDS = ['full', 'consuming', 'recovering', 'held'] as const;
 export const PHASE_GUARD_STATES = ['unknown', 'normal', 'hold', 'reducing', 'shedding', 'safe_state'] as const;
-export const DEVICE_TYPES = ['on_off', 'stepped', 'modulating'] as const;
+export const DEVICE_TYPES = ['on_off', 'stepped', 'modulating', 'storage'] as const;
 export const DEVICE_GUARD_STATES = ['allowed', 'reduced', 'shed', 'unsafe'] as const;
 /** What protection holds a stage to. */
 export const GUARD_TARGETS = ['off', 'at_minimum', 'released'] as const;

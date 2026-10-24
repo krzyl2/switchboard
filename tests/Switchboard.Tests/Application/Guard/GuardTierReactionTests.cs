@@ -87,8 +87,9 @@ public sealed class GuardTierReactionTests
     [Fact]
     public void Open_band_sheds_everything_on_the_phase_at_once()
     {
-        // Above 1.45 × In: every controlled device on the phase off in one evaluation, the
-        // modulating charger straight to off (not to its minimum).
+        // Above 1.45 × In: every controlled device on the phase in one evaluation; the heater off,
+        // the charger (no stop actuator: its setpoint range excludes zero) to its 6 A floor, the
+        // most it can give. With a stop actuator it goes off (below).
         var s = new GuardScenario(TestDevices.Document());
         s.SampleAll(8, 8, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(10));
@@ -96,9 +97,22 @@ public sealed class GuardTierReactionTests
         var evaluation = s.Sample(Phase.L1, 37.5);
 
         Assert.Equal(
-            [("ev_charger", GuardTarget.Off), ("heater_l1", GuardTarget.Off)],
+            [("ev_charger", GuardTarget.AtMinimum), ("heater_l1", GuardTarget.Off)],
             evaluation.Intents.Select(i => (i.Device.Value, i.Target)).Order());
         Assert.All(evaluation.Intents, i => Assert.Equal(ReasonCode.GuardTierExceeded, i.Reason));
+    }
+
+    [Fact]
+    public void Open_band_switches_off_a_charger_with_a_stop_actuator()
+    {
+        // DISP-01 stop_actuator: a modulating device that can be disabled is switched off in the open band.
+        var s = new GuardScenario(TestDevices.Document(StopCharger));
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(10));
+
+        var evaluation = s.Sample(Phase.L1, 37.5);
+
+        Assert.Equal([("ev_charger", GuardTarget.Off), ("heater_l1", GuardTarget.Off)], evaluation.Intents.Select(i => (i.Device.Value, i.Target)).Order());
     }
 
     [Fact]
@@ -143,7 +157,8 @@ public sealed class GuardTierReactionTests
         // 1.08 × In is within the 15 min band. The tier reaction sheds the heater at the second
         // boundary, which makes the effective current legal, but the measured current stays
         // above 1.00 × In: when the band's 15 min run out (counted from the last report before the
-        // rise) the next step is taken at that tick, then one per new sample.
+        // rise) the next step is taken at that tick: the charger to its minimum. It has no stop
+        // path, so no further step is spent on it (Stage 2 open issue: it would relieve nothing).
         var s = new GuardScenario(TestDevices.Document());
         s.Sample(Phase.L1, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(5));
@@ -157,8 +172,9 @@ public sealed class GuardTierReactionTests
         Assert.Equal((expiry, "ev_charger", GuardTarget.AtMinimum), (s.Timeline[^1].At, s.Timeline[^1].Intent.Device.Value, s.Timeline[^1].Intent.Target));
 
         s.RunUntil(expiry + TimeSpan.FromSeconds(5));
+        var before = s.Intents.Count;
         s.Sample(Phase.L1, 27);
-        Assert.Equal(("ev_charger", GuardTarget.Off), (s.Sheds.Last().Device.Value, s.Sheds.Last().Target));
+        Assert.Equal(before, s.Intents.Count);
     }
 
     [Fact]
@@ -175,6 +191,32 @@ public sealed class GuardTierReactionTests
         Assert.DoesNotContain(s.Sheds, i => i.Device.Value == "heater_l3");
         var blocked = Assert.Single(s.Events, e => e.Action == DecisionAction.CannotReduceExporting);
         Assert.Equal((Phase.L3, ReasonCode.GuardTierExceeded), (blocked.Phase!.Value, blocked.Reason));
+    }
+
+    [Fact]
+    public void Cannot_reduce_exporting_recorded_once_per_excursion_through_a_pending_direction_poll()
+    {
+        // Stage 2 open issue: one exporting overload is one record, even when one poll in the middle
+        // of it arrives with its direction still pending (counted as import, cautious mode). Only a
+        // confirmed import or the end of the overload ends the excursion.
+        var s = new GuardScenario(TestDevices.Document());
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(5));
+        s.Sample(Phase.L3, 33.75, FlowDirection.Export);
+        s.RunFor(TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L3, 33.75, FlowDirection.Unknown);
+        s.RunFor(TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L3, 33.75, FlowDirection.Export);
+        s.RunFor(TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L3, 33.75, FlowDirection.Export);
+
+        Assert.Single(s.Events, e => e.Action == DecisionAction.CannotReduceExporting);
+
+        s.RunFor(TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L3, 8, FlowDirection.Import);
+        s.RunFor(TimeSpan.FromSeconds(10));
+        s.Sample(Phase.L3, 33.75, FlowDirection.Export);
+        Assert.Equal(2, s.Events.Count(e => e.Action == DecisionAction.CannotReduceExporting));
     }
 
     [Fact]
@@ -201,11 +243,12 @@ public sealed class GuardTierReactionTests
     [Fact]
     public void Open_band_uses_measured_current_despite_pending_relief()
     {
-        // The heater and the charger's reduction are already decided (20.6 A of relief, all of it
-        // still "on" in shadow). 37.5 A measured is the open band; the effective 16.9 A would be
-        // may_add. The open band follows the measured current, so the charger goes off by the
-        // tier (a charger at 20 A with no car would otherwise hide a real overload).
-        var s = new GuardScenario(TestDevices.Document());
+        // The heater and the charger's reduction are already decided; the charger really draws
+        // 20 A (its own draw signal), so the relief is real: 6.6 + 14 A, and the estimate of 37.5 A
+        // measured would be may_add. The open band follows the measured current, so the charger
+        // (with a stop actuator) goes off by the tier.
+        var s = new GuardScenario(TestDevices.Document(StopCharger + "\n    draw: { current: sensor.charger_draw }"));
+        s.SetDraw("ev_charger", Phase.L1, 20);
         s.Sample(Phase.L1, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(5));
         s.Sample(Phase.L1, 31);
@@ -278,21 +321,83 @@ public sealed class GuardTierReactionTests
     }
 
     [Fact]
-    public void Charger_held_off_relieves_only_down_to_its_minimum()
+    public void Charger_without_draw_relieves_nothing_when_held()
     {
-        // Before Stage 3 a modulating device has no stop path (CanSwitchOff false): an Off hold
-        // can at most bring it to its 6 A minimum. Above 1.45 × In with the heater on and the
-        // charger at 20 A, everything on L1 goes off; the relief is 6.6 + 14 A, not 6.6 + 20 A,
-        // so the phase still reads 16.9 A effective and refuses increases.
+        // A setpoint is a ceiling, not a draw: without its own draw signal a charger held at its
+        // minimum relieves nothing (it may draw 0 A already). Above 1.45 × In with the heater on,
+        // the relief is the heater's 6.6 A alone, so the phase still reads 30.9 A and refuses increases.
         var s = new GuardScenario(TestDevices.Document());
         s.SampleAll(8, 8, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(10));
 
         s.Sample(Phase.L1, 37.5);
 
-        Assert.Equal(2, s.Sheds.Count(i => i.Target == GuardTarget.Off));
-        Assert.Equal(37.5 - 6.6 - 14, s.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
+        Assert.Equal([("ev_charger", GuardTarget.AtMinimum), ("heater_l1", GuardTarget.Off)], s.Sheds.Select(i => (i.Device.Value, i.Target)).Order());
+        Assert.Equal(37.5 - 6.6, s.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
         Assert.False(s.PhaseStatus(Phase.L1).IncreasesAllowed);
+    }
+
+    [Fact]
+    public void Idle_charger_at_20A_setpoint_still_produces_would_shed()
+    {
+        // Live finding on 0.3.0: the go-e sat at a 20 A setpoint while the car drew nothing; the
+        // guard counted (setpoint − min) = 14 A as pending relief forever, so L1 measured 19 A but
+        // read 5 A, and a later overload produced no would-shed. Relief never exceeds the measured
+        // draw: with the charger's draw at 0 A the estimate stays at the measured current, and a
+        // shed_one overload sheds the heater at its entering sample.
+        var s = new GuardScenario(TestDevices.Document(TestDevices.ReferenceWithChargerDraw));
+        s.SetDraw("ev_charger", Phase.L1, 0);
+        s.SetState("heater_l1", new RelayApplied(false));
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(5));
+        s.Sample(Phase.L1, 31);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(30));
+        Assert.Equal([("ev_charger", GuardTarget.AtMinimum)], s.Sheds.Select(i => (i.Device.Value, i.Target)));
+
+        s.Hold(Phase.L1, 19, TimeSpan.FromSeconds(10), T0 + TimeSpan.FromMinutes(2));
+        Assert.Equal(19, s.PhaseStatus(Phase.L1).EffectiveCurrent!.Value.Value, 9);
+
+        s.RunFor(TimeSpan.FromSeconds(5));
+        s.SetState("heater_l1", new RelayApplied(true));
+        var entering = s.Sample(Phase.L1, 33.75);
+
+        Assert.Contains(entering.Intents, i => i.Device.Value == "heater_l1" && i.Target == GuardTarget.Off && i.Reason == ReasonCode.GuardTierExceeded);
+    }
+
+    [Fact]
+    public void Idle_charger_ranked_lowest_never_spends_the_shed_step()
+    {
+        // The charger is the cheapest load on L1 here, at a 20 A setpoint with the car drawing
+        // nothing. Reducing it would relieve 0 A (relief never exceeds the measured draw), so the
+        // one step the shed-one band allows at its entering sample goes to the heater, the next
+        // candidate that really relieves L1; the 30 s band allowance is not spent on paper relief.
+        var s = new GuardScenario(TestDevices.Document(TestDevices.ReferenceWithChargerDraw.Replace("value_per_kwh: 2.03", "value_per_kwh: 0.1", StringComparison.Ordinal)));
+        s.SetDraw("ev_charger", Phase.L1, 0);
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(5));
+
+        var entering = s.Sample(Phase.L1, 33.75);
+
+        var shed = Assert.Single(entering.Intents);
+        Assert.Equal(("heater_l1", GuardTarget.Off, ReasonCode.GuardTierExceeded), (shed.Device.Value, shed.Target, shed.Reason));
+    }
+
+    [Fact]
+    public void Hold_relief_is_visible_in_the_same_evaluation()
+    {
+        // The guard's own holds count in the estimate of the evaluation that made them (not one
+        // step later through the effector's ledger): the entering 33.75 A sheds the heater, and the
+        // published estimate of that very evaluation is already 33.75 − 6.6 A.
+        var s = new GuardScenario(TestDevices.Document());
+        s.SetState("ev_charger", new SetpointApplied(new Amperes(6)));
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(1));
+
+        var entering = s.Sample(Phase.L1, 33.75);
+
+        Assert.Contains(entering.Intents, i => i.Device.Value == "heater_l1");
+        Assert.Equal(33.75 - 6.6, entering.Status.Phases.Single(p => p.Phase == Phase.L1).EffectiveCurrent!.Value.Value, 9);
+        Assert.Equal(33.75 - 6.6, entering.Envelope.For(Switchboard.Domain.Dispatch.ConstraintKey.Main(Phase.L1))!.EstimatedCurrent!.Value.Value, 9);
     }
 
     [Fact]
@@ -341,8 +446,9 @@ public sealed class GuardTierReactionTests
     {
         // At 1.30 × In from a full budget the 30 s band timer and the empty budget come due at the
         // same tick: one step from the timer, everything from the budget. Everything wins, and the
-        // record names the budget (the tier only wins a tie of equal severity).
-        var s = new GuardScenario(TestDevices.Document());
+        // record names the budget (the tier only wins a tie of equal severity). The charger has a
+        // stop actuator here, so "everything" can still take it off.
+        var s = new GuardScenario(TestDevices.Document(StopCharger));
         s.Sample(Phase.L1, 8);
         s.RunUntil(T0 + TimeSpan.FromSeconds(5));
         s.Sample(Phase.L1, 32.5);
@@ -355,6 +461,9 @@ public sealed class GuardTierReactionTests
         Assert.Equal(("ev_charger", GuardTarget.Off, ReasonCode.GuardBudgetLow), (last.Device.Value, last.Target, last.Reason));
         Assert.Equal(before + 1, s.Sheds.Count());
     }
+
+    /// <summary>The reference devices with a stop actuator on the charger (DISP-01): it can be switched off.</summary>
+    private static readonly string StopCharger = TestDevices.Reference.ReplaceLineEndings("\n") + "\n    stop_actuator: switch.charger_enable";
 
     private const string SmallLoads = """
           - id: load_a

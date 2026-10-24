@@ -32,11 +32,15 @@ public enum DeviceStateInvalidReason
 /// One stage's applied state as protection sees it. <see cref="Applied"/> is null unless the
 /// state is <see cref="Fresh"/>: a stale "off" must never exclude a device from protection.
 /// </summary>
-/// <param name="Stage">The stage number, starting at 1.</param>
+/// <param name="Stage">The stage number, starting at 1; <see cref="StopStage"/> for a modulating device's stop actuator.</param>
 public sealed record DeviceStateSample(
     DeviceName Device,
     int Stage,
     bool Fresh,
     DeviceStateInvalidReason? InvalidReason,
     AppliedState? Applied,
-    DateTimeOffset? ReportedAt);
+    DateTimeOffset? ReportedAt)
+{
+    /// <summary>The stage number under which a stop actuator's on/off state is reported (its enabled flag).</summary>
+    public const int StopStage = 0;
+}

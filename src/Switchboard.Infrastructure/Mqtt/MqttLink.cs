@@ -20,8 +20,9 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// when Home Assistant comes online, whenever they change and all again on every heartbeat (a state
 /// that reaches HA before its new entity's discovery is dropped). An object a valid configuration no longer declares is retracted (an empty retained
 /// discovery payload), including objects announced before a restart (the ledger in state.json).
-/// Command topics are subscribed only as the topic guard allows; a retained command is ignored, so
-/// a stale message in the broker can never engage anything.
+/// Command topics are subscribed only as the topic guard allows and follow the sources: a topic a
+/// source no longer lists (a device no longer declared) is unsubscribed, a new one subscribed. A
+/// retained command is ignored, so a stale message in the broker can never engage anything.
 /// </para>
 /// </summary>
 public sealed class MqttLink : IHealthPublisher
@@ -50,6 +51,7 @@ public sealed class MqttLink : IHealthPublisher
     // Per session, touched by the session loop only: what discovery and state were last sent.
     private readonly Dictionary<string, string> _announced = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _published = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _subscribed = new(StringComparer.Ordinal);
     private int _entitiesDirty;
     private bool _shuttingDown;
 
@@ -220,6 +222,7 @@ public sealed class MqttLink : IHealthPublisher
         Interlocked.Exchange(ref _entitiesDirty, 0);
         _announced.Clear();
         _published.Clear();
+        _subscribed.Clear();
 
         var credentials = await _credentials.GetAsync(cancellationToken).ConfigureAwait(false);
         var settings = new MqttConnectSettings
@@ -243,10 +246,7 @@ public sealed class MqttLink : IHealthPublisher
         await PublishHealthAsync(_health.IsHealthy, cancellationToken).ConfigureAwait(false);
         await PublishEntityStatesAsync(force: true, cancellationToken).ConfigureAwait(false);
         await _transport.SubscribeAsync(_statusTopic, cancellationToken).ConfigureAwait(false);
-        foreach (var topic in _sources.SelectMany(s => s.CommandTopics))
-        {
-            await _transport.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
-        }
+        await ReconcileSubscriptionsAsync(cancellationToken).ConfigureAwait(false);
 
         // Not on CONNACK: a broker that accepts the connection but refuses what follows would
         // otherwise be retried at the minimum delay forever.
@@ -280,6 +280,7 @@ public sealed class MqttLink : IHealthPublisher
                     Interlocked.Exchange(ref _entitiesDirty, 0);
                     await AnnounceEntitiesAsync(force: false, cancellationToken).ConfigureAwait(false);
                     await PublishEntityStatesAsync(force: false, cancellationToken).ConfigureAwait(false);
+                    await ReconcileSubscriptionsAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case Signal.CommandHandled:
                     // Home Assistant waits for the state after a command; send it even when unchanged.
@@ -332,6 +333,34 @@ public sealed class MqttLink : IHealthPublisher
         }
 
         _ledger.Replace(keys);
+    }
+
+    /// <summary>
+    /// Subscribes the command topics the sources list now and unsubscribes those they no longer
+    /// list. A topic the guard refuses (the declared set changed between the source's list and the
+    /// subscription) is skipped, not fatal: the guard has the last word, the session goes on.
+    /// </summary>
+    private async Task ReconcileSubscriptionsAsync(CancellationToken cancellationToken)
+    {
+        var wanted = _sources.SelectMany(s => s.CommandTopics).ToHashSet(StringComparer.Ordinal);
+        foreach (var topic in wanted.Where(t => !_subscribed.Contains(t)).Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                await _transport.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+                _subscribed.Add(topic);
+            }
+            catch (MqttTopicRefusedException ex)
+            {
+                _logger.LogWarning("{Refusal}", ex.Message);
+            }
+        }
+
+        foreach (var topic in _subscribed.Where(t => !wanted.Contains(t)).Order(StringComparer.Ordinal).ToList())
+        {
+            await _transport.UnsubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+            _subscribed.Remove(topic);
+        }
     }
 
     /// <summary>States (and attributes) of every source's entities; unchanged payloads are skipped unless <paramref name="force"/>.</summary>

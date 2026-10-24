@@ -3,10 +3,12 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.State;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -14,11 +16,17 @@ using Switchboard.Domain.Units;
 namespace Switchboard.Infrastructure.Persistence;
 
 /// <summary>
-/// <c>/data/state.json</c>, schema version 1. Read as untrusted input (a user may edit it): exact
-/// keys, exact types, values in range, at most StateMaxFileBytes. Anything else renames the file to
+/// <c>/data/state.json</c>. Read as untrusted input (a user may edit it): exact keys, exact types,
+/// values in range, at most StateMaxFileBytes. Anything else renames the file to
 /// <c>state.json.corrupt</c> and starts fresh with a warning; it never stops the process. Written
 /// atomically: a temporary file is written and flushed, then moved over the old one, so a crash
 /// mid-write leaves the previous state whole.
+/// <para>
+/// Schema 2 (Stage 3) adds the manual overrides and the circuit-group budgets. A schema 1 file
+/// (0.3.x) reads as schema 2 with neither. While the state holds neither, the file is still written
+/// as schema 1, so a rollback to 0.3.x keeps budgets, kill switch and the retraction ledger; 0.3.x
+/// sets a schema 2 file aside as corrupt.
+/// </para>
 /// </summary>
 public sealed class RuntimeStateFile : IRuntimeStateStore
 {
@@ -30,6 +38,10 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private const int MaxDevices = 256;
     private const int MaxStages = 64;
     private const int MaxDiscovered = 2048;
+    private const int MaxGroups = 64;
+
+    private static readonly string[] Version1Keys = ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt"];
+    private static readonly string[] Version2Keys = [.. Version1Keys, "overrides", "group_budgets"];
 
     private readonly string _directory;
     private readonly int _maxBytes;
@@ -111,8 +123,11 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
+            // Auto is the absence of an override: never written (it would not read back).
+            var overrides = state.Overrides.Where(o => o.Value.Mode != OverrideMode.Auto).OrderBy(o => o.Key).ToList();
+            var version = overrides.Count == 0 && state.GroupBudgets.IsEmpty ? RuntimeState.LegacySchemaVersion : RuntimeState.SchemaVersion;
             writer.WriteStartObject();
-            writer.WriteNumber("schema_version", RuntimeState.SchemaVersion);
+            writer.WriteNumber("schema_version", version);
             WriteTime(writer, "saved_at", state.SavedAt);
             writer.WriteBoolean("clean_shutdown", state.CleanShutdown);
             writer.WriteBoolean("kill_switch", state.KillSwitch);
@@ -120,14 +135,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             writer.WriteString("ui_mode", state.UiMode == OperatingMode.Active ? "active" : "shadow");
 
             writer.WriteStartObject("phases");
-            foreach (var (phase, memory) in state.Budgets.OrderBy(p => p.Key))
-            {
-                writer.WriteStartObject(phase.ToString());
-                writer.WriteNumber("budget", memory.Budget);
-                WriteTime(writer, "at", memory.At);
-                writer.WriteEndObject();
-            }
-
+            WriteBudgets(writer, state.Budgets);
             writer.WriteEndObject();
 
             writer.WriteStartObject("devices");
@@ -173,19 +181,70 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
 
             writer.WriteEndArray();
             writer.WriteEndObject();
+
+            if (version == RuntimeState.SchemaVersion)
+            {
+                writer.WriteStartObject("overrides");
+                foreach (var (device, entry) in overrides)
+                {
+                    writer.WriteStartObject(device.Value);
+                    writer.WriteString("mode", Snake(entry.Mode));
+                    WriteTime(writer, "changed_at", entry.ChangedAt);
+                    if (entry.Source is { } source)
+                    {
+                        writer.WriteString("source", Snake(source));
+                    }
+                    else
+                    {
+                        writer.WriteNull("source");
+                    }
+
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndObject();
+                writer.WriteStartObject("group_budgets");
+                foreach (var (group, budgets) in state.GroupBudgets.OrderBy(g => g.Key))
+                {
+                    writer.WriteStartObject(group.Value);
+                    WriteBudgets(writer, budgets);
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 
         return buffer.WrittenSpan.ToArray();
     }
 
+    private static void WriteBudgets(Utf8JsonWriter writer, ImmutableDictionary<Phase, BudgetMemory> budgets)
+    {
+        foreach (var (phase, memory) in budgets.OrderBy(p => p.Key))
+        {
+            writer.WriteStartObject(phase.ToString());
+            writer.WriteNumber("budget", memory.Budget);
+            WriteTime(writer, "at", memory.At);
+            writer.WriteEndObject();
+        }
+    }
+
     private static RuntimeState Parse(JsonElement root)
     {
-        var keys = Keys(root, "the document", "schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt");
-        if (keys["schema_version"].ValueKind != JsonValueKind.Number || !keys["schema_version"].TryGetInt32(out var version) || version != RuntimeState.SchemaVersion)
+        var version = root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("schema_version", out var declared)
+            && declared.ValueKind == JsonValueKind.Number
+            && declared.TryGetInt32(out var number)
+                ? number
+                : 0;
+        if (version is not (RuntimeState.SchemaVersion or RuntimeState.LegacySchemaVersion))
         {
-            throw new InvalidStateException($"schema_version is not {RuntimeState.SchemaVersion}");
+            throw new InvalidStateException($"schema_version is neither {RuntimeState.LegacySchemaVersion} nor {RuntimeState.SchemaVersion}");
         }
+
+        var keys = Keys(root, "the document", version == RuntimeState.SchemaVersion ? Version2Keys : Version1Keys);
 
         var uiMode = keys["ui_mode"].ValueKind == JsonValueKind.String ? keys["ui_mode"].GetString() : null;
         if (uiMode is not ("shadow" or "active"))
@@ -193,23 +252,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             throw new InvalidStateException("ui_mode is neither shadow nor active");
         }
 
-        var budgets = ImmutableDictionary.CreateBuilder<Phase, BudgetMemory>();
-        foreach (var property in Object(keys["phases"], "phases", Enum.GetValues<Phase>().Length))
-        {
-            if (!Enum.TryParse<Phase>(property.Name, ignoreCase: false, out var phase) || !Enum.IsDefined(phase) || property.Name != phase.ToString())
-            {
-                throw new InvalidStateException($"phases.{property.Name} is not a phase");
-            }
-
-            var entry = Keys(property.Value, $"phases.{property.Name}", "budget", "at");
-            var budget = Number(entry["budget"], $"phases.{property.Name}.budget");
-            if (budget is < 0 or > 1)
-            {
-                throw new InvalidStateException($"phases.{property.Name}.budget is outside [0, 1]");
-            }
-
-            budgets.Add(phase, new BudgetMemory(budget, Time(entry["at"], $"phases.{property.Name}.at")!.Value));
-        }
+        var budgets = Budgets(keys["phases"], "phases");
 
         var devices = ImmutableDictionary.CreateBuilder<DeviceName, ImmutableArray<StageLastKnown?>>();
         foreach (var property in Object(keys["devices"], "devices", MaxDevices))
@@ -243,16 +286,91 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             }
         }
 
-        return new RuntimeState(
+        var state = new RuntimeState(
             Time(keys["saved_at"], "saved_at", nullable: true),
             Bool(keys["clean_shutdown"], "clean_shutdown"),
             Bool(keys["kill_switch"], "kill_switch"),
             Time(keys["kill_switch_changed_at"], "kill_switch_changed_at", nullable: true),
             uiMode == "active" ? OperatingMode.Active : OperatingMode.Shadow,
-            budgets.ToImmutable(),
+            budgets,
             devices.ToImmutable(),
             discovered.ToImmutable());
+        return version == RuntimeState.SchemaVersion
+            ? state with { Overrides = Overrides(keys["overrides"]), GroupBudgets = GroupBudgets(keys["group_budgets"]) }
+            : state;
     }
+
+    private static ImmutableDictionary<Phase, BudgetMemory> Budgets(JsonElement element, string path)
+    {
+        var budgets = ImmutableDictionary.CreateBuilder<Phase, BudgetMemory>();
+        foreach (var property in Object(element, path, Enum.GetValues<Phase>().Length))
+        {
+            if (!Enum.TryParse<Phase>(property.Name, ignoreCase: false, out var phase) || !Enum.IsDefined(phase) || property.Name != phase.ToString())
+            {
+                throw new InvalidStateException($"{path}.{property.Name} is not a phase");
+            }
+
+            var entry = Keys(property.Value, $"{path}.{property.Name}", "budget", "at");
+            var budget = Number(entry["budget"], $"{path}.{property.Name}.budget");
+            if (budget is < 0 or > 1)
+            {
+                throw new InvalidStateException($"{path}.{property.Name}.budget is outside [0, 1]");
+            }
+
+            budgets.Add(phase, new BudgetMemory(budget, Time(entry["at"], $"{path}.{property.Name}.at")!.Value));
+        }
+
+        return budgets.ToImmutable();
+    }
+
+    /// <summary>Only force_on and force_off are stored: auto is the absence of an override.</summary>
+    private static ImmutableDictionary<DeviceName, DeviceOverride> Overrides(JsonElement element)
+    {
+        var overrides = ImmutableDictionary.CreateBuilder<DeviceName, DeviceOverride>();
+        foreach (var property in Object(element, "overrides", MaxDevices))
+        {
+            if (!DeviceName.TryParse(property.Name, out var device))
+            {
+                throw new InvalidStateException($"overrides.{property.Name} is not a device name");
+            }
+
+            var path = $"overrides.{property.Name}";
+            var entry = Keys(property.Value, path, "mode", "changed_at", "source");
+            var mode = entry["mode"].ValueKind == JsonValueKind.String ? entry["mode"].GetString() : null;
+            var parsed = Enum.GetValues<OverrideMode>().Where(m => m != OverrideMode.Auto && Snake(m) == mode).Select(m => (OverrideMode?)m).SingleOrDefault()
+                ?? throw new InvalidStateException($"{path}.mode is neither force_on nor force_off");
+            OverrideSource? source = null;
+            if (entry["source"].ValueKind != JsonValueKind.Null)
+            {
+                var text = entry["source"].ValueKind == JsonValueKind.String ? entry["source"].GetString() : null;
+                source = Enum.GetValues<OverrideSource>().Where(v => Snake(v) == text).Select(v => (OverrideSource?)v).SingleOrDefault()
+                    ?? throw new InvalidStateException($"{path}.source is not api, mqtt or restored");
+            }
+
+            overrides.Add(device.Value, new DeviceOverride(parsed, Time(entry["changed_at"], $"{path}.changed_at", nullable: true), source));
+        }
+
+        return overrides.ToImmutable();
+    }
+
+    private static ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> GroupBudgets(JsonElement element)
+    {
+        var groups = ImmutableDictionary.CreateBuilder<GroupName, ImmutableDictionary<Phase, BudgetMemory>>();
+        foreach (var property in Object(element, "group_budgets", MaxGroups))
+        {
+            if (!GroupName.TryParse(property.Name, out var group))
+            {
+                throw new InvalidStateException($"group_budgets.{property.Name} is not a group name");
+            }
+
+            groups.Add(group.Value, Budgets(property.Value, $"group_budgets.{property.Name}"));
+        }
+
+        return groups.ToImmutable();
+    }
+
+    private static string Snake<TEnum>(TEnum value)
+        where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static StageLastKnown? Stage(JsonElement element, string path)
     {
@@ -273,13 +391,10 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             return new StageLastKnown(new RelayApplied(applied == "on"), Time(relay["at"], $"{path}.at")!.Value);
         }
 
+        // A last-known setpoint is display only, never a protection input; a storage device's
+        // discharge is negative (the signal layer accepts it), so only a non-finite value is refused.
         var modulating = Keys(element, path, "setpoint_a", "at");
         var setpoint = Number(modulating["setpoint_a"], $"{path}.setpoint_a");
-        if (setpoint < 0)
-        {
-            throw new InvalidStateException($"{path}.setpoint_a is negative");
-        }
-
         return new StageLastKnown(new SetpointApplied(new Amperes(setpoint)), Time(modulating["at"], $"{path}.at")!.Value);
     }
 

@@ -1,0 +1,288 @@
+{
+  "at": "2026-10-24T12:01:20.004+00:00",
+  "mode": {
+    "ceiling": "shadow",
+    "uiChoice": "shadow",
+    "effective": "shadow",
+    "note": "none"
+  },
+  "commandPath": false,
+  "phases": [
+    {
+      "phase": "L1",
+      "envelopeA": 3.2,
+      "inFlightA": -10,
+      "dataValid": true,
+      "invalidReason": null,
+      "foreignW": 850,
+      "foreignBaselineW": 400,
+      "rank": 2,
+      "groups": [
+        {
+          "group": "carport",
+          "envelopeA": 4,
+          "inFlightA": -10,
+          "increasesAllowed": true
+        }
+      ]
+    },
+    {
+      "phase": "L2",
+      "envelopeA": 8.6,
+      "inFlightA": 7,
+      "dataValid": true,
+      "invalidReason": null,
+      "foreignW": 520,
+      "foreignBaselineW": 510,
+      "rank": 1,
+      "groups": []
+    },
+    {
+      "phase": "L3",
+      "envelopeA": null,
+      "inFlightA": 0,
+      "dataValid": false,
+      "invalidReason": "power_not_fresh",
+      "foreignW": null,
+      "foreignBaselineW": null,
+      "rank": 3,
+      "groups": []
+    }
+  ],
+  "devices": [
+    {
+      "id": "heater_l1",
+      "type": "on_off",
+      "phases": ["L1"],
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null,
+      "intended": null,
+      "reported": {
+        "relays": [false],
+        "setpointA": null,
+        "enabled": true
+      },
+      "reportedFresh": true,
+      "matches": true,
+      "reason": "headroom_available",
+      "origin": null,
+      "startRank": 4,
+      "pending": null,
+      "lockout": {
+        "minOnRemainingS": 0,
+        "minOffRemainingS": 42
+      },
+      "deferred": {
+        "target": {
+          "relays": [true],
+          "setpointA": null,
+          "enabled": true
+        },
+        "reason": "headroom_available",
+        "refusedBy": "lockout_min_off",
+        "since": "2026-10-24T12:00:50.004+00:00",
+        "dueAt": "2026-10-24T12:02:02.004+00:00"
+      },
+      "settling": "none",
+      "unresponsive": null,
+      "mismatches": 0,
+      "override": {
+        "mode": "auto",
+        "changedAt": null,
+        "source": null
+      },
+      "draw": null,
+      "history": [
+        {
+          "at": "2026-10-24T11:58:31.004+00:00",
+          "kind": "observed",
+          "expected": -1700,
+          "measured": -1649,
+          "unit": "watts",
+          "verdict": "match"
+        }
+      ]
+    },
+    {
+      "id": "heater_l2",
+      "type": "on_off",
+      "phases": ["L2"],
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null,
+      "intended": {
+        "relays": [true],
+        "setpointA": null,
+        "enabled": true
+      },
+      "reported": {
+        "relays": [false],
+        "setpointA": null,
+        "enabled": true
+      },
+      "reportedFresh": true,
+      "matches": false,
+      "reason": "headroom_available",
+      "origin": "dispatch",
+      "startRank": 3,
+      "pending": null,
+      "lockout": {
+        "minOnRemainingS": 348,
+        "minOffRemainingS": 0
+      },
+      "deferred": null,
+      "settling": "open",
+      "unresponsive": null,
+      "mismatches": 0,
+      "override": {
+        "mode": "auto",
+        "changedAt": null,
+        "source": null
+      },
+      "draw": null,
+      "history": []
+    },
+    {
+      "id": "heater_l3",
+      "type": "on_off",
+      "phases": ["L3"],
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null,
+      "intended": {
+        "relays": [false],
+        "setpointA": null,
+        "enabled": true
+      },
+      "reported": null,
+      "reportedFresh": false,
+      "matches": false,
+      "reason": "device_unresponsive",
+      "origin": "dispatch",
+      "startRank": 5,
+      "pending": "guard_stale_signal",
+      "lockout": {
+        "minOnRemainingS": 0,
+        "minOffRemainingS": 0
+      },
+      "deferred": null,
+      "settling": "timed_out",
+      "unresponsive": {
+        "since": "2026-10-24T11:40:00.004+00:00",
+        "retryAt": "2026-10-24T12:10:00.004+00:00"
+      },
+      "mismatches": 3,
+      "override": {
+        "mode": "force_on",
+        "changedAt": "2026-10-24T11:30:00.000+00:00",
+        "source": "restored"
+      },
+      "draw": null,
+      "history": [
+        {
+          "at": "2026-10-24T11:40:00.004+00:00",
+          "kind": "command",
+          "expected": 1700,
+          "measured": 12,
+          "unit": "watts",
+          "verdict": "mismatch"
+        },
+        {
+          "at": "2026-10-24T11:31:30.004+00:00",
+          "kind": "command",
+          "expected": 1700,
+          "measured": 1705,
+          "unit": "watts",
+          "verdict": "match"
+        }
+      ]
+    },
+    {
+      "id": "ev_charger",
+      "type": "modulating",
+      "phases": ["L1"],
+      "rotationGroup": null,
+      "circuitGroup": "carport",
+      "intended": {
+        "relays": null,
+        "setpointA": 6,
+        "enabled": true
+      },
+      "reported": {
+        "relays": null,
+        "setpointA": 16,
+        "enabled": true
+      },
+      "reportedFresh": true,
+      "matches": false,
+      "reason": "manual_override",
+      "origin": "override",
+      "startRank": 1,
+      "pending": null,
+      "lockout": {
+        "minOnRemainingS": 60,
+        "minOffRemainingS": 0
+      },
+      "deferred": null,
+      "settling": "open",
+      "unresponsive": null,
+      "mismatches": 0,
+      "override": {
+        "mode": "force_off",
+        "changedAt": "2026-10-24T12:00:05.000+00:00",
+        "source": "api"
+      },
+      "draw": {
+        "currentA": 9.6,
+        "powerW": 2208,
+        "fresh": true
+      },
+      "history": [
+        {
+          "at": "2026-10-24T12:00:45.004+00:00",
+          "kind": "command",
+          "expected": 6,
+          "measured": 9.6,
+          "unit": "amperes",
+          "verdict": "not_applied"
+        }
+      ]
+    },
+    {
+      "id": "battery",
+      "type": "storage",
+      "phases": ["L2"],
+      "rotationGroup": null,
+      "circuitGroup": null,
+      "intended": null,
+      "reported": {
+        "relays": null,
+        "setpointA": 0,
+        "enabled": true
+      },
+      "reportedFresh": true,
+      "matches": true,
+      "reason": "value_rank_below_cutoff",
+      "origin": null,
+      "startRank": 2,
+      "pending": "awaiting_confirmation",
+      "lockout": {
+        "minOnRemainingS": 0,
+        "minOffRemainingS": 0
+      },
+      "deferred": null,
+      "settling": "none",
+      "unresponsive": null,
+      "mismatches": 0,
+      "override": {
+        "mode": "auto",
+        "changedAt": null,
+        "source": null
+      },
+      "draw": {
+        "currentA": null,
+        "powerW": null,
+        "fresh": false
+      },
+      "history": []
+    }
+  ]
+}

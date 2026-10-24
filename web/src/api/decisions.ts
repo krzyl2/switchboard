@@ -3,7 +3,7 @@ import type { FlowDirection, PhaseName, ProtectionInvalidReason } from './signal
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
 
 // Contract of a decision as GET api/decisions and GET api/guard write it
-// (src/Switchboard.Host/Web/DecisionsEndpoint.cs). Every closed list mirrors a backend enum;
+// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2. Every closed list mirrors a backend enum;
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
@@ -29,7 +29,8 @@ export const REASON_CODES = [
   'headroom_available',
   'kill_switch',
 ] as const;
-export const DECISION_SCOPES = ['system', 'phase', 'device'] as const;
+/** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
+export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;
 export const DECISION_ACTIONS = [
   'switch_off',
   'reduce_to_minimum',
@@ -44,9 +45,18 @@ export const DECISION_ACTIONS = [
   'kill_switch_disengaged',
   'mode_resolved',
   'cannot_reduce_exporting',
+  'switch_on',
+  'set_setpoint',
+  'deferred',
+  'override_set',
+  'marked_unresponsive',
+  'unresponsive_cleared',
+  'settling_timed_out',
+  'foreign_load_detected',
 ] as const;
 export const OPERATING_MODES = ['shadow', 'active'] as const;
-export const MODE_NOTES = ['none', 'active_unavailable_before_stage3'] as const;
+/** active_unavailable_before_stage3 is written by 0.3.x only; its lines stay readable for the log's retention. */
+export const MODE_NOTES = ['none', 'active_unavailable_before_stage3', 'active_not_enabled'] as const;
 export const KILL_SWITCH_SOURCES = ['api', 'mqtt', 'restored'] as const;
 /** What put the whole installation in safe state (system-wide records and the holds they made). */
 export const SAFE_STATE_CAUSES = [
@@ -76,6 +86,14 @@ export const DEVICE_STATE_INVALID_REASONS = [
 ] as const;
 /** A relay stage's applied state; a modulating device reports a setpoint in A instead. */
 export const RELAY_STATES = ['on', 'off'] as const;
+/** Who decided a device change: protection, dispatch or a manual override (SAFE-04). */
+export const DECISION_ORIGINS = ['guard', 'dispatch', 'override'] as const;
+/** A device's settling window at a dispatch decision (DISP-05). */
+export const SETTLING_STATES = ['open', 'closed', 'timed_out'] as const;
+/** The outcome of an effector verification (DISP-07). */
+export const VERDICTS = ['match', 'mismatch', 'inconclusive', 'not_applied', 'unverifiable', 'timed_out'] as const;
+export const MEASURE_UNITS = ['amperes', 'watts'] as const;
+export const OVERRIDE_MODES = ['auto', 'force_on', 'force_off'] as const;
 
 export type ReasonCode = (typeof REASON_CODES)[number];
 export type DecisionScope = (typeof DECISION_SCOPES)[number];
@@ -87,6 +105,11 @@ export type SafeStateCause = (typeof SAFE_STATE_CAUSES)[number];
 export type TierReaction = (typeof TIER_REACTIONS)[number];
 export type DeviceStateInvalidReason = (typeof DEVICE_STATE_INVALID_REASONS)[number];
 export type RelayState = (typeof RELAY_STATES)[number];
+export type DecisionOrigin = (typeof DECISION_ORIGINS)[number];
+export type SettlingState = (typeof SETTLING_STATES)[number];
+export type Verdict = (typeof VERDICTS)[number];
+export type MeasureUnit = (typeof MEASURE_UNITS)[number];
+export type OverrideMode = (typeof OVERRIDE_MODES)[number];
 
 /** The phase at the decision; current is measured, import positive. */
 export interface PhaseInputs {
@@ -117,8 +140,55 @@ export interface DeviceInputs {
   shedPriority: number | null;
   minOnRemainingS: number;
   minOffRemainingS: number;
-  /** False for a modulating device before a stop actuator exists: Off cannot happen. */
+  /** False for a modulating device without a stop actuator, and for storage: Off cannot happen. */
   canSwitchOff: boolean;
+}
+
+/**
+ * A device level: relay flags per stage, or a setpoint in A (exactly one of the two); enabled is
+ * false only for a modulating device switched off through its stop actuator.
+ */
+export interface Level {
+  relays: boolean[] | null;
+  setpointA: number | null;
+  enabled: boolean;
+}
+
+/** Headroom on one constraint: a main phase (group null) or a circuit group's phase. */
+export interface ConstraintHeadroom {
+  group: string | null;
+  phase: PhaseName;
+  /** E from the guard; null without valid data. */
+  envelopeA: number | null;
+  /** What was left when the device's turn came in the allocation; null when it was not allocated. */
+  remainingA: number | null;
+}
+
+export interface Verification {
+  /** A relay's expected step, or a setpoint's new ceiling. */
+  expected: number;
+  /** The measured step, or the draw after the window. */
+  measured: number;
+  unit: MeasureUnit;
+  verdict: Verdict;
+}
+
+/** What a dispatch decision was made from (MODE-03). */
+export interface DispatchInputs {
+  headroom: ConstraintHeadroom[];
+  startHysteresisA: number;
+  stopHysteresisA: number;
+  startRank: number | null;
+  /** The device's share of the measured current per phase. */
+  contribution: { phase: PhaseName; currentA: number }[];
+  /** The in-flight change counted for the device per constraint. */
+  inFlight: { group: string | null; phase: PhaseName; currentA: number }[];
+  settling: SettlingState | null;
+  verification: Verification | null;
+  minOnRemainingS: number;
+  minOffRemainingS: number;
+  deferredSince: Date | null;
+  override: OverrideMode;
 }
 
 export interface ModeInputs {
@@ -142,12 +212,19 @@ export interface Decision {
   mode: OperatingMode;
   commanded: boolean;
   refusedBy: ReasonCode | null;
+  /** Who decided a device change; null for phase and system events and for 0.3.x decisions. */
+  origin: DecisionOrigin | null;
+  /** The circuit group the decision is about or was caused by. */
+  group: string | null;
+  /** The device's target level after the decision (in shadow mode nothing is applied). */
+  target: Level | null;
   inputs: {
     phase: PhaseInputs | null;
     device: DeviceInputs | null;
     mode: ModeInputs | null;
     killSwitch: KillSwitchSource | null;
     safeStateCause: SafeStateCause | null;
+    dispatch: DispatchInputs | null;
   };
 }
 
@@ -159,6 +236,66 @@ export interface DecisionsPage {
 }
 
 const reason = (raw: unknown, path: string) => oneOf(REASON_CODES, raw, path);
+const phaseName = (raw: unknown, path: string) => oneOf(PHASES, raw, path);
+const groupName = (raw: unknown, path: string) => nullable(raw, path, text);
+
+/** A level as the add-on writes it: relays or a setpoint, never both, never neither. */
+export function parseLevel(raw: unknown, path: string): Level {
+  const r = object(raw, path);
+  const relays = nullable(field(r, 'relays', path), `${path}.relays`, (v, p) => list(v, p, bool));
+  const setpointA = nullable(field(r, 'setpointA', path), `${path}.setpointA`, number);
+  if ((relays === null) === (setpointA === null)) fail(path, 'relays or a setpoint, exactly one of them');
+  return { relays, setpointA, enabled: bool(field(r, 'enabled', path), `${path}.enabled`) };
+}
+
+function headroom(raw: unknown, path: string): ConstraintHeadroom {
+  const r = object(raw, path);
+  return {
+    group: groupName(field(r, 'group', path), `${path}.group`),
+    phase: phaseName(field(r, 'phase', path), `${path}.phase`),
+    envelopeA: nullable(field(r, 'envelopeA', path), `${path}.envelopeA`, number),
+    remainingA: nullable(field(r, 'remainingA', path), `${path}.remainingA`, number),
+  };
+}
+
+export function parseVerification(raw: unknown, path: string): Verification {
+  const r = object(raw, path);
+  return {
+    expected: number(field(r, 'expected', path), `${path}.expected`),
+    measured: number(field(r, 'measured', path), `${path}.measured`),
+    unit: oneOf(MEASURE_UNITS, field(r, 'unit', path), `${path}.unit`),
+    verdict: oneOf(VERDICTS, field(r, 'verdict', path), `${path}.verdict`),
+  };
+}
+
+function dispatchInputs(raw: unknown, path: string): DispatchInputs {
+  const r = object(raw, path);
+  const n = (key: string) => number(field(r, key, path), `${path}.${key}`);
+  return {
+    headroom: list(field(r, 'headroom', path), `${path}.headroom`, headroom),
+    startHysteresisA: n('startHysteresisA'),
+    stopHysteresisA: n('stopHysteresisA'),
+    startRank: nullable(field(r, 'startRank', path), `${path}.startRank`, positive),
+    contribution: list(field(r, 'contribution', path), `${path}.contribution`, (v, p) => {
+      const c = object(v, p);
+      return { phase: phaseName(field(c, 'phase', p), `${p}.phase`), currentA: number(field(c, 'currentA', p), `${p}.currentA`) };
+    }),
+    inFlight: list(field(r, 'inFlight', path), `${path}.inFlight`, (v, p) => {
+      const c = object(v, p);
+      return {
+        group: groupName(field(c, 'group', p), `${p}.group`),
+        phase: phaseName(field(c, 'phase', p), `${p}.phase`),
+        currentA: number(field(c, 'currentA', p), `${p}.currentA`),
+      };
+    }),
+    settling: nullable(field(r, 'settling', path), `${path}.settling`, (v, p) => oneOf(SETTLING_STATES, v, p)),
+    verification: nullable(field(r, 'verification', path), `${path}.verification`, parseVerification),
+    minOnRemainingS: n('minOnRemainingS'),
+    minOffRemainingS: n('minOffRemainingS'),
+    deferredSince: nullable(field(r, 'deferredSince', path), `${path}.deferredSince`, instant),
+    override: oneOf(OVERRIDE_MODES, field(r, 'override', path), `${path}.override`),
+  };
+}
 
 function phaseInputs(raw: unknown, path: string): PhaseInputs {
   const r = object(raw, path);
@@ -224,10 +361,13 @@ export function parseDecision(raw: unknown, path: string): Decision {
   const inputs = object(field(r, 'inputs', path), `${path}.inputs`);
   const scope = oneOf(DECISION_SCOPES, field(r, 'scope', path), `${path}.scope`);
   const device = nullable(field(r, 'device', path), `${path}.device`, text);
-  const phase = nullable(field(r, 'phase', path), `${path}.phase`, (v, p) => oneOf(PHASES, v, p));
-  // The add-on cannot build a device decision without its device or a phase decision without its phase.
+  const phase = nullable(field(r, 'phase', path), `${path}.phase`, phaseName);
+  const group = groupName(field(r, 'group', path), `${path}.group`);
+  // The add-on cannot build a device decision without its device, a phase decision without its
+  // phase or a group decision without its group.
   if (scope === 'device' && device === null) fail(`${path}.device`, 'present for a device decision');
   if (scope === 'phase' && phase === null) fail(`${path}.phase`, 'present for a phase decision');
+  if (scope === 'group' && group === null) fail(`${path}.group`, 'present for a group decision');
   return {
     id: text(field(r, 'id', path), `${path}.id`),
     at: instant(field(r, 'at', path), `${path}.at`),
@@ -241,6 +381,9 @@ export function parseDecision(raw: unknown, path: string): Decision {
     mode: oneOf(OPERATING_MODES, field(r, 'mode', path), `${path}.mode`),
     commanded: bool(field(r, 'commanded', path), `${path}.commanded`),
     refusedBy: nullable(field(r, 'refusedBy', path), `${path}.refusedBy`, reason),
+    origin: nullable(field(r, 'origin', path), `${path}.origin`, (v, p) => oneOf(DECISION_ORIGINS, v, p)),
+    group,
+    target: nullable(field(r, 'target', path), `${path}.target`, parseLevel),
     inputs: {
       phase: nullable(field(inputs, 'phase', `${path}.inputs`), `${path}.inputs.phase`, phaseInputs),
       device: nullable(field(inputs, 'device', `${path}.inputs`), `${path}.inputs.device`, deviceInputs),
@@ -251,6 +394,7 @@ export function parseDecision(raw: unknown, path: string): Decision {
       safeStateCause: nullable(field(inputs, 'safeStateCause', `${path}.inputs`), `${path}.inputs.safeStateCause`, (v, p) =>
         oneOf(SAFE_STATE_CAUSES, v, p),
       ),
+      dispatch: nullable(field(inputs, 'dispatch', `${path}.inputs`), `${path}.inputs.dispatch`, dispatchInputs),
     },
   };
 }

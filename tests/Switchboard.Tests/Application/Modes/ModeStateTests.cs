@@ -21,12 +21,22 @@ public sealed class ModeStateTests
     [Theory]
     [InlineData(OperatingMode.Shadow)]
     [InlineData(OperatingMode.Active)]
-    public void Active_option_is_still_shadow_in_stage_2(OperatingMode uiChoice)
+    public void Active_option_stays_shadow_with_active_not_enabled(OperatingMode uiChoice)
     {
-        // Going active takes two deliberate acts (option and UI) and a version with a command
-        // path; until Stage 3 the note says why it stays shadow.
+        // Going active takes two deliberate acts (option and UI) and a command path; this version
+        // has none in production (the maintainer's rule), so the note says why it stays shadow.
         var mode = new ModeState(OperatingMode.Active, uiChoice).Current;
 
-        Assert.Equal((OperatingMode.Active, OperatingMode.Shadow, ModeNote.ActiveUnavailableBeforeStage3), (mode.Ceiling, mode.Effective, mode.Note));
+        Assert.Equal((OperatingMode.Active, OperatingMode.Shadow, ModeNote.ActiveNotEnabled), (mode.Ceiling, mode.Effective, mode.Note));
+    }
+
+    [Fact]
+    public void Active_needs_option_ui_choice_and_a_command_path()
+    {
+        // Only tests can claim a command path; even then both deliberate acts are required.
+        Assert.Equal(OperatingMode.Active, ModeState.Resolve(OperatingMode.Active, OperatingMode.Active, commandPathEnabled: true).Effective);
+        Assert.Equal(OperatingMode.Shadow, ModeState.Resolve(OperatingMode.Active, OperatingMode.Shadow, commandPathEnabled: true).Effective);
+        Assert.Equal(OperatingMode.Shadow, ModeState.Resolve(OperatingMode.Shadow, OperatingMode.Active, commandPathEnabled: true).Effective);
+        Assert.Equal(OperatingMode.Shadow, ModeState.Resolve(OperatingMode.Active, OperatingMode.Active).Effective);
     }
 }

@@ -1,4 +1,5 @@
 using Switchboard.Application.Options;
+using Switchboard.Domain.Devices;
 
 namespace Switchboard.Infrastructure.Mqtt;
 
@@ -12,8 +13,10 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// command the add-on itself;</item>
 /// <item>exactly <c>&lt;DiscoveryPrefix&gt;/&lt;component&gt;/&lt;BaseTopic&gt;/&lt;object_id&gt;/config</c> — our discovery configs.</item>
 /// </list>
-/// Subscriptions are narrower still: exactly Home Assistant's birth topic and the kill switch's
-/// command topic. A subscription is how a message gets in, so nothing else may be listened to.
+/// Subscriptions are narrower still: exactly Home Assistant's birth topic, the kill switch's command
+/// topic and, for each device of the current valid configuration (the declared set, re-read at
+/// every check), exactly its override select's command topic. A subscription is how a message gets
+/// in, so nothing else may be listened to: no wildcard, no prefix match, no undeclared device.
 /// </summary>
 public sealed class MqttTopicGuard
 {
@@ -25,8 +28,10 @@ public sealed class MqttTopicGuard
     private readonly string _discoveryPrefix;
     private readonly string _baseTopic;
     private readonly string[] _subscriptions;
+    private readonly Func<IReadOnlyCollection<DeviceName>?> _declaredDevices;
 
-    public MqttTopicGuard(string discoveryPrefix, string baseTopic)
+    /// <param name="declaredDevices">The devices of the current valid configuration; null (or no provider) while there is none.</param>
+    public MqttTopicGuard(string discoveryPrefix, string baseTopic, Func<IReadOnlyCollection<DeviceName>?>? declaredDevices = null)
     {
         if (!TopicLevel.IsPlain(discoveryPrefix) || !TopicLevel.IsPlain(baseTopic))
         {
@@ -36,6 +41,7 @@ public sealed class MqttTopicGuard
         _discoveryPrefix = discoveryPrefix;
         _baseTopic = baseTopic;
         _subscriptions = [MqttIdentity.HomeAssistantStatusTopic(discoveryPrefix), GuardEntities.CommandTopic(baseTopic, GuardEntities.KillSwitchObjectId)];
+        _declaredDevices = declaredDevices ?? (() => null);
     }
 
     public bool IsAllowed(string? topic)
@@ -73,9 +79,11 @@ public sealed class MqttTopicGuard
         }
     }
 
-    /// <summary>Exactly Home Assistant's birth topic and the kill switch command topic; no wildcard, no prefix match.</summary>
+    /// <summary>Exactly Home Assistant's birth topic, the kill switch command topic and the override command topic of a declared device.</summary>
     public bool IsSubscriptionAllowed(string? topicFilter) =>
-        topicFilter is not null && _subscriptions.Contains(topicFilter, StringComparer.Ordinal);
+        topicFilter is not null
+        && (_subscriptions.Contains(topicFilter, StringComparer.Ordinal)
+            || (_declaredDevices() ?? []).Any(d => string.Equals(topicFilter, DispatchEntities.OverrideCommandTopic(_baseTopic, d), StringComparison.Ordinal)));
 
     public void EnsureSubscriptionAllowed(string? topicFilter)
     {
@@ -88,7 +96,7 @@ public sealed class MqttTopicGuard
 
 public sealed class MqttTopicRefusedException(string? topic, bool subscription = false)
     : InvalidOperationException(subscription
-        ? $"Subscribing to MQTT topic '{topic}' is not allowed; the add-on listens only to Home Assistant's birth topic and its kill switch command."
+        ? $"Subscribing to MQTT topic '{topic}' is not allowed; the add-on listens only to Home Assistant's birth topic, its kill switch command and the override commands of declared devices."
         : $"Publishing to MQTT topic '{topic}' is outside the add-on's own namespace and was refused.")
 {
     public string? Topic { get; } = topic;

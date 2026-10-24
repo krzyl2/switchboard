@@ -1,4 +1,4 @@
-# Switchboard configuration, Stage 2 (signals and devices): the maintainer's installation.
+# Switchboard configuration, Stage 3 (signals, devices and dispatch): the maintainer's installation.
 # 3 × 25 A, characteristic B (assumed), 230 V, PV on a SolarEdge inverter with an M1 meter.
 #
 # Copy to /addon_configs/<id>_switchboard/switchboard.yaml on the Home Assistant host (the add-on
@@ -141,44 +141,76 @@ signals:
     role: inverter_phase_current
     phase: L3
 
-# Devices the guard may reduce or shed. Each actuator is the only entity that may ever be commanded
-# for that device; this version commands nothing (shadow mode, no command path): it computes and
-# logs what it would do. Each device's applied state is read from its actuator (state_entity
-# overrides) and must be reported within state_max_age (default 10m), or the device is unsafe.
+# Devices the guard may reduce or shed and dispatch may start. Each actuator is the only entity that
+# may ever be commanded for that device; this version commands nothing (shadow mode, no command
+# path): it computes and logs what it would do, and what it would have each device at.
 #
 # Assumption: the house prefers charging the car, so the heater elements (lower value per kWh)
-# shed before the charger.
+# shed before the charger and are started after it.
+#
+# PHASES FOLLOW THE METER (changed in 0.4.0, to be confirmed by the maintainer before it goes live):
+# a device must be declared on the phase whose grid_current_lN it loads. In the 72 h recording
+# (2026-10-21 to 2026-10-24), every isolated relay switching moved one meter phase only:
+#   switch.grzalka_1 moves meter phase B (grid_*_l2): 10-23 07:39 off +1682 W, 07:45 on -1709 W,
+#     07:59 on -1699 W, 09:06 on -1658 W, 10:20 on -1730 W, 11:00 off +1703 W, 11:06 on -1662 W,
+#     11:27 off +1668 W;
+#   switch.grzalka_2 moves meter phase A (grid_*_l1), the phase the charger is on: 10-23 08:47 on
+#     -1614 W, 08:54 off +1649 W, 10:44 on -1695 W;
+#   switch.grzalka_3 has no isolated switching in the recording; L3 by elimination (unverified).
+# So heater_l1 is switch.grzalka_2 and heater_l2 is switch.grzalka_1 (in 0.3.x the other way round,
+# which made an L1 overload shed an element that draws nothing on L1). Whether meter phase A is
+# really L1 in the switchboard is a separate question (CONN-05); the meter's frame is what counts.
+#
+# Ratings: clean steps of 1634-1711 W at 244-249 V in the recording, about 6.9 A; declared as
+# 7.0 A / 1700 W (rated current rounded up). The model is the same for all three elements (assumed
+# for switch.grzalka_3, which has no clean step).
 #
 # The heater relays are Modbus switches that Home Assistant reports only when they change, so their
-# state can be hours old while still true; they get the longest state_max_age allowed (24h).
+# state can be hours old while still true: state_reports: on_change takes their freshness from
+# availability (unavailable, unknown, a missing entity or a lost connection still make the state
+# unknown) instead of an age limit. The elements have no power measurement of their own
+# (sensor.moc_grzalek_cwu is a template sensor and must never be an input): a running element is
+# counted at its rating, and an element whose thermostat has opened draws nothing although it is on.
+#
+# The three elements are identical and sit one per phase, so which one runs is free:
+# rotation_group lets dispatch start the element on the phase with the most headroom first.
 devices:
   - id: heater_l1
     type: onoff
-    actuator: switch.grzalka_1
+    actuator: switch.grzalka_2      # moves meter phase A (see above)
     phase: L1
-    rated_current_a: 6.6        # 1.5 kW element at 230 V
-    rated_power_w: 1500
+    rated_current_a: 7.0
+    rated_power_w: 1700
     value_per_kwh: 0.35
-    state_max_age: 24h
+    state_reports: on_change
+    rotation_group: cwu_heaters
   - id: heater_l2
     type: onoff
-    actuator: switch.grzalka_2
+    actuator: switch.grzalka_1      # moves meter phase B (see above)
     phase: L2
-    rated_current_a: 6.6
-    rated_power_w: 1500
+    rated_current_a: 7.0
+    rated_power_w: 1700
     value_per_kwh: 0.35
-    state_max_age: 24h
+    state_reports: on_change
+    rotation_group: cwu_heaters
   - id: heater_l3
     type: onoff
-    actuator: switch.grzalka_3
+    actuator: switch.grzalka_3      # L3 by elimination: no isolated switching recorded
     phase: L3
-    rated_current_a: 6.6
-    rated_power_w: 1500
+    rated_current_a: 7.0
+    rated_power_w: 1700
     value_per_kwh: 0.35
-    state_max_age: 24h
-  # go-e charger forced to one phase; the actuator sets the charging current (6-20 A, 1 A steps).
-  # It cannot be switched off before a stop actuator exists: the guard reduces it to 6 A and
-  # records any further step as "would switch off".
+    state_reports: on_change
+    rotation_group: cwu_heaters
+  # go-e charger forced to one phase (meter phase A, like switch.grzalka_2: every step of nrg_4 in
+  # the recording moved meter phase A); the actuator sets the charging current (6-20 A, 1 A steps).
+  # A setpoint is a ceiling, not a draw: the car takes less, or nothing. What the charger really
+  # draws comes from its own sensors, refreshed every 1-3 s: nrg_4 is the current on its L1 in A
+  # (0-19.2 A in the recording), nrg_7 the power on its L1 in W (up to 4.49 kW; a few W negative
+  # at rest). The draw decides how much shedding the charger can give and is the only basis for
+  # checking that it followed a change.
+  # It has no stop actuator declared: the guard reduces it to 6 A at most and records any further
+  # step as "would switch off". A go-e switch that stops charging could be declared as stop_actuator.
   - id: ev_charger
     type: modulating
     actuator: number.goe_422752_amp
@@ -187,8 +219,20 @@ devices:
     max: 20
     step: 1
     value_per_kwh: 2.03
+    draw:
+      current: sensor.goe_422752_nrg_4   # A, the charger's own L1 current
+      power: sensor.goe_422752_nrg_7     # W, the charger's own L1 power, positive = consumption
+      max_age: 60s
 
-# circuit_groups: arrive in a later version.
+# circuit_groups: none here. A group of devices behind a downstream breaker with its own limit
+# would be declared like this (and each member names it with circuit_group: carport):
+# circuit_groups:
+#   - id: carport
+#     breaker_rating_a: 16
+#     characteristic: B
+#     phases: [L1]
+#     current: { L1: sensor.carport_current_l1 }   # optional sub-meter in A; without one the
+#     current_max_age: 90s                         # members' worst case is used
 
 # control: overrides any control-parameter default, key by key, for example:
 # control:

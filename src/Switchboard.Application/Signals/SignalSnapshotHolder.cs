@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Configuration;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Signals;
@@ -18,6 +19,22 @@ public interface IDispatchInputSource
     DispatchInputs Current { get; }
 
     event EventHandler<DispatchInputs>? Published;
+}
+
+/// <summary>
+/// The guard runner's one read per step: protection inputs, dispatch inputs and the dispatch setup
+/// of the same store cycle, so the guard and dispatch never see two different moments (no torn
+/// cycle). Protection reads only <see cref="Protection"/>; dispatch reads only
+/// <see cref="Dispatch"/> and <see cref="DispatchSetup"/> plus the guard's envelope (SIG-04).
+/// </summary>
+public sealed record ControlInputs(ProtectionInputs Protection, DispatchInputs Dispatch, DispatchSetup? DispatchSetup);
+
+/// <summary>The control port: both input views of one store cycle. The guard runner depends on this and on nothing wider.</summary>
+public interface IControlInputSource
+{
+    ControlInputs Current { get; }
+
+    event EventHandler<ControlInputs>? Published;
 }
 
 /// <summary>The full picture, for the diagnostics view only.</summary>
@@ -40,14 +57,16 @@ public sealed record SignalDiagnostics(
     ImmutableArray<ConfigurationIssue> RuntimeWarnings);
 
 /// <summary>Holds the latest published cycle; written by the runner, read by anyone without locking.</summary>
-public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInputSource, ISignalDiagnosticsSource
+public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInputSource, ISignalDiagnosticsSource, IControlInputSource
 {
     private SignalDiagnostics _current;
+    private ControlInputs _control;
 
     public SignalSnapshotHolder(SignalDiagnostics initial)
     {
         ArgumentNullException.ThrowIfNull(initial);
         _current = initial;
+        _control = Control(initial);
     }
 
     event EventHandler<ProtectionInputs>? IProtectionInputSource.Published
@@ -64,7 +83,15 @@ public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInpu
 
     private event EventHandler<ProtectionInputs>? ProtectionPublished;
 
+    event EventHandler<ControlInputs>? IControlInputSource.Published
+    {
+        add => ControlPublished += value;
+        remove => ControlPublished -= value;
+    }
+
     private event EventHandler<DispatchInputs>? DispatchPublished;
+
+    private event EventHandler<ControlInputs>? ControlPublished;
 
     public SignalDiagnostics Current => Volatile.Read(ref _current);
 
@@ -72,11 +99,21 @@ public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInpu
 
     DispatchInputs IDispatchInputSource.Current => Current.Snapshot.Dispatch;
 
+    ControlInputs IControlInputSource.Current => Volatile.Read(ref _control);
+
     public void Publish(SignalDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(diagnostics);
+        var control = Control(diagnostics);
+
+        // The control view first: whoever reads the diagnostics after this sees the same cycle.
+        Volatile.Write(ref _control, control);
         Volatile.Write(ref _current, diagnostics);
         ProtectionPublished?.Invoke(this, diagnostics.Snapshot.Protection);
         DispatchPublished?.Invoke(this, diagnostics.Snapshot.Dispatch);
+        ControlPublished?.Invoke(this, control);
     }
+
+    private static ControlInputs Control(SignalDiagnostics diagnostics) =>
+        new(diagnostics.Snapshot.Protection, diagnostics.Snapshot.Dispatch, diagnostics.Snapshot.DispatchSetup);
 }

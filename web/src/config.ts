@@ -27,3 +27,15 @@ export const GUARD_REFRESH_INTERVAL_MS = 2_000;
 
 /** Shorter than the refresh interval, so a hung request never delays the next one. */
 export const GUARD_REQUEST_TIMEOUT_MS = 1_800;
+
+/** How often the limits page asks for dispatch's view of every device: with the guard's view. */
+export const DISPATCH_REFRESH_INTERVAL_MS = 2_000;
+
+/** Shorter than the refresh interval, so a hung request never delays the next one. */
+export const DISPATCH_REQUEST_TIMEOUT_MS = 1_800;
+
+/**
+ * The add-on answers an override only after the guard runner evaluated it, waiting up to its own
+ * Guard:ApiEvaluationTimeout (2 s); longer than that, so a late evaluation is reported as such.
+ */
+export const OVERRIDE_REQUEST_TIMEOUT_MS = 5_000;

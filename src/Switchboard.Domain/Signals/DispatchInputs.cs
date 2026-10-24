@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Devices;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -25,7 +26,11 @@ public sealed record PhaseDispatch(
     Watts? NetImport,
     Watts? Generation,
     Watts? Load,
-    Volts? Voltage);
+    Volts? Voltage)
+{
+    /// <summary>When the phase power in use was last reported: what a settling window waits for (DISP-05).</summary>
+    public DateTimeOffset? PowerReportedAt { get; init; }
+}
 
 /// <summary>
 /// Everything dispatch may read from the signal layer (SIG-04): power and voltage, never current.
@@ -34,5 +39,8 @@ public sealed record PhaseDispatch(
 /// </summary>
 public sealed record DispatchInputs(long Sequence, DateTimeOffset TakenAt, ImmutableArray<PhaseDispatch> Phases)
 {
+    /// <summary>The declared power draws of devices, per phase; a stale draw carries no value.</summary>
+    public ImmutableArray<DevicePowerSample> DevicePowers { get; init; } = [];
+
     public PhaseDispatch? For(Phase phase) => Phases.FirstOrDefault(p => p.Phase == phase);
 }

@@ -23,7 +23,9 @@ public sealed record ControlParameters(
     ReserveDerivationParameters ReserveDerivation,
     DeviceDefaults Devices,
     DecisionLogParameters DecisionLog,
-    SafetyEnvelope Limits);
+    SafetyEnvelope Limits,
+    ForeignLoadParameters ForeignLoad,
+    CircuitGroupDefaults CircuitGroups);
 
 public sealed record ConnectionDefaults(Watts DefaultReserve);
 
@@ -46,7 +48,28 @@ public sealed record DispatchParameters(
     int PersistenceDownCycles,
     int MaxSimultaneousIncreases);
 
-public sealed record SettlingParameters(TimeSpan HardTimeout);
+/// <summary>Settling windows and effector verification (04 §3, DISP-05 … DISP-07).</summary>
+/// <param name="HardTimeout">A window still open this long after its command is closed anyway (its silent inputs are logged).</param>
+/// <param name="VerificationTolerance">A measured change within this fraction of the expected change is a match.</param>
+/// <param name="VerificationSigmaMultiplier">… or within this many standard deviations of the measurement, whichever is larger.</param>
+/// <param name="MismatchLimit">Consecutive mismatches that mark a device unresponsive.</param>
+/// <param name="UnresponsiveRetryAfter">An unresponsive device gets one probe increase after this long.</param>
+public sealed record SettlingParameters(
+    TimeSpan HardTimeout,
+    double VerificationTolerance,
+    double VerificationSigmaMultiplier,
+    int MismatchLimit,
+    TimeSpan UnresponsiveRetryAfter);
+
+/// <summary>Foreign load detection (04 §4).</summary>
+/// <param name="BaselineTimeConstant">Time constant of the slow per-phase baseline.</param>
+/// <param name="StepThreshold">A residual above this is one foreign load event.</param>
+/// <param name="RearmFraction">The detector re-arms below this fraction of the threshold.</param>
+public sealed record ForeignLoadParameters(TimeSpan BaselineTimeConstant, Watts StepThreshold, double RearmFraction);
+
+/// <summary>Defaults for <c>circuit_groups:</c>.</summary>
+/// <param name="DefaultReserve">Reserve per phase of a group when reserve_w omits the phase.</param>
+public sealed record CircuitGroupDefaults(Watts DefaultReserve);
 
 /// <summary>Signal-layer parameters (SIG-03, SIG-05 … SIG-09).</summary>
 /// <param name="MaxAgeLimit">The longest max_age a signal may declare (a frozen sensor counts as fresh for its max_age).</param>
@@ -63,12 +86,14 @@ public sealed record SignalParameters(
 /// <summary>Defaults for what a device declaration leaves out.</summary>
 /// <param name="StateMaxAge">Freshness of a device's applied-state signal when the device sets none (SIG-05).</param>
 /// <param name="ReactionTime">From a command to the load changing, per device type; the shed order prefers the faster.</param>
-/// <param name="ModulatingMinOn">Lockouts of a modulating device; relays use the dispatch relay lockouts.</param>
+/// <param name="ModulatingMinOn">Lockouts of a modulating or storage device; relays use the dispatch relay lockouts.</param>
+/// <param name="DrawMaxAge">max_age of a device's draw signals when its draw declares none.</param>
 public sealed record DeviceDefaults(
     TimeSpan StateMaxAge,
     ImmutableDictionary<DeviceType, TimeSpan> ReactionTime,
     TimeSpan ModulatingMinOn,
-    TimeSpan ModulatingMinOff);
+    TimeSpan ModulatingMinOff,
+    TimeSpan DrawMaxAge);
 
 /// <param name="RetentionDays">Daily decision files older than this are deleted (MODE-03, MODE-04).</param>
 public sealed record DecisionLogParameters(int RetentionDays);

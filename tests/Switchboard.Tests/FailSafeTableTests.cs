@@ -73,6 +73,78 @@ public sealed class FailSafeTableTests
         Assert.True(state.Current.KillSwitch);
     }
 
+    [Fact]
+    public void Stale_draw_through_the_store_relieves_nothing_and_holds_nothing_off()
+    {
+        // Row "draw signal stale": the real store and runner. The charger's draw current goes stale
+        // after its 60 s max_age: it is no longer trusted for relief (a held charger then relieves
+        // nothing) nor for an increase, but a draw is not a protection input, so nothing is held off.
+        var harness = new GuardRunnerHarness(TestDevices.Document(TestDevices.ReferenceWithChargerDraw));
+        harness.Push(("sensor.charger_draw_current", "16", "A"), ("sensor.charger_draw_power", "3680", "W"));
+        harness.PushReference(l1: 8);
+        harness.Runner.Step();
+        Assert.True(Assert.Single(harness.Holder.Current.Snapshot.Protection.DeviceDraws).Fresh);
+
+        harness.Time.Advance(TimeSpan.FromSeconds(61));
+        harness.PushReference(l1: 8);
+        harness.Runner.Step();
+
+        Assert.False(Assert.Single(harness.Holder.Current.Snapshot.Protection.DeviceDraws).Fresh);
+        Assert.Equal(DeviceGuardState.Allowed, harness.Status.Current.Devices.Single(d => d.Id.Value == "ev_charger").GuardState);
+        Assert.False(harness.Loop.DispatchStatus.Current.Devices.Single(d => d.Id.Value == "ev_charger").Draw!.Fresh);
+        Assert.Equal(8, harness.Status.Current.Phases.Single(p => p.Phase == Phase.L1).EffectiveCurrent!.Value.Value, 9);
+    }
+
+    [Fact]
+    public void Kill_switch_outranks_a_forced_on_device_and_the_override_waits_for_its_release()
+    {
+        // Row "override with the kill switch engaged": the real store and runner. A force_on set
+        // while the kill switch holds everything changes nothing (protection outranks an override);
+        // after the release the override acts only once the holds were let go after
+        // persistence_up_cycles good boundaries, and it is recorded as a manual override, never
+        // commanded in this version.
+        var harness = new GuardRunnerHarness(TestDevices.Document());
+        var heater = Switchboard.Domain.Devices.DeviceName.Parse("heater_l1");
+        PushQuiet(harness);
+        harness.KillSwitch.Set(true, KillSwitchSource.Api);
+        harness.Runner.Step();
+        Assert.Equal(Switchboard.Application.Dispatch.OverrideResult.Applied, harness.Loop.Overrides.Set(heater, Switchboard.Application.Dispatch.OverrideMode.ForceOn, Switchboard.Application.Dispatch.OverrideSource.Api));
+
+        Advance(harness, TimeSpan.FromMinutes(3));
+        Assert.DoesNotContain(harness.Recorder.Decisions, d => d.Device == heater && d.Action == DecisionAction.SwitchOn);
+        Assert.Contains(harness.Recorder.Decisions, d => d.Device == heater && d.Action == DecisionAction.OverrideSet);
+
+        harness.KillSwitch.Set(false, KillSwitchSource.Api);
+        var released = harness.Now;
+        Advance(harness, TimeSpan.FromMinutes(4));
+
+        var start = Assert.Single(harness.Recorder.Decisions, d => d.Device == heater && d.Action == DecisionAction.SwitchOn);
+        Assert.Equal((Switchboard.Domain.Decisions.ReasonCode.ManualOverride, Switchboard.Application.Decisions.DecisionOrigin.Override, false), (start.Reason, start.Origin!.Value, start.Commanded));
+        Assert.True(start.At >= released + TimeSpan.FromSeconds(150), $"started at {start.At:O}, released at {released:O}");
+    }
+
+    /// <summary>heater_l1 reported off, the other loads on, every phase at a quiet 8 A.</summary>
+    private static void PushQuiet(GuardRunnerHarness harness) => harness.Push(
+        ("switch.heater_1", "off", null),
+        ("switch.heater_2", "on", null),
+        ("switch.heater_3", "on", null),
+        ("number.charger_current", "16", "A"),
+        ("sensor.meter_current_a", "8", "A"),
+        ("sensor.meter_current_b", "8", "A"),
+        ("sensor.meter_current_c", "8", "A"));
+
+    /// <summary>The meter reporting every 10 s for <paramref name="duration"/>, one runner step per report.</summary>
+    private static void Advance(GuardRunnerHarness harness, TimeSpan duration)
+    {
+        var end = harness.Now + duration;
+        while (harness.Now < end)
+        {
+            harness.Time.Advance(TimeSpan.FromSeconds(10));
+            harness.Push(("sensor.meter_current_a", "8", "A"), ("sensor.meter_current_b", "8", "A"), ("sensor.meter_current_c", "8", "A"));
+            harness.Runner.Step();
+        }
+    }
+
     private static List<(DateTimeOffset, string?, DecisionAction, Switchboard.Domain.Decisions.ReasonCode)> Run(BrokerDown? broker)
     {
         var harness = new GuardRunnerHarness(TestDevices.Document());

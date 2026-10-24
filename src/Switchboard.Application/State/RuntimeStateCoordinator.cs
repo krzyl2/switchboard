@@ -2,8 +2,10 @@ using System.Collections.Immutable;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Options;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
@@ -35,6 +37,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private Pending? _pending;
     private long _version;
     private long _savedVersion;
+    private long _overridesVersion = -1;
     private string? _writeError;
 
     /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
@@ -107,6 +110,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
             var next = _current with
             {
                 Budgets = step.Memory.Budgets,
+                GroupBudgets = step.Memory.GroupBudgets,
                 CleanShutdown = step.Memory.CleanShutdown,
                 Devices = MergeLastKnown(_current.Devices, step.Evaluation.Status, at),
             };
@@ -116,7 +120,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
             var immediate = baseline is null
                 || baseline.CleanShutdown != next.CleanShutdown
                 || ThresholdCrossed(baseline.Budgets, next.Budgets)
-                || BudgetDropped(baseline.Budgets, next.Budgets);
+                || BudgetDropped(baseline.Budgets, next.Budgets)
+                || GroupBudgetAlarm(baseline.GroupBudgets, next.GroupBudgets);
             var due = baseline is not null
                 && Changed(baseline, next)
                 && (_lastQueuedAt is not { } last || at < last || at - last >= _options.StateSaveInterval);
@@ -124,6 +129,34 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
             {
                 Enqueue(next, at);
             }
+        }
+    }
+
+    /// <summary>Follows the manual overrides. Call once, before the first step.</summary>
+    public void Attach(DeviceOverrides overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        overrides.Changed += (_, snapshot) => OnOverridesChanged(snapshot);
+    }
+
+    /// <summary>
+    /// Called by the overrides after the change is in force; written at once, best effort. Two
+    /// changes from different threads (the MQTT select and the API) may arrive out of order: a
+    /// snapshot older than the last one applied is ignored, so state.json never keeps a stale set.
+    /// </summary>
+    public void OnOverridesChanged(OverrideSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        lock (_gate)
+        {
+            if (snapshot.Version <= _overridesVersion)
+            {
+                return;
+            }
+
+            _overridesVersion = snapshot.Version;
+            _current = _current with { Overrides = snapshot.Devices };
+            Enqueue(_current, snapshot.Devices.Values.Select(o => o.ChangedAt).Max() ?? _lastQueuedAt);
         }
     }
 
@@ -283,11 +316,28 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private bool BudgetDropped(ImmutableDictionary<Phase, BudgetMemory> before, ImmutableDictionary<Phase, BudgetMemory> after) =>
         after.Any(p => (before.TryGetValue(p.Key, out var saved) ? saved.Budget : 1) - p.Value.Budget >= _options.StateBudgetSaveStep - OverloadBudget.Tolerance);
 
+    /// <summary>The immediate-save rules of the main budgets applied to every circuit-group phase (CONN-03: the same model, the same crash bound).</summary>
+    private bool GroupBudgetAlarm(
+        ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> before,
+        ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> after) =>
+        after.Any(g =>
+        {
+            var saved = before.GetValueOrDefault(g.Key) ?? ImmutableDictionary<Phase, BudgetMemory>.Empty;
+            return ThresholdCrossed(saved, g.Value) || BudgetDropped(saved, g.Value);
+        });
+
     private static bool Changed(RuntimeState before, RuntimeState after) =>
         before.KillSwitch != after.KillSwitch
         || before.Budgets.Count != after.Budgets.Count
         || after.Budgets.Any(p => !before.Budgets.TryGetValue(p.Key, out var saved) || saved.Budget != p.Value.Budget)
+        || GroupBudgetsChanged(before, after)
         || !ReferenceEquals(before.Devices, after.Devices);
+
+    private static bool GroupBudgetsChanged(RuntimeState before, RuntimeState after) =>
+        before.GroupBudgets.Count != after.GroupBudgets.Count
+        || after.GroupBudgets.Any(g => !before.GroupBudgets.TryGetValue(g.Key, out var saved)
+            || saved.Count != g.Value.Count
+            || g.Value.Any(p => !saved.TryGetValue(p.Key, out var b) || b.Budget != p.Value.Budget));
 
     /// <summary>
     /// Records each stage's latest fresh applied state with the moment it was first seen (so an

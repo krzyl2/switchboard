@@ -32,6 +32,8 @@ public readonly record struct Amperes(double Value) : IComparable<Amperes>
 
     public static Amperes Max(Amperes left, Amperes right) => left.Value >= right.Value ? left : right;
 
+    public static Amperes Min(Amperes left, Amperes right) => left.Value <= right.Value ? left : right;
+
     public Amperes Abs() => new(Math.Abs(Value));
 
     public int CompareTo(Amperes other) => Value.CompareTo(other.Value);

@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { DECISION_ACTIONS, REASON_CODES, parseDecision, type Decision } from './api/decisions';
 import sample from './api/guard.sample.json';
 import { messages } from './i18n';
-import { describeDecision, reasonSentence } from './reasons';
+import { describeDecision, levelText, reasonSentence, verificationText } from './reasons';
+
+// Positions in guard.sample.json's decisions (newest first).
+const SWITCH_ON = 6;
+const MARKED_UNRESPONSIVE = 7;
+const OVERRIDE_SETPOINT = 8;
+const KILL_SWITCH_ENGAGED = 10;
+const MODE_RESOLVED = 11;
 
 function decision(index: number, change?: (d: any) => void): Decision {
   const copy = JSON.parse(JSON.stringify(sample.decisions[index]));
@@ -47,7 +54,7 @@ describe('describeDecision', () => {
   });
 
   // A modulating device has no stop path before Stage 3: "switch off" must not read as done.
-  it('says when a device asked to switch off cannot be switched off yet', () => {
+  it('says when a device asked to switch off cannot be switched off', () => {
     const cannot = describeDecision(decision(1), t, 'en');
     const can = describeDecision(decision(0), t, 'en');
 
@@ -63,9 +70,9 @@ describe('describeDecision', () => {
 
   it('describes phase and system events without a command line', () => {
     const safe = describeDecision(decision(3), t, 'en');
-    const kill = describeDecision(decision(7), t, 'en');
+    const kill = describeDecision(decision(KILL_SWITCH_ENGAGED), t, 'en');
     const mode = describeDecision(
-      decision(8, (d) => (d.inputs.mode = { ceiling: 'active', uiChoice: 'active', note: 'active_unavailable_before_stage3' })),
+      decision(MODE_RESOLVED, (d) => (d.inputs.mode = { ceiling: 'active', uiChoice: 'active', note: 'active_not_enabled' })),
       t,
       'en',
     );
@@ -77,7 +84,7 @@ describe('describeDecision', () => {
       ['from Home Assistant'],
     ]);
     expect(mode.change).toBe('Mode resolved: Shadow');
-    expect(mode.details).toEqual(['add-on option: Active', t['modeNote.active_unavailable_before_stage3']]);
+    expect(mode.details).toEqual(['add-on option: Active', t['modeNote.active_not_enabled']]);
   });
 
   // The record of a condition ending carries the code of that condition; rendering its sentence
@@ -93,7 +100,7 @@ describe('describeDecision', () => {
     ],
   ] as const)('words the end of a condition by its action (%s)', (lang, released, releasedReason, exited, exitedReason) => {
     const tl = messages[lang];
-    const release = describeDecision(decision(7, (d) => (d.action = 'kill_switch_disengaged')), tl, lang);
+    const release = describeDecision(decision(KILL_SWITCH_ENGAGED, (d) => (d.action = 'kill_switch_disengaged')), tl, lang);
     const exit = describeDecision(
       decision(3, (d) => Object.assign(d, { action: 'safe_state_exited', reason: 'guard_stale_signal' })),
       tl,
@@ -112,7 +119,7 @@ describe('describeDecision', () => {
     ['pl', 'dodatek się zatrzymuje'],
   ] as const)('names the cause of a system-wide safe state (%s)', (lang, cause) => {
     const stop = describeDecision(
-      decision(7, (d) =>
+      decision(KILL_SWITCH_ENGAGED, (d) =>
         Object.assign(d, {
           action: 'safe_state_entered',
           reason: 'safe_state',
@@ -130,5 +137,121 @@ describe('describeDecision', () => {
     expect(describeDecision(decision(0, (d) => Object.assign(d, { commanded: true, refusedBy: null })), t, 'en').command).toBe(
       'Commanded',
     );
+  });
+});
+
+// Stage 3: dispatch's own decisions, worded so the shadow week can be reviewed from the log alone.
+describe('describeDecision, dispatch decisions', () => {
+  const t = messages.en;
+
+  // Shadow mode: a would-start is recorded, never commanded, and the record says so.
+  it('says a dispatch start was not commanded and shows who decided, the target and the headroom', () => {
+    const text = describeDecision(decision(SWITCH_ON), t, 'en');
+
+    expect(text.change).toBe('Switch on');
+    expect(text.command).toBe('Not commanded: Shadow mode: computed and logged, nothing switched.');
+    expect(text.reason).toBe('Headroom is available again.');
+    expect(text.details).toEqual(['decided by dispatch', 'target: on', 'L2: may add 8.6 A']);
+  });
+
+  // DISP-07: the verification behind "not responding" is on the record.
+  it('shows the verification that marked a device as not responding', () => {
+    const text = describeDecision(decision(MARKED_UNRESPONSIVE), t, 'en');
+
+    expect([text.change, text.reason]).toEqual(['Marked as not responding', 'The device does not respond to commands.']);
+    expect(text.details).toContain('expected 1,700 W, measured 12 W: no response');
+    expect(describeDecision(decision(MARKED_UNRESPONSIVE), messages.pl, 'pl').details).toContain(
+      'oczekiwano 1700 W, zmierzono 12 W: brak reakcji',
+    );
+  });
+
+  // SAFE-04: a forced change names the override and the circuit group it is constrained by.
+  it('names the manual override and the circuit group of a forced change', () => {
+    const text = describeDecision(decision(OVERRIDE_SETPOINT), t, 'en');
+
+    expect(text.change).toBe('Setpoint change');
+    expect(text.reason).toBe('Manual override.');
+    expect(text.details).toEqual(['circuit group carport', 'target: 6 A', 'L1: may add 1.53 A', 'carport L1: may add 4 A']);
+  });
+
+  it('says which mode a manual override was set to', () => {
+    const text = describeDecision(
+      decision(OVERRIDE_SETPOINT, (d) => Object.assign(d, { action: 'override_set', target: null, refusedBy: null })),
+      t,
+      'en',
+    );
+
+    expect([text.change, text.command]).toEqual(['Manual override set', null]);
+    expect(text.details).toContain('override: Force off');
+  });
+
+  // These records carry the code of the condition they report on; its sentence would misstate them
+  // ("The device does not respond" for a device that responds again).
+  it.each([
+    ['unresponsive_cleared', 'device_unresponsive', 'A probe matched: the device responds again and takes part in dispatch.'],
+    [
+      'settling_timed_out',
+      'settling_window_open',
+      'A measurement the settling window waits for stayed silent until its hard timeout; no mismatch was counted.',
+    ],
+    ['foreign_load_detected', 'reserve_threshold', 'Load appeared on the phase without a command of ours.'],
+  ] as const)('words %s by its action, not by its reason code', (action, reason, sentence) => {
+    const text = describeDecision(decision(MARKED_UNRESPONSIVE, (d) => Object.assign(d, { action, reason })), t, 'en');
+
+    expect(text.reason).toBe(sentence);
+    expect(text.reason).not.toBe(reasonSentence(t, reason));
+  });
+
+  it('shows a foreign load against its baseline', () => {
+    const text = describeDecision(
+      decision(SWITCH_ON, (d) =>
+        Object.assign(d, {
+          scope: 'phase',
+          device: null,
+          action: 'foreign_load_detected',
+          reason: 'reserve_threshold',
+          refusedBy: null,
+          target: null,
+          inputs: { ...d.inputs, dispatch: { ...d.inputs.dispatch, verification: { expected: 400, measured: 2450, unit: 'watts', verdict: 'inconclusive' } } },
+        }),
+      ),
+      t,
+      'en',
+    );
+
+    expect(text.command).toBeNull();
+    expect(text.details).toContain('foreign load 2,450 W against a baseline of 400 W');
+  });
+
+  it('says why a deferred change was not commanded', () => {
+    const text = describeDecision(
+      decision(SWITCH_ON, (d) => Object.assign(d, { action: 'deferred', refusedBy: 'lockout_min_off' })),
+      t,
+      'en',
+    );
+
+    expect([text.change, text.command]).toEqual(['Change deferred', 'Not commanded: Minimum off time not yet elapsed (lockout).']);
+  });
+
+  it.each([
+    [{ relays: [true], setpointA: null, enabled: true }, 'on'],
+    [{ relays: [false], setpointA: null, enabled: true }, 'off'],
+    [{ relays: [true, true, false], setpointA: null, enabled: true }, '2 of 3 stages on'],
+    [{ relays: null, setpointA: 13, enabled: true }, '13 A'],
+    [{ relays: null, setpointA: 6, enabled: false }, 'off (stop actuator)'],
+  ])('words the level %j as %s', (level, text) => {
+    expect(levelText(level, t, 'en')).toBe(text);
+  });
+
+  // A change that was not applied (shadow mode) or never measured has no measured value to show:
+  // "expected 0 W, measured 0 W" would read as a check that passed.
+  it.each([
+    [{ expected: 1700, measured: 12, unit: 'watts', verdict: 'mismatch' }, 'expected 1,700 W, measured 12 W: no response'],
+    [{ expected: 6, measured: 9.6, unit: 'amperes', verdict: 'match' }, 'expected 6 A, measured 9.6 A: match'],
+    [{ expected: 0, measured: 0, unit: 'watts', verdict: 'not_applied' }, 'not applied (shadow mode)'],
+    [{ expected: 0, measured: 0, unit: 'watts', verdict: 'timed_out' }, 'no new measurement in time'],
+    [{ expected: 6, measured: 0, unit: 'amperes', verdict: 'unverifiable' }, 'cannot be verified (no draw signal)'],
+  ] as const)('words the verification %j as %s', (v, text) => {
+    expect(verificationText(v, t, 'en')).toBe(text);
   });
 });

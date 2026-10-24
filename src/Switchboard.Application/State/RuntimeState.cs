@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 
@@ -10,8 +12,10 @@ namespace Switchboard.Application.State;
 public sealed record StageLastKnown(AppliedState Applied, DateTimeOffset At);
 
 /// <summary>
-/// What survives a restart (/data/state.json, schema version 1). Lockout timers are deliberately
-/// absent: every lockout restarts from the restart instant, never from a persisted expiry (SAFE-07).
+/// What survives a restart (/data/state.json, schema version 2; version 1 files of 0.3.x read with
+/// no overrides and no group budgets). Lockout timers are deliberately absent, and so are dispatch
+/// targets, deferred intents, settling windows and unresponsive flags: every lockout restarts from
+/// the restart instant, never from a persisted expiry (SAFE-07).
 /// </summary>
 /// <param name="CleanShutdown">True only when the previous run recorded its shutdown safe state; written false at every start.</param>
 /// <param name="Budgets">Overload budget per phase with the moment it held that value.</param>
@@ -27,7 +31,10 @@ public sealed record RuntimeState(
     ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> Devices,
     ImmutableSortedSet<string> Discovered)
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
+
+    /// <summary>The 0.3.x schema: still read, and still written while the state has no override and no group budget.</summary>
+    public const int LegacySchemaVersion = 1;
 
     /// <summary>A first start, or a corrupt file: full budgets, kill switch off, UI choice shadow, nothing discovered.</summary>
     public static RuntimeState Fresh { get; } = new(
@@ -40,7 +47,14 @@ public sealed record RuntimeState(
         ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>>.Empty,
         ImmutableSortedSet<string>.Empty.WithComparer(StringComparer.Ordinal));
 
-    public GuardMemory GuardMemory => new(Budgets, CleanShutdown);
+    /// <summary>The manual overrides (SAFE-04): they survive a restart; protection outranks them.</summary>
+    public ImmutableDictionary<DeviceName, DeviceOverride> Overrides { get; init; } = ImmutableDictionary<DeviceName, DeviceOverride>.Empty;
+
+    /// <summary>The overload budget of every circuit group phase (CONN-03).</summary>
+    public ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> GroupBudgets { get; init; } =
+        ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>>.Empty;
+
+    public GuardMemory GuardMemory => new(Budgets, CleanShutdown) { GroupBudgets = GroupBudgets };
 }
 
 /// <summary>How state.json was found at start.</summary>

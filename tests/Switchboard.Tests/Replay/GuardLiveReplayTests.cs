@@ -19,7 +19,7 @@ public sealed class GuardLiveReplayTests(ITestOutputHelper output)
     public void Live_recording_no_missed_violation_and_reports_would_shed_counts()
     {
         var data = ReplayFixtures.LiveData;
-        var harness = new GuardReplayHarness(data, TestConfigurations.Example);
+        var harness = new GuardReplayHarness(data, TestConfigurations.Example, dispatch: false);
         harness.RunUntil(data.End);
         var setup = ProtectionSetupFactory.Build(TestConfigurations.Valid(TestConfigurations.Example).Configuration!);
         var analyzer = new ViolationAnalyzer(setup, harness.Observations, harness.Decisions, harness.Steps);

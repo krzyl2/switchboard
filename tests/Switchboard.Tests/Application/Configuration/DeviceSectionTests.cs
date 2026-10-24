@@ -183,25 +183,41 @@ public sealed class DeviceSectionTests
     }
 
     [Fact]
-    public void Stage3_keys_warn_unknown_keys_fail()
+    public void Later_keys_warn_unknown_keys_fail()
     {
-        var later = TestConfigurations.Parse(TestDevices.Document(Heater + "\n    circuit_group: boiler\n    goal: { kind: none }"));
+        // goal / sources / guards belong to later versions and warn; circuit_group is read since
+        // Stage 3, so naming a group that is not declared is an error.
+        var later = TestConfigurations.Parse(TestDevices.Document(Heater + "\n    goal: { kind: none }"));
         Assert.Equal(ConfigurationStatus.Valid, later.Status);
-        Assert.Equal(["devices[0].circuit_group", "devices[0].goal"], later.Warnings.Select(w => w.Path));
+        Assert.Equal(["devices[0].goal"], later.Warnings.Select(w => w.Path));
         Assert.All(later.Warnings, w => Assert.Equal("reserved_key_ignored", w.Code));
+        AssertDeviceError(Heater + "\n    circuit_group: boiler", "unknown_circuit_group", "devices[0].circuit_group", 8);
 
         AssertDeviceError(Heater + "\n    colour: red", "unknown_key", "devices[0].colour", 8);
         AssertDeviceError(Heater + "\n    power_max: 1500", "key_not_allowed", "devices[0].power_max", 8);
     }
 
     [Fact]
-    public void Storage_type_is_reserved_and_ignored_with_a_warning()
+    public void Storage_device_parses_with_a_signed_setpoint_state()
     {
-        var result = TestConfigurations.Parse(TestDevices.Document(Heater + "\n  - id: battery\n    type: storage\n    value_per_kwh: 1"));
+        // DISP-01 storage: a bidirectional current setpoint whose charging is load; its state may be
+        // negative (a discharge), its draw signed (positive = charging).
+        var configuration = TestConfigurations.Valid(TestDevices.Document(Heater + "\n" + Battery)).Configuration!;
 
-        Assert.Equal(ConfigurationStatus.Valid, result.Status);
-        Assert.Equal(("reserved_key_ignored", "devices[1].type"), (result.Warnings.Single().Code, result.Warnings.Single().Path));
-        Assert.Single(result.Configuration!.Devices);
+        var battery = configuration.Devices.Single(d => d.Id.Value == "battery");
+        Assert.Equal((DeviceType.Storage, -10.0, 16.0), (battery.Type, battery.Range!.Min.Value, battery.Range.Max.Value));
+        Assert.False(battery.ToSpec().CanSwitchOff);
+        Assert.Equal(0, battery.ToSpec().SetpointFloor.Value);
+    }
+
+    [Theory]
+    [InlineData("min: -10", "min: 1", "devices[1].min")]
+    [InlineData("max: 16", "max: 0", "devices[1].max")]
+    [InlineData("min: -10", "min: -2.5", "devices[1].step")]
+    public void Storage_range_must_include_zero(string from, string to, string path)
+    {
+        // Zero charge is where protection brings a storage device: it must be in the range and on its step grid.
+        AssertDeviceError(Heater + "\n" + Battery.Replace(from, to), "modulating_range_invalid", path);
     }
 
     [Fact]
@@ -279,6 +295,17 @@ public sealed class DeviceSectionTests
         // A frozen state counts as fresh for its whole max_age, so it is bounded like any signal.
         AssertDeviceError(Heater + "\n    state_max_age: 25h", "out_of_range", "devices[0].state_max_age", 8);
     }
+
+    private const string Battery = """
+          - id: battery
+            type: storage
+            actuator: number.battery_current
+            phase: L1
+            min: -10
+            max: 16
+            step: 1
+            value_per_kwh: 1.5
+        """;
 
     private static void AssertDeviceError(string devices, string code, string path, int? line = null)
     {

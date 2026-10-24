@@ -118,15 +118,19 @@ public sealed class HostLifecycleTests
             services.AddSingleton<IMqttCredentialSource>(new FakeCredentialSource());
             services.RemoveAll<IWebSocketTransportFactory>();
             services.AddSingleton<IWebSocketTransportFactory>(new ScriptedTransportFactory());
-            services.RemoveAll<IProtectionInputSource>();
-            services.AddSingleton<IProtectionInputSource>(new BrokenProtectionSource());
+            services.RemoveAll<IControlInputSource>();
+            services.AddSingleton<IControlInputSource>(new BrokenControlSource());
         });
 
         _ = factory.Server;
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(() => stopping.TrySetResult());
         await stopping.Task.Soon();
-        await transport.UntilAsync(o => o.Kind == "subscribe" && o.Topic == "switchboard/kill_switch/set");
+
+        // The broker session is up (the fake connects inside the link's start, before the guard
+        // starts); whether it got as far as its subscriptions before the stop is a race the stop
+        // path must not depend on, so the test does not wait for them either.
+        await transport.UntilAsync(o => o.Kind == "connect");
         await factory.DisposeAsync();
 
         Assert.Equal(
@@ -135,11 +139,11 @@ public sealed class HostLifecycleTests
     }
 
     /// <summary>A defect in the guard's input path: every read throws.</summary>
-    private sealed class BrokenProtectionSource : IProtectionInputSource
+    private sealed class BrokenControlSource : IControlInputSource
     {
-        public ProtectionInputs Current => throw new InvalidOperationException("A defect in the guard's input path.");
+        public ControlInputs Current => throw new InvalidOperationException("A defect in the guard's input path.");
 
-        public event EventHandler<ProtectionInputs>? Published
+        public event EventHandler<ControlInputs>? Published
         {
             add { }
             remove { }

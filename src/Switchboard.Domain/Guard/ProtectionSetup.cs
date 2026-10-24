@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -27,8 +28,13 @@ public sealed record ProtectionSetup(
     GuardTiming Timing,
     ImmutableArray<DeviceSpec> Devices)
 {
+    /// <summary>The circuit groups (CONN-03), each with its own breaker, reserve and members.</summary>
+    public ImmutableArray<CircuitGroupSpec> Groups { get; init; } = [];
+
     /// <summary>In − reserve: above it the guard asks dispatch for a reduction (04 §2 step 4).</summary>
     public Amperes ReserveThreshold(Phase phase) => Breaker.Rating - ReserveCurrent.GetValueOrDefault(phase);
 
     public DeviceSpec? Device(DeviceName name) => Devices.FirstOrDefault(d => d.Id == name);
+
+    public CircuitGroupSpec? Group(GroupName name) => Groups.FirstOrDefault(g => g.Id == name);
 }

@@ -112,7 +112,7 @@ public sealed record BreakerStatus(
 /// number. The envelope dispatch obeys (from Stage 3) uses the effective current.
 /// </summary>
 /// <param name="Current">Measured, import positive (cautious mode: the magnitude).</param>
-/// <param name="EffectiveCurrent">Measured minus the relief of limits already decided ("as if applied").</param>
+/// <param name="EffectiveCurrent">The estimate I_est: measured plus every counted in-flight change (would-starts added, relief never above a measured draw).</param>
 /// <param name="Multiple">|I| / In of the measured current.</param>
 /// <param name="Band">Tier band of the measured multiple.</param>
 /// <param name="Headroom">To the reserve threshold (In − reserve), from the measured current.</param>
@@ -171,7 +171,10 @@ public sealed record DeviceGuardStatus(
     ImmutableArray<Phase> UnsafePhases,
     ImmutableArray<int> UnsafeStages);
 
-/// <summary>Everything the guard knows at one moment: for the API, the MQTT entities and (from Stage 3) dispatch.</summary>
+/// <summary>One phase of a circuit group as the guard sees it (CONN-03): the same picture as a main phase, against the group's breaker.</summary>
+public sealed record GroupGuardStatus(GroupName Group, PhaseGuardStatus Phase);
+
+/// <summary>Everything the guard knows at one moment: for the API, the MQTT entities and dispatch.</summary>
 public sealed record GuardStatus(
     DateTimeOffset At,
     ModeStatus Mode,
@@ -181,6 +184,9 @@ public sealed record GuardStatus(
     ImmutableArray<PhaseGuardStatus> Phases,
     ImmutableArray<DeviceGuardStatus> Devices)
 {
+    /// <summary>The phases of every circuit group; empty when none is declared.</summary>
+    public ImmutableArray<GroupGuardStatus> Groups { get; init; } = [];
+
     /// <summary>Before the first evaluation: no data, so safe state everywhere.</summary>
     public static GuardStatus Initial(DateTimeOffset at, ModeStatus mode) =>
         new(at, mode, KillSwitchStatus.Off, new SafeStateStatus(true, SafeStateScope.All, ReasonCode.SafeState, [], at), null, [], []);

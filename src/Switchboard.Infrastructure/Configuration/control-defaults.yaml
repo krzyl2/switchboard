@@ -62,7 +62,29 @@ dispatch:
   max_simultaneous_increases: 1
 
 settling:
+  # A window opened by a command closes once every balance signal the command can move has
+  # reported after command time + the device's reaction time, or at hard_timeout regardless.
   hard_timeout: 90s
+  # A measured change is a match within the larger of this fraction of the expected change and
+  # verification_sigma_multiplier standard deviations of the measurement noise.
+  verification_tolerance: 0.5
+  verification_sigma_multiplier: 3
+  # This many consecutive mismatches mark a device unresponsive; it is excluded from dispatch and
+  # gets one probe increase after unresponsive_retry_after (at least hard_timeout).
+  mismatch_limit: 3
+  unresponsive_retry_after: 30m
+
+foreign_load:
+  # Per phase: foreign load = house load minus our own devices, as a slow baseline (exponential
+  # moving average with this time constant) plus a fast residual. A residual above
+  # step_threshold_w is one foreign load event; the detector re-arms below rearm_fraction of it.
+  baseline_time_constant: 10m
+  step_threshold_w: 1000
+  rearm_fraction: 0.5
+
+circuit_groups:
+  # Reserve per phase of a circuit group when its reserve_w omits the phase.
+  default_reserve_w: 0
 
 signals:
   # Measurement noise per kind when a signal declares no sigma (A, W, V).
@@ -112,8 +134,11 @@ devices:
     onoff: 1s
     stepped: 1s
     modulating: 20s
-  # Lockouts of modulating devices when the device declares none; relays use dispatch.relay_min_on
-  # and dispatch.relay_min_off.
+    storage: 20s
+  # Freshness of a device's draw signals (draw:) when the draw declares no max_age.
+  draw_max_age: 90s
+  # Lockouts of modulating and storage devices when the device declares none; relays use
+  # dispatch.relay_min_on and dispatch.relay_min_off.
   lockout:
     modulating:
       min_on: 60s

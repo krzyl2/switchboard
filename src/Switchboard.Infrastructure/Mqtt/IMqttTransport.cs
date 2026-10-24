@@ -43,6 +43,9 @@ public interface IMqttTransport
 
     Task SubscribeAsync(string topicFilter, CancellationToken cancellationToken);
 
+    /// <summary>Stops listening to a topic (a device no longer declared); never guarded, since it only narrows what gets in.</summary>
+    Task UnsubscribeAsync(string topicFilter, CancellationToken cancellationToken);
+
     /// <summary>Clean disconnect: the broker does not publish the Last Will.</summary>
     Task DisconnectAsync(CancellationToken cancellationToken);
 }

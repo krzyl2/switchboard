@@ -1,10 +1,11 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Devices;
 
-/// <summary>The physical model of a device (DISP-01, 03 "Layer 1"); storage arrives with dispatch.</summary>
+/// <summary>The physical model of a device (DISP-01, 03 "Layer 1").</summary>
 public enum DeviceType
 {
     /// <summary>One relay: on or off.</summary>
@@ -15,6 +16,12 @@ public enum DeviceType
 
     /// <summary>A current setpoint within [min, max] in fixed steps (an EV charger's current number).</summary>
     Modulating,
+
+    /// <summary>
+    /// A bidirectional current setpoint (a battery inverter): positive charges, and charging is
+    /// load. Dispatch and protection only ever target [0, max]; discharge is never commanded.
+    /// </summary>
+    Storage,
 }
 
 /// <summary>
@@ -23,13 +30,13 @@ public enum DeviceType
 /// </summary>
 public sealed record StageSpec(int Index, ImmutableArray<Phase> Phases, Amperes RatedCurrent);
 
-/// <summary>The setpoint range of a modulating device, already in amperes.</summary>
+/// <summary>The setpoint range of a modulating or storage device, already in amperes.</summary>
 public sealed record ModulatingRange(Amperes Min, Amperes Max, Amperes Step);
 
 /// <summary>
 /// A declared device as protection sees it: phases, currents and shedding parameters, never an
-/// entity ID or a power. A modulating device has exactly one stage whose rated current is its
-/// maximum setpoint.
+/// entity ID or a power. A modulating or storage device has exactly one stage whose rated current
+/// is its maximum setpoint.
 /// </summary>
 /// <param name="ShedPriority">Replaces <paramref name="ValuePerKwh"/> as the shed key when set (DISP-02).</param>
 /// <param name="ReactionTime">From a command to the load actually changing; the shorter one sheds first on a tie.</param>
@@ -46,17 +53,34 @@ public sealed record DeviceSpec(
     TimeSpan MinOn,
     TimeSpan MinOff)
 {
+    /// <summary>A modulating device with a declared stop actuator (a switch that disables it): it can be switched off.</summary>
+    public bool HasStopActuator { get; init; }
+
+    /// <summary>The phases on which a draw-current signal measures this device's own current.</summary>
+    public ImmutableArray<Phase> CurrentDrawPhases { get; init; } = [];
+
+    /// <summary>The downstream breaker group this device sits behind (CONN-03); null when none.</summary>
+    public GroupName? CircuitGroup { get; init; }
+
     /// <summary>What the shed order sorts by: the priority override, else the value per kWh (DISP-02).</summary>
     public double ShedKey => ShedPriority ?? ValuePerKwh;
 
+    /// <summary>A modulating or storage device: its actuator is a current setpoint.</summary>
+    public bool IsSetpoint => Type is DeviceType.Modulating or DeviceType.Storage;
+
     /// <summary>
-    /// False for a modulating device: its actuator is a setpoint whose range excludes zero, and no
-    /// stop actuator exists before Stage 3. Protection still asks for Off; the record says it cannot happen.
+    /// Relays switch off; a modulating device only through its stop actuator (its setpoint range
+    /// excludes zero); a storage device is brought to zero charge, never switched off.
     /// </summary>
-    public bool CanSwitchOff => Type != DeviceType.Modulating;
+    public bool CanSwitchOff => Type is DeviceType.OnOff or DeviceType.Stepped || (Type == DeviceType.Modulating && HasStopActuator);
+
+    /// <summary>The lowest setpoint anything targets: the range minimum, zero charge for storage (never discharge).</summary>
+    public Amperes SetpointFloor => Type == DeviceType.Storage ? Amperes.Zero : Range?.Min ?? Amperes.Zero;
 
     /// <summary>Every phase any stage draws current on, in phase order.</summary>
     public ImmutableArray<Phase> Phases => [.. Stages.SelectMany(s => s.Phases).Distinct().Order()];
 
     public bool IsOn(Phase phase) => Stages.Any(s => s.Phases.Contains(phase));
+
+    public bool HasCurrentDraw(Phase phase) => !CurrentDrawPhases.IsDefault && CurrentDrawPhases.Contains(phase);
 }

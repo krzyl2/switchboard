@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Guard;
@@ -18,4 +19,8 @@ public sealed record BudgetMemory(double Budget, DateTimeOffset At);
 public sealed record GuardMemory(ImmutableDictionary<Phase, BudgetMemory> Budgets, bool CleanShutdown)
 {
     public static GuardMemory Fresh { get; } = new(ImmutableDictionary<Phase, BudgetMemory>.Empty, false);
+
+    /// <summary>The overload budget of every circuit group phase (CONN-03), independent of the main phases.</summary>
+    public ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> GroupBudgets { get; init; } =
+        ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>>.Empty;
 }

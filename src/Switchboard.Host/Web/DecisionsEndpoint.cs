@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Options;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
@@ -14,6 +15,9 @@ namespace Switchboard.Host.Web;
 public sealed record DecisionsResponse(IReadOnlyList<DecisionDto> Items, string? Next, bool LogWritable);
 
 /// <summary>One decision as the API shows it; codes and enum values are snake_case, the reason as 04 §6 writes it.</summary>
+/// <param name="Origin">guard, dispatch or override for a device change; null for events and for 0.3.x decisions.</param>
+/// <param name="Group">The circuit group the decision is about or was caused by.</param>
+/// <param name="Target">The device's target level after the decision (what Switchboard intends; in shadow mode nothing is applied).</param>
 public sealed record DecisionDto(
     string Id,
     DateTimeOffset At,
@@ -27,9 +31,43 @@ public sealed record DecisionDto(
     string Mode,
     bool Commanded,
     string? RefusedBy,
+    string? Origin,
+    string? Group,
+    LevelDto? Target,
     DecisionInputsDto Inputs);
 
-public sealed record DecisionInputsDto(PhaseInputsDto? Phase, DeviceInputsDto? Device, ModeInputsDto? Mode, string? KillSwitch, string? SafeStateCause);
+public sealed record DecisionInputsDto(PhaseInputsDto? Phase, DeviceInputsDto? Device, ModeInputsDto? Mode, string? KillSwitch, string? SafeStateCause, DispatchInputsDto? Dispatch);
+
+/// <summary>A device level: relay flags per stage (null for a setpoint device), or a setpoint in A; enabled is false only for a modulating device switched off by its stop actuator.</summary>
+public sealed record LevelDto(IReadOnlyList<bool>? Relays, double? SetpointA, bool Enabled);
+
+/// <summary>What a dispatch decision was made from: headroom per constraint (main phase, or a circuit group's phase), the hysteresis band, settling and verification.</summary>
+/// <param name="Headroom">E from the guard per constraint, and what was left when the device's turn came.</param>
+/// <param name="Contribution">The device's share of the measured current per phase.</param>
+/// <param name="InFlight">The in-flight change counted for the device per constraint.</param>
+public sealed record DispatchInputsDto(
+    IReadOnlyList<HeadroomDto> Headroom,
+    double StartHysteresisA,
+    double StopHysteresisA,
+    int? StartRank,
+    IReadOnlyList<PhaseCurrentDto> Contribution,
+    IReadOnlyList<ConstraintCurrentDto> InFlight,
+    string? Settling,
+    VerificationDto? Verification,
+    double MinOnRemainingS,
+    double MinOffRemainingS,
+    DateTimeOffset? DeferredSince,
+    string Override);
+
+/// <param name="Group">The circuit group of the constraint; null for the main phase.</param>
+public sealed record HeadroomDto(string? Group, string Phase, double? EnvelopeA, double? RemainingA);
+
+public sealed record PhaseCurrentDto(string Phase, double CurrentA);
+
+public sealed record ConstraintCurrentDto(string? Group, string Phase, double CurrentA);
+
+/// <param name="Unit">amperes or watts.</param>
+public sealed record VerificationDto(double Expected, double Measured, string Unit, string Verdict);
 
 public sealed record PhaseInputsDto(
     string Phase,
@@ -160,6 +198,9 @@ internal static class DecisionsEndpoint
         ApiText.Snake(decision.Mode),
         decision.Commanded,
         decision.RefusedBy is { } refused ? ReasonCodes.Name(refused) : null,
+        ApiText.SnakeOrNull(decision.Origin),
+        decision.Group?.Value,
+        ApiText.Level(decision.Target),
         new DecisionInputsDto(
             decision.Inputs.Phase is { } p
                 ? new PhaseInputsDto(
@@ -193,7 +234,22 @@ internal static class DecisionsEndpoint
                 : null,
             decision.Inputs.Mode is { } m ? new ModeInputsDto(ApiText.Snake(m.Ceiling), ApiText.Snake(m.UiChoice), ApiText.Snake(m.Note)) : null,
             ApiText.SnakeOrNull(decision.Inputs.KillSwitch),
-            ApiText.SnakeOrNull(decision.Inputs.SafeStateCause)));
+            ApiText.SnakeOrNull(decision.Inputs.SafeStateCause),
+            decision.Inputs.Dispatch is { } dispatch ? Dispatch(dispatch) : null));
+
+    private static DispatchInputsDto Dispatch(DispatchDecisionInputs dispatch) => new(
+        [.. (dispatch.Headroom.IsDefault ? [] : dispatch.Headroom).Select(h => new HeadroomDto(h.Key.Group?.Value, h.Key.Phase.ToString(), h.Envelope?.Value, h.Remaining?.Value))],
+        dispatch.StartHysteresis.Value,
+        dispatch.StopHysteresis.Value,
+        dispatch.StartRank,
+        [.. dispatch.Contribution.OrderBy(c => c.Key).Select(c => new PhaseCurrentDto(c.Key.ToString(), c.Value.Value))],
+        [.. dispatch.InFlight.OrderBy(c => c.Key.Group?.Value, StringComparer.Ordinal).ThenBy(c => c.Key.Phase).Select(c => new ConstraintCurrentDto(c.Key.Group?.Value, c.Key.Phase.ToString(), c.Value.Value))],
+        ApiText.SnakeOrNull(dispatch.Settling),
+        dispatch.Verification is { } v ? new VerificationDto(v.Expected, v.Measured, ApiText.Snake(v.Unit), ApiText.Snake(v.Verdict)) : null,
+        dispatch.MinOnRemaining.TotalSeconds,
+        dispatch.MinOffRemaining.TotalSeconds,
+        dispatch.DeferredSince,
+        ApiText.Snake(dispatch.Override));
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>
@@ -210,4 +266,7 @@ internal static class ApiText
 
     public static double? Setpoint(Domain.Devices.AppliedState? applied) =>
         applied is SetpointApplied setpoint ? setpoint.Setpoint.Value : null;
+
+    public static LevelDto? Level(DeviceLevel? level) =>
+        level is null ? null : new LevelDto(level.Setpoint is null ? [.. level.Relays.IsDefault ? [] : level.Relays] : null, level.Setpoint?.Value, level.Enabled);
 }
