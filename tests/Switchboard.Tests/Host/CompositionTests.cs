@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
 using Switchboard.Application.Signals;
 using Switchboard.Host.Composition;
@@ -9,13 +10,15 @@ using Switchboard.Host.Hosting;
 using Switchboard.Infrastructure.Configuration;
 using Switchboard.Infrastructure.HomeAssistant;
 using Switchboard.Infrastructure.Mqtt;
+using Switchboard.Infrastructure.Persistence;
 using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Host;
 
 /// <summary>
 /// Hosted services stop in reverse registration order, and that order is the shutdown contract:
-/// heartbeat first (no more ON), then MQTT (OFF, offline, disconnect), then the HA socket.
+/// the guard first (shutdown safe state recorded and written while the links are still up), then
+/// the heartbeat (no more ON), then MQTT (OFF, offline, disconnect), then the HA socket.
 /// </summary>
 public sealed class CompositionTests
 {
@@ -28,19 +31,23 @@ public sealed class CompositionTests
         Assert.NotNull(provider.GetRequiredService<MqttLink>());
         Assert.NotNull(provider.GetRequiredService<SignalStoreRunner>());
         Assert.NotNull(provider.GetRequiredService<ConfigurationFileWatcher>());
-        Assert.Equal(6, provider.GetServices<IHostedService>().Count());
+        Assert.NotNull(provider.GetRequiredService<GuardRunner>());
+        Assert.NotNull(provider.GetRequiredService<JsonlDecisionLog>());
+        Assert.Equal(7, provider.GetServices<IHostedService>().Count());
     }
 
     [Fact]
-    public void Links_start_in_order_so_they_stop_heartbeat_first_then_mqtt_then_home_assistant()
+    public void Links_start_in_order_so_they_stop_guard_first_then_heartbeat_then_mqtt_then_home_assistant()
     {
-        // The signal pipeline the links feed starts first and stops last.
+        // The signal pipeline the links feed starts first and stops last; the guard stops before
+        // everything, so its shutdown safe state is recorded while MQTT can still report it.
         using var provider = Build();
 
         Assert.Equal(
             [
                 typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
                 typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
+                typeof(GuardService),
             ],
             provider.GetServices<IHostedService>().Select(s => s.GetType()));
     }
@@ -80,11 +87,14 @@ public sealed class CompositionTests
             .AddInMemoryCollection([
                 new("SWITCHBOARD_OPTIONS_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-options.json")),
                 new("SWITCHBOARD_CONFIG_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-config.yaml")),
+                new("SWITCHBOARD_DATA_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-data")),
             ])
             .Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
         services.AddLogging(logging => logging.ClearProviders());
+        // Provided by the host itself in production (GuardService stops the add-on through it).
+        services.AddSingleton<IHostApplicationLifetime, Microsoft.Extensions.Hosting.Internal.ApplicationLifetime>();
         services.AddSwitchboard();
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
     }

@@ -46,7 +46,7 @@ public sealed class SignalsEndpointTests
         Assert.Equal(["configuredW", "minimumSafeW", "belowMinimum", "refreshS", "refreshDetected", "blindTimeS", "tierMultiple"], Names(phase.GetProperty("reserve")));
         var signal = body.GetProperty("signals").EnumerateArray().First(s => s.GetProperty("name").GetString() == "grid_current_l1");
         Assert.Equal(
-            ["name", "entity", "kind", "role", "phase", "state", "detail", "value", "unit", "raw", "lastReported", "ageS", "maxAgeS", "refreshS", "refreshIntervals", "direction", "rejectedCount"],
+            ["name", "entity", "kind", "role", "phase", "state", "detail", "value", "unit", "raw", "lastReported", "ageS", "maxAgeS", "refreshS", "refreshIntervals", "direction", "rejectedCount", "dependentDevices"],
             Names(signal));
         Assert.Equal(["state", "unit"], Names(signal.GetProperty("raw")));
         Assert.Equal(["source", "direction", "from"], Names(signal.GetProperty("direction")));
@@ -148,7 +148,8 @@ public sealed class SignalsEndpointTests
             using var json = JsonDocument.Parse((await SendAsync(factory, "/api/signals")).Response.Body);
 
             Assert.Equal("valid", json.RootElement.GetProperty("configuration").GetProperty("state").GetString());
-            Assert.Equal(13, json.RootElement.GetProperty("signals").EnumerateArray().Count(s => s.GetProperty("name").ValueKind == JsonValueKind.String));
+            // 13 mapped signals and the applied-state signals of the 4 example devices (Stage 2).
+            Assert.Equal(17, json.RootElement.GetProperty("signals").EnumerateArray().Count(s => s.GetProperty("name").ValueKind == JsonValueKind.String));
             Assert.All(json.RootElement.GetProperty("phases").EnumerateArray(), p => Assert.Equal("source_disconnected", p.GetProperty("invalidReason").GetString()));
         }
     }

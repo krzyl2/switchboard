@@ -76,8 +76,10 @@ public sealed class TierTableTests
 /// </summary>
 public sealed class MinimumSafeReserveTests
 {
+    // The shipped defaults: 2 kW step, 15 s shed latency, 3 σ, no floor, 30 s cycle, two
+    // persistence_down boundaries, one poll of current lag.
     private static readonly ReserveDerivationParameters Parameters = new(
-        new Watts(2000), TimeSpan.FromSeconds(15), 3, Watts.Zero, TimeSpan.FromSeconds(30));
+        new Watts(2000), TimeSpan.FromSeconds(15), 3, Watts.Zero, TimeSpan.FromSeconds(30), 2, 1);
 
     private static readonly TierTable Tiers = new([
         new TierBand(0.90, null, TierReaction.MayAdd),
@@ -91,12 +93,50 @@ public sealed class MinimumSafeReserveTests
     [Fact]
     public void Maintainer_installation_with_30s_refresh_needs_631_W()
     {
+        // The lag poll adds a refresh of blind time (2 × 30 s + 15 s = 75 s), but the 3 min band
+        // still tolerates it plus the 30 s cycle (105 s), so the reference figure does not change.
         var derivation = Compute(TimeSpan.FromSeconds(30));
 
         Assert.Equal(631.5, derivation.Minimum.Value, 6);
         Assert.Equal(1.25, derivation.TierMultiple);
-        Assert.Equal(TimeSpan.FromSeconds(45), derivation.BlindTime);
+        Assert.Equal(TimeSpan.FromSeconds(75), derivation.BlindTime);
         Assert.False(derivation.BelowMinimum);
+    }
+
+    [Fact]
+    public void Current_lag_poll_counts_one_more_refresh()
+    {
+        // The M1 current lags its own power by one poll in ~0.4 % of polls: a kettle can go unseen
+        // for two refreshes. At 90 s that is 195 s, past the 3 min band even without the cycle.
+        var withoutLag = MinimumSafeReserve.Compute(Phase.L1, Profile(), Tiers, 1.0, TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(90), new Amperes(0.1), Parameters with { CurrentLagPolls = 0 });
+        var withLag = Compute(TimeSpan.FromSeconds(90));
+
+        Assert.Equal((1.25, 631.5), (withoutLag.TierMultiple, Math.Round(withoutLag.Minimum.Value, 6)));
+        Assert.Equal(TimeSpan.FromSeconds(195), withLag.BlindTime);
+        Assert.Equal((1.13, 1321.5), (withLag.TierMultiple, Math.Round(withLag.Minimum.Value, 6)));
+    }
+
+    [Fact]
+    public void Undetected_refresh_at_90s_max_age_now_needs_1321_W()
+    {
+        // Until the refresh is detected the reference installation's max_age (90 s) stands in for it.
+        var derivation = MinimumSafeReserve.Compute(Phase.L1, Profile(), Tiers, 1.0, null, TimeSpan.FromSeconds(90), new Amperes(0.1), Parameters);
+
+        Assert.Equal(1.13, derivation.TierMultiple);
+        Assert.Equal(1321.5, derivation.Minimum.Value, 6);
+    }
+
+    [Fact]
+    public void Reduce_ordinary_waits_persistence_down_cycles()
+    {
+        // The guard acts on a reduce_ordinary_cycle band only after two boundaries. 420 s refresh:
+        // 855 s blind + one 30 s cycle fits the 15 min band, + two cycles (915 s) does not.
+        var derivation = Compute(TimeSpan.FromSeconds(420));
+        var oneCycle = MinimumSafeReserve.Compute(Phase.L1, Profile(), Tiers, 1.0, TimeSpan.FromSeconds(420), TimeSpan.FromSeconds(90), new Amperes(0.1), Parameters with { PersistenceDownCycles = 1 });
+
+        Assert.Equal(1.00, derivation.TierMultiple);
+        Assert.Equal(2069, derivation.Minimum.Value, 6);
+        Assert.Equal(1.13, oneCycle.TierMultiple);
     }
 
     [Fact]
@@ -114,10 +154,11 @@ public sealed class MinimumSafeReserveTests
     [Fact]
     public void Reduce_bands_include_the_dispatch_cycle()
     {
-        // 150 s refresh: 165 s blind fits the 3 min band alone, but not with the 30 s cycle the
-        // reduce_next_cycle reaction waits for, so the step must fit under 1.13 × In.
-        var derivation = Compute(TimeSpan.FromSeconds(150));
+        // 75 s refresh: 165 s blind (2 × 75 s + 15 s) fits the 3 min band alone, but not with the
+        // 30 s cycle the reduce_next_cycle reaction waits for, so the step must fit under 1.13 × In.
+        var derivation = Compute(TimeSpan.FromSeconds(75));
 
+        Assert.Equal(TimeSpan.FromSeconds(165), derivation.BlindTime);
         Assert.Equal(1.13, derivation.TierMultiple);
         Assert.Equal(1321.5, derivation.Minimum.Value, 6);
     }

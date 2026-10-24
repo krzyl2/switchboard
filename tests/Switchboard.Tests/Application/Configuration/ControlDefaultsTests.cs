@@ -81,5 +81,22 @@ public sealed class ControlDefaultsTests
             Control.ReserveDerivation.SigmaMultiplier,
             Control.ReserveDerivation.Floor.Value,
             Control.ReserveDerivation.DispatchCycle));
+
+        // The M1 current lags its power by one poll now and then (DECISIONS, Stage 1): one extra
+        // refresh of blind time; reduce_ordinary_cycle acts after persistence_down boundaries.
+        Assert.Equal(1, signals.CurrentLagPolls);
+        Assert.Equal((1, 2), (Control.ReserveDerivation.CurrentLagPolls, Control.ReserveDerivation.PersistenceDownCycles));
+    }
+
+    [Fact]
+    public void Device_and_decision_log_defaults_ship_in_the_defaults_file()
+    {
+        var devices = Control.Devices;
+        Assert.Equal(TimeSpan.FromMinutes(10), devices.StateMaxAge);
+        Assert.Equal(
+            (TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(20)),
+            (devices.ReactionTime[Switchboard.Domain.Devices.DeviceType.OnOff], devices.ReactionTime[Switchboard.Domain.Devices.DeviceType.Stepped], devices.ReactionTime[Switchboard.Domain.Devices.DeviceType.Modulating]));
+        Assert.Equal((TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60)), (devices.ModulatingMinOn, devices.ModulatingMinOff));
+        Assert.Equal(30, Control.DecisionLog.RetentionDays);
     }
 }

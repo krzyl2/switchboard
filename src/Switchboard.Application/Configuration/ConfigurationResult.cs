@@ -53,6 +53,13 @@ public static class ConfigurationIssueCodes
     public const string InvalidDuration = "invalid_duration";
     public const string ReserveOutOfRange = "reserve_out_of_range";
     public const string TierBandsInvalid = "tier_bands_invalid";
+    public const string TierEnvelopeViolated = "tier_envelope_violated";
+    public const string InvalidDeviceId = "invalid_device_id";
+    public const string DuplicateDeviceId = "duplicate_device_id";
+    public const string ActuatorDomainNotAllowed = "actuator_domain_not_allowed";
+    public const string StateEntityDomainNotAllowed = "state_entity_domain_not_allowed";
+    public const string DuplicateActuator = "duplicate_actuator";
+    public const string ModulatingRangeInvalid = "modulating_range_invalid";
 
     // Warnings: the document is still valid.
     public const string ReservedKeyIgnored = "reserved_key_ignored";

@@ -28,7 +28,7 @@ public static class SwitchboardDocumentParser
     private static readonly Range VoltageRange = new(100, 300);
 
     private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey];
-    private static readonly string[] ReservedKeys = ["devices", "circuit_groups"];
+    private static readonly string[] ReservedKeys = ["circuit_groups"];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero"];
 
@@ -80,11 +80,19 @@ public static class SwitchboardDocumentParser
         ConfigRead.CheckKeys(root, string.Empty, RootKeys, issues);
         ReadSchemaVersion(root, issues);
 
-        var merged = ConfigNodeMerge.Merge(defaults, root.Find(ControlKey)?.Value, ControlKey, issues);
+        var merged = ConfigNodeMerge.Merge(defaults, WithoutLimits(root.Find(ControlKey)?.Value, issues), ControlKey, issues);
         var control = ControlParametersBinder.Bind(merged, ControlKey, issues);
 
         var connection = ReadConnection(root, control, issues);
-        var signals = ReadSignals(root, connection?.Topology, control, issues);
+        var userSignals = ReadSignals(root, connection?.Topology, control, issues);
+        var signalEntities = new Dictionary<EntityId, SignalName>();
+        foreach (var signal in userSignals)
+        {
+            signalEntities.TryAdd(signal.Entity, signal.Name);
+        }
+
+        var (devices, deviceSignals) = DeviceSectionParser.Read(root, connection, control, signalEntities, issues);
+        var signals = userSignals.AddRange(deviceSignals);
 
         foreach (var key in ReservedKeys)
         {
@@ -100,8 +108,24 @@ public static class SwitchboardDocumentParser
 
         var configuration = issues.HasErrors || connection is null || control is null
             ? null
-            : new SwitchboardConfiguration(connection, signals, control);
+            : new SwitchboardConfiguration(connection, signals, control, devices);
         return Finish(configuration, issues, path, loadedAt);
+    }
+
+    /// <summary>The safety envelope is never merged: <c>control.limits</c> is refused and left out of the merge.</summary>
+    private static ConfigNode? WithoutLimits(ConfigNode? control, ConfigIssues issues)
+    {
+        if (control is not ConfigMapping mapping || mapping.Find(ControlParametersBinder.LimitsKey) is not { } limits)
+        {
+            return control;
+        }
+
+        issues.ErrorAtKey(
+            ConfigurationIssueCodes.KeyNotAllowed,
+            ConfigRead.Join(ControlKey, limits.Key),
+            limits,
+            "The safety envelope (limits) cannot be overridden: it bounds what the tier table may allow.");
+        return mapping with { Entries = mapping.Entries.Remove(limits) };
     }
 
     private static ConfigurationResult Finish(SwitchboardConfiguration? configuration, ConfigIssues issues, string path, DateTimeOffset loadedAt) =>
@@ -249,14 +273,17 @@ public static class SwitchboardDocumentParser
     private static SignalDraft? ReadSignal(ConfigEntry entry, Topology? topology, ControlParameters? control, ConfigIssues issues)
     {
         var path = ConfigRead.Join("signals", entry.Key);
-        var nameValid = SignalName.TryParse(entry.Key, out var name) && entry.Key != NoDirection;
+        var nameValid = SignalName.TryParse(entry.Key, out var name)
+            && entry.Key != NoDirection
+            && !entry.Key.StartsWith(DeviceSectionParser.SignalPrefix, StringComparison.Ordinal);
         if (!nameValid)
         {
             issues.ErrorAtKey(
                 ConfigurationIssueCodes.InvalidSignalName,
                 path,
                 entry,
-                $"'{entry.Key}' is not a valid signal name: lower-case letters, digits and '_', starting with a letter, at most 63 characters; '{NoDirection}' is reserved.");
+                $"'{entry.Key}' is not a valid signal name: lower-case letters, digits and '_', starting with a letter, at most 63 characters; "
+                + $"'{NoDirection}' and names starting with '{DeviceSectionParser.SignalPrefix}' (device states) are reserved.");
         }
 
         if (ConfigRead.Mapping(entry.Value, path, issues) is not { } mapping)

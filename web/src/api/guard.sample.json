@@ -1,0 +1,657 @@
+{
+  "at": "2026-10-24T10:00:00.004+00:00",
+  "mode": {
+    "ceiling": "shadow",
+    "uiChoice": "shadow",
+    "effective": "shadow",
+    "note": "none"
+  },
+  "safeState": {
+    "active": true,
+    "scope": "phases",
+    "reason": "guard_stale_signal",
+    "phases": [
+      "L2"
+    ],
+    "since": "2026-10-24T09:59:40.011+00:00"
+  },
+  "killSwitch": {
+    "engaged": false,
+    "changedAt": "2026-10-22T12:10:00.000+00:00",
+    "source": "mqtt"
+  },
+  "breaker": {
+    "ratingA": 25.0,
+    "characteristic": "B",
+    "continuousMultiple": 1.13,
+    "continuousA": 28.25,
+    "tiers": [
+      {
+        "upTo": 0.9,
+        "upToA": 22.5,
+        "allowedS": null,
+        "reaction": "may_add"
+      },
+      {
+        "upTo": 1,
+        "upToA": 25,
+        "allowedS": null,
+        "reaction": "hold"
+      },
+      {
+        "upTo": 1.13,
+        "upToA": 28.25,
+        "allowedS": 900,
+        "reaction": "reduce_ordinary_cycle"
+      },
+      {
+        "upTo": 1.25,
+        "upToA": 31.25,
+        "allowedS": 180,
+        "reaction": "reduce_next_cycle"
+      },
+      {
+        "upTo": 1.45,
+        "upToA": 36.25,
+        "allowedS": 30,
+        "reaction": "shed_one_immediately"
+      },
+      {
+        "upTo": null,
+        "upToA": null,
+        "allowedS": 0,
+        "reaction": "shed_all_on_phase"
+      }
+    ]
+  },
+  "phases": [
+    {
+      "phase": "L1",
+      "dataValid": true,
+      "invalidReason": null,
+      "currentA": 33.0,
+      "effectiveCurrentA": 26.4,
+      "multiple": 1.32,
+      "band": 4,
+      "reaction": "shed_one_immediately",
+      "continuousA": 28.25,
+      "reserveThresholdA": 14.13,
+      "headroomA": -18.87,
+      "headroomW": -4340.1,
+      "breakerHeadroomA": -4.75,
+      "budget": 0.62,
+      "budgetTrend": "consuming",
+      "recoveryRemainingS": 228.0,
+      "increasesAllowed": false,
+      "reductionRequested": true,
+      "state": "shedding",
+      "direction": "import",
+      "reportedAt": "2026-10-24T09:59:56.010+00:00"
+    },
+    {
+      "phase": "L2",
+      "dataValid": false,
+      "invalidReason": "current_stale",
+      "currentA": null,
+      "effectiveCurrentA": null,
+      "multiple": null,
+      "band": null,
+      "reaction": null,
+      "continuousA": 28.25,
+      "reserveThresholdA": 14.13,
+      "headroomA": null,
+      "headroomW": null,
+      "breakerHeadroomA": null,
+      "budget": 0.9,
+      "budgetTrend": "held",
+      "recoveryRemainingS": 60.0,
+      "increasesAllowed": false,
+      "reductionRequested": false,
+      "state": "safe_state",
+      "direction": null,
+      "reportedAt": null
+    },
+    {
+      "phase": "L3",
+      "dataValid": true,
+      "invalidReason": null,
+      "currentA": -12.4,
+      "effectiveCurrentA": -12.4,
+      "multiple": 0.496,
+      "band": 0,
+      "reaction": "may_add",
+      "continuousA": 28.25,
+      "reserveThresholdA": 14.13,
+      "headroomA": 26.53,
+      "headroomW": 6101.9,
+      "breakerHeadroomA": 40.65,
+      "budget": 1,
+      "budgetTrend": "full",
+      "recoveryRemainingS": 0,
+      "increasesAllowed": true,
+      "reductionRequested": false,
+      "state": "normal",
+      "direction": "export",
+      "reportedAt": "2026-10-24T09:59:56.012+00:00"
+    }
+  ],
+  "devices": [
+    {
+      "id": "heater_l1",
+      "type": "on_off",
+      "phases": [
+        "L1"
+      ],
+      "guardState": "shed",
+      "reason": "guard_tier_exceeded",
+      "stages": [
+        {
+          "stage": 1,
+          "applied": "on",
+          "setpointA": null,
+          "fresh": true,
+          "invalidReason": null,
+          "limit": "off",
+          "lastKnown": {
+            "applied": "on",
+            "setpointA": null,
+            "at": "2026-10-24T09:59:56.020+00:00"
+          }
+        }
+      ],
+      "shedRank": 2,
+      "valuePerKwh": 0.35,
+      "shedPriority": null,
+      "noShed": false,
+      "canSwitchOff": true,
+      "minOnRemainingS": 42,
+      "minOffRemainingS": 0,
+      "unsafeSignals": []
+    },
+    {
+      "id": "ev_charger",
+      "type": "modulating",
+      "phases": [
+        "L1"
+      ],
+      "guardState": "reduced",
+      "reason": "guard_budget_low",
+      "stages": [
+        {
+          "stage": 1,
+          "applied": null,
+          "setpointA": 16,
+          "fresh": true,
+          "invalidReason": null,
+          "limit": "at_minimum",
+          "lastKnown": {
+            "applied": null,
+            "setpointA": 16,
+            "at": "2026-10-24T09:59:56.020+00:00"
+          }
+        }
+      ],
+      "shedRank": 4,
+      "valuePerKwh": 2.03,
+      "shedPriority": null,
+      "noShed": false,
+      "canSwitchOff": false,
+      "minOnRemainingS": 0,
+      "minOffRemainingS": 0,
+      "unsafeSignals": []
+    },
+    {
+      "id": "heater_l2",
+      "type": "on_off",
+      "phases": [
+        "L2"
+      ],
+      "guardState": "unsafe",
+      "reason": "guard_stale_signal",
+      "stages": [
+        {
+          "stage": 1,
+          "applied": "on",
+          "setpointA": null,
+          "fresh": true,
+          "invalidReason": null,
+          "limit": "off",
+          "lastKnown": {
+            "applied": "on",
+            "setpointA": null,
+            "at": "2026-10-24T09:59:56.020+00:00"
+          }
+        }
+      ],
+      "shedRank": 3,
+      "valuePerKwh": 0.35,
+      "shedPriority": null,
+      "noShed": false,
+      "canSwitchOff": true,
+      "minOnRemainingS": 0,
+      "minOffRemainingS": 0,
+      "unsafeSignals": [
+        "grid_current_l2"
+      ]
+    },
+    {
+      "id": "boiler",
+      "type": "stepped",
+      "phases": [
+        "L2",
+        "L3"
+      ],
+      "guardState": "unsafe",
+      "reason": "guard_stale_signal",
+      "stages": [
+        {
+          "stage": 1,
+          "applied": "off",
+          "setpointA": null,
+          "fresh": true,
+          "invalidReason": null,
+          "limit": null,
+          "lastKnown": {
+            "applied": "off",
+            "setpointA": null,
+            "at": "2026-10-24T09:59:56.020+00:00"
+          }
+        },
+        {
+          "stage": 2,
+          "applied": null,
+          "setpointA": null,
+          "fresh": false,
+          "invalidReason": "stale",
+          "limit": "off",
+          "lastKnown": {
+            "applied": "on",
+            "setpointA": null,
+            "at": "2026-10-24T09:41:12.500+00:00"
+          }
+        }
+      ],
+      "shedRank": 1,
+      "valuePerKwh": 0.35,
+      "shedPriority": 0.1,
+      "noShed": false,
+      "canSwitchOff": true,
+      "minOnRemainingS": 0,
+      "minOffRemainingS": 75,
+      "unsafeSignals": [
+        "device_boiler_stage2",
+        "grid_current_l2"
+      ]
+    },
+    {
+      "id": "heat_pump",
+      "type": "on_off",
+      "phases": [
+        "L3"
+      ],
+      "guardState": "allowed",
+      "reason": null,
+      "stages": [
+        {
+          "stage": 1,
+          "applied": "on",
+          "setpointA": null,
+          "fresh": true,
+          "invalidReason": null,
+          "limit": null,
+          "lastKnown": {
+            "applied": "on",
+            "setpointA": null,
+            "at": "2026-10-24T09:59:56.020+00:00"
+          }
+        }
+      ],
+      "shedRank": null,
+      "valuePerKwh": 1.2,
+      "shedPriority": null,
+      "noShed": true,
+      "canSwitchOff": true,
+      "minOnRemainingS": 0,
+      "minOffRemainingS": 0,
+      "unsafeSignals": []
+    }
+  ],
+  "decisionLog": {
+    "writable": true,
+    "lastError": null,
+    "dropped": 0
+  },
+  "stateFile": {
+    "status": "loaded",
+    "warning": null
+  },
+  "decisions": [
+    {
+      "id": "5f3c9a1b2d7e-000000042",
+      "at": "2026-10-24T10:00:00.004+00:00",
+      "scope": "device",
+      "device": "heater_l1",
+      "stage": null,
+      "phase": "L1",
+      "action": "switch_off",
+      "reason": "guard_tier_exceeded",
+      "overridden": "lockout_min_on",
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "inputs": {
+        "phase": {
+          "phase": "L1",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 33.0,
+          "effectiveCurrentA": 26.4,
+          "multiple": 1.32,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.62,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": -18.87,
+          "direction": "import",
+          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+        },
+        "device": {
+          "applied": "on",
+          "setpointA": null,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 2,
+          "valuePerKwh": 0.35,
+          "shedPriority": null,
+          "minOnRemainingS": 42,
+          "minOffRemainingS": 0,
+          "canSwitchOff": true
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000041",
+      "at": "2026-10-24T09:59:58.002+00:00",
+      "scope": "device",
+      "device": "ev_charger",
+      "stage": null,
+      "phase": "L1",
+      "action": "switch_off",
+      "reason": "guard_budget_low",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "inputs": {
+        "phase": {
+          "phase": "L1",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 33.0,
+          "effectiveCurrentA": 26.4,
+          "multiple": 1.32,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.24,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": -18.87,
+          "direction": "import",
+          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+        },
+        "device": {
+          "applied": null,
+          "setpointA": 6,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 4,
+          "valuePerKwh": 2.03,
+          "shedPriority": null,
+          "minOnRemainingS": 0,
+          "minOffRemainingS": 0,
+          "canSwitchOff": false
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000040",
+      "at": "2026-10-24T09:59:56.120+00:00",
+      "scope": "device",
+      "device": "ev_charger",
+      "stage": null,
+      "phase": "L1",
+      "action": "reduce_to_minimum",
+      "reason": "guard_budget_low",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "inputs": {
+        "phase": {
+          "phase": "L1",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 33.0,
+          "effectiveCurrentA": 26.4,
+          "multiple": 1.32,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.24,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": -18.87,
+          "direction": "import",
+          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+        },
+        "device": {
+          "applied": null,
+          "setpointA": 16,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 4,
+          "valuePerKwh": 2.03,
+          "shedPriority": null,
+          "minOnRemainingS": 0,
+          "minOffRemainingS": 0,
+          "canSwitchOff": false
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000039",
+      "at": "2026-10-24T09:59:40.011+00:00",
+      "scope": "phase",
+      "device": null,
+      "stage": null,
+      "phase": "L2",
+      "action": "safe_state_entered",
+      "reason": "guard_stale_signal",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "inputs": {
+        "phase": {
+          "phase": "L2",
+          "dataValid": false,
+          "invalidReason": "current_stale",
+          "currentA": null,
+          "effectiveCurrentA": null,
+          "multiple": null,
+          "band": null,
+          "reaction": null,
+          "budget": 0.9,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": null,
+          "direction": null,
+          "reportedAt": null
+        },
+        "device": null,
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000038",
+      "at": "2026-10-24T09:58:00.003+00:00",
+      "scope": "phase",
+      "device": null,
+      "stage": null,
+      "phase": "L3",
+      "action": "cannot_reduce_exporting",
+      "reason": "guard_tier_exceeded",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "inputs": {
+        "phase": {
+          "phase": "L3",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": -31.5,
+          "effectiveCurrentA": -31.5,
+          "multiple": 1.26,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.97,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": 45.63,
+          "direction": "export",
+          "reportedAt": "2026-10-24T09:57:56.012+00:00"
+        },
+        "device": null,
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000037",
+      "at": "2026-10-24T09:30:00.001+00:00",
+      "scope": "device",
+      "device": "boiler",
+      "stage": 2,
+      "phase": "L3",
+      "action": "release",
+      "reason": "headroom_available",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "inputs": {
+        "phase": {
+          "phase": "L3",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 8.0,
+          "effectiveCurrentA": 8.0,
+          "multiple": 0.32,
+          "band": 0,
+          "reaction": "may_add",
+          "budget": 1,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": 6.13,
+          "direction": "import",
+          "reportedAt": "2026-10-24T09:29:56.012+00:00"
+        },
+        "device": {
+          "applied": "off",
+          "setpointA": null,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 1,
+          "valuePerKwh": 0.35,
+          "shedPriority": 0.1,
+          "minOnRemainingS": 0,
+          "minOffRemainingS": 0,
+          "canSwitchOff": true
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000003",
+      "at": "2026-10-22T12:10:00.000+00:00",
+      "scope": "system",
+      "device": null,
+      "stage": null,
+      "phase": null,
+      "action": "kill_switch_disengaged",
+      "reason": "kill_switch",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": null,
+        "killSwitch": "mqtt",
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000002",
+      "at": "2026-10-22T12:05:00.000+00:00",
+      "scope": "system",
+      "device": null,
+      "stage": null,
+      "phase": null,
+      "action": "kill_switch_engaged",
+      "reason": "kill_switch",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": null,
+        "killSwitch": "mqtt",
+        "safeStateCause": null
+      }
+    },
+    {
+      "id": "5f3c9a1b2d7e-000000001",
+      "at": "2026-10-22T12:00:00.000+00:00",
+      "scope": "system",
+      "device": null,
+      "stage": null,
+      "phase": null,
+      "action": "mode_resolved",
+      "reason": "mode_shadow",
+      "overridden": null,
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": null,
+      "inputs": {
+        "phase": null,
+        "device": null,
+        "mode": {
+          "ceiling": "shadow",
+          "uiChoice": "shadow",
+          "note": "none"
+        },
+        "killSwitch": null,
+        "safeStateCause": null
+      }
+    }
+  ]
+}

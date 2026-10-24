@@ -12,6 +12,10 @@ namespace Switchboard.Application.Configuration;
 /// <param name="DirectionFrom">The signed power an unsigned signal takes its direction from.</param>
 /// <param name="DirectionDeclaredUnavailable"><c>direction_from: none</c>: permanent cautious mode (SIG-03).</param>
 /// <param name="UnavailableAsZero">Inverter power only: Home Assistant's unavailable means 0 W (an inverter asleep at night).</param>
+/// <param name="DeclaredAt">
+/// Where the signal was declared when not under <c>signals:</c>: the device that created it
+/// (<c>devices[0]</c>), for issues raised at run time.
+/// </param>
 public sealed record SignalDefinition(
     SignalName Name,
     EntityId Entity,
@@ -24,14 +28,22 @@ public sealed record SignalDefinition(
     double? Sigma,
     SignalRole Role,
     Phase? Phase,
-    bool UnavailableAsZero)
+    bool UnavailableAsZero,
+    string? DeclaredAt = null)
 {
     /// <summary>The dotted path of this signal in the document, for issues raised at run time.</summary>
-    public string Path => $"signals.{Name}";
+    public string Path => DeclaredAt ?? $"signals.{Name}";
+
+    /// <summary>The dotted path of the key that sets this signal's max_age.</summary>
+    public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : $"{Path}.state_max_age";
 }
 
-/// <summary>A validated configuration document (schema version 1).</summary>
+/// <summary>
+/// A validated configuration document (schema version 1). <see cref="Signals"/> holds the signals
+/// declared under <c>signals:</c> followed by one applied-state signal per device stage.
+/// </summary>
 public sealed record SwitchboardConfiguration(
     ConnectionProfile Connection,
     ImmutableArray<SignalDefinition> Signals,
-    ControlParameters Control);
+    ControlParameters Control,
+    ImmutableArray<DeviceDefinition> Devices);

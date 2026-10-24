@@ -53,6 +53,7 @@ public sealed record ReserveDto(
     double TierMultiple);
 
 /// <param name="Value">A number in <paramref name="Unit"/>, or text for a state signal.</param>
+/// <param name="DependentDevices">Devices protection treats as unsafe while this signal is not fresh (SIG-05).</param>
 public sealed record SignalDto(
     string? Name,
     string? Entity,
@@ -70,7 +71,8 @@ public sealed record SignalDto(
     double? RefreshS,
     int RefreshIntervals,
     DirectionDto? Direction,
-    long RejectedCount);
+    long RejectedCount,
+    IReadOnlyList<string> DependentDevices);
 
 public sealed record RawDto(string State, string? Unit);
 
@@ -169,7 +171,8 @@ internal static class SignalsEndpoint
             reading.Direction is { } direction
                 ? new DirectionDto(Snake(direction.Source), Snake(direction.Direction), direction.From?.Value)
                 : null,
-            reading.RejectedCount);
+            reading.RejectedCount,
+            reading.Dependents.IsDefault ? [] : [.. reading.Dependents.Select(d => d.Value)]);
 
     private static IssueDto Issue(ConfigurationIssue issue) => new(issue.Code, issue.Path, issue.Line, issue.Column, issue.Message);
 

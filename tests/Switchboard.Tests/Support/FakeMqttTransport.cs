@@ -26,7 +26,7 @@ internal sealed class FakeMqttTransport(MqttTopicGuard guard) : IMqttTransport
 
     public event Func<Task>? Disconnected;
 
-    public event Func<string, string, Task>? MessageReceived;
+    public event Func<MqttInboundMessage, Task>? MessageReceived;
 
     public bool IsConnected { get; private set; }
 
@@ -115,6 +115,7 @@ internal sealed class FakeMqttTransport(MqttTopicGuard guard) : IMqttTransport
 
     public Task SubscribeAsync(string topicFilter, CancellationToken cancellationToken)
     {
+        guard.EnsureSubscriptionAllowed(topicFilter);
         Record(new MqttOperation("subscribe", topicFilter));
         return Task.CompletedTask;
     }
@@ -135,7 +136,8 @@ internal sealed class FakeMqttTransport(MqttTopicGuard guard) : IMqttTransport
         return Disconnected?.Invoke() ?? Task.CompletedTask;
     }
 
-    public Task DeliverAsync(string topic, string payload) => MessageReceived?.Invoke(topic, payload) ?? Task.CompletedTask;
+    public Task DeliverAsync(string topic, string payload, bool retained = false) =>
+        MessageReceived?.Invoke(new MqttInboundMessage(topic, payload, retained)) ?? Task.CompletedTask;
 
     public async Task<MqttOperation> NextAsync() => await _operations.Reader.ReadAsync().Soon();
 
@@ -180,4 +182,14 @@ internal sealed class FakeCredentialSource : IMqttCredentialSource
         Interlocked.Increment(ref _calls);
         return Task.FromResult(Credentials);
     }
+}
+
+/// <summary>An in-memory discovery ledger (state.json's mqtt.discovered).</summary>
+internal sealed class MemoryLedger(params string[] discovered) : Switchboard.Application.State.IDiscoveryLedger
+{
+    public System.Collections.Immutable.ImmutableSortedSet<string> Discovered { get; private set; } =
+        System.Collections.Immutable.ImmutableSortedSet.CreateRange(StringComparer.Ordinal, discovered);
+
+    public void Replace(IEnumerable<string> discovered) =>
+        Discovered = System.Collections.Immutable.ImmutableSortedSet.CreateRange(StringComparer.Ordinal, discovered);
 }

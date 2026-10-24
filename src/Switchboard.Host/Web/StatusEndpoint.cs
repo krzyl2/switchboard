@@ -6,7 +6,10 @@ using Switchboard.Application.Modes;
 
 namespace Switchboard.Host.Web;
 
-/// <summary>Shape of GET api/status. Holds no secret by construction: none of its inputs carry one.</summary>
+/// <summary>
+/// Shape of GET api/status. Holds no secret by construction: none of its inputs carry one.
+/// <c>mode</c> is the effective mode: the add-on option is only its ceiling.
+/// </summary>
 public sealed record StatusResponse(string Version, string Mode, string HomeAssistant, string Mqtt, bool Healthy);
 
 internal static class StatusEndpoint
@@ -15,13 +18,13 @@ internal static class StatusEndpoint
     {
         endpoints.MapGet("/api/status", (
                 [FromServices] AppVersion version,
-                [FromServices] ResolvedAddonOptions options,
+                [FromServices] IModeSource mode,
                 [FromServices] IHomeAssistantConnectionState homeAssistant,
                 [FromServices] IMqttConnectionState mqtt,
                 [FromServices] IHealthStatus health) =>
             TypedResults.Json(new StatusResponse(
                 version.Value,
-                ModeName(options.Mode),
+                ModeName(mode.Current.Effective),
                 StateName(homeAssistant.Current),
                 StateName(mqtt.Current),
                 health.IsHealthy)));

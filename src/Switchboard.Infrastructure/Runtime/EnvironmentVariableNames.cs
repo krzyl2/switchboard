@@ -20,6 +20,9 @@ public static class EnvironmentVariableNames
     /// <summary>Where the configuration document is read from; defaults to the add-on config folder.</summary>
     public const string ConfigPath = "SWITCHBOARD_CONFIG_PATH";
 
+    /// <summary>Where runtime state (state.json) and the decision log are written; defaults to /data.</summary>
+    public const string DataPath = "SWITCHBOARD_DATA_PATH";
+
     /// <summary>Standalone development only: replay recorded history (csv or csv.gz) instead of connecting to Home Assistant.</summary>
     public const string DevReplay = "SWITCHBOARD_DEV_REPLAY";
 

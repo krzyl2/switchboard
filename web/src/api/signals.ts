@@ -1,3 +1,5 @@
+import { array, bool, count, fail, field, instant, nullable, number, object, oneOf, text } from './strict';
+
 // Contract of GET api/signals (src/Switchboard.Host/Web/SignalsEndpoint.cs). Every closed list below
 // mirrors a backend enum or code list; SignalsSpaContractTests (tests/Switchboard.Tests) compares
 // them, so a value added on one side only fails the build instead of blanking this page.
@@ -42,6 +44,13 @@ export const ISSUE_CODES = [
   'invalid_duration',
   'reserve_out_of_range',
   'tier_bands_invalid',
+  'tier_envelope_violated',
+  'invalid_device_id',
+  'duplicate_device_id',
+  'actuator_domain_not_allowed',
+  'state_entity_domain_not_allowed',
+  'duplicate_actuator',
+  'modulating_range_invalid',
   'reserved_key_ignored',
   'direction_unavailable_cautious',
   'max_age_short_for_probe',
@@ -70,6 +79,7 @@ export const SIGNAL_ROLES = [
   'inverter_phase_current',
   'total_current',
   'total_power',
+  'device_state',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [
@@ -190,6 +200,8 @@ export interface Signal {
   refreshIntervals: number;
   direction: Direction | null;
   rejectedCount: number;
+  /** Devices held as unsafe while this signal is not fresh (SIG-05). */
+  dependentDevices: string[];
 }
 
 export interface Signals {
@@ -206,65 +218,6 @@ export interface Signals {
 
 // Relative on purpose: ingress serves the page under a per-session prefix.
 const SIGNALS_URL = 'api/signals';
-
-type Json = Record<string, unknown>;
-
-function fail(path: string, expected: string): never {
-  throw new Error(`Signals payload: ${path} is not ${expected}.`);
-}
-
-// A key that is absent is an error even where null is allowed: the add-on always writes every key.
-function field(r: Json, key: string, path: string): unknown {
-  if (!(key in r)) fail(`${path}.${key}`, 'present');
-  return r[key];
-}
-
-function object(raw: unknown, path: string): Json {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) fail(path, 'an object');
-  return raw as Json;
-}
-
-function array(raw: unknown, path: string): unknown[] {
-  if (!Array.isArray(raw)) fail(path, 'an array');
-  return raw;
-}
-
-function text(raw: unknown, path: string): string {
-  if (typeof raw !== 'string') fail(path, 'a string');
-  return raw;
-}
-
-function number(raw: unknown, path: string): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) fail(path, 'a finite number');
-  return raw;
-}
-
-function count(raw: unknown, path: string): number {
-  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) fail(path, 'a non-negative integer');
-  return raw;
-}
-
-function bool(raw: unknown, path: string): boolean {
-  if (typeof raw !== 'boolean') fail(path, 'a boolean');
-  return raw;
-}
-
-function instant(raw: unknown, path: string): Date {
-  const at = new Date(text(raw, path));
-  if (Number.isNaN(at.getTime())) fail(path, 'a timestamp');
-  return at;
-}
-
-function oneOf<T extends string>(allowed: readonly T[], raw: unknown, path: string): T {
-  if (typeof raw !== 'string' || !(allowed as readonly string[]).includes(raw)) {
-    fail(path, `one of ${allowed.join(', ')}`);
-  }
-  return raw as T;
-}
-
-function nullable<T>(raw: unknown, path: string, parse: (raw: unknown, path: string) => T): T | null {
-  return raw === null ? null : parse(raw, path);
-}
 
 function issue(raw: unknown, path: string): Issue {
   const r = object(raw, path);
@@ -385,6 +338,9 @@ function signal(raw: unknown, path: string): Signal {
       };
     }),
     rejectedCount: count(field(r, 'rejectedCount', path), `${path}.rejectedCount`),
+    dependentDevices: array(field(r, 'dependentDevices', path), `${path}.dependentDevices`).map((d, i) =>
+      text(d, `${path}.dependentDevices[${i}]`),
+    ),
   };
 }
 

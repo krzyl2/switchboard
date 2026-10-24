@@ -37,6 +37,15 @@ public static class SignalUnits
 
     /// <summary>The factor from <paramref name="unit"/> to the internal unit of its kind.</summary>
     public static double Factor(string unit) => Factors[unit];
+
+    /// <summary>
+    /// A configured power expressed as the current it takes at the nominal voltage (unity power
+    /// factor): how the reserve, configured in W, becomes the amperes protection compares with.
+    /// </summary>
+    public static Amperes CurrentAt(Watts power, Volts voltage) => new(power.Value / voltage.Value);
+
+    /// <summary>A current expressed as power at the nominal voltage; for display at the presentation edge only, never for a decision.</summary>
+    public static Watts PowerAt(Amperes current, Volts voltage) => new(current.Value * voltage.Value);
 }
 
 public enum NormalizationOutcome

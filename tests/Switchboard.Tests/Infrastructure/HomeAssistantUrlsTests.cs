@@ -97,9 +97,10 @@ public sealed class HomeAssistantUrlsTests
 public sealed class HomeAssistantCommandAllowListTests
 {
     [Fact]
-    public void Allow_list_is_exactly_ping_and_subscribe_entities()
+    public void Allow_list_is_exactly_ping_subscribe_and_unsubscribe()
     {
-        Assert.Equal(["ping", "subscribe_entities"], HomeAssistantCommandAllowList.Allowed.Order());
+        // Stage 2 adds unsubscribe_events (own superseded subscriptions only); nothing that changes state.
+        Assert.Equal(["ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
     }
 
     [Theory]
@@ -107,7 +108,6 @@ public sealed class HomeAssistantCommandAllowListTests
     [InlineData("fire_event")]
     [InlineData("execute_script")]
     [InlineData("get_states")]
-    [InlineData("unsubscribe_events")]
     [InlineData("unknown_type")]
     public void Commanding_types_are_refused(string type)
     {
@@ -143,5 +143,46 @@ public sealed class HomeAssistantCommandAllowListTests
         // shape check reads the bytes exactly as they would leave: nothing else may pass.
         Assert.Throws<HomeAssistantCommandRefusedException>(
             () => HomeAssistantCommandAllowList.EnsurePayloadAllowed(System.Text.Encoding.UTF8.GetBytes(payload)));
+    }
+
+    [Theory]
+    [InlineData(7, true)]
+    [InlineData(8, false)]
+    [InlineData(3, false)]
+    public void Unsubscribe_only_for_own_ids(int subscription, bool allowed)
+    {
+        // Only the client's own superseded subscription (7 here) may be ended: ending anything else
+        // is not reading, and an unknown id could be another integration's subscription.
+        var payload = System.Text.Encoding.UTF8.GetBytes($$"""{"id":9,"type":"unsubscribe_events","subscription":{{subscription}}}""");
+        void Check() => HomeAssistantCommandAllowList.EnsurePayloadAllowed(payload, id => id == 7);
+
+        if (allowed)
+        {
+            Check();
+        }
+        else
+        {
+            Assert.Throws<HomeAssistantCommandRefusedException>(Check);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"id":9,"type":"unsubscribe_events","subscription":7,"entity_ids":["switch.x"]}""")]
+    [InlineData("""{"id":9,"type":"unsubscribe_events"}""")]
+    [InlineData("""{"id":9,"type":"unsubscribe_events","subscription":"7"}""")]
+    [InlineData("""{"id":9,"type":"unsubscribe_events","subscription":7,"subscription":7}""")]
+    [InlineData("""{"id":9,"type":"ping","subscription":7}""")]
+    [InlineData("""{"id":9,"type":"unsubscribe_events","subscription":7,"type":"call_service"}""")]
+    public void Unsubscribe_extra_keys_refused(string payload)
+    {
+        Assert.Throws<HomeAssistantCommandRefusedException>(
+            () => HomeAssistantCommandAllowList.EnsurePayloadAllowed(System.Text.Encoding.UTF8.GetBytes(payload), _ => true));
+    }
+
+    [Fact]
+    public void Without_own_subscriptions_every_unsubscribe_is_refused()
+    {
+        Assert.Throws<HomeAssistantCommandRefusedException>(
+            () => HomeAssistantCommandAllowList.EnsurePayloadAllowed(System.Text.Encoding.UTF8.GetBytes("""{"id":9,"type":"unsubscribe_events","subscription":1}""")));
     }
 }

@@ -36,12 +36,19 @@ public sealed class OptionsValidationTests
         Assert.Equal("switchboard", mqtt.ClientId);
         Assert.Equal("http://supervisor/services/mqtt", mqtt.SupervisorServiceUrl);
         Assert.Equal(TimeSpan.FromSeconds(15), mqtt.KeepAlivePeriod);
-        Assert.Equal(TimeSpan.FromSeconds(4), mqtt.ShutdownTimeout);
+        // 3 s since Stage 2: the guard's stop (Persistence:ShutdownTimeout) runs first in the same s6 grace.
+        Assert.Equal(TimeSpan.FromSeconds(3), mqtt.ShutdownTimeout);
         Assert.Equal("ws://supervisor/core/websocket", homeAssistant.SupervisorWebSocketUrl);
         Assert.Equal("http://supervisor/core/api/", homeAssistant.SupervisorRestUrl);
         Assert.Equal(TimeSpan.FromSeconds(5), homeAssistant.StateReadTimeout);
         var configuration = provider.GetRequiredService<IOptions<ConfigurationOptions>>().Value;
         Assert.Equal((TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5), 262144), (configuration.ReloadDebounce, configuration.PollInterval, configuration.MaxFileBytes));
+        var persistence = provider.GetRequiredService<IOptions<PersistenceOptions>>().Value;
+        Assert.Equal(
+            (TimeSpan.FromMinutes(1), 0.05, 65536, 1000, 10000, 500, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1)),
+            (persistence.StateSaveInterval, persistence.StateBudgetSaveStep, persistence.StateMaxFileBytes, persistence.DecisionMemoryCapacity,
+                persistence.DecisionPendingCapacity, persistence.DecisionMaxPageSize, persistence.WriteRetryInterval, persistence.ShutdownTimeout));
+        Assert.Equal(TimeSpan.FromSeconds(2), provider.GetRequiredService<IOptions<GuardOptions>>().Value.ApiEvaluationTimeout);
     }
 
     [Theory]

@@ -105,7 +105,8 @@
       "refreshS": 30,
       "refreshIntervals": 12,
       "direction": { "source": "signed_signal", "direction": "export", "from": null },
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": []
     },
     {
       "name": "grid_current_l1",
@@ -124,7 +125,8 @@
       "refreshS": 30,
       "refreshIntervals": 12,
       "direction": { "source": "signed_signal", "direction": "export", "from": "grid_power_l1" },
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": ["ev_charger", "heater_l1"]
     },
     {
       "name": "grid_current_l2",
@@ -143,7 +145,8 @@
       "refreshS": null,
       "refreshIntervals": 3,
       "direction": { "source": "unavailable", "direction": "unknown", "from": "grid_power_l2" },
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": ["heater_l2"]
     },
     {
       "name": "grid_current_l3",
@@ -162,7 +165,8 @@
       "refreshS": 30,
       "refreshIntervals": 12,
       "direction": { "source": "pending", "direction": "unknown", "from": "grid_power_l3" },
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": ["heater_l3"]
     },
     {
       "name": "grid_power_l3",
@@ -181,7 +185,8 @@
       "refreshS": 30,
       "refreshIntervals": 12,
       "direction": { "source": "signed_signal", "direction": "export", "from": null },
-      "rejectedCount": 2
+      "rejectedCount": 2,
+      "dependentDevices": []
     },
     {
       "name": null,
@@ -200,7 +205,8 @@
       "refreshS": null,
       "refreshIntervals": 0,
       "direction": null,
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": []
     },
     {
       "name": "grid_voltage_l1",
@@ -219,7 +225,8 @@
       "refreshS": null,
       "refreshIntervals": 0,
       "direction": null,
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": []
     },
     {
       "name": "car_connected",
@@ -238,7 +245,8 @@
       "refreshS": 2.5,
       "refreshIntervals": 64,
       "direction": null,
-      "rejectedCount": 0
+      "rejectedCount": 0,
+      "dependentDevices": []
     },
     {
       "name": "grid_voltage_l2",
@@ -257,7 +265,28 @@
       "refreshS": 30,
       "refreshIntervals": 12,
       "direction": null,
-      "rejectedCount": 1
+      "rejectedCount": 1,
+      "dependentDevices": []
+    },
+    {
+      "name": "device_heater_l2",
+      "entity": "switch.heater_2",
+      "kind": "state",
+      "role": "device_state",
+      "phase": null,
+      "state": "stale",
+      "detail": "max_age_exceeded",
+      "value": "on",
+      "unit": null,
+      "raw": { "state": "on", "unit": null },
+      "lastReported": "2026-10-21T10:09:00.000+00:00",
+      "ageS": 741.019,
+      "maxAgeS": 600,
+      "refreshS": null,
+      "refreshIntervals": 0,
+      "direction": null,
+      "rejectedCount": 0,
+      "dependentDevices": ["heater_l2"]
     }
   ],
   "rejections": { "total": 3, "balanceResidual": 2, "invalidSample": 1 }

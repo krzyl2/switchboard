@@ -273,3 +273,138 @@ td.num {
 td.num .sub {
   font-family: var(--font-body);
 }
+
+/* One item per line inside a cell or a value (dependent devices, unsafe signals, lockouts). */
+.line {
+  display: block;
+}
+
+/* Limits page. The meter follows the mockup's phase bars: dashed reserve threshold, solid breaker. */
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.phaseblock + .phaseblock {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.phasehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.pname {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pval {
+  margin-left: auto;
+  text-align: right;
+}
+
+.meter {
+  position: relative;
+  height: 14px;
+  margin: 10px 0 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.meter .fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 2px 0 0 2px;
+  background: var(--fg-dim);
+}
+
+.meter .tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  border-left: 2px solid var(--fg);
+}
+
+.meter .tick.reserve,
+.legend .key.reserve {
+  border-left-style: dashed;
+  border-color: var(--warn);
+}
+
+.meter .tick.continuous,
+.legend .key.continuous {
+  border-color: var(--crit);
+}
+
+.fill[data-tone='ok'],
+.budgetbar i[data-tone='ok'] {
+  background: var(--ok);
+}
+
+.fill[data-tone='warn'],
+.budgetbar i[data-tone='warn'] {
+  background: var(--warn);
+}
+
+.fill[data-tone='crit'],
+.budgetbar i[data-tone='crit'] {
+  background: var(--crit);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.legend .key {
+  display: inline-block;
+  width: 0;
+  height: 0.9em;
+  margin-right: 6px;
+  vertical-align: -0.1em;
+  border-left: 2px solid var(--fg);
+}
+
+.budgetbar {
+  height: 6px;
+  margin: 4px 0;
+  max-width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.budgetbar i {
+  display: block;
+  height: 100%;
+  background: var(--fg-dim);
+}
+
+.stage + .stage {
+  margin-top: 6px;
+}
+
+.note {
+  margin-top: 14px;
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}

@@ -12,7 +12,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **SIG-02**: Per-phase current from the main meter, one entity per phase, with unit normalization (A, mA) and configurable sign convention
 - [x] **SIG-03**: Direction of flow resolved either from a signed current, or from a separate power/direction entity, or declared unavailable (cautious mode)
 - [x] **SIG-04**: Optional per-phase active power; when present, power is used for dispatch and current for protection — never the reverse
-- [ ] **SIG-05**: Every signal carries `max_age`; a signal past `max_age` is `stale` and marks dependent devices unsafe
+- [x] **SIG-05**: Every signal carries `max_age`; a signal past `max_age` is `stale` and marks dependent devices unsafe
 - [x] **SIG-06**: Freshness is computed from the HA `last_reported` timestamp, not `last_changed`
 - [ ] **SIG-07**: Refresh interval auto-detected and surfaced; the minimum safe reserve is derived from it and shown during onboarding
 - [x] **SIG-08**: Inverter production signal, where present, used to distinguish an idle phase from a phase whose load is covered by local generation
@@ -29,16 +29,16 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Breaker thermal model
 
-- [ ] **BRK-01**: Configurable overload tiers (multiple of rated current → allowed duration), with defaults derived conservatively from IEC 60898 characteristic B
-- [ ] **BRK-02**: Per-phase overload budget consumed while above the continuous threshold and recovered while below it (thermal memory)
-- [ ] **BRK-03**: Tier reached determines reaction speed: ordinary cycle, next cycle, immediate single shed, or full shed
+- [x] **BRK-01**: Configurable overload tiers (multiple of rated current → allowed duration), with defaults derived conservatively from IEC 60898 characteristic B
+- [x] **BRK-02**: Per-phase overload budget consumed while above the continuous threshold and recovered while below it (thermal memory)
+- [x] **BRK-03**: Tier reached determines reaction speed: ordinary cycle, next cycle, immediate single shed, or full shed
 - [ ] **BRK-04**: Budget state and remaining recovery time exposed as entities and shown in the UI
-- [ ] **BRK-05**: Breaker characteristic selectable (B, C, unknown→cautious); unknown forces the continuous threshold to 1.00×
+- [x] **BRK-05**: Breaker characteristic selectable (B, C, unknown→cautious); unknown forces the continuous threshold to 1.00×
 
 ## Dispatch
 
 - [ ] **DISP-01**: Device types implemented: `onoff`, `stepped` (N × P), `modulating` (continuous within [min, max]), `storage`
-- [ ] **DISP-02**: Shed order derived from configured value per kWh, overridable per device
+- [x] **DISP-02**: Shed order derived from configured value per kWh, overridable per device
 - [ ] **DISP-03**: Restore order is the reverse, gated by available headroom and by each device's minimum-off time
 - [ ] **DISP-04**: Asymmetric action rule — reductions execute immediately, including mid-settling; increases require a closed settling window plus confirmation
 - [ ] **DISP-05**: Settling window closes when every balance signal has a sample newer than `command time + device reaction time`, with a hard timeout
@@ -50,19 +50,19 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Safety
 
-- [ ] **SAFE-01**: Safe state is every controlled device off; entered on missing data, stale signals, HA disconnection or add-on shutdown
+- [x] **SAFE-01**: Safe state is every controlled device off; entered on missing data, stale signals, HA disconnection or add-on shutdown
 - [x] **SAFE-02**: Watchdog heartbeat entity so an HA-side automation can shed loads if the add-on dies
-- [ ] **SAFE-03**: Global kill switch respected within one cycle
+- [x] **SAFE-03**: Global kill switch respected within one cycle
 - [ ] **SAFE-04**: Manual override per device (force on / force off) that outranks dispatch but never outranks protection
 - [ ] **SAFE-05**: Add-on never commands an entity the user has not explicitly declared as a device actuator
 - [ ] **SAFE-06**: Onboarding states plainly that this is not a protective device
-- [ ] **SAFE-07**: State restored after restart; all lockout timers restart from the restart instant, never from persisted expiry
+- [x] **SAFE-07**: State restored after restart; all lockout timers restart from the restart instant, never from persisted expiry
 
 ## Modes and operation
 
-- [ ] **MODE-01**: `shadow` and `active` modes; `shadow` computes and logs decisions without commanding anything, and is the default after install
+- [x] **MODE-01**: `shadow` and `active` modes; `shadow` computes and logs decisions without commanding anything, and is the default after install
 - [ ] **MODE-02**: Mode switch takes effect without a restart
-- [ ] **MODE-03**: Every decision records a machine-readable reason code and the inputs that produced it
+- [x] **MODE-03**: Every decision records a machine-readable reason code and the inputs that produced it
 - [ ] **MODE-04**: Decision log queryable in the UI and retained for a configurable period
 
 ## Onboarding UI
@@ -98,6 +98,6 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 - [ ] **VER-01**: Control logic unit-tested on a virtual clock: lockouts, hysteresis, change limits, budget consumption and recovery, phase rotation
 - [ ] **VER-02**: Settling-window scenarios: delayed sample, lost sample, unresponsive effector, foreign load arriving mid-window
-- [ ] **VER-03**: Every row of the fail-safe table has a test
+- [x] **VER-03**: Every row of the fail-safe table has a test
 - [ ] **VER-04**: Replay harness — run the dispatcher against recorded history and assert no limit violation
 - [ ] **VER-05**: Live verification on the maintainer's 3×25 A installation in shadow mode for at least one week before `active` is recommended

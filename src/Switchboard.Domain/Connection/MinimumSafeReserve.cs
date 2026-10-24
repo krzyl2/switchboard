@@ -8,18 +8,25 @@ namespace Switchboard.Domain.Connection;
 /// <param name="ShedLatency">From a detected overload to the load actually dropping.</param>
 /// <param name="SigmaMultiplier">How many standard deviations of current measurement noise to keep free.</param>
 /// <param name="Floor">The derived minimum never goes below this.</param>
-/// <param name="DispatchCycle">A reduce_* band acts only at the next dispatch cycle, so that delay counts too.</param>
+/// <param name="DispatchCycle">A reduce_* band acts only at a cycle boundary, so that delay counts too.</param>
+/// <param name="PersistenceDownCycles">A reduce_ordinary_cycle band acts only after this many boundaries.</param>
+/// <param name="CurrentLagPolls">
+/// Polls by which the meter's current may lag its own power (the reference M1 does in ~0.4 % of
+/// polls): each adds one refresh of blind time.
+/// </param>
 public sealed record ReserveDerivationParameters(
     Watts ReferenceStep,
     TimeSpan ShedLatency,
     double SigmaMultiplier,
     Watts Floor,
-    TimeSpan DispatchCycle);
+    TimeSpan DispatchCycle,
+    int PersistenceDownCycles,
+    int CurrentLagPolls);
 
 /// <summary>The derived minimum safe reserve of one phase, with every input shown (SIG-07).</summary>
 /// <param name="RefreshUsed">The refresh interval the minimum was derived from.</param>
 /// <param name="RefreshDetected">False when no refresh is detected yet and max_age stood in for it (worst case).</param>
-/// <param name="BlindTime">Refresh interval plus shed latency: how long an uncontrolled step can go unanswered.</param>
+/// <param name="BlindTime">(1 + current lag polls) refresh intervals plus shed latency: how long an uncontrolled step can go unanswered.</param>
 /// <param name="TierMultiple">The multiple of In the step may push the phase to (m*).</param>
 public sealed record ReserveDerivation(
     Phase Phase,
@@ -40,15 +47,16 @@ public static class MinimumSafeReserve
     /// never in a shed band (the reserve exists so that a kettle does not cause a shed):
     /// <code>
     /// T_refresh = detected refresh of the phase current signal, else its max_age (worst case)
-    /// T_blind   = T_refresh + shed_latency
-    /// delay(b)  = dispatch_cycle for reduce_* reactions, 0 for may_add and hold
+    /// T_blind   = (1 + current_lag_polls)·T_refresh + shed_latency
+    /// delay(b)  = persistence_down_cycles·dispatch_cycle for reduce_ordinary_cycle,
+    ///             dispatch_cycle for reduce_next_cycle, 0 for may_add and hold
     /// m*        = up_to of the highest band b whose reaction is not shed_* and whose
     ///             allowed ≥ T_blind + delay(b) (unlimited counts); 1.0 when no band qualifies;
     ///             characteristic unknown: m* = min(m*, continuous_multiple.unknown)
     /// R_min     = max(floor_w, reference_step_w − (m* − 1)·In·V + sigma_multiplier·σ_I·V)
     /// </code>
-    /// Example: 25 A, 230 V, B, 30 s refresh, 15 s latency, 30 s cycle: T_blind 45 s, the 3 min band
-    /// needs 75 s and qualifies, m* = 1.25, R_min = 2000 − 1437.5 + 3·0.1·230 = 631.5 W.
+    /// Example: 25 A, 230 V, B, 30 s refresh, one lag poll, 15 s latency, 30 s cycle: T_blind 75 s,
+    /// the 3 min band needs 105 s and qualifies, m* = 1.25, R_min = 2000 − 1437.5 + 3·0.1·230 = 631.5 W.
     /// A configured reserve below R_min is flagged, never enforced.
     /// </summary>
     public static ReserveDerivation Compute(
@@ -66,7 +74,7 @@ public static class MinimumSafeReserve
         ArgumentNullException.ThrowIfNull(parameters);
 
         var refresh = detectedRefresh ?? maxAge;
-        var blind = refresh + parameters.ShedLatency;
+        var blind = (refresh * (1 + parameters.CurrentLagPolls)) + parameters.ShedLatency;
 
         double? best = null;
         foreach (var band in tiers.Bands)
@@ -109,6 +117,12 @@ public static class MinimumSafeReserve
             multiple);
     }
 
-    private static TimeSpan ReactionDelay(TierReaction reaction, ReserveDerivationParameters parameters) =>
-        reaction is TierReaction.ReduceOrdinaryCycle or TierReaction.ReduceNextCycle ? parameters.DispatchCycle : TimeSpan.Zero;
+    // The guard acts on a reduce_ordinary_cycle band only after persistence_down_cycles boundaries,
+    // on a reduce_next_cycle band at the next boundary.
+    private static TimeSpan ReactionDelay(TierReaction reaction, ReserveDerivationParameters parameters) => reaction switch
+    {
+        TierReaction.ReduceOrdinaryCycle => parameters.DispatchCycle * parameters.PersistenceDownCycles,
+        TierReaction.ReduceNextCycle => parameters.DispatchCycle,
+        _ => TimeSpan.Zero,
+    };
 }

@@ -1,4 +1,4 @@
-# Switchboard configuration, Stage 1 (signals): the maintainer's installation.
+# Switchboard configuration, Stage 2 (signals and devices): the maintainer's installation.
 # 3 × 25 A, characteristic B (assumed), 230 V, PV on a SolarEdge inverter with an M1 meter.
 #
 # Copy to /addon_configs/<id>_switchboard/switchboard.yaml on the Home Assistant host (the add-on
@@ -141,7 +141,48 @@ signals:
     role: inverter_phase_current
     phase: L3
 
-# devices: and circuit_groups: arrive in a later version.
+# Devices the guard may reduce or shed. Each actuator is the only entity that may ever be commanded
+# for that device; this version commands nothing (shadow mode, no command path): it computes and
+# logs what it would do. Each device's applied state is read from its actuator (state_entity
+# overrides) and must be reported within state_max_age (default 10m), or the device is unsafe.
+#
+# Assumption: the house prefers charging the car, so the heater elements (lower value per kWh)
+# shed before the charger.
+devices:
+  - id: heater_l1
+    type: onoff
+    actuator: switch.grzalka_1
+    phase: L1
+    rated_current_a: 6.6        # 1.5 kW element at 230 V
+    rated_power_w: 1500
+    value_per_kwh: 0.35
+  - id: heater_l2
+    type: onoff
+    actuator: switch.grzalka_2
+    phase: L2
+    rated_current_a: 6.6
+    rated_power_w: 1500
+    value_per_kwh: 0.35
+  - id: heater_l3
+    type: onoff
+    actuator: switch.grzalka_3
+    phase: L3
+    rated_current_a: 6.6
+    rated_power_w: 1500
+    value_per_kwh: 0.35
+  # go-e charger forced to one phase; the actuator sets the charging current (6-20 A, 1 A steps).
+  # It cannot be switched off before a stop actuator exists: the guard reduces it to 6 A and
+  # records any further step as "would switch off".
+  - id: ev_charger
+    type: modulating
+    actuator: number.goe_422752_amp
+    phase: L1
+    min: 6
+    max: 20
+    step: 1
+    value_per_kwh: 2.03
+
+# circuit_groups: arrive in a later version.
 
 # control: overrides any control-parameter default, key by key, for example:
 # control:

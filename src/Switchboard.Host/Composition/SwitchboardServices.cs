@@ -1,16 +1,22 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Switchboard.Application;
 using Switchboard.Application.Connectivity;
+using Switchboard.Application.Decisions;
+using Switchboard.Application.Effector;
+using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.Signals;
+using Switchboard.Application.State;
 using Switchboard.Host.Hosting;
 using Switchboard.Host.Web;
 using Switchboard.Infrastructure.Configuration;
 using Switchboard.Infrastructure.HomeAssistant;
 using Switchboard.Infrastructure.Mqtt;
+using Switchboard.Infrastructure.Persistence;
 using Switchboard.Infrastructure.Replay;
 using Switchboard.Infrastructure.Runtime;
 
@@ -69,12 +75,14 @@ public static class SwitchboardServices
         services.AddSingleton<HeartbeatLoop>();
 
         services.AddSignalPipeline();
+        services.AddGuard();
 
         services.AddSingleton(sp => new IngressAccessPolicy(
             sp.GetRequiredService<IOptions<IngressOptions>>().Value,
             sp.GetRequiredService<RuntimeEnvironment>().DevTrustAllRequests));
 
-        // Started in this order, stopped in reverse: the heartbeat stops first, then MQTT leaves the
+        // Started in this order, stopped in reverse: the guard stops first (shutdown safe state
+        // recorded, decision log and state.json written), then the heartbeat, then MQTT leaves the
         // entity OFF and offline, then the Home Assistant socket closes; the signal pipeline (which
         // the links feed) starts before them and stops after them.
         services.AddHostedService<SignalStoreService>();
@@ -83,6 +91,7 @@ public static class SwitchboardServices
         services.AddHostedService<HomeAssistantLinkService>();
         services.AddHostedService<MqttLinkService>();
         services.AddHostedService<HeartbeatService>();
+        services.AddHostedService<GuardService>();
         return services;
     }
 
@@ -94,6 +103,84 @@ public static class SwitchboardServices
         services.AddValidatedOptions<MqttOptions, MqttOptionsValidator>(MqttOptions.SectionName);
         services.AddValidatedOptions<HeartbeatOptions, HeartbeatOptionsValidator>(HeartbeatOptions.SectionName);
         services.AddValidatedOptions<ConfigurationOptions, ConfigurationOptionsValidator>(ConfigurationOptions.SectionName);
+        services.AddValidatedOptions<PersistenceOptions, PersistenceOptionsValidator>(PersistenceOptions.SectionName);
+        services.AddValidatedOptions<GuardOptions, GuardOptionsValidator>(GuardOptions.SectionName);
+        return services;
+    }
+
+    /// <summary>
+    /// The guard (on the signal clock, like the store it reads), the effector gate that only records,
+    /// the kill switch, the mode, the decision log and runtime state in the data folder, and the
+    /// guard's MQTT entities. Nothing here holds a Home Assistant command sender.
+    /// </summary>
+    private static IServiceCollection AddGuard(this IServiceCollection services)
+    {
+        // A fresh random boot id per process: decision ids stay unique across restarts and clock steps.
+        services.AddSingleton(_ => new DecisionIdGenerator(Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(6))));
+        services.AddSingleton<GuardInbox>();
+        services.AddSingleton<LockoutClocks>();
+        services.AddSingleton<ILockoutView>(sp => sp.GetRequiredService<LockoutClocks>());
+        services.AddSingleton<GuardEngine>();
+        services.AddSingleton<EffectorGate>();
+        services.AddSingleton<KillSwitchState>();
+        services.AddSingleton<IKillSwitchControl>(sp => sp.GetRequiredService<KillSwitchState>());
+        services.AddSingleton<IKillSwitchView>(sp => sp.GetRequiredService<KillSwitchState>());
+
+        services.AddSingleton<IRuntimeStateStore>(sp => new RuntimeStateFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<IOptions<PersistenceOptions>>().Value,
+            sp.GetRequiredService<ILogger<RuntimeStateFile>>()));
+        services.AddSingleton(sp => sp.GetRequiredService<IRuntimeStateStore>().Load());
+        services.AddSingleton(sp => new RuntimeStateCoordinator(
+            sp.GetRequiredService<IRuntimeStateStore>(),
+            sp.GetRequiredService<RuntimeStateLoad>(),
+            () => sp.GetRequiredService<GuardEngine>().Setup?.Budget,
+            sp.GetRequiredService<IOptions<PersistenceOptions>>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<RuntimeStateCoordinator>>()));
+        services.AddSingleton<IDiscoveryLedger>(sp => sp.GetRequiredService<RuntimeStateCoordinator>());
+        services.AddSingleton<ILastKnownStates>(sp => sp.GetRequiredService<RuntimeStateCoordinator>());
+
+        // The add-on option is the ceiling; the UI choice persisted in state.json counts only under it.
+        services.AddSingleton(sp => new ModeState(
+            sp.GetRequiredService<ResolvedAddonOptions>().Mode,
+            sp.GetRequiredService<RuntimeStateLoad>().State.UiMode));
+        services.AddSingleton<IModeSource>(sp => sp.GetRequiredService<ModeState>());
+        services.AddSingleton(sp => new GuardStatusHolder(
+            GuardStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().Current),
+            sp.GetRequiredService<ILogger<GuardStatusHolder>>()));
+        services.AddSingleton<IGuardStatusSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
+        services.AddSingleton<IGuardEnvelopeSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
+
+        services.AddSingleton<IDecisionFileSystem, DecisionFileSystem>();
+        services.AddSingleton(sp =>
+        {
+            var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();
+            return new JsonlDecisionLog(
+                sp.GetRequiredService<IDecisionFileSystem>(),
+                sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+                sp.GetRequiredService<IOptions<PersistenceOptions>>().Value,
+                () => diagnostics.Current.Configuration?.Configuration?.Control.DecisionLog.RetentionDays,
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<ILogger<JsonlDecisionLog>>());
+        });
+        services.AddSingleton<IDecisionRecorder>(sp => sp.GetRequiredService<JsonlDecisionLog>());
+        services.AddSingleton<GuardRunner>();
+
+        services.AddSingleton(sp =>
+        {
+            var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();
+            return new GuardEntities(
+                sp.GetRequiredService<IGuardStatusSource>(),
+                sp.GetRequiredService<IDecisionRecorder>(),
+                sp.GetRequiredService<IKillSwitchControl>(),
+                sp.GetRequiredService<IDiscoveryLedger>(),
+                () => diagnostics.Current.Snapshot.Connection?.Voltage,
+                sp.GetRequiredService<IOptions<MqttOptions>>(),
+                sp.GetRequiredService<AppVersion>(),
+                sp.GetRequiredService<ILogger<GuardEntities>>());
+        });
+        services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<GuardEntities>());
         return services;
     }
 

@@ -1,0 +1,336 @@
+using System.Collections.Immutable;
+using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Switchboard.Application.Guard;
+using Switchboard.Application.Options;
+using Switchboard.Domain.Devices;
+using Switchboard.Domain.Guard;
+using Switchboard.Domain.Signals;
+
+namespace Switchboard.Application.State;
+
+/// <summary>
+/// Keeps the runtime state in memory and decides when it is written: at once on a kill switch
+/// change, a budget threshold crossing, a budget drop of at least StateBudgetSaveStep, the clean
+/// shutdown flag or a changed discovery ledger; otherwise at most every StateSaveInterval, and only
+/// when something changed. Writes go through a one-slot queue (a newer state supersedes an older
+/// one) drained by <see cref="RunAsync"/>: the guard thread and the kill switch only ever touch
+/// memory, so a slow or full disk can delay neither. A failed write is reported in
+/// <see cref="Report"/> and retried after WriteRetryInterval; control continues.
+/// </summary>
+public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
+{
+    private readonly IRuntimeStateStore _store;
+    private readonly Func<BudgetParameters?> _thresholds;
+    private readonly PersistenceOptions _options;
+    private readonly TimeProvider _time;
+    private readonly ILogger<RuntimeStateCoordinator> _logger;
+    private readonly object _gate = new();
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+    private RuntimeState _current;
+    private RuntimeState? _lastQueued;
+    private DateTimeOffset? _lastQueuedAt;
+    private Pending? _pending;
+    private long _version;
+    private long _savedVersion;
+    private string? _writeError;
+
+    /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
+    public RuntimeStateCoordinator(
+        IRuntimeStateStore store,
+        RuntimeStateLoad loaded,
+        Func<BudgetParameters?> thresholds,
+        IOptions<PersistenceOptions> options,
+        TimeProvider time,
+        ILogger<RuntimeStateCoordinator> logger)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        ArgumentNullException.ThrowIfNull(options);
+        _store = store;
+        Loaded = loaded;
+        _thresholds = thresholds;
+        _options = options.Value;
+        _time = time;
+        _logger = logger;
+        _current = loaded.State;
+    }
+
+    /// <summary>What was found at start; applied to the guard, the kill switch and the mode before the first evaluation.</summary>
+    public RuntimeStateLoad Loaded { get; }
+
+    public RuntimeState Current
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _current;
+            }
+        }
+    }
+
+    public StateFileReport Report
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _writeError is { } error
+                    ? new StateFileReport(Loaded.Status, $"state.json could not be written ({error}); the kill switch and the budgets hold in memory only until it can.", false)
+                    : new StateFileReport(Loaded.Status, Loaded.Warning, true);
+            }
+        }
+    }
+
+    public ImmutableSortedSet<string> Discovered => Current.Discovered;
+
+    public ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> LastKnown => Current.Devices;
+
+    /// <summary>Follows the guard and the kill switch. Call once, before the guard's first step.</summary>
+    public void Attach(GuardRunner runner, KillSwitchState killSwitch)
+    {
+        ArgumentNullException.ThrowIfNull(runner);
+        ArgumentNullException.ThrowIfNull(killSwitch);
+        runner.Stepped += (_, step) => OnStepped(step);
+        killSwitch.Changed += (_, status) => OnKillSwitchChanged(status);
+    }
+
+    /// <summary>Called on the guard thread after every step; touches memory only.</summary>
+    public void OnStepped(GuardStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        var at = step.Evaluation.At;
+        lock (_gate)
+        {
+            var next = _current with
+            {
+                Budgets = step.Memory.Budgets,
+                CleanShutdown = step.Memory.CleanShutdown,
+                Devices = MergeLastKnown(_current.Devices, step.Evaluation.Status, at),
+            };
+            _current = next;
+
+            var baseline = _lastQueued;
+            var immediate = baseline is null
+                || baseline.CleanShutdown != next.CleanShutdown
+                || ThresholdCrossed(baseline.Budgets, next.Budgets)
+                || BudgetDropped(baseline.Budgets, next.Budgets);
+            var due = baseline is not null
+                && Changed(baseline, next)
+                && (_lastQueuedAt is not { } last || at < last || at - last >= _options.StateSaveInterval);
+            if (immediate || due)
+            {
+                Enqueue(next, at);
+            }
+        }
+    }
+
+    /// <summary>Called by the kill switch after it is already in force; the write is best effort.</summary>
+    public void OnKillSwitchChanged(KillSwitchStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        lock (_gate)
+        {
+            _current = _current with { KillSwitch = status.Engaged, KillSwitchChangedAt = status.ChangedAt };
+            Enqueue(_current, status.ChangedAt ?? _lastQueuedAt);
+        }
+    }
+
+    public void Replace(IEnumerable<string> discovered)
+    {
+        var set = ImmutableSortedSet.CreateRange(StringComparer.Ordinal, discovered);
+        lock (_gate)
+        {
+            if (set.SetEquals(_current.Discovered))
+            {
+                return;
+            }
+
+            _current = _current with { Discovered = set };
+            Enqueue(_current, _lastQueuedAt);
+        }
+    }
+
+    /// <summary>The writer: one write per wake-up, the latest state only; after a failure, retries on its own clock.</summary>
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                if (WriteFailing)
+                {
+                    await Task.Delay(_options.WriteRetryInterval, _time, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _wake.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await WritePendingAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopping; the final state is written by FlushAsync.
+        }
+    }
+
+    /// <summary>Writes whatever is queued now, once; used at shutdown after the shutdown safe state.</summary>
+    public Task FlushAsync(CancellationToken cancellationToken) => WritePendingAsync(cancellationToken);
+
+    private bool WriteFailing
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _writeError is not null;
+            }
+        }
+    }
+
+    private async Task WritePendingAsync(CancellationToken cancellationToken)
+    {
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Pending? pending;
+            lock (_gate)
+            {
+                pending = _pending;
+            }
+
+            if (pending is null || pending.Version <= _savedVersion)
+            {
+                return;
+            }
+
+            try
+            {
+                _store.Save(pending.State);
+                lock (_gate)
+                {
+                    _savedVersion = pending.Version;
+                    if (_pending?.Version == pending.Version)
+                    {
+                        _pending = null;
+                    }
+
+                    if (_writeError is not null)
+                    {
+                        _logger.LogInformation("state.json is writable again");
+                        _writeError = null;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                lock (_gate)
+                {
+                    if (_writeError is null)
+                    {
+                        // Once per failure streak: a full disk must not flood the log every retry.
+                        _logger.LogError("state.json could not be written: {Reason}; retrying every {Interval}", ex.Message, _options.WriteRetryInterval);
+                    }
+
+                    _writeError = ex.Message;
+                }
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private void Enqueue(RuntimeState state, DateTimeOffset? at)
+    {
+        var stamped = state with { SavedAt = at ?? state.SavedAt };
+        _pending = new Pending(stamped, ++_version);
+        _lastQueued = stamped;
+        _lastQueuedAt = at ?? _lastQueuedAt;
+        _wake.Writer.TryWrite(true);
+    }
+
+    private bool ThresholdCrossed(ImmutableDictionary<Phase, BudgetMemory> before, ImmutableDictionary<Phase, BudgetMemory> after)
+    {
+        if (_thresholds() is not { } thresholds)
+        {
+            return false;
+        }
+
+        foreach (var (phase, now) in after)
+        {
+            var was = before.TryGetValue(phase, out var saved) ? saved.Budget : 1;
+            if (Category(was, thresholds) != Category(now.Budget, thresholds))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int Category(double budget, BudgetParameters thresholds) =>
+        OverloadBudget.IsAtOrBelow(budget, thresholds.TopTierAtOrBelow) ? 3
+        : OverloadBudget.IsBelow(budget, thresholds.ShedOneBelow) ? 2
+        : OverloadBudget.IsBelow(budget, thresholds.StopIncreasesBelow) ? 1
+        : 0;
+
+    private bool BudgetDropped(ImmutableDictionary<Phase, BudgetMemory> before, ImmutableDictionary<Phase, BudgetMemory> after) =>
+        after.Any(p => (before.TryGetValue(p.Key, out var saved) ? saved.Budget : 1) - p.Value.Budget >= _options.StateBudgetSaveStep - OverloadBudget.Tolerance);
+
+    private static bool Changed(RuntimeState before, RuntimeState after) =>
+        before.KillSwitch != after.KillSwitch
+        || before.Budgets.Count != after.Budgets.Count
+        || after.Budgets.Any(p => !before.Budgets.TryGetValue(p.Key, out var saved) || saved.Budget != p.Value.Budget)
+        || !ReferenceEquals(before.Devices, after.Devices);
+
+    /// <summary>
+    /// Records each stage's latest fresh applied state with the moment it was first seen (so an
+    /// unchanged state changes nothing). Devices no longer declared are forgotten only once a valid
+    /// configuration says so.
+    /// </summary>
+    private static ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> MergeLastKnown(
+        ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> known,
+        GuardStatus status,
+        DateTimeOffset at)
+    {
+        var result = known;
+        if (status.Breaker is not null)
+        {
+            foreach (var gone in known.Keys.Where(k => status.Devices.All(d => d.Id != k)).ToList())
+            {
+                result = result.Remove(gone);
+            }
+        }
+
+        foreach (var device in status.Devices)
+        {
+            var previous = result.TryGetValue(device.Id, out var stages) ? stages : [];
+            var merged = new StageLastKnown?[device.Stages.Length];
+            var changed = previous.Length != merged.Length;
+            for (var i = 0; i < merged.Length; i++)
+            {
+                var before = i < previous.Length ? previous[i] : null;
+                var stage = device.Stages[i];
+                merged[i] = stage is { Fresh: true, Applied: { } applied } && before?.Applied != applied
+                    ? new StageLastKnown(applied, at)
+                    : before;
+                changed |= !Equals(merged[i], before);
+            }
+
+            if (changed)
+            {
+                result = result.SetItem(device.Id, [.. merged]);
+            }
+        }
+
+        return result;
+    }
+
+    private sealed record Pending(RuntimeState State, long Version);
+}

@@ -16,13 +16,16 @@ public sealed class MqttNetTransport : IMqttTransport, IDisposable
         _client = new MqttClientFactory().CreateMqttClient();
         _client.DisconnectedAsync += _ => Disconnected?.Invoke() ?? Task.CompletedTask;
         _client.ApplicationMessageReceivedAsync += args =>
-            MessageReceived?.Invoke(args.ApplicationMessage.Topic, args.ApplicationMessage.ConvertPayloadToString() ?? string.Empty)
+            MessageReceived?.Invoke(new MqttInboundMessage(
+                args.ApplicationMessage.Topic,
+                args.ApplicationMessage.ConvertPayloadToString() ?? string.Empty,
+                args.ApplicationMessage.Retain))
             ?? Task.CompletedTask;
     }
 
     public event Func<Task>? Disconnected;
 
-    public event Func<string, string, Task>? MessageReceived;
+    public event Func<MqttInboundMessage, Task>? MessageReceived;
 
     public bool IsConnected => _client.IsConnected;
 
@@ -52,6 +55,8 @@ public sealed class MqttNetTransport : IMqttTransport, IDisposable
 
     public async Task SubscribeAsync(string topicFilter, CancellationToken cancellationToken)
     {
+        // Inbound is guarded as tightly as outbound: a subscription is how a message gets in.
+        _guard.EnsureSubscriptionAllowed(topicFilter);
         var options = new MqttClientSubscribeOptionsBuilder()
             .WithTopicFilter(topicFilter, MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();

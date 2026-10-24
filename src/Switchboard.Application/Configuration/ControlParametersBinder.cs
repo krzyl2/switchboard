@@ -2,6 +2,8 @@ using System.Collections.Immutable;
 using System.Globalization;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
+using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 using Range = Switchboard.Application.Configuration.ConfigRead.Range;
@@ -11,10 +13,27 @@ namespace Switchboard.Application.Configuration;
 /// <summary>
 /// Binds the merged defaults-plus-overrides tree to <see cref="ControlParameters"/>. Every key is
 /// required (the defaults file carries all of them) and every value is range-checked, so an
-/// override cannot produce a nonsensical controller.
+/// override cannot produce a nonsensical controller. The tier tables and the budget's recovery
+/// time are then checked against the safety envelope (<c>limits:</c>, defaults only), so an
+/// override cannot produce an unsafe one.
 /// </summary>
 internal static class ControlParametersBinder
 {
+    /// <summary>The key of the safety envelope; read from the defaults file only.</summary>
+    public const string LimitsKey = "limits";
+
+    // Schema bounds, not control parameters: more lag polls than this is a typo, not a meter.
+    private const int MaxCurrentLagPolls = 10;
+    private const int MaxRetentionDays = 3650;
+
+    private static readonly ImmutableDictionary<string, DeviceType> DeviceTypes =
+        new Dictionary<string, DeviceType>
+        {
+            ["onoff"] = DeviceType.OnOff,
+            ["stepped"] = DeviceType.Stepped,
+            ["modulating"] = DeviceType.Modulating,
+        }.ToImmutableDictionary(StringComparer.Ordinal);
+
     private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics =
         new Dictionary<string, BreakerCharacteristic>
         {
@@ -51,8 +70,10 @@ internal static class ControlParametersBinder
         var connectionDefaults = new ConnectionDefaults(new Watts(connection.Number("default_reserve_w", Range.AtLeast(0)) ?? 0));
 
         var breaker = root.Child("breaker");
-        var continuous = BindContinuousMultiples(breaker.Child("continuous_multiple"));
-        var tiers = BindTiers(breaker.Child("tiers"), issues);
+        var continuousSection = breaker.Child("continuous_multiple");
+        var continuous = BindContinuousMultiples(continuousSection);
+        var tiersSection = breaker.Child("tiers");
+        var tiers = BindTiers(tiersSection, issues);
 
         var budget = root.Child("budget");
         var budgetParameters = new BudgetParameters(
@@ -139,6 +160,7 @@ internal static class ControlParametersBinder
             new Watts(balance.Number("residual_threshold_w", Range.Above(0)) ?? 0),
             balance.PositiveDuration("max_skew") ?? TimeSpan.Zero);
 
+        var currentLagPolls = signals.Integer("current_lag_polls", 0, MaxCurrentLagPolls) ?? 0;
         var maxAgeLimit = signals.PositiveDuration("max_age_limit") ?? TimeSpan.Zero;
         if (maxAgeLimit > SignalStoreRunner.LongestTimerDue)
         {
@@ -156,7 +178,62 @@ internal static class ControlParametersBinder
             reserve.NonNegativeDuration("shed_latency") ?? TimeSpan.Zero,
             reserve.Number("sigma_multiplier", Range.AtLeast(0)) ?? 0,
             new Watts(reserve.Number("floor_w", Range.AtLeast(0)) ?? 0),
-            dispatchParameters.Cycle);
+            dispatchParameters.Cycle,
+            dispatchParameters.PersistenceDownCycles,
+            currentLagPolls);
+
+        var devices = root.Child("devices");
+        var reactionTimes = devices.Child("reaction_time");
+        reactionTimes.CheckKeys([.. DeviceTypes.Keys]);
+        var modulatingLockout = devices.Child("lockout").Child("modulating");
+        var deviceDefaults = new DeviceDefaults(
+            devices.PositiveDuration("state_max_age") ?? TimeSpan.Zero,
+            DeviceTypes
+                .Select(type => (type.Value, Time: reactionTimes.NonNegativeDuration(type.Key)))
+                .Where(t => t.Time is not null)
+                .ToImmutableDictionary(t => t.Value, t => t.Time!.Value),
+            modulatingLockout.NonNegativeDuration("min_on") ?? TimeSpan.Zero,
+            modulatingLockout.NonNegativeDuration("min_off") ?? TimeSpan.Zero);
+        if (maxAgeLimit > TimeSpan.Zero && deviceDefaults.StateMaxAge > maxAgeLimit)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.OutOfRange,
+                ConfigRead.Join(devices.Path, "state_max_age"),
+                devices.Node("state_max_age"),
+                "state_max_age may not exceed signals.max_age_limit: a frozen device state counts as fresh for its whole max_age.");
+        }
+
+        var decisionLog = new DecisionLogParameters(root.Child("decision_log").Integer("retention_days", 1, MaxRetentionDays) ?? 0);
+
+        var limits = root.Child(LimitsKey);
+        var envelope = new SafetyEnvelope(
+            limits.Number("continuous_multiple_max", Range.Above(0)) ?? 0,
+            limits.Number("unknown_continuous_multiple_max", Range.Above(0)) ?? 0,
+            limits.Number("may_add_up_to_max", Range.Above(0)) ?? 0,
+            limits.Number("open_band_from_max", Range.Above(0)) ?? 0,
+            limits.PositiveDuration("budget_recovery_time_min") ?? TimeSpan.Zero,
+            limits.Number("budget_stop_increases_below_min", Range.Fraction) ?? 0,
+            limits.Number("budget_shed_one_below_min", Range.Fraction) ?? 0);
+
+        if (issues.Errors.Count > errorsBefore)
+        {
+            return null;
+        }
+
+        CheckEnvelope(envelope, continuous, continuousSection, tiers, tiersSection, issues);
+        if (budgetParameters.RecoveryTime < envelope.BudgetRecoveryTimeMin)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.TierEnvelopeViolated,
+                ConfigRead.Join(budget.Path, "recovery_time"),
+                budget.Node("recovery_time"),
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"budget.recovery_time may be no shorter than {envelope.BudgetRecoveryTimeMin.TotalSeconds} s: a faster recovery lets short dips erase the memory of repeated overloads."));
+        }
+
+        CheckBudgetFloor(budget, "stop_increases_below", budgetParameters.StopIncreasesBelow, envelope.BudgetStopIncreasesBelowMin, issues);
+        CheckBudgetFloor(budget, "shed_one_below", budgetParameters.ShedOneBelow, envelope.BudgetShedOneBelowMin, issues);
 
         if (issues.Errors.Count > errorsBefore)
         {
@@ -169,9 +246,114 @@ internal static class ControlParametersBinder
             budgetParameters,
             dispatchParameters,
             settling,
-            new SignalParameters(defaultSigma, directionParameters, refreshParameters, probe, balanceParameters, maxAgeLimit),
-            reserveParameters);
+            new SignalParameters(defaultSigma, directionParameters, refreshParameters, probe, balanceParameters, maxAgeLimit, currentLagPolls),
+            reserveParameters,
+            deviceDefaults,
+            decisionLog,
+            envelope);
     }
+
+    private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)
+    {
+        if (value < floor)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.TierEnvelopeViolated,
+                ConfigRead.Join(budget.Path, key),
+                budget.Node(key),
+                string.Create(CultureInfo.InvariantCulture, $"budget.{key} may be raised but not set below {floor}: a lower threshold reacts later to the same loss of budget."));
+        }
+    }
+
+    /// <summary>
+    /// The safety envelope (DECISIONS, Stage 2): whatever <c>control:</c> overrides, every tier table
+    /// sheds everything controlled at 0 s above the conventional tripping current, never lets a band
+    /// above the continuous multiple run unlimited or add load, adds load only up to rated current,
+    /// and claims no more continuous current than IEC 60898 gives. A violation is reported at the
+    /// user's override: the band, else the continuous multiple that pushed a shipped band outside.
+    /// </summary>
+    private static void CheckEnvelope(
+        SafetyEnvelope envelope,
+        ImmutableDictionary<BreakerCharacteristic, double> continuous,
+        Section continuousSection,
+        ImmutableDictionary<BreakerCharacteristic, TierTable> tiers,
+        Section tiersSection,
+        ConfigIssues issues)
+    {
+        foreach (var (key, characteristic) in Characteristics)
+        {
+            if (!continuous.TryGetValue(characteristic, out var multiple) || !tiers.TryGetValue(characteristic, out var table))
+            {
+                continue;
+            }
+
+            var multiplePath = ConfigRead.Join(continuousSection.Path, key);
+            var multipleNode = continuousSection.Node(key);
+            var multipleMax = characteristic == BreakerCharacteristic.Unknown ? envelope.UnknownContinuousMultipleMax : envelope.ContinuousMultipleMax;
+            if (multiple > multipleMax)
+            {
+                issues.Error(
+                    ConfigurationIssueCodes.TierEnvelopeViolated,
+                    multiplePath,
+                    multipleNode,
+                    string.Create(CultureInfo.InvariantCulture, $"The continuous multiple of characteristic {key} may be at most {multipleMax} × In."));
+            }
+
+            var items = tiersSection.Node(key) is ConfigSequence sequence ? sequence.Items : [];
+            var bands = table.Bands;
+            for (var i = 0; i < bands.Length; i++)
+            {
+                var (problem, blamesMultiple) = EnvelopeProblem(bands, i, multiple, envelope);
+                if (problem is null)
+                {
+                    continue;
+                }
+
+                var bandPath = $"{ConfigRead.Join(tiersSection.Path, key)}[{i.ToString(CultureInfo.InvariantCulture)}]";
+                var bandNode = i < items.Length ? items[i] : null;
+                var (path, at) = blamesMultiple && bandNode?.Origin != ConfigOrigin.Document && multipleNode?.Origin == ConfigOrigin.Document
+                    ? (multiplePath, multipleNode)
+                    : (bandPath, bandNode);
+                issues.Error(ConfigurationIssueCodes.TierEnvelopeViolated, path, at, problem);
+            }
+        }
+    }
+
+    /// <summary>What is wrong with band <paramref name="i"/>, and whether the continuous multiple is part of it.</summary>
+    private static (string? Problem, bool BlamesMultiple) EnvelopeProblem(ImmutableArray<TierBand> bands, int i, double multiple, SafetyEnvelope envelope)
+    {
+        var band = bands[i];
+        if (i == bands.Length - 1)
+        {
+            return band.Reaction != TierReaction.ShedAllOnPhase || band.Allowed != TimeSpan.Zero
+                ? ("The open band (the last one) must be shed_all_on_phase with allowed: 0s.", false)
+                : (null, false);
+        }
+
+        if (i == bands.Length - 2 && band.UpTo > envelope.OpenBandFromMax)
+        {
+            return (string.Create(
+                CultureInfo.InvariantCulture,
+                $"Everything above {envelope.OpenBandFromMax} × In (the conventional tripping current) must be shed at once: the last finite band may end there at most."), false);
+        }
+
+        var reachesAboveContinuous = band.UpTo > multiple;
+        if (reachesAboveContinuous && band.Allowed is null)
+        {
+            return (string.Create(CultureInfo.InvariantCulture, $"A band above the continuous multiple ({multiple} × In) needs a finite allowed duration."), true);
+        }
+
+        if (reachesAboveContinuous && band.Reaction is TierReaction.MayAdd or TierReaction.Hold)
+        {
+            return (string.Create(CultureInfo.InvariantCulture, $"A band above the continuous multiple ({multiple} × In) must reduce or shed, not {ReactionName(band.Reaction)}."), true);
+        }
+
+        return band.Reaction == TierReaction.MayAdd && band.UpTo > envelope.MayAddUpToMax
+            ? (string.Create(CultureInfo.InvariantCulture, $"may_add is allowed only up to {envelope.MayAddUpToMax} × In."), false)
+            : (null, false);
+    }
+
+    private static string ReactionName(TierReaction reaction) => Reactions.First(r => r.Value == reaction).Key;
 
     private static ImmutableDictionary<BreakerCharacteristic, double> BindContinuousMultiples(Section section)
     {

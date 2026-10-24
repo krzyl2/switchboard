@@ -34,6 +34,17 @@ public sealed class MqttNetTransportTests
             () => transport.PublishAsync(topic, "ON", retain: false, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("#")]
+    [InlineData("zigbee2mqtt/x/set")]
+    [InlineData("switchboard/+/set")]
+    public async Task A_subscription_outside_the_two_allowed_topics_is_refused_before_the_client_is_used(string topic)
+    {
+        using var transport = new MqttNetTransport(new MqttTopicGuard("homeassistant", "switchboard"));
+
+        await Assert.ThrowsAsync<MqttTopicRefusedException>(() => transport.SubscribeAsync(topic, CancellationToken.None));
+    }
+
     [Fact]
     public async Task A_foreign_last_will_topic_is_refused_before_connecting()
     {

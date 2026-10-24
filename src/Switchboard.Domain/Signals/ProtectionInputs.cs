@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
+using Switchboard.Domain.Guard;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -32,17 +34,33 @@ public sealed record PhaseProtection(Phase Phase, bool DataValid, ProtectionInva
 /// <summary>The summed current of the three_phase_summed topology.</summary>
 public sealed record TotalProtection(bool DataValid, ProtectionInvalidReason? InvalidReason, CurrentReading? Current);
 
+/// <summary>Why a protection snapshot carries no setup.</summary>
+public enum SetupAbsence
+{
+    /// <summary>No configuration document has been read yet in this process.</summary>
+    NotRead,
+    Invalid,
+    Missing,
+}
+
 /// <summary>
 /// Everything protection may read, and nothing else (SIG-04): currents in amperes, never power.
 /// A phase that is not listed, or not <see cref="PhaseProtection.DataValid"/>, has no valid
-/// protection data and is unsafe.
+/// protection data and is unsafe. <see cref="Setup"/> and <see cref="DeviceStates"/> come from the
+/// same store cycle, so the guard never pairs a device list with currents of another moment.
 /// </summary>
+/// <param name="Setup">The protection-relevant configuration; null when the document is invalid or missing.</param>
+/// <param name="DeviceStates">The applied state of every declared device stage (SIG-05: stale means unknown).</param>
+/// <param name="SetupAbsence">Why <paramref name="Setup"/> is null; null when it is present.</param>
 public sealed record ProtectionInputs(
     long Sequence,
     DateTimeOffset TakenAt,
     Topology? Topology,
     ImmutableArray<PhaseProtection> Phases,
-    TotalProtection? Total)
+    TotalProtection? Total,
+    ProtectionSetup? Setup,
+    ImmutableArray<DeviceStateSample> DeviceStates,
+    SetupAbsence? SetupAbsence)
 {
     public PhaseProtection? For(Phase phase) => Phases.FirstOrDefault(p => p.Phase == phase);
 

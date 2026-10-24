@@ -293,6 +293,25 @@ function DirectionCell({ direction, t }: { direction: Direction | null; t: Messa
   );
 }
 
+// SIG-05: while a signal is not fresh, every device that depends on it is unsafe (held off, counted as on).
+function DependentsCell({ signal, t }: { signal: Signal; t: Messages }) {
+  if (signal.dependentDevices.length === 0) return <td>{NO_VALUE}</td>;
+  return (
+    <td>
+      {signal.dependentDevices.map((device) => (
+        <span key={device} class="mono line">
+          {device}
+        </span>
+      ))}
+      {signal.state !== 'fresh' && signal.state !== 'unmapped' && (
+        <span class="sub">
+          <StateLabel tone="crit" label={t.dependentsUnsafe} />
+        </span>
+      )}
+    </td>
+  );
+}
+
 function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
   const role = t[`role.${signal.role}`];
   let value: string;
@@ -336,6 +355,7 @@ function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
         {signal.refreshIntervals > 0 && <span class="sub">n = {signal.refreshIntervals}</span>}
       </td>
       <DirectionCell direction={signal.direction} t={t} />
+      <DependentsCell signal={signal} t={t} />
     </tr>
   );
 }
@@ -361,6 +381,7 @@ function SignalsTable({ signals, updatedAt, ...props }: { signals: Signals; upda
                 <th scope="col">{t.colState}</th>
                 <th scope="col">{t.colRefresh}</th>
                 <th scope="col">{t.colDirection}</th>
+                <th scope="col">{t.colDependents}</th>
               </tr>
             </thead>
             <tbody>

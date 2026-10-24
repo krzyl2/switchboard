@@ -2,6 +2,8 @@ using System.Collections.Immutable;
 using System.Globalization;
 using Switchboard.Application.Configuration;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
+using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -28,6 +30,9 @@ public sealed class SignalStore
     private Dictionary<EntityId, SignalRuntime> _byEntity = [];
     private Dictionary<SignalName, SignalRuntime> _byName = [];
     private ImmutableArray<TrackedEntity> _tracked = [];
+    private ProtectionSetup? _setup;
+    private ImmutableDictionary<SignalName, ImmutableArray<DeviceName>> _dependents = ImmutableDictionary<SignalName, ImmutableArray<DeviceName>>.Empty;
+    private ImmutableArray<(DeviceName Device, StageDefinition Stage)> _deviceStages = [];
     private bool _trackedChanged;
     private bool _resyncPending;
     private long _sequence;
@@ -64,6 +69,9 @@ public sealed class SignalStore
             _signals = [];
             _byEntity = [];
             _byName = [];
+            _setup = null;
+            _dependents = ImmutableDictionary<SignalName, ImmutableArray<DeviceName>>.Empty;
+            _deviceStages = [];
             SetTracked([]);
             return;
         }
@@ -90,6 +98,9 @@ public sealed class SignalStore
         }
 
         _configuration = result.Configuration;
+        _setup = ProtectionSetupFactory.Build(result.Configuration);
+        _dependents = Dependents(result.Configuration);
+        _deviceStages = [.. result.Configuration.Devices.SelectMany(d => d.Stages.Select(s => (d.Id, s)))];
         _signals = runtimes.ToImmutable();
         _byEntity = _signals.ToDictionary(s => s.Definition.Entity);
         _byName = _signals.ToDictionary(s => s.Definition.Name);
@@ -297,7 +308,7 @@ public sealed class SignalStore
             {
                 warnings.Add(new ConfigurationIssue(
                     ConfigurationIssueCodes.MaxAgeShortForProbe,
-                    $"{signal.Definition.Path}.max_age",
+                    signal.Definition.MaxAgePath,
                     null,
                     null,
                     string.Create(
@@ -323,7 +334,20 @@ public sealed class SignalStore
                 Source,
                 null,
                 [],
-                new ProtectionInputs(sequence, now, null, [.. AllPhases.Select(p => new PhaseProtection(p, false, ProtectionInvalidReason.ConfigurationInvalid, null))], null),
+                new ProtectionInputs(
+                    sequence,
+                    now,
+                    null,
+                    [.. AllPhases.Select(p => new PhaseProtection(p, false, ProtectionInvalidReason.ConfigurationInvalid, null))],
+                    null,
+                    null,
+                    [],
+                    ConfigurationResult?.Status switch
+                    {
+                        null => SetupAbsence.NotRead,
+                        ConfigurationStatus.Missing => SetupAbsence.Missing,
+                        _ => SetupAbsence.Invalid,
+                    }),
                 new DispatchInputs(sequence, now, [.. AllPhases.Select(p => new PhaseDispatch(p, false, DispatchInvalidReason.ConfigurationInvalid, null, null, null, null))]),
                 [],
                 [],
@@ -608,7 +632,54 @@ public sealed class SignalStore
             phases.Add(new PhaseProtection(phase, reason is null, reason, reading));
         }
 
-        return new ProtectionInputs(sequence, now, topology, phases.ToImmutable(), total);
+        return new ProtectionInputs(sequence, now, topology, phases.ToImmutable(), total, _setup, DeviceStates(now), null);
+    }
+
+    /// <summary>The applied state of every declared device stage, from its state signal (SIG-05).</summary>
+    private ImmutableArray<DeviceStateSample> DeviceStates(DateTimeOffset now)
+    {
+        var samples = ImmutableArray.CreateBuilder<DeviceStateSample>(_deviceStages.Length);
+        foreach (var (device, stage) in _deviceStages)
+        {
+            var signal = _byName[stage.StateSignal];
+            var (state, detail) = Classify(signal, now);
+            samples.Add(DeviceStateInterpreter.Interpret(
+                device,
+                stage.Index,
+                Source,
+                state,
+                detail,
+                state == SignalState.Fresh ? signal.Accepted?.Value : null,
+                signal.Accepted?.Effective ?? signal.Raw?.Reported));
+        }
+
+        return samples.MoveToImmutable();
+    }
+
+    /// <summary>
+    /// SIG-05: the devices that become unsafe while a signal is not fresh. A phase current protects
+    /// every device with a stage on its phase (the summed current protects all of them); a state
+    /// signal protects its own device. Direction and power signals only ever cost cautious mode.
+    /// </summary>
+    private static ImmutableDictionary<SignalName, ImmutableArray<DeviceName>> Dependents(SwitchboardConfiguration configuration)
+    {
+        var devices = configuration.Devices;
+        var builder = ImmutableDictionary.CreateBuilder<SignalName, ImmutableArray<DeviceName>>();
+        foreach (var signal in configuration.Signals)
+        {
+            ImmutableArray<DeviceName> dependents = signal.Role switch
+            {
+                SignalRole.PhaseCurrent when configuration.Connection.Topology != Topology.ThreePhaseSummed =>
+                    [.. devices.Where(d => d.Stages.Any(s => s.Phases.Contains(signal.Phase!.Value))).Select(d => d.Id)],
+                // Protection reads the total only in three_phase_summed; elsewhere it is display-only.
+                SignalRole.TotalCurrent when configuration.Connection.Topology == Topology.ThreePhaseSummed => [.. devices.Select(d => d.Id)],
+                SignalRole.DeviceState => [.. devices.Where(d => d.Stages.Any(s => s.StateSignal == signal.Name)).Select(d => d.Id)],
+                _ => [],
+            };
+            builder[signal.Name] = dependents;
+        }
+
+        return builder.ToImmutable();
     }
 
     private ProtectionInvalidReason? ProtectionReason(SignalRuntime signal, DateTimeOffset now)
@@ -680,7 +751,8 @@ public sealed class SignalStore
                 signal.Refresh.Estimate(refreshParameters),
                 signal.Refresh.Count,
                 direction,
-                signal.RejectedCount));
+                signal.RejectedCount,
+                _dependents.GetValueOrDefault(definition.Name, [])));
         }
 
         foreach (var (role, phase) in UnmappedSlots(configuration))
@@ -691,7 +763,7 @@ public sealed class SignalStore
                 SignalRole.PhaseVoltage => SignalKind.Voltage,
                 _ => SignalKind.Power,
             };
-            readings.Add(new SignalReading(null, kind, role, phase, SignalState.Unmapped, SignalDetail.None, null, null, null, null, null, null, 0, null, 0));
+            readings.Add(new SignalReading(null, kind, role, phase, SignalState.Unmapped, SignalDetail.None, null, null, null, null, null, null, 0, null, 0, []));
         }
 
         return readings.ToImmutable();

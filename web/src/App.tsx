@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ConnectionState, Status } from './api/status';
 import { PRODUCT_NAME } from './config';
+import { GuardPage } from './Guard';
 import { messages, type Lang, type Messages } from './i18n';
 import { SignalsPage } from './Signals';
 import { StateLabel, Timestamp, type Tone } from './ui';
@@ -81,14 +82,17 @@ function StatusPage({ lang }: { lang: Lang }) {
   );
 }
 
-type Route = 'status' | 'signals';
+type Route = 'status' | 'signals' | 'guard';
 
 // Hash routes: ingress serves the page under a per-session path prefix, and a fragment never leaves
 // the browser, so no route can address anything outside this add-on.
-const ROUTES: Record<Route, string> = { status: '#/', signals: '#/signals' };
+const ROUTES: Record<Route, string> = { status: '#/', signals: '#/signals', guard: '#/guard' };
 
 function currentRoute(): Route {
-  return window.location.hash === ROUTES.signals ? 'signals' : 'status';
+  const hash = window.location.hash;
+  if (hash === ROUTES.signals) return 'signals';
+  if (hash === ROUTES.guard) return 'guard';
+  return 'status';
 }
 
 function useRoute(): Route {
@@ -112,15 +116,18 @@ export function App({ lang }: { lang: Lang }) {
 
   // Only the page on screen polls the add-on.
   return (
-    <main class={route === 'signals' ? 'page wide' : 'page'}>
+    <main class={route === 'status' ? 'page' : 'page wide'}>
       <header class="pagehead">
         <h1>{PRODUCT_NAME}</h1>
         <nav aria-label={t.navLabel}>
           {link('status', t.navStatus)}
           {link('signals', t.navSignals)}
+          {link('guard', t.navGuard)}
         </nav>
       </header>
-      {route === 'signals' ? <SignalsPage lang={lang} /> : <StatusPage lang={lang} />}
+      {route === 'signals' && <SignalsPage lang={lang} />}
+      {route === 'guard' && <GuardPage lang={lang} />}
+      {route === 'status' && <StatusPage lang={lang} />}
       <aside class="card disclaimer" role="note">
         <strong>{t.notProtectiveTitle}</strong> {t.notProtectiveBody}
       </aside>

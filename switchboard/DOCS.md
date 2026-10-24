@@ -13,10 +13,12 @@ This version:
 - installs and starts as an add-on,
 - connects to Home Assistant over the Supervisor WebSocket,
 - reads the meter signals you map in `switchboard.yaml` (see [Configuration file](#configuration-file-until-the-setup-wizard-exists)) and shows each one on the **Signals** page with its value, age and state,
-- publishes one entity over MQTT discovery: `binary_sensor.switchboard_healthy`,
+- reads the devices you declare there and runs the **guard** on them: per phase it compares the measured current with your breaker's limits and works out, every time a new meter sample arrives, which device it *would* reduce or switch off, and why (see [Devices and the guard](#devices-and-the-guard-shadow-only)),
+- writes every such decision, with its reason, to a decision log,
+- publishes over MQTT discovery the health entity `binary_sensor.switchboard_healthy` and the guard's entities (headroom, overload budget, recovery time, guard state per phase; mode, last decision, kill switch; one state entity per device),
 - serves a status page through ingress (sidebar or **Open Web UI**): mode, Home Assistant and MQTT connection, health, version.
 
-It **controls nothing**. It sends no commands to any Home Assistant entity, in either mode. Limits, devices, shedding and the decision log arrive in later versions.
+It **controls nothing**. It sends no commands to any Home Assistant entity, in either mode: it has no way to. Everything the guard decides is recorded as "would switch off" or "would reduce", never carried out. Switching arrives in a later version, and only after the decision log has been reviewed in shadow mode.
 
 ## Requirements
 
@@ -36,12 +38,12 @@ Home Assistant now calls add-ons *apps*; Switchboard is one.
 
 | Option | Values | Default | Meaning |
 |---|---|---|---|
-| `mode` | `shadow`, `active` | `shadow` | `shadow` computes and logs decisions without switching anything. `active` is reserved for a later version; 0.1.0 contains no command path and switches nothing. |
+| `mode` | `shadow`, `active` | `shadow` | `shadow` computes and logs decisions without switching anything. `active` is reserved for a later version: this version contains no command path, so it runs in shadow mode even with `active` (the status page and `sensor.switchboard_mode` say `shadow`). |
 | `log_level` | `debug`, `info`, `warning` | `info` | How much detail goes into the add-on log. |
 
 ### Shadow mode is the default
 
-Software that switches 5 kW loads must prove itself before it acts. A fresh install runs in `shadow`: it computes and logs what it would do and switches nothing. Anything other than exactly `active` — a missing, empty or unknown value — is treated as `shadow`. In 0.1.0 there is nothing to switch, and the log says so if you select `active`.
+Software that switches 5 kW loads must prove itself before it acts. A fresh install runs in `shadow`: it computes and logs what it would do and switches nothing. Anything other than exactly `active` — a missing, empty or unknown value — is treated as `shadow`. In this version there is nothing that could switch, and the log says so if you select `active`.
 
 ## Configuration file (until the setup wizard exists)
 
@@ -90,7 +92,7 @@ Each signal maps one Home Assistant entity:
 
 Map **primary measurements only**: the meter's and the inverter's own entities. Never map a template, derivative, statistics or other calculated sensor (for example a "house consumption" computed as production minus grid): such sensors combine sources sampled at different moments and produce false dips. Switchboard derives house load itself.
 
-`control:` overrides the built-in control parameters key by key; the defaults are documented in the repository (`src/Switchboard.Infrastructure/Configuration/control-defaults.yaml`). An unknown key there is an error too.
+`control:` overrides the built-in control parameters key by key; the defaults are documented in the repository (`src/Switchboard.Infrastructure/Configuration/control-defaults.yaml`). An unknown key there is an error too. The breaker tier table and the overload budget's recovery time and thresholds may be made stricter, never looser than the built-in safety limits (for example, everything controlled is shed above 1.45 × In, the budget refills no faster than over 600 s, and increases stop below 50 % budget at the latest); an override past them is an error naming its line.
 
 ### The Signals page
 
@@ -98,9 +100,92 @@ Open Switchboard's web UI and choose **Signals** at the top of the page. It refr
 
 - **Configuration**: whether `switchboard.yaml` is valid, its path inside the app (`/config/switchboard.yaml`), when it was loaded, and every error or warning with its line number and the same message the log writes.
 - **Phases**: per phase, whether its meter data is valid (and if not, why), the current with its direction (import or export), grid power, inverter generation, the derived house load, the balance check (the last residual with its age; a sample that fails it is counted and the previous value stays in use until it ages out), and the reserve you configured next to the minimum derived from your meter's refresh interval.
-- **Signals**: every signal with its entity ID, the value Switchboard uses (A, W, V; import positive), the raw value as Home Assistant reported it, its age since Home Assistant last reported it, its state — *fresh*, *stale* (no report within `max_age`), *rejected* (the last sample was unusable, for example in another unit than declared; the reason is shown, and the signal is not used until a usable sample arrives), *unavailable* or *unmapped* (an optional slot you did not map) — the detected refresh interval, and where its direction comes from. *unknown — cautious mode* means the direction is not known right now and the value counts as import.
+- **Signals**: every signal with its entity ID, the value Switchboard uses (A, W, V; import positive), the raw value as Home Assistant reported it, its age since Home Assistant last reported it, its state — *fresh*, *stale* (no report within `max_age`), *rejected* (the last sample was unusable, for example in another unit than declared; the reason is shown, and the signal is not used until a usable sample arrives), *unavailable* or *unmapped* (an optional slot you did not map) — the detected refresh interval, where its direction comes from, and the devices that depend on it (while it is not fresh they count as unsafe). *unknown — cautious mode* means the direction is not known right now and the value counts as import.
 
 If the page cannot reach the app it says **Signals unavailable** and hides every value, so a frozen page never looks like a calm meter.
+
+## Devices and the guard (shadow only)
+
+The guard is Switchboard's protection loop. In this version it **only observes**: it decides what it would do and records it, and it commands nothing. Use it to see, in your own house and before anything is ever switched, whether its decisions are the ones you would make.
+
+### Declaring devices
+
+Devices go under `devices:` in `switchboard.yaml`. The `actuator` is the only entity that may ever be commanded for that device (by a later version, never by this one); Switchboard never touches an entity you have not declared. Each device's current state is read from its actuator, or from `state_entity`, and must be reported by Home Assistant within `state_max_age`; otherwise the device counts as possibly on.
+
+```yaml
+devices:
+  - id: heater_l1                # lower-case letters, digits, '_'; unique
+    type: onoff                  # onoff | stepped | modulating
+    actuator: switch.heater_1    # onoff, stepped: switch. or input_boolean.
+    phase: L1                    # L1 | L2 | L3 | three_phase
+    rated_current_a: 6.6         # per phase, when on
+    rated_power_w: 1500
+    value_per_kwh: 0.35          # what a kWh is worth to this device; lower sheds first
+  - id: ev_charger
+    type: modulating
+    actuator: number.ev_current  # modulating: number. or input_number. (a current setpoint)
+    phase: L1
+    min: 6                       # the setpoint range, in A (unit: mA if the entity uses mA)
+    max: 20
+    step: 1
+    value_per_kwh: 2.03
+```
+
+| Key | Meaning |
+|---|---|
+| `type` | `onoff` (one relay), `stepped` (several relays switched as stages, under `stages:`, each with its own `actuator`, `phase`, `rated_current_a`, `rated_power_w`) or `modulating` (a current setpoint between `min` and `max` in whole `step`s). |
+| `state_entity` | Optional; where the device's current state is read when it is not the actuator itself (`switch.`, `input_boolean.`, `binary_sensor.` for relays; `number.`, `input_number.`, `sensor.` in A or mA for modulating devices). |
+| `state_max_age` | Optional, default `10m`. A state Home Assistant has not reported for this long is stale: the device then counts as on (the worst case) and the guard holds it off. |
+| `value_per_kwh` | Required. Shedding takes the device with the lowest value first. |
+| `shed_priority` | Optional; replaces `value_per_kwh` as the shed order key. |
+| `reaction_time` | Optional; how long the load takes to change after a command. On equal value, the faster device sheds first. |
+| `no_shed` | `true` for a device that must never be shed by the tier reactions (it is still held off in safe state and by the kill switch). |
+| `min_on`, `min_off` | Optional lockouts; defaults from the built-in parameters. Lockouts never outrank protection: a device still inside `min_on` is shed last, never spared. Every lockout restarts when Switchboard restarts. |
+
+A modulating device is first reduced to its minimum and then switched off. A current setpoint such as an EV charger's usually cannot go to 0 A; until a stop actuator can be declared (a later version), the decision log records "would switch off" for it but nothing could carry that out.
+
+### What the guard decides
+
+For every phase it compares the measured current with your breaker (`breaker_rating_a`, `characteristic`) using the tier table in `control-defaults.yaml`: up to 0.90 × In (In = the rated current) load may be added, up to 1.00 × In nothing is added, up to 1.13 × In (the current a breaker of characteristic B or C carries indefinitely) it reduces in the ordinary cycle, and above that it reduces faster and faster, down to switching off everything controlled on the phase at once above 1.45 × In. The durations are deliberately shorter than the breaker standard allows. An overload budget per phase remembers recent excursions: it is spent while the current is above the continuous limit and refills slowly below it, so three short overloads in a row count more than one. Only devices on the overloaded phase are candidates: energy cannot move between phases.
+
+It also holds every controlled device off (records "would switch off", reason `safe_state` or `guard_stale_signal`) when it has no valid data: a stale or missing meter current (that phase only, or everywhere when the whole meter is stale), Home Assistant disconnected, a missing or invalid `switchboard.yaml`, and when the add-on stops. When the data is good again, devices are released only after several calm cycles in a row.
+
+### The Limits page
+
+Choose **Limits** at the top of the web UI. It refreshes every two seconds and shows:
+
+- a banner while the kill switch is on or a safe state is active (which phases, why, since when); in shadow mode it says what *would* be switched off. The kill switch cannot be changed from this page yet;
+- per phase: the current drawn against the reserve threshold, the breaker's rated current and the continuous limit; the tier it is in and that tier's reaction; the overload budget with the time until it is full again; the headroom to the reserve threshold (A and W) and to the continuous limit; whether load may be added;
+- the devices in shed order: what the guard holds each one to and why, the state each reports (a stale one counts as on and is marked unsafe, with the signals that make it so), its value per kWh and the lockout time left;
+- the last 50 decisions, with each reason as a sentence;
+- the tier table for your breaker, in amperes.
+
+If the page cannot reach the app it says **Limits unavailable** and hides every value.
+
+### Kill switch
+
+`switch.switchboard_kill_switch` holds every controlled device off while it is on, within one evaluation, whatever else is going on; it survives a restart. In this version it, too, only records what it would hold off. It is a control switch for Switchboard, not an emergency stop and not a protective device.
+
+### Decision log and runtime state
+
+Every decision is one line in `/data/decisions/YYYY-MM-DD.jsonl` (one file per UTC day; kept `decision_log.retention_days`, 30 days by default): time, device or phase, action, reason code, mode, and the inputs that produced it (current, band, budget, device state). Only changes are recorded, not every unchanged cycle. Every line says `"commanded": false`. The kill switch, the overload budgets and the last known device states are kept in `/data/state.json` across restarts; if that file is damaged it is set aside as `state.json.corrupt` and Switchboard starts with full budgets and the kill switch off. If `/data` cannot be written (a full disk), the guard keeps running from memory and the API reports it.
+
+### Guard entities
+
+| Entity | Meaning |
+|---|---|
+| `sensor.switchboard_l1_headroom` | A left on L1 until the reserve threshold (rated current minus the reserve), from the measured current. Negative when over. |
+| `sensor.switchboard_l1_headroom_power` | The same in W, at the configured voltage. |
+| `sensor.switchboard_l1_breaker_headroom` | A left on L1 until the continuous limit (1.13 × In for B and C, 1.00 × In for unknown). |
+| `sensor.switchboard_l1_overload_budget` | The overload budget, % (100 = no recent overload). |
+| `sensor.switchboard_l1_recovery_remaining` | Seconds until the budget is full again. |
+| `sensor.switchboard_l1_guard_state` | `normal`, `hold`, `reducing`, `shedding`, `safe_state` or `unknown`. |
+| `sensor.switchboard_mode` | `shadow` (in this version always). |
+| `sensor.switchboard_last_decision` | The reason code of the latest decision; device, phase and action as attributes. |
+| `switch.switchboard_kill_switch` | See [Kill switch](#kill-switch). |
+| `sensor.switchboard_device_<id>_state` | `allowed`, `reduced`, `shed` or `unsafe`, with the reason as an attribute. |
+
+L2 and L3 entities exist for three-phase connections. A value Switchboard does not know is `unknown`, never a stale number. When you remove a device from `switchboard.yaml`, its entity is removed from Home Assistant; while the file is invalid, no entity is removed.
 
 ## The health entity
 
@@ -160,7 +245,7 @@ actions:
 
 - No network port is exposed. The panel is reached only through Home Assistant ingress, behind Home Assistant's own login.
 - Outbound connections go only to Home Assistant (through the Supervisor), to the MQTT broker and to the Supervisor API. There is no telemetry and no cloud service.
-- Switchboard publishes MQTT messages only under its own `switchboard/` topics and its own discovery topics under `homeassistant/`.
+- Switchboard publishes MQTT messages only under its own `switchboard/` topics and its own discovery topics under `homeassistant/`. It subscribes to exactly two topics: Home Assistant's `homeassistant/status` and its own kill switch command `switchboard/kill_switch/set` (a retained message there is ignored).
 - It never reads the Home Assistant Recorder database.
 
 ## Standalone Docker
@@ -180,6 +265,7 @@ Without a Supervisor, settings come from environment variables:
 | `SWITCHBOARD_MODE` | no | `shadow` (default) or `active`. |
 | `SWITCHBOARD_LOG_LEVEL` | no | `debug`, `info` (default) or `warning`. |
 | `SWITCHBOARD_CONFIG_PATH` | no | Where `switchboard.yaml` is read from; default `/config/switchboard.yaml`. |
+| `SWITCHBOARD_DATA_PATH` | no | Where `state.json` and the decision log are written; default `/data`. |
 
 ```sh
 docker run -d --name switchboard --restart unless-stopped \
@@ -194,7 +280,7 @@ docker run -d --name switchboard --restart unless-stopped \
   ghcr.io/krzyl2/switchboard:0.1.0
 ```
 
-The MQTT integration in Home Assistant must use the same broker, so that the health entity appears. The status page is built for ingress and is not reachable from outside the container in standalone mode in this version; use the health entity and the container log (`docker logs switchboard`) instead.
+The MQTT integration in Home Assistant must use the same broker, so that the health entity and the guard's entities appear. Mount `/data` as above: without a writable data folder the decision log and the kill switch are kept in memory only. The status page is built for ingress and is not reachable from outside the container in standalone mode in this version; use the health entity and the container log (`docker logs switchboard`) instead.
 
 ## Support
 

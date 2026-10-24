@@ -217,6 +217,32 @@ describe('signals page', () => {
     expect(phaseRow('L1').textContent).toContain('refresh 30 s, detected');
   });
 
+  // SIG-05 on screen: which devices a signal protects, and that they are held as unsafe while it is not fresh.
+  it('lists the devices that depend on a signal and marks them unsafe while it is not fresh', async () => {
+    serve(() => respond(payload()));
+    await openSignals();
+
+    const fresh = rowWith('sensor.meter_current_a').cells[8];
+    expect(within(fresh as HTMLElement).getByText('heater_l1').classList.contains('mono')).toBe(true);
+    expect(fresh?.textContent).toContain('ev_charger');
+    expect(fresh?.textContent).not.toContain('held as unsafe');
+    const stale = rowWith('sensor.meter_current_b').cells[8];
+    expect(stale?.textContent).toContain('heater_l2');
+    expect(stale?.querySelector('.state')?.getAttribute('data-tone')).toBe('crit');
+    expect(stale?.textContent).toContain('held as unsafe');
+    expect(rowWith('sensor.meter_power_a').cells[8]?.textContent).toBe('—');
+    expect(screen.getByRole('columnheader', { name: 'Dependent devices' })).toBeTruthy();
+  });
+
+  it('labels the applied state of a declared device as its own role', async () => {
+    serve(() => respond(payload()));
+    await openSignals();
+
+    const row = rowWith('switch.heater_2');
+    expect(row.cells[0]?.textContent).toBe('device_heater_l2device state');
+    expect(stateOf(row)).toEqual({ label: 'stale', tone: 'crit' });
+  });
+
   it('counts rejected samples', async () => {
     serve(() => respond(payload()));
     await openSignals();
@@ -391,6 +417,6 @@ describe('navigation', () => {
     render(<App lang="en" />);
 
     const links = within(screen.getByRole('navigation')).getAllByRole('link');
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/signals']);
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/signals', '#/guard']);
   });
 });

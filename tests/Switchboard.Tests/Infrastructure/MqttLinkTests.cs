@@ -279,6 +279,8 @@ public sealed class MqttLinkTests : IAsyncDisposable
         MsOptions.Create(TestOptions.Mqtt()),
         MsOptions.Create(TestOptions.Heartbeat()),
         new AppVersion("0.1.0"),
+        [],
+        new MemoryLedger(),
         _time,
         NullLogger<MqttLink>.Instance);
 

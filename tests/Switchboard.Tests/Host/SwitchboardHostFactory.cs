@@ -9,9 +9,10 @@ using Switchboard.Host.Hosting;
 namespace Switchboard.Tests.Host;
 
 /// <summary>
-/// The real Program in memory, with the background links and the signal pipeline removed: these
-/// tests exercise the web surface, and link states and signal diagnostics are set directly through
-/// their ports.
+/// The real Program in memory, with the background links, the signal pipeline and the guard
+/// removed: these tests exercise the web surface, and link states, signal diagnostics and the guard
+/// status are set directly through their ports. Runtime state and the decision log go to a data
+/// folder inside the throwaway web root, never to /data.
 /// </summary>
 internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
 {
@@ -19,6 +20,7 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
     [
         typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
         typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
+        typeof(GuardService),
     ];
 
     private readonly Dictionary<string, string?> _settings;
@@ -37,6 +39,7 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
             // Never read a real /data/options.json, and never inherit the developer's environment.
             ["SWITCHBOARD_OPTIONS_PATH"] = Path.Combine(webRoot, "no-options.json"),
             ["SWITCHBOARD_CONFIG_PATH"] = Path.Combine(webRoot, "no-switchboard.yaml"),
+            ["SWITCHBOARD_DATA_PATH"] = Path.Combine(webRoot, "data"),
             ["SWITCHBOARD_DEV_REPLAY"] = null,
             ["SUPERVISOR_TOKEN"] = null,
             ["SWITCHBOARD_DEV_TRUST_ALL_REQUESTS"] = null,

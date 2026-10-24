@@ -100,20 +100,21 @@ public sealed class AddonPackagingTests
     }
 
     [Fact]
-    public void Mqtt_shutdown_fits_well_inside_the_container_stop_grace()
+    public void Guard_and_mqtt_shutdown_fit_well_inside_the_container_stop_grace()
     {
-        // s6 kills the process when S6_SERVICES_GRACETIME runs out. The MQTT step must give up
-        // early enough that the Home Assistant close after it still runs.
+        // s6 kills the process when S6_SERVICES_GRACETIME runs out. The guard's stop (shutdown safe
+        // state, decision log, state.json) runs first, then the MQTT step, and the MQTT step must
+        // give up early enough that the Home Assistant close after it still runs: guard + 2 × MQTT.
         var grace = Regex.Match(Dockerfile(), @"ENV S6_SERVICES_GRACETIME=(\d+)");
         Assert.True(grace.Success, "switchboard/Dockerfile does not set S6_SERVICES_GRACETIME.");
         var graceTime = TimeSpan.FromMilliseconds(int.Parse(grace.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
 
         using var settings = JsonDocument.Parse(File.ReadAllText(RepoPaths.Combine("src", "Switchboard.Host", "appsettings.json")));
-        var shutdownTimeout = TimeSpan.Parse(
-            settings.RootElement.GetProperty("Switchboard").GetProperty("Mqtt").GetProperty("ShutdownTimeout").GetString()!,
-            System.Globalization.CultureInfo.InvariantCulture);
+        var switchboard = settings.RootElement.GetProperty("Switchboard");
+        var mqtt = TimeSpan.Parse(switchboard.GetProperty("Mqtt").GetProperty("ShutdownTimeout").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        var guard = TimeSpan.Parse(switchboard.GetProperty("Persistence").GetProperty("ShutdownTimeout").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
 
-        Assert.True(shutdownTimeout * 2 <= graceTime, $"Mqtt:ShutdownTimeout {shutdownTimeout} takes more than half of the s6 grace {graceTime}.");
+        Assert.True(guard + (mqtt * 2) <= graceTime, $"Persistence:ShutdownTimeout {guard} + 2 × Mqtt:ShutdownTimeout {mqtt} exceeds the s6 grace {graceTime}.");
     }
 
     [Theory]

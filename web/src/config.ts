@@ -21,3 +21,9 @@ export const SIGNALS_REFRESH_INTERVAL_MS = 2_000;
 
 /** Shorter than the refresh interval, so a hung request never delays the next one. */
 export const SIGNALS_REQUEST_TIMEOUT_MS = 1_800;
+
+/** How often the limits page asks for the guard's view: as often as the signals page, for the same reason. */
+export const GUARD_REFRESH_INTERVAL_MS = 2_000;
+
+/** Shorter than the refresh interval, so a hung request never delays the next one. */
+export const GUARD_REQUEST_TIMEOUT_MS = 1_800;

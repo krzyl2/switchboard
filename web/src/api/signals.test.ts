@@ -32,6 +32,16 @@ describe('parseSignals', () => {
     expect([current?.value, current?.unit]).toEqual([-5.466, 'A']);
   });
 
+  // SIG-05: a signal names the devices it makes unsafe while it is not fresh.
+  it('keeps the devices that depend on each signal, and the device-state role', () => {
+    const parsed = parseSignals(payload());
+
+    expect(parsed.signals.find((s) => s.name === 'grid_current_l1')?.dependentDevices).toEqual(['ev_charger', 'heater_l1']);
+    expect(parsed.signals.find((s) => s.name === 'grid_power_l1')?.dependentDevices).toEqual([]);
+    const state = parsed.signals.find((s) => s.name === 'device_heater_l2');
+    expect([state?.role, state?.kind, state?.dependentDevices]).toEqual(['device_state', 'state', ['heater_l2']]);
+  });
+
   it('drops fields the page does not know about', () => {
     const parsed = parseSignals(payload((p) => (p.signals[0].token = 'must-not-travel')));
 
@@ -79,6 +89,9 @@ describe('parseSignals', () => {
     ['valid meter data that still names a reason', () => payload((p) => (p.phases[0].invalidReason = 'current_stale'))],
     ['invalid meter data without a reason', () => payload((p) => (p.phases[1].invalidReason = null))],
     ['a boolean sent as text', () => payload((p) => (p.phases[0].protectionDataValid = 'true'))],
+    ['a missing dependent-device list', () => payload((p) => delete p.signals[1].dependentDevices)],
+    ['dependent devices that are not a list', () => payload((p) => (p.signals[1].dependentDevices = 'heater_l1'))],
+    ['a dependent device that is not text', () => payload((p) => (p.signals[1].dependentDevices = [1]))],
   ])('rejects %s', (_case, make) => {
     expect(() => parseSignals(make())).toThrow();
   });

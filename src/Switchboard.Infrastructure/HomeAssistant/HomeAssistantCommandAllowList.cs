@@ -18,14 +18,22 @@ public static class HomeAssistantCommandAllowList
     /// <summary>Read-only: state changes of the listed entities. Always sent with an entity filter.</summary>
     public const string SubscribeEntities = "subscribe_entities";
 
+    /// <summary>
+    /// Ends one of the client's own subscriptions (a superseded subscribe_entities after the entity
+    /// set changed); never anything else's, and never the active one.
+    /// </summary>
+    public const string UnsubscribeEvents = "unsubscribe_events";
+
     private const string IdKey = "id";
     private const string TypeKey = "type";
     private const string EntityIdsKey = "entity_ids";
+    private const string SubscriptionKey = "subscription";
 
     private static readonly FrozenDictionary<string, FrozenSet<string>> Shapes = new Dictionary<string, FrozenSet<string>>
     {
         [Ping] = new[] { IdKey, TypeKey }.ToFrozenSet(StringComparer.Ordinal),
         [SubscribeEntities] = new[] { IdKey, TypeKey, EntityIdsKey }.ToFrozenSet(StringComparer.Ordinal),
+        [UnsubscribeEvents] = new[] { IdKey, TypeKey, SubscriptionKey }.ToFrozenSet(StringComparer.Ordinal),
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     public static FrozenSet<string> Allowed { get; } = Shapes.Keys.ToFrozenSet(StringComparer.Ordinal);
@@ -38,13 +46,18 @@ public static class HomeAssistantCommandAllowList
         }
     }
 
+    /// <summary>The check without any own subscription: every unsubscribe_events is refused.</summary>
+    public static void EnsurePayloadAllowed(ReadOnlySpan<byte> utf8Json) => EnsurePayloadAllowed(utf8Json, _ => false);
+
     /// <summary>
     /// Re-reads a serialized command exactly as Home Assistant would and refuses it unless it is one
-    /// JSON object with exactly the keys of its allowed type, each once: a numeric id, the type, and
-    /// for subscribe_entities a non-empty list of entity IDs (without it HA would stream every entity).
+    /// JSON object with exactly the keys of its allowed type, each once: a numeric id, the type, for
+    /// subscribe_entities a non-empty list of entity IDs (without it HA would stream every entity),
+    /// and for unsubscribe_events a subscription id that <paramref name="isOwnSubscription"/> accepts.
     /// </summary>
-    public static void EnsurePayloadAllowed(ReadOnlySpan<byte> utf8Json)
+    public static void EnsurePayloadAllowed(ReadOnlySpan<byte> utf8Json, Func<int, bool> isOwnSubscription)
     {
+        ArgumentNullException.ThrowIfNull(isOwnSubscription);
         string? type = null;
         var keys = new HashSet<string>(StringComparer.Ordinal);
         try
@@ -67,6 +80,13 @@ public static class HomeAssistantCommandAllowList
                 switch (key)
                 {
                     case IdKey when reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out _):
+                        break;
+                    case SubscriptionKey when reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out var subscription):
+                        if (!isOwnSubscription(subscription))
+                        {
+                            throw Refused(type, $"subscription {subscription} is not one of the client's own superseded subscriptions");
+                        }
+
                         break;
                     case TypeKey when reader.TokenType == JsonTokenType.String:
                         type = reader.GetString();

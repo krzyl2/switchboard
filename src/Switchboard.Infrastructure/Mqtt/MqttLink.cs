@@ -6,6 +6,7 @@ using Switchboard.Application.Connectivity;
 using Switchboard.Application.Health;
 using Switchboard.Application.Options;
 using Switchboard.Application.Resilience;
+using Switchboard.Application.State;
 
 namespace Switchboard.Infrastructure.Mqtt;
 
@@ -13,6 +14,15 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// Owns the broker session: connect with a Last Will, announce availability and discovery, keep the
 /// health state current, re-announce when Home Assistant restarts, reconnect with backoff, and on
 /// shutdown leave the entity OFF and unavailable rather than stale.
+/// <para>
+/// The other entities come from <see cref="IMqttEntitySource"/>s (the guard's): discovery is
+/// retained and announced with the session, states are not retained and are published on connect,
+/// when Home Assistant comes online and whenever they change (an unchanged payload is not sent
+/// again). An object a valid configuration no longer declares is retracted (an empty retained
+/// discovery payload), including objects announced before a restart (the ledger in state.json).
+/// Command topics are subscribed only as the topic guard allows; a retained command is ignored, so
+/// a stale message in the broker can never engage anything.
+/// </para>
 /// </summary>
 public sealed class MqttLink : IHealthPublisher
 {
@@ -23,6 +33,8 @@ public sealed class MqttLink : IHealthPublisher
     private readonly MqttOptions _mqtt;
     private readonly HeartbeatOptions _heartbeat;
     private readonly AppVersion _version;
+    private readonly IReadOnlyList<IMqttEntitySource> _sources;
+    private readonly IDiscoveryLedger _ledger;
     private readonly TimeProvider _time;
     private readonly ILogger<MqttLink> _logger;
 
@@ -34,6 +46,11 @@ public sealed class MqttLink : IHealthPublisher
 
     private readonly string _availabilityTopic;
     private readonly string _statusTopic;
+
+    // Per session, touched by the session loop only: what discovery and state were last sent.
+    private readonly Dictionary<string, string> _announced = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _published = new(StringComparer.Ordinal);
+    private int _entitiesDirty;
     private bool _shuttingDown;
 
     public MqttLink(
@@ -44,6 +61,8 @@ public sealed class MqttLink : IHealthPublisher
         IOptions<MqttOptions> mqtt,
         IOptions<HeartbeatOptions> heartbeat,
         AppVersion version,
+        IEnumerable<IMqttEntitySource> entitySources,
+        IDiscoveryLedger ledger,
         TimeProvider timeProvider,
         ILogger<MqttLink> logger)
     {
@@ -54,6 +73,8 @@ public sealed class MqttLink : IHealthPublisher
         _mqtt = mqtt.Value;
         _heartbeat = heartbeat.Value;
         _version = version;
+        _sources = [.. entitySources];
+        _ledger = ledger;
         _time = timeProvider;
         _logger = logger;
         _availabilityTopic = MqttIdentity.AvailabilityTopic(_mqtt.BaseTopic);
@@ -61,12 +82,18 @@ public sealed class MqttLink : IHealthPublisher
 
         _transport.Disconnected += OnDisconnectedAsync;
         _transport.MessageReceived += OnMessageAsync;
+        foreach (var source in _sources)
+        {
+            source.Changed += OnEntitiesChanged;
+        }
     }
 
     private enum Signal
     {
         Disconnected,
         HomeAssistantOnline,
+        EntitiesChanged,
+        CommandHandled,
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -184,6 +211,11 @@ public sealed class MqttLink : IHealthPublisher
             // Signals from a previous session are stale.
         }
 
+        // The session announces everything anyway; a change noted before it must not block the next one.
+        Interlocked.Exchange(ref _entitiesDirty, 0);
+        _announced.Clear();
+        _published.Clear();
+
         var credentials = await _credentials.GetAsync(cancellationToken).ConfigureAwait(false);
         var settings = new MqttConnectSettings
         {
@@ -199,11 +231,17 @@ public sealed class MqttLink : IHealthPublisher
 
         await _transport.PublishAsync(_availabilityTopic, MqttIdentity.AvailabilityOnline, retain: true, cancellationToken).ConfigureAwait(false);
         await PublishDiscoveryAsync(cancellationToken).ConfigureAwait(false);
+        await AnnounceEntitiesAsync(force: true, cancellationToken).ConfigureAwait(false);
 
         // Connected only once HA knows the entity, so no state is ever published ahead of its discovery.
         _state.Set(ConnectionState.Connected);
         await PublishHealthAsync(_health.IsHealthy, cancellationToken).ConfigureAwait(false);
+        await PublishEntityStatesAsync(force: true, cancellationToken).ConfigureAwait(false);
         await _transport.SubscribeAsync(_statusTopic, cancellationToken).ConfigureAwait(false);
+        foreach (var topic in _sources.SelectMany(s => s.CommandTopics))
+        {
+            await _transport.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+        }
 
         // Not on CONNACK: a broker that accepts the connection but refuses what follows would
         // otherwise be retried at the minimum delay forever.
@@ -222,13 +260,121 @@ public sealed class MqttLink : IHealthPublisher
                 continue;
             }
 
-            // A restarted HA re-reads retained discovery but has lost the non-retained state;
-            // announce both so the entity is current at once instead of after the next beat.
-            _logger.LogInformation("Home Assistant came online; republishing discovery");
-            await PublishDiscoveryAsync(cancellationToken).ConfigureAwait(false);
-            await PublishHealthAsync(_health.IsHealthy, cancellationToken).ConfigureAwait(false);
+            switch (signal)
+            {
+                case Signal.HomeAssistantOnline:
+                    // A restarted HA re-reads retained discovery but has lost the non-retained state;
+                    // announce both so the entity is current at once instead of after the next beat.
+                    _logger.LogInformation("Home Assistant came online; republishing discovery");
+                    await PublishDiscoveryAsync(cancellationToken).ConfigureAwait(false);
+                    await AnnounceEntitiesAsync(force: true, cancellationToken).ConfigureAwait(false);
+                    await PublishHealthAsync(_health.IsHealthy, cancellationToken).ConfigureAwait(false);
+                    await PublishEntityStatesAsync(force: true, cancellationToken).ConfigureAwait(false);
+                    break;
+                case Signal.EntitiesChanged:
+                    Interlocked.Exchange(ref _entitiesDirty, 0);
+                    await AnnounceEntitiesAsync(force: false, cancellationToken).ConfigureAwait(false);
+                    await PublishEntityStatesAsync(force: false, cancellationToken).ConfigureAwait(false);
+                    break;
+                case Signal.CommandHandled:
+                    // Home Assistant waits for the state after a command; send it even when unchanged.
+                    await PublishEntityStatesAsync(force: true, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
         }
     }
+
+    /// <summary>
+    /// Discovery for every entity of every source (all of them when <paramref name="force"/>, else
+    /// only new or changed configs), then retraction: when every source is authoritative, each
+    /// object announced earlier (this session or, through the ledger, before a restart) and absent
+    /// now gets an empty retained config. While a source is not authoritative nothing is retracted
+    /// and the ledger only grows.
+    /// </summary>
+    private async Task AnnounceEntitiesAsync(bool force, CancellationToken cancellationToken)
+    {
+        if (_sources.Count == 0)
+        {
+            return;
+        }
+
+        var sets = _sources.Select(s => s.Current()).ToList();
+        var current = sets.SelectMany(s => s.Entities).ToList();
+        foreach (var entity in current)
+        {
+            if (force || !_announced.TryGetValue(entity.Key, out var config) || config != entity.Config)
+            {
+                await _transport.PublishAsync(DiscoveryTopic(entity.Component, entity.ObjectId), entity.Config, retain: true, cancellationToken).ConfigureAwait(false);
+                _announced[entity.Key] = entity.Config;
+            }
+        }
+
+        var keys = current.Select(e => e.Key).ToHashSet(StringComparer.Ordinal);
+        if (!sets.All(s => s.Authoritative))
+        {
+            _ledger.Replace(_ledger.Discovered.Union(keys));
+            return;
+        }
+
+        foreach (var stale in _ledger.Discovered.Union(_announced.Keys).Where(k => !keys.Contains(k)).ToList())
+        {
+            var parts = stale.Split('/');
+            await _transport.PublishAsync(DiscoveryTopic(parts[0], parts[1]), string.Empty, retain: true, cancellationToken).ConfigureAwait(false);
+            _announced.Remove(stale);
+            _published.Remove(MqttIdentity.StateTopic(_mqtt.BaseTopic, parts[1]));
+            _published.Remove(GuardEntities.AttributesTopic(_mqtt.BaseTopic, parts[1]));
+            _logger.LogInformation("Retracted MQTT entity {Entity}: the configuration no longer declares it", stale);
+        }
+
+        _ledger.Replace(keys);
+    }
+
+    /// <summary>States (and attributes) of every source's entities; unchanged payloads are skipped unless <paramref name="force"/>.</summary>
+    private async Task PublishEntityStatesAsync(bool force, CancellationToken cancellationToken)
+    {
+        if (_sources.Count == 0)
+        {
+            return;
+        }
+
+        // Under the same gate as the health state, so nothing is published after the shutdown sequence.
+        await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_shuttingDown || _state.Current != ConnectionState.Connected)
+            {
+                return;
+            }
+
+            foreach (var entity in _sources.SelectMany(s => s.Current().Entities))
+            {
+                await PublishIfChangedAsync(MqttIdentity.StateTopic(_mqtt.BaseTopic, entity.ObjectId), entity.State, force, cancellationToken).ConfigureAwait(false);
+                if (entity.Attributes is { } attributes)
+                {
+                    await PublishIfChangedAsync(GuardEntities.AttributesTopic(_mqtt.BaseTopic, entity.ObjectId), attributes, force, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            _stateGate.Release();
+        }
+    }
+
+    // Not retained: a replayed state after a restart would claim what nobody has evaluated.
+    private async Task PublishIfChangedAsync(string topic, string payload, bool force, CancellationToken cancellationToken)
+    {
+        if (!force && _published.TryGetValue(topic, out var last) && last == payload)
+        {
+            return;
+        }
+
+        await _transport.PublishAsync(topic, payload, retain: false, cancellationToken).ConfigureAwait(false);
+        _published[topic] = payload;
+    }
+
+    private string DiscoveryTopic(string component, string objectId) =>
+        MqttIdentity.DiscoveryTopic(_mqtt.DiscoveryPrefix, component, _mqtt.BaseTopic, objectId);
 
     /// <summary>
     /// A session can fail after CONNACK (a refused publish, a request timeout) with the client still
@@ -287,15 +433,43 @@ public sealed class MqttLink : IHealthPublisher
         return Task.CompletedTask;
     }
 
-    private Task OnMessageAsync(string topic, string payload)
+    private Task OnMessageAsync(MqttInboundMessage message)
     {
         // Handled on the session loop, not here: publishing from inside the client's receive
         // callback can stall its own acknowledgement handling.
-        if (topic == _statusTopic && payload == MqttIdentity.HomeAssistantOnline)
+        if (message.Topic == _statusTopic)
         {
-            _signals.Writer.TryWrite(Signal.HomeAssistantOnline);
+            if (message.Payload == MqttIdentity.HomeAssistantOnline)
+            {
+                _signals.Writer.TryWrite(Signal.HomeAssistantOnline);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        foreach (var source in _sources.Where(s => s.CommandTopics.Contains(message.Topic, StringComparer.Ordinal)))
+        {
+            if (message.Retained)
+            {
+                // A command left in the broker (by anyone) must never act on its own at the next connect.
+                _logger.LogWarning("Ignored a retained message on command topic {Topic}", message.Topic);
+                continue;
+            }
+
+            // Commands only change memory and wake the guard; the resulting state follows on the session loop.
+            source.HandleCommand(message.Topic, message.Payload);
+            _signals.Writer.TryWrite(Signal.CommandHandled);
         }
 
         return Task.CompletedTask;
+    }
+
+    private void OnEntitiesChanged(object? sender, EventArgs e)
+    {
+        // Raised on the guard's thread after every evaluation: note it, coalesce, never publish here.
+        if (Interlocked.Exchange(ref _entitiesDirty, 1) == 0)
+        {
+            _signals.Writer.TryWrite(Signal.EntitiesChanged);
+        }
     }
 }

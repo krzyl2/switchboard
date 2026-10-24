@@ -46,8 +46,17 @@ internal sealed class ReplayHarness
 
     public SignalDiagnostics Current => Holder.Current;
 
-    /// <summary>Advances to <paramref name="end"/>; <paramref name="observe"/> runs at each checkpoint once everything due has been processed.</summary>
-    public void RunUntil(DateTimeOffset end, IEnumerable<DateTimeOffset>? checkpoints = null, Action<DateTimeOffset, SignalDiagnostics>? observe = null)
+    /// <summary>
+    /// Advances to <paramref name="end"/>; <paramref name="observe"/> runs at each checkpoint once everything due has been processed.
+    /// <paramref name="consumerDeadline"/> adds a consumer's own next deadline (the guard's) to the
+    /// events jumped to, and <paramref name="afterStep"/> runs after the store has processed each one.
+    /// </summary>
+    public void RunUntil(
+        DateTimeOffset end,
+        IEnumerable<DateTimeOffset>? checkpoints = null,
+        Action<DateTimeOffset, SignalDiagnostics>? observe = null,
+        Func<DateTimeOffset, DateTimeOffset?>? consumerDeadline = null,
+        Action? afterStep = null)
     {
         var pending = new Queue<DateTimeOffset>((checkpoints ?? []).Where(c => c > Now && c <= end).Order());
         while (Now < end)
@@ -68,8 +77,14 @@ internal sealed class ReplayHarness
                 next = checkpoint;
             }
 
+            if (consumerDeadline?.Invoke(Now) is { } consumer && consumer > Now && consumer < next)
+            {
+                next = consumer;
+            }
+
             Time.Advance(next - Now);
             Drain();
+            afterStep?.Invoke();
             while (pending.TryPeek(out var due) && due <= Now)
             {
                 pending.Dequeue();

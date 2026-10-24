@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -7,7 +8,8 @@ namespace Switchboard.Domain.Signals;
 /// <summary>
 /// One signal as diagnostics shows it. <see cref="Name"/> is null for an unmapped role slot.
 /// <see cref="LastReported"/> is the freshness basis: the latest report time confirmed for the
-/// value in use.
+/// value in use. <see cref="Dependents"/> are the devices protection treats as unsafe while this
+/// signal is not fresh (SIG-05).
 /// </summary>
 public sealed record SignalReading(
     SignalName? Name,
@@ -24,7 +26,8 @@ public sealed record SignalReading(
     TimeSpan? DetectedRefresh,
     int RefreshIntervals,
     DirectionInfo? Direction,
-    long RejectedCount);
+    long RejectedCount,
+    ImmutableArray<DeviceName> Dependents);
 
 /// <summary>Balance residual check of one phase (SIG-09).</summary>
 /// <param name="Residual">The residual of the latest evaluation (generation + import − measured − controlled loads).</param>

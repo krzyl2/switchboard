@@ -18,9 +18,13 @@ public sealed class MqttConnectSettings
     public override string ToString() => $"{Credentials} as {ClientId}";
 }
 
+/// <summary>One message on a subscribed topic. <see cref="Retained"/> is set for a message the broker replayed from its store.</summary>
+public sealed record MqttInboundMessage(string Topic, string Payload, bool Retained);
+
 /// <summary>
 /// The broker connection under <see cref="MqttLink"/>, narrow enough for a hand-written fake.
-/// Implementations must refuse every topic the <see cref="MqttTopicGuard"/> refuses.
+/// Implementations must refuse every topic the <see cref="MqttTopicGuard"/> refuses, for
+/// publishing and for subscribing.
 /// </summary>
 public interface IMqttTransport
 {
@@ -29,8 +33,8 @@ public interface IMqttTransport
     /// <summary>Raised when an established or attempted connection is lost.</summary>
     event Func<Task>? Disconnected;
 
-    /// <summary>Raised for each message on a subscribed topic: (topic, UTF-8 payload).</summary>
-    event Func<string, string, Task>? MessageReceived;
+    /// <summary>Raised for each message on a subscribed topic (payload decoded as UTF-8).</summary>
+    event Func<MqttInboundMessage, Task>? MessageReceived;
 
     Task ConnectAsync(MqttConnectSettings settings, CancellationToken cancellationToken);
 

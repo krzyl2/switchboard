@@ -7,17 +7,24 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// devices (zigbee2mqtt/&lt;x&gt;/set switches a relay), so anything outside our own namespace is
 /// refused before it reaches the client:
 /// <list type="bullet">
-/// <item><c>&lt;BaseTopic&gt;/...</c> — our availability and state topics;</item>
+/// <item><c>&lt;BaseTopic&gt;/...</c> — our availability, state and attribute topics, but never one
+/// of our own command topics (<c>&lt;BaseTopic&gt;/&lt;object_id&gt;/set</c>): a retained ON there would
+/// command the add-on itself;</item>
 /// <item>exactly <c>&lt;DiscoveryPrefix&gt;/&lt;component&gt;/&lt;BaseTopic&gt;/&lt;object_id&gt;/config</c> — our discovery configs.</item>
 /// </list>
+/// Subscriptions are narrower still: exactly Home Assistant's birth topic and the kill switch's
+/// command topic. A subscription is how a message gets in, so nothing else may be listened to.
 /// </summary>
 public sealed class MqttTopicGuard
 {
     private const string ConfigLevel = "config";
+    private const string CommandLevel = "set";
     private const int DiscoveryLevels = 5;
+    private const int CommandLevels = 3;
 
     private readonly string _discoveryPrefix;
     private readonly string _baseTopic;
+    private readonly string[] _subscriptions;
 
     public MqttTopicGuard(string discoveryPrefix, string baseTopic)
     {
@@ -28,6 +35,7 @@ public sealed class MqttTopicGuard
 
         _discoveryPrefix = discoveryPrefix;
         _baseTopic = baseTopic;
+        _subscriptions = [MqttIdentity.HomeAssistantStatusTopic(discoveryPrefix), GuardEntities.CommandTopic(baseTopic, GuardEntities.KillSwitchObjectId)];
     }
 
     public bool IsAllowed(string? topic)
@@ -48,7 +56,7 @@ public sealed class MqttTopicGuard
 
         if (levels.Length >= 2 && levels[0] == _baseTopic)
         {
-            return true;
+            return !(levels.Length == CommandLevels && levels[2] == CommandLevel);
         }
 
         return levels.Length == DiscoveryLevels
@@ -64,10 +72,24 @@ public sealed class MqttTopicGuard
             throw new MqttTopicRefusedException(topic);
         }
     }
+
+    /// <summary>Exactly Home Assistant's birth topic and the kill switch command topic; no wildcard, no prefix match.</summary>
+    public bool IsSubscriptionAllowed(string? topicFilter) =>
+        topicFilter is not null && _subscriptions.Contains(topicFilter, StringComparer.Ordinal);
+
+    public void EnsureSubscriptionAllowed(string? topicFilter)
+    {
+        if (!IsSubscriptionAllowed(topicFilter))
+        {
+            throw new MqttTopicRefusedException(topicFilter, subscription: true);
+        }
+    }
 }
 
-public sealed class MqttTopicRefusedException(string? topic)
-    : InvalidOperationException($"Publishing to MQTT topic '{topic}' is outside the add-on's own namespace and was refused.")
+public sealed class MqttTopicRefusedException(string? topic, bool subscription = false)
+    : InvalidOperationException(subscription
+        ? $"Subscribing to MQTT topic '{topic}' is not allowed; the add-on listens only to Home Assistant's birth topic and its kill switch command."
+        : $"Publishing to MQTT topic '{topic}' is outside the add-on's own namespace and was refused.")
 {
     public string? Topic { get; } = topic;
 }

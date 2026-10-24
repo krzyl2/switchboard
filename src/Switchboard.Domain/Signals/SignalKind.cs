@@ -51,4 +51,10 @@ public enum SignalRole
 
     /// <summary>Summed active power of all phases.</summary>
     TotalPower,
+
+    /// <summary>
+    /// The applied state of a declared device stage, created from <c>devices:</c> (never declared
+    /// under <c>signals:</c>): a relay's on/off, or a modulating device's setpoint.
+    /// </summary>
+    DeviceState,
 }

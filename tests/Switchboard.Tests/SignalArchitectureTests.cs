@@ -87,6 +87,8 @@ public sealed partial class SignalArchitectureTests
     [Fact]
     public void Consumer_views_carry_no_entity_ids()
     {
+        // DeviceName is a leaf: its text matches ^[a-z][a-z0-9_]{0,39}$ and can never hold a '.',
+        // so it can never be an entity ID (GuardArchitectureTests proves the pattern).
         foreach (var root in new[] { typeof(ProtectionInputs), typeof(DispatchInputs) })
         {
             var graph = TypeGraph(root);
@@ -98,10 +100,14 @@ public sealed partial class SignalArchitectureTests
     [Fact]
     public void Protection_inputs_expose_no_watts_in_their_type_graph()
     {
+        // Since Stage 2 the protection inputs carry the setup and device states too; still amperes
+        // only, and no volts either, so protection cannot turn a current into watts (07-PITFALLS).
         var graph = TypeGraph(typeof(ProtectionInputs));
 
         Assert.Contains(typeof(Amperes), graph);
+        Assert.Contains(typeof(Switchboard.Domain.Devices.DeviceSpec), graph);
         Assert.DoesNotContain(typeof(Watts), graph);
+        Assert.DoesNotContain(typeof(Volts), graph);
         Assert.DoesNotContain(typeof(SignalValue), graph);
     }
 
@@ -155,8 +161,11 @@ public sealed partial class SignalArchitectureTests
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))];
 
-    /// <summary>Every type reachable through public properties and generic arguments, staying inside our own assemblies.</summary>
-    private static HashSet<Type> TypeGraph(Type root)
+    /// <summary>
+    /// Every type reachable through public properties and generic arguments, staying inside our own
+    /// assemblies. A device name is a leaf (see <see cref="Consumer_views_carry_no_entity_ids"/>).
+    /// </summary>
+    internal static HashSet<Type> TypeGraph(Type root)
     {
         var seen = new HashSet<Type>();
         var pending = new Stack<Type>([root]);
@@ -172,7 +181,8 @@ public sealed partial class SignalArchitectureTests
                 pending.Push(argument);
             }
 
-            if (type.Assembly.GetName().Name?.StartsWith("Switchboard", StringComparison.Ordinal) != true)
+            if (type.Assembly.GetName().Name?.StartsWith("Switchboard", StringComparison.Ordinal) != true
+                || type == typeof(Switchboard.Domain.Devices.DeviceName))
             {
                 continue;
             }

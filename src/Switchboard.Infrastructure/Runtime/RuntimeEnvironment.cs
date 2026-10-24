@@ -12,6 +12,9 @@ public sealed class RuntimeEnvironment
     /// <summary>The configuration document in the add-on config folder (map: addon_config).</summary>
     public const string DefaultConfigPath = "/config/switchboard.yaml";
 
+    /// <summary>The add-on's private data folder (map: data): runtime state and the decision log.</summary>
+    public const string DefaultDataPath = "/data";
+
     public string? SupervisorToken { get; init; }
 
     public string? HomeAssistantUrl { get; init; }
@@ -35,6 +38,8 @@ public sealed class RuntimeEnvironment
 
     public string ConfigPath { get; init; } = DefaultConfigPath;
 
+    public string DataPath { get; init; } = DefaultDataPath;
+
     /// <summary>Recorded history to replay instead of Home Assistant (standalone development only); null when unset.</summary>
     public string? DevReplayPath { get; init; }
 
@@ -51,6 +56,7 @@ public sealed class RuntimeEnvironment
         ArgumentNullException.ThrowIfNull(lookup);
         var optionsPath = lookup(EnvironmentVariableNames.OptionsPath);
         var configPath = lookup(EnvironmentVariableNames.ConfigPath);
+        var dataPath = lookup(EnvironmentVariableNames.DataPath);
         var replay = lookup(EnvironmentVariableNames.DevReplay);
         return new RuntimeEnvironment
         {
@@ -65,6 +71,7 @@ public sealed class RuntimeEnvironment
             LogLevelOverride = lookup(EnvironmentVariableNames.LogLevel),
             OptionsPath = string.IsNullOrWhiteSpace(optionsPath) ? DefaultOptionsPath : optionsPath,
             ConfigPath = string.IsNullOrWhiteSpace(configPath) ? DefaultConfigPath : configPath,
+            DataPath = string.IsNullOrWhiteSpace(dataPath) ? DefaultDataPath : dataPath,
             DevReplayPath = string.IsNullOrWhiteSpace(replay) ? null : replay,
             DevReplaySpeed = lookup(EnvironmentVariableNames.DevReplaySpeed),
             DevTrustAllRequests = bool.TryParse(lookup(EnvironmentVariableNames.DevTrustAllRequests), out var trust) && trust,
@@ -72,5 +79,5 @@ public sealed class RuntimeEnvironment
     }
 
     public override string ToString() =>
-        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DevReplay = {DevReplayPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
+        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DataPath = {DataPath}, DevReplay = {DevReplayPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
 }

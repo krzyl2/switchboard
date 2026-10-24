@@ -48,8 +48,10 @@ public sealed class DocumentParserTests
     {
         var result = TestConfigurations.Valid(TestConfigurations.Example);
 
+        // 13 mapped signals plus one applied-state signal per device stage (three heaters, the charger).
         Assert.Empty(result.Warnings);
-        Assert.Equal(13, result.Configuration!.Signals.Length);
+        Assert.Equal(13, result.Configuration!.Signals.Count(s => s.Role != SignalRole.DeviceState));
+        Assert.Equal(4, result.Configuration.Signals.Count(s => s.Role == SignalRole.DeviceState));
     }
 
     [Fact]
@@ -347,10 +349,11 @@ public sealed class DocumentParserTests
     [Fact]
     public void Reserved_sections_are_ignored_with_a_warning()
     {
-        var result = TestConfigurations.Valid(Base + "devices:\n  - id: ev\n");
+        // devices: is read since Stage 2; circuit_groups: stays reserved until dispatch.
+        var result = TestConfigurations.Valid(Base + "circuit_groups:\n  - id: carport\n");
 
         var warning = Assert.Single(result.Warnings);
-        Assert.Equal(("reserved_key_ignored", "devices", 17), (warning.Code, warning.Path, warning.Line));
+        Assert.Equal(("reserved_key_ignored", "circuit_groups", 17), (warning.Code, warning.Path, warning.Line));
     }
 
     [Fact]

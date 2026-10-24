@@ -13,8 +13,9 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 
 /// <summary>
 /// In-house client for the Home Assistant WebSocket API: auth handshake, keepalive, reconnect with
-/// backoff, and a <c>subscribe_entities</c> subscription filtered to the mapped entities. It can only
-/// send what <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it
+/// backoff, and a <c>subscribe_entities</c> subscription filtered to the mapped entities, replaced
+/// (and the old one ended with <c>unsubscribe_events</c>) when that set changes. It can only send
+/// what <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it
 /// has no public send method at all.
 /// </summary>
 public sealed class HomeAssistantClient
@@ -35,6 +36,9 @@ public sealed class HomeAssistantClient
     private readonly IEntitySubscriptionSink _subscriptions;
     private readonly ConcurrentDictionary<int, TaskCompletionSource> _pendingPongs = new();
     private readonly ConcurrentDictionary<int, byte> _subscribeIds = new();
+
+    // unsubscribe_events request id -> the subscription it ends.
+    private readonly ConcurrentDictionary<int, int> _unsubscribes = new();
 
     // Wakes the subscription loop; one pending wake-up is enough, it re-reads the tracked set anyway.
     private readonly Channel<bool> _trackedChanged = Channel.CreateBounded<bool>(
@@ -226,6 +230,7 @@ public sealed class HomeAssistantClient
 
             _pendingPongs.Clear();
             _subscribeIds.Clear();
+            _unsubscribes.Clear();
             Volatile.Write(ref _active, null);
             Interlocked.CompareExchange(ref _transport, null, transport);
             await transport.DisposeAsync().ConfigureAwait(false);
@@ -271,8 +276,9 @@ public sealed class HomeAssistantClient
     /// <summary>
     /// Subscribes to exactly the tracked entities, and again whenever that set changes. Home
     /// Assistant gets an explicit entity filter every time: without one, subscribe_entities streams
-    /// every entity in the house. The superseded subscription stays open on HA's side until the next
-    /// reconnect (unsubscribe is not on the allow-list); its events are ignored.
+    /// every entity in the house. The superseded subscription is ended with unsubscribe_events after
+    /// its replacement is in place (or at once when nothing is tracked any more), so nothing keeps
+    /// streaming entities the configuration no longer maps; until HA confirms, its events are ignored.
     /// </summary>
     private async Task SubscriptionLoopAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
     {
@@ -282,6 +288,7 @@ public sealed class HomeAssistantClient
             var tracked = _subscriptions.Tracked;
             if (subscribed is null || !tracked.SequenceEqual(subscribed))
             {
+                var superseded = Volatile.Read(ref _active);
                 if (tracked.Count == 0)
                 {
                     Volatile.Write(ref _active, null);
@@ -291,6 +298,11 @@ public sealed class HomeAssistantClient
                 else
                 {
                     await SubscribeEntitiesAsync(transport, tracked, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (superseded is not null)
+                {
+                    await UnsubscribeAsync(transport, superseded.Id, cancellationToken).ConfigureAwait(false);
                 }
 
                 subscribed = tracked;
@@ -322,6 +334,27 @@ public sealed class HomeAssistantClient
         await SendCommandPayloadAsync(transport, payload, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Subscribed to {Count} Home Assistant entities", entities.Count);
     }
+
+    private async Task UnsubscribeAsync(IWebSocketTransport transport, int subscription, CancellationToken cancellationToken)
+    {
+        var id = NextId();
+        var payload = Serialize(writer =>
+        {
+            writer.WriteNumber("id", id);
+            writer.WriteString("type", HomeAssistantCommandAllowList.UnsubscribeEvents);
+            writer.WriteNumber("subscription", subscription);
+        });
+
+        // Checked by the common gate while the subscription still counts as ours, then forgotten,
+        // so the same id can never pass the check a second time.
+        _unsubscribes[id] = subscription;
+        await SendCommandPayloadAsync(transport, payload, cancellationToken).ConfigureAwait(false);
+        _subscribeIds.TryRemove(subscription, out _);
+    }
+
+    /// <summary>One of this session's subscriptions, and not the one in use.</summary>
+    private bool IsOwnSubscription(int subscription) =>
+        _subscribeIds.ContainsKey(subscription) && Volatile.Read(ref _active)?.Id != subscription;
 
     private async Task KeepAliveAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
     {
@@ -413,6 +446,18 @@ public sealed class HomeAssistantClient
         {
             pending.TrySetResult();
         }
+        else if (type.ValueEquals(Result) && _unsubscribes.TryRemove(messageId, out var ended))
+        {
+            if (message.TryGetProperty("success", out var done) && done.ValueKind == JsonValueKind.True)
+            {
+                _logger.LogInformation("Home Assistant ended superseded subscription {Subscription}", ended);
+            }
+            else
+            {
+                // Its events are ignored anyway; the next reconnect ends it for good.
+                _logger.LogWarning("Home Assistant did not end superseded subscription {Subscription}: {Reason}", ended, ErrorMessageOf(message) ?? "no reason given");
+            }
+        }
         else if (type.ValueEquals(Result) && _subscribeIds.ContainsKey(messageId)
                  && !(message.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.True))
         {
@@ -459,7 +504,7 @@ public sealed class HomeAssistantClient
     /// <summary>Every command passes here: the serialized bytes are checked against the allowed shape before the socket sees them.</summary>
     private async Task SendCommandPayloadAsync(IWebSocketTransport transport, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
-        HomeAssistantCommandAllowList.EnsurePayloadAllowed(payload.Span);
+        HomeAssistantCommandAllowList.EnsurePayloadAllowed(payload.Span, IsOwnSubscription);
         await SendFrameAsync(transport, payload, cancellationToken).ConfigureAwait(false);
     }
 

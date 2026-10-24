@@ -69,4 +69,27 @@ public sealed class ConfigurationPackagingTests
 
         Assert.Empty(entities.Intersect(DerivedSensors));
     }
+
+    [Fact]
+    public void Example_devices_valid_and_heaters_shed_before_the_car()
+    {
+        // The maintainer's loads: three 1.5 kW elements, one per phase, and the go-e charger on L1.
+        // The house prefers charging the car, so on L1 the heater goes first; the actuators are the
+        // declared relays and the charger's current number, never a derived sensor.
+        var configuration = TestConfigurations.Valid(TestConfigurations.Example).Configuration!;
+
+        Assert.Equal(["heater_l1", "heater_l2", "heater_l3", "ev_charger"], configuration.Devices.Select(d => d.Id.Value));
+        Assert.Equal(
+            ["switch.grzalka_1", "switch.grzalka_2", "switch.grzalka_3", "number.goe_422752_amp"],
+            configuration.Devices.SelectMany(d => d.Stages).Select(s => s.Actuator.Value));
+        Assert.Empty(configuration.Devices.SelectMany(d => d.Stages).Select(s => s.StateEntity.Value).Intersect(DerivedSensors));
+        var l1 = Switchboard.Domain.Guard.ShedOrder.For(
+            Switchboard.Domain.Signals.Phase.L1,
+            [.. configuration.Devices.Select(d => new Switchboard.Domain.Guard.ShedCandidate(
+                d.ToSpec(),
+                [.. d.Stages.Select(_ => (Switchboard.Domain.Devices.AppliedState?)null)],
+                false,
+                System.Collections.Immutable.ImmutableDictionary<int, Switchboard.Domain.Guard.StageLimit>.Empty))]);
+        Assert.Equal(["heater_l1", "ev_charger", "ev_charger"], l1.Select(s => s.Device.Value));
+    }
 }

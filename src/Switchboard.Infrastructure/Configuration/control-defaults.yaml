@@ -1,7 +1,8 @@
 # Control-parameter defaults shipped with Switchboard (docs/04-ALGORITHMS.md §1 and §7).
 # Starting values carried over from the Node-RED predecessor, not truths. The `control:` key of
 # switchboard.yaml overrides any of them, key by key, with exactly this structure; a key that is
-# not listed here is an error. Durations: <n>ms, <n>s, <n>m or <n>h.
+# not listed here is an error. The one exception is `limits:` (the safety envelope at the end),
+# which no override can change. Durations: <n>ms, <n>s, <n>m or <n>h.
 
 connection:
   # Reserve per phase for loads Switchboard does not control, when connection.reserve_w omits a phase.
@@ -91,6 +92,9 @@ signals:
   # The longest max_age a signal may declare: a frozen sensor counts as fresh for its whole max_age,
   # so a longer value (90h typed for 90s) is refused. At most 1193h, the platform's longest timer.
   max_age_limit: 24h
+  # Polls by which a meter's current may lag its own power (the reference SolarEdge M1 does in
+  # ~0.4 % of polls): each counts one more refresh of blind time in the reserve derivation.
+  current_lag_polls: 1
 
 reserve_derivation:
   # Minimum safe reserve per phase (SIG-07); see MinimumSafeReserve for the formula.
@@ -98,3 +102,42 @@ reserve_derivation:
   shed_latency: 15s
   sigma_multiplier: 3
   floor_w: 0
+
+devices:
+  # Freshness of a device's applied-state signal when the device declares no state_max_age (SIG-05).
+  state_max_age: 10m
+  # From a command to the load actually changing, per device type; on a tie of value per kWh the
+  # faster device sheds first.
+  reaction_time:
+    onoff: 1s
+    stepped: 1s
+    modulating: 20s
+  # Lockouts of modulating devices when the device declares none; relays use dispatch.relay_min_on
+  # and dispatch.relay_min_off.
+  lockout:
+    modulating:
+      min_on: 60s
+      min_off: 60s
+
+decision_log:
+  # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.
+  retention_days: 30
+
+# Safety envelope of the tier tables (IEC 60898 thermal points). Read from this file only:
+# `control.limits` is refused, and a `control.breaker` override that leaves the envelope is an error.
+#  - the last band is shed_all_on_phase with allowed 0s, and starts at or below open_band_from_max;
+#  - a band reaching above the continuous multiple has a finite duration and is neither may_add nor hold;
+#  - a may_add band ends at or below may_add_up_to_max;
+#  - B and C claim at most continuous_multiple_max, unknown at most unknown_continuous_multiple_max;
+#  - budget.recovery_time is at least budget_recovery_time_min: a faster recovery would let short
+#    dips under the continuous current erase the thermal memory of repeated excursions (BRK-02);
+#  - budget.stop_increases_below and budget.shed_one_below are at least their _min: a lower
+#    threshold reacts later to the same loss of budget.
+limits:
+  continuous_multiple_max: 1.13
+  unknown_continuous_multiple_max: 1.00
+  may_add_up_to_max: 1.00
+  open_band_from_max: 1.45
+  budget_recovery_time_min: 600s
+  budget_stop_increases_below_min: 0.50
+  budget_shed_one_below_min: 0.25

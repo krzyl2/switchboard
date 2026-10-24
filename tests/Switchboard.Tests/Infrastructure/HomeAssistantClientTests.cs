@@ -391,6 +391,76 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Changed_entity_set_unsubscribes_superseded()
+    {
+        // A reload that changes the mapped entities must not leave the old subscription streaming:
+        // the replacement first (no gap), then unsubscribe_events for exactly the superseded id.
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var oldId = (await NextCommandAsync(transport)).Id;
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"result","success":true,"result":null}""", ("@id", oldId)));
+
+        _sink.SetTracked("sensor.meter_current_b");
+        var replacement = await NextCommandAsync(transport);
+        using var unsubscribe = JsonDocument.Parse(await transport.NextSentAsync());
+
+        Assert.Equal("subscribe_entities", replacement.Type);
+        var root = unsubscribe.RootElement;
+        Assert.Equal(["id", "type", "subscription"], root.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("unsubscribe_events", root.GetProperty("type").GetString());
+        Assert.Equal(oldId, root.GetProperty("subscription").GetInt32());
+        Assert.NotEqual(replacement.Id, root.GetProperty("subscription").GetInt32());
+
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"result","success":true,"result":null}""", ("@id", root.GetProperty("id").GetInt32())));
+        Assert.Contains(_logs.Entries, e => e.Text.Contains("ended superseded subscription", StringComparison.Ordinal));
+        Assert.False(transport.IsAborted);
+    }
+
+    [Fact]
+    public async Task Nothing_tracked_any_more_unsubscribes_at_once()
+    {
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var oldId = (await NextCommandAsync(transport)).Id;
+
+        _sink.SetTracked();
+        using var unsubscribe = JsonDocument.Parse(await transport.NextSentAsync());
+
+        Assert.Equal(("unsubscribe_events", oldId), (unsubscribe.RootElement.GetProperty("type").GetString(), unsubscribe.RootElement.GetProperty("subscription").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Refused_unsubscribe_is_a_warning_and_the_session_continues()
+    {
+        // The superseded subscription's events are ignored anyway; dropping a working session for
+        // it would blind every signal until the reconnect.
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        await NextCommandAsync(transport);
+        _sink.SetTracked("sensor.meter_current_b");
+        await NextCommandAsync(transport);
+        var unsubscribeId = (await NextCommandAsync(transport)).Id;
+
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"result","success":false,"error":{"code":"not_found","message":"Subscription not found."}}""", ("@id", unsubscribeId)));
+
+        Assert.Contains(_logs.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning && e.Text.Contains("Subscription not found.", StringComparison.Ordinal));
+        Assert.False(transport.IsAborted);
+        Assert.Equal(ConnectionState.Connected, _state.Current);
+    }
+
+    [Fact]
+    public async Task Unsubscribe_cannot_be_sent_for_anything_but_a_superseded_own_subscription()
+    {
+        var transport = await StartAndAuthenticateAsync();
+        var sentBefore = transport.Sent.Count;
+
+        await Assert.ThrowsAsync<HomeAssistantCommandRefusedException>(
+            () => _client.SendCommandAsync(HomeAssistantCommandAllowList.UnsubscribeEvents, CancellationToken.None));
+
+        Assert.Equal(sentBefore, transport.Sent.Count);
+    }
+
+    [Fact]
     public async Task Failed_subscription_result_drops_session()
     {
         // Connected but blind is worse than reconnecting: no signal would ever turn fresh.
