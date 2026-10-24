@@ -32,7 +32,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **BRK-01**: Configurable overload tiers (multiple of rated current → allowed duration), with defaults derived conservatively from IEC 60898 characteristic B
 - [x] **BRK-02**: Per-phase overload budget consumed while above the continuous threshold and recovered while below it (thermal memory)
 - [x] **BRK-03**: Tier reached determines reaction speed: ordinary cycle, next cycle, immediate single shed, or full shed
-- [ ] **BRK-04**: Budget state and remaining recovery time exposed as entities and shown in the UI
+- [x] **BRK-04**: Budget state and remaining recovery time exposed as entities and shown in the UI
 - [x] **BRK-05**: Breaker characteristic selectable (B, C, unknown→cautious); unknown forces the continuous threshold to 1.00×
 
 ## Dispatch
