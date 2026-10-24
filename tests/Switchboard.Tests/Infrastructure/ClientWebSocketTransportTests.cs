@@ -56,7 +56,8 @@ public sealed class ClientWebSocketTransportTests : IAsyncDisposable
             state,
             MsOptions.Create(TestOptions.HomeAssistant()),
             time,
-            new LogCapture().For<HomeAssistantClient>());
+            new LogCapture().For<HomeAssistantClient>(),
+            new RecordingSubscriptionSink());
         using var stop = new CancellationTokenSource();
         var run = client.RunAsync(stop.Token);
 

@@ -4,11 +4,14 @@ using Switchboard.Infrastructure.Runtime;
 namespace Switchboard.Infrastructure.HomeAssistant;
 
 /// <summary>Where and as whom to connect. Carries the token, so it never prints it.</summary>
-public sealed class HomeAssistantEndpoint(Uri webSocketUri, string accessToken)
+public sealed class HomeAssistantEndpoint(Uri webSocketUri, string accessToken, Uri? restBaseUri = null)
 {
     public Uri WebSocketUri { get; } = webSocketUri;
 
     public string AccessToken { get; } = accessToken;
+
+    /// <summary>The REST API base (ending in <c>api/</c>) for entity state reads; null when it cannot be derived.</summary>
+    public Uri? RestBaseUri { get; } = restBaseUri;
 
     /// <summary>Scheme, host, port and path only: no user info, query or token.</summary>
     public string DisplayUri => WebSocketUri.GetComponents(
@@ -27,7 +30,7 @@ public sealed record HomeAssistantEndpointResolution(HomeAssistantEndpoint? Endp
 
         if (environment.IsAddon)
         {
-            return new(new HomeAssistantEndpoint(new Uri(options.SupervisorWebSocketUrl), environment.SupervisorToken!), null);
+            return new(new HomeAssistantEndpoint(new Uri(options.SupervisorWebSocketUrl), environment.SupervisorToken!, new Uri(options.SupervisorRestUrl)), null);
         }
 
         if (string.IsNullOrWhiteSpace(environment.HomeAssistantUrl) || string.IsNullOrWhiteSpace(environment.HomeAssistantToken))
@@ -37,7 +40,10 @@ public sealed record HomeAssistantEndpointResolution(HomeAssistantEndpoint? Endp
         }
 
         return HomeAssistantUrls.TryGetWebSocketUri(environment.HomeAssistantUrl, out var uri)
-            ? new(new HomeAssistantEndpoint(uri, environment.HomeAssistantToken), null)
+            ? new(new HomeAssistantEndpoint(
+                uri,
+                environment.HomeAssistantToken,
+                HomeAssistantUrls.TryGetRestBaseUri(environment.HomeAssistantUrl, out var rest) ? rest : null), null)
             : new(null, $"{EnvironmentVariableNames.HomeAssistantUrl} is not an http(s):// or ws(s):// URL; Home Assistant stays disconnected.");
     }
 }

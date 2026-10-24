@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Signals, phases, limits and units. No I/O, no Home Assistant types, no clock and no package
+    references: only the base class library (guarded by a test). Time arrives as values.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Switchboard.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Switchboard.Tests" />
+  </ItemGroup>
+
+</Project>

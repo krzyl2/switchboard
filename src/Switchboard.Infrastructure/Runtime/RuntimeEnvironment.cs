@@ -9,6 +9,9 @@ public sealed class RuntimeEnvironment
     /// <summary>Where the Supervisor writes the add-on options.</summary>
     public const string DefaultOptionsPath = "/data/options.json";
 
+    /// <summary>The configuration document in the add-on config folder (map: addon_config).</summary>
+    public const string DefaultConfigPath = "/config/switchboard.yaml";
+
     public string? SupervisorToken { get; init; }
 
     public string? HomeAssistantUrl { get; init; }
@@ -30,6 +33,14 @@ public sealed class RuntimeEnvironment
 
     public string OptionsPath { get; init; } = DefaultOptionsPath;
 
+    public string ConfigPath { get; init; } = DefaultConfigPath;
+
+    /// <summary>Recorded history to replay instead of Home Assistant (standalone development only); null when unset.</summary>
+    public string? DevReplayPath { get; init; }
+
+    /// <summary>The raw replay speed; validated when the signal source is chosen.</summary>
+    public string? DevReplaySpeed { get; init; }
+
     /// <summary>Dev compose only: turns off the ingress source-address check.</summary>
     public bool DevTrustAllRequests { get; init; }
 
@@ -39,6 +50,8 @@ public sealed class RuntimeEnvironment
     {
         ArgumentNullException.ThrowIfNull(lookup);
         var optionsPath = lookup(EnvironmentVariableNames.OptionsPath);
+        var configPath = lookup(EnvironmentVariableNames.ConfigPath);
+        var replay = lookup(EnvironmentVariableNames.DevReplay);
         return new RuntimeEnvironment
         {
             SupervisorToken = lookup(EnvironmentVariableNames.SupervisorToken),
@@ -51,10 +64,13 @@ public sealed class RuntimeEnvironment
             ModeOverride = lookup(EnvironmentVariableNames.Mode),
             LogLevelOverride = lookup(EnvironmentVariableNames.LogLevel),
             OptionsPath = string.IsNullOrWhiteSpace(optionsPath) ? DefaultOptionsPath : optionsPath,
+            ConfigPath = string.IsNullOrWhiteSpace(configPath) ? DefaultConfigPath : configPath,
+            DevReplayPath = string.IsNullOrWhiteSpace(replay) ? null : replay,
+            DevReplaySpeed = lookup(EnvironmentVariableNames.DevReplaySpeed),
             DevTrustAllRequests = bool.TryParse(lookup(EnvironmentVariableNames.DevTrustAllRequests), out var trust) && trust,
         };
     }
 
     public override string ToString() =>
-        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, DevTrustAllRequests = {DevTrustAllRequests} }}";
+        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DevReplay = {DevReplayPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
 }

@@ -16,4 +16,13 @@ public static class EnvironmentVariableNames
     public const string LogLevel = "SWITCHBOARD_LOG_LEVEL";
     public const string OptionsPath = "SWITCHBOARD_OPTIONS_PATH";
     public const string DevTrustAllRequests = "SWITCHBOARD_DEV_TRUST_ALL_REQUESTS";
+
+    /// <summary>Where the configuration document is read from; defaults to the add-on config folder.</summary>
+    public const string ConfigPath = "SWITCHBOARD_CONFIG_PATH";
+
+    /// <summary>Standalone development only: replay recorded history (csv or csv.gz) instead of connecting to Home Assistant.</summary>
+    public const string DevReplay = "SWITCHBOARD_DEV_REPLAY";
+
+    /// <summary>Replay speed factor (default 1).</summary>
+    public const string DevReplaySpeed = "SWITCHBOARD_DEV_REPLAY_SPEED";
 }

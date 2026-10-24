@@ -12,3 +12,12 @@ export const STATUS_REFRESH_INTERVAL_MS = 5_000;
  * "status unavailable" instead of leaving a frozen page that looks like a calm one.
  */
 export const STATUS_REQUEST_TIMEOUT_MS = 4_000;
+
+/**
+ * How often the signals page asks for every signal. Faster than the status page: ages are the point
+ * of that page, and a meter refreshing every few seconds should visibly tick.
+ */
+export const SIGNALS_REFRESH_INTERVAL_MS = 2_000;
+
+/** Shorter than the refresh interval, so a hung request never delays the next one. */
+export const SIGNALS_REQUEST_TIMEOUT_MS = 1_800;

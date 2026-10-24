@@ -20,3 +20,6 @@ src/Switchboard.Host/wwwroot/
 # Local dev stack: live HA config + add-on /data, and the HA token
 deploy/dev-data/
 deploy/.env
+
+# Real household consumption recorded from the maintainer's installation; not published without approval
+tests/fixtures/replay/live-*.csv.gz

@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <PackageReference Include="MQTTnet" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\control-defaults.yaml" LogicalName="Switchboard.Infrastructure.Configuration.control-defaults.yaml" />
   </ItemGroup>
 
   <ItemGroup>

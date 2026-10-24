@@ -9,12 +9,17 @@ using Switchboard.Host.Hosting;
 namespace Switchboard.Tests.Host;
 
 /// <summary>
-/// The real Program in memory, with the background links removed: these tests exercise the web
-/// surface, and the link states are set directly through their ports.
+/// The real Program in memory, with the background links and the signal pipeline removed: these
+/// tests exercise the web surface, and link states and signal diagnostics are set directly through
+/// their ports.
 /// </summary>
 internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
 {
-    private static readonly Type[] Links = [typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService)];
+    private static readonly Type[] Links =
+    [
+        typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
+        typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
+    ];
 
     private readonly Dictionary<string, string?> _settings;
     private readonly string _webRoot;
@@ -31,6 +36,8 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
         {
             // Never read a real /data/options.json, and never inherit the developer's environment.
             ["SWITCHBOARD_OPTIONS_PATH"] = Path.Combine(webRoot, "no-options.json"),
+            ["SWITCHBOARD_CONFIG_PATH"] = Path.Combine(webRoot, "no-switchboard.yaml"),
+            ["SWITCHBOARD_DEV_REPLAY"] = null,
             ["SUPERVISOR_TOKEN"] = null,
             ["SWITCHBOARD_DEV_TRUST_ALL_REQUESTS"] = null,
             ["SWITCHBOARD_MODE"] = null,

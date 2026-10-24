@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Switchboard.Application.Connectivity;
+using Switchboard.Application.Signals;
 using Switchboard.Infrastructure.HomeAssistant;
 using Switchboard.Tests.Support;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -21,6 +22,7 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
     private readonly HomeAssistantConnectionState _state = new();
     private readonly LogCapture _logs = new();
     private readonly CancellationTokenSource _stop = new();
+    private readonly RecordingSubscriptionSink _sink = new();
     private readonly HomeAssistantClient _client;
     private Task? _run;
 
@@ -32,7 +34,8 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
             _state,
             MsOptions.Create(TestOptions.HomeAssistant()),
             _time,
-            _logs.For<HomeAssistantClient>());
+            _logs.For<HomeAssistantClient>(),
+            _sink);
     }
 
     [Fact]
@@ -183,7 +186,7 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Backoff_doubles_caps_at_max_and_resets_after_successful_auth()
+    public async Task Backoff_doubles_caps_at_max_and_resets_after_a_working_session()
     {
         _factory.FailConnects = true;
         Start();
@@ -306,6 +309,156 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
         Assert.DoesNotContain(Token, _logs.AllText, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Subscribes_with_filter_for_mapped_entities_only()
+    {
+        // Without entity_ids, subscribe_entities streams every entity in the house.
+        _sink.SetTracked("sensor.meter_power_a", "sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+
+        using var subscribe = JsonDocument.Parse(await transport.NextSentAsync());
+
+        var root = subscribe.RootElement;
+        Assert.Equal(["id", "type", "entity_ids"], root.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("subscribe_entities", root.GetProperty("type").GetString());
+        Assert.Equal(["sensor.meter_current_a", "sensor.meter_power_a"], root.GetProperty("entity_ids").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["started"], _sink.Events);
+    }
+
+    [Fact]
+    public async Task Initial_state_makes_the_source_ready_and_reaches_the_sink()
+    {
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var id = (await NextCommandAsync(transport)).Id;
+
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"result","success":true,"result":null}""", ("@id", id)));
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"event","event":{"a":{"sensor.meter_current_a":{"s":"5.4","a":{"unit_of_measurement":"A"},"c":"x","lc":1792836054.02}}}}""", ("@id", id)));
+
+        var batch = await _sink.NextBatchAsync();
+        Assert.Equal(BatchOrigin.Initial, batch.Origin);
+        Assert.Equal("5.4", batch.Updates.Single().State);
+        Assert.Equal(["started", "initial"], _sink.Events);
+    }
+
+    [Fact]
+    public async Task Nothing_mapped_means_no_subscription()
+    {
+        var transport = await StartAndAuthenticateAsync();
+        _time.Advance(TestOptions.PingInterval);
+
+        var first = await NextCommandAsync(transport);
+
+        Assert.Equal(("ping", 1), (first.Type, first.Id));
+        Assert.Equal(["started", "ready"], _sink.Events);
+    }
+
+    [Fact]
+    public async Task Resubscribes_after_reconnect()
+    {
+        _sink.SetTracked("sensor.meter_current_a");
+        var first = await StartAndAuthenticateAsync();
+        Assert.Equal("subscribe_entities", (await NextCommandAsync(first)).Type);
+
+        first.Push(null);
+        await _time.WaitForTimerAsync(TestOptions.ReconnectMin);
+        _time.Advance(TestOptions.ReconnectMin);
+        var second = await AuthenticateNextAsync();
+
+        Assert.Equal((1, "subscribe_entities"), await NextCommandAsync(second));
+        Assert.Equal(["started", "ended", "started"], _sink.Events);
+    }
+
+    [Fact]
+    public async Task Configuration_change_resubscribes_in_session_ignores_superseded()
+    {
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var oldId = (await NextCommandAsync(transport)).Id;
+        await transport.PushAndWaitAsync(Frame("""{"id":@oldId,"type":"result","success":true,"result":null}""", ("@oldId", oldId)));
+
+        _sink.SetTracked("sensor.meter_current_a", "sensor.meter_power_a");
+        var resubscribe = JsonDocument.Parse(await transport.NextSentAsync()).RootElement;
+        var newId = resubscribe.GetProperty("id").GetInt32();
+        await transport.PushAndWaitAsync(Frame("""{"id":@oldId,"type":"event","event":{"a":{"sensor.meter_current_a":{"s":"1","a":{},"c":"x","lc":1}}}}""", ("@oldId", oldId)));
+        await transport.PushAndWaitAsync(Frame("""{"id":@newId,"type":"event","event":{"a":{"sensor.meter_power_a":{"s":"2","a":{},"c":"x","lc":1}}}}""", ("@newId", newId)));
+
+        Assert.NotEqual(oldId, newId);
+        Assert.Equal(2, resubscribe.GetProperty("entity_ids").GetArrayLength());
+        var batch = await _sink.NextBatchAsync();
+        Assert.Equal("sensor.meter_power_a", batch.Updates.Single().Entity.Value);
+        Assert.False(_sink.TryReadBatch(out _), "The superseded subscription's event must be ignored.");
+    }
+
+    [Fact]
+    public async Task Failed_subscription_result_drops_session()
+    {
+        // Connected but blind is worse than reconnecting: no signal would ever turn fresh.
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var id = (await NextCommandAsync(transport)).Id;
+
+        transport.Push(Frame("""{"id":@id,"type":"result","success":false,"error":{"code":"unauthorized","message":"Unauthorized"}}""", ("@id", id)));
+        await _time.WaitForTimerAsync(TestOptions.ReconnectMin);
+
+        Assert.True(transport.IsAborted);
+        Assert.Contains("ended", _sink.Events);
+        Assert.Contains(_logs.Entries, e => e.Text.Contains("Unauthorized", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Refused_subscription_backs_off_and_only_a_delivered_initial_state_resets_it()
+    {
+        // HA refuses the whole subscription for one entity ID it rejects. Resetting the backoff on
+        // auth_ok turned that into a reconnect every ReconnectMinDelay, forever.
+        _sink.SetTracked("sensor.meter_current_a");
+        Start();
+        foreach (var wait in new[] { 1, 2, 4 }.Select(s => TimeSpan.FromSeconds(s)))
+        {
+            var refused = await AuthenticateNextAsync();
+            var id = (await NextCommandAsync(refused)).Id;
+            refused.Push(Frame("""{"id":@id,"type":"result","success":false,"error":{"code":"invalid_format","message":"Invalid entity ID"}}""", ("@id", id)));
+            await _time.WaitForTimerAsync(wait);
+            _time.Advance(wait);
+        }
+
+        var working = await AuthenticateNextAsync();
+        var subscription = (await NextCommandAsync(working)).Id;
+        await working.PushAndWaitAsync(Frame("""{"id":@id,"type":"event","event":{"a":{"sensor.meter_current_a":{"s":"5","a":{},"c":"x","lc":1}}}}""", ("@id", subscription)));
+        await _sink.NextBatchAsync();
+        working.Push(null);
+        await _time.WaitForTimerAsync(TestOptions.ReconnectMin);
+
+        Assert.Equal(TestOptions.ReconnectMin, _time.Armed[^1]);
+    }
+
+    [Fact]
+    public async Task Malformed_event_dropped_session_continues()
+    {
+        _sink.SetTracked("sensor.meter_current_a");
+        var transport = await StartAndAuthenticateAsync();
+        var id = (await NextCommandAsync(transport)).Id;
+
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"event","event":{"a":{"sensor.meter_current_a":{"s":5}}}}""", ("@id", id)));
+        await transport.PushAndWaitAsync(Frame("""{"id":@id,"type":"event","event":{"a":{"sensor.meter_current_a":{"s":"5","a":{},"c":"x","lc":1}}}}""", ("@id", id)));
+
+        Assert.Equal("5", (await _sink.NextBatchAsync()).Updates.Single().State);
+        Assert.False(transport.IsAborted);
+        Assert.Equal(ConnectionState.Connected, _state.Current);
+    }
+
+    [Fact]
+    public async Task Subscribe_without_an_entity_filter_cannot_be_sent()
+    {
+        var transport = await StartAndAuthenticateAsync();
+        var sentBefore = transport.Sent.Count;
+
+        await Assert.ThrowsAsync<HomeAssistantCommandRefusedException>(
+            () => _client.SendCommandAsync(HomeAssistantCommandAllowList.SubscribeEntities, CancellationToken.None));
+
+        Assert.Equal(sentBefore, transport.Sent.Count);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _stop.CancelAsync();
@@ -318,6 +471,10 @@ public sealed class HomeAssistantClientTests : IAsyncDisposable
     }
 
     private void Start() => _run = _client.RunAsync(_stop.Token);
+
+    /// <summary>A JSON frame with @name placeholders filled in (raw interpolation cannot hold JSON's closing braces).</summary>
+    private static string Frame(string template, params (string Name, int Value)[] values) =>
+        values.Aggregate(template, (text, v) => text.Replace(v.Name, v.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
 
     private async Task<ScriptedWebSocketTransport> StartAndAuthenticateAsync()
     {

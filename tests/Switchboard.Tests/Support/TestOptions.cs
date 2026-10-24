@@ -16,14 +16,17 @@ internal static class TestOptions
     public static readonly TimeSpan HeartbeatExpireAfter = TimeSpan.FromSeconds(45);
     public static readonly TimeSpan MqttKeepAlive = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan MqttShutdownTimeout = TimeSpan.FromSeconds(3);
+    public static readonly TimeSpan StateReadTimeout = TimeSpan.FromSeconds(4);
 
     public static HomeAssistantOptions HomeAssistant() => new()
     {
         SupervisorWebSocketUrl = "ws://supervisor/core/websocket",
+        SupervisorRestUrl = "http://supervisor/core/api/",
         PingInterval = PingInterval,
         PongTimeout = PongTimeout,
         ReconnectMinDelay = ReconnectMin,
         ReconnectMaxDelay = ReconnectMax,
+        StateReadTimeout = StateReadTimeout,
     };
 
     public static MqttOptions Mqtt() => new()

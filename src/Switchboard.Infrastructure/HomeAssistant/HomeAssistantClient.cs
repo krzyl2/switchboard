@@ -1,18 +1,21 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Connectivity;
 using Switchboard.Application.Options;
 using Switchboard.Application.Resilience;
+using Switchboard.Application.Signals;
 
 namespace Switchboard.Infrastructure.HomeAssistant;
 
 /// <summary>
 /// In-house client for the Home Assistant WebSocket API: auth handshake, keepalive, reconnect with
-/// backoff. It can only send what <see cref="HomeAssistantCommandAllowList"/> permits, and it has no
-/// public send method at all.
+/// backoff, and a <c>subscribe_entities</c> subscription filtered to the mapped entities. It can only
+/// send what <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it
+/// has no public send method at all.
 /// </summary>
 public sealed class HomeAssistantClient
 {
@@ -20,6 +23,8 @@ public sealed class HomeAssistantClient
     private const string AuthOk = "auth_ok";
     private const string AuthInvalid = "auth_invalid";
     private const string Pong = "pong";
+    private const string Result = "result";
+    private const string Event = "event";
 
     private readonly IWebSocketTransportFactory _transportFactory;
     private readonly HomeAssistantEndpoint _endpoint;
@@ -27,14 +32,25 @@ public sealed class HomeAssistantClient
     private readonly HomeAssistantOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<HomeAssistantClient> _logger;
+    private readonly IEntitySubscriptionSink _subscriptions;
     private readonly ConcurrentDictionary<int, TaskCompletionSource> _pendingPongs = new();
+    private readonly ConcurrentDictionary<int, byte> _subscribeIds = new();
+
+    // Wakes the subscription loop; one pending wake-up is enough, it re-reads the tracked set anyway.
+    private readonly Channel<bool> _trackedChanged = Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
     // ClientWebSocket allows a single outstanding send.
     private readonly SemaphoreSlim _sendGate = new(1, 1);
 
     private IWebSocketTransport? _transport;
+    private ActiveSubscription? _active;
     private int _lastId;
     private volatile bool _stopping;
+
+    // Set once the session delivered what it is for (the subscription's initial state, or nothing to
+    // subscribe); only then does the reconnect backoff start over.
+    private volatile bool _sessionWorked;
 
     public HomeAssistantClient(
         IWebSocketTransportFactory transportFactory,
@@ -42,7 +58,8 @@ public sealed class HomeAssistantClient
         HomeAssistantConnectionState state,
         IOptions<HomeAssistantOptions> options,
         TimeProvider timeProvider,
-        ILogger<HomeAssistantClient> logger)
+        ILogger<HomeAssistantClient> logger,
+        IEntitySubscriptionSink subscriptions)
     {
         _transportFactory = transportFactory;
         _endpoint = endpoint;
@@ -50,6 +67,8 @@ public sealed class HomeAssistantClient
         _options = options.Value;
         _time = timeProvider;
         _logger = logger;
+        _subscriptions = subscriptions;
+        _subscriptions.TrackedChanged += (_, _) => _trackedChanged.Writer.TryWrite(true);
     }
 
     private enum SessionEnd
@@ -140,9 +159,13 @@ public sealed class HomeAssistantClient
         await SendCommandAsync(transport, type, NextId(), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The subscription currently routed to the sink; events of superseded ones are ignored.</summary>
+    private sealed record ActiveSubscription(int Id, SubscribeEntitiesParser Parser);
+
     private async Task<SessionEnd> RunSessionAsync(ExponentialBackoff backoff, CancellationToken cancellationToken)
     {
         _state.Set(ConnectionState.Connecting);
+        _sessionWorked = false;
         var transport = _transportFactory.Create();
         Volatile.Write(ref _transport, transport);
         Interlocked.Exchange(ref _lastId, 0);
@@ -175,7 +198,6 @@ public sealed class HomeAssistantClient
                     throw new HomeAssistantProtocolException($"unexpected auth reply '{TypeOf(reply)}'");
             }
 
-            backoff.Reset();
             await ServeAsync(transport, cancellationToken).ConfigureAwait(false);
             if (_stopping)
             {
@@ -190,12 +212,21 @@ public sealed class HomeAssistantClient
         }
         finally
         {
+            // Not on auth_ok: a subscription Home Assistant refuses (an entity ID it rejects) would
+            // otherwise reconnect every ReconnectMinDelay forever.
+            if (_sessionWorked)
+            {
+                backoff.Reset();
+            }
+
             foreach (var pending in _pendingPongs.Values)
             {
                 pending.TrySetCanceled(CancellationToken.None);
             }
 
             _pendingPongs.Clear();
+            _subscribeIds.Clear();
+            Volatile.Write(ref _active, null);
             Interlocked.CompareExchange(ref _transport, null, transport);
             await transport.DisposeAsync().ConfigureAwait(false);
         }
@@ -210,22 +241,86 @@ public sealed class HomeAssistantClient
         var keepAlive = KeepAliveAsync(transport, session.Token);
         _state.Set(ConnectionState.Connected);
         _logger.LogInformation("Connected to Home Assistant at {Uri}", _endpoint.DisplayUri);
-        var receive = ReceiveLoopAsync(transport, session.Token);
-
-        var finished = await Task.WhenAny(keepAlive, receive).ConfigureAwait(false);
-        await session.CancelAsync().ConfigureAwait(false);
-        transport.Abort();
+        _subscriptions.SessionStarted();
         try
         {
-            await Task.WhenAll(keepAlive, receive).ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Observed below through the task that ended the session; the other one only
-            // failed because the session was torn down.
-        }
+            var receive = ReceiveLoopAsync(transport, session.Token);
+            var subscribe = SubscriptionLoopAsync(transport, session.Token);
 
-        await finished.ConfigureAwait(false);
+            var finished = await Task.WhenAny(keepAlive, receive, subscribe).ConfigureAwait(false);
+            await session.CancelAsync().ConfigureAwait(false);
+            transport.Abort();
+            try
+            {
+                await Task.WhenAll(keepAlive, receive, subscribe).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Observed below through the task that ended the session; the others only
+                // failed because the session was torn down.
+            }
+
+            await finished.ConfigureAwait(false);
+        }
+        finally
+        {
+            _subscriptions.SessionEnded();
+        }
+    }
+
+    /// <summary>
+    /// Subscribes to exactly the tracked entities, and again whenever that set changes. Home
+    /// Assistant gets an explicit entity filter every time: without one, subscribe_entities streams
+    /// every entity in the house. The superseded subscription stays open on HA's side until the next
+    /// reconnect (unsubscribe is not on the allow-list); its events are ignored.
+    /// </summary>
+    private async Task SubscriptionLoopAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<EntityId>? subscribed = null;
+        while (true)
+        {
+            var tracked = _subscriptions.Tracked;
+            if (subscribed is null || !tracked.SequenceEqual(subscribed))
+            {
+                if (tracked.Count == 0)
+                {
+                    Volatile.Write(ref _active, null);
+                    _sessionWorked = true;
+                    _subscriptions.SessionReady();
+                }
+                else
+                {
+                    await SubscribeEntitiesAsync(transport, tracked, cancellationToken).ConfigureAwait(false);
+                }
+
+                subscribed = tracked;
+            }
+
+            await _trackedChanged.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task SubscribeEntitiesAsync(IWebSocketTransport transport, IReadOnlyList<EntityId> entities, CancellationToken cancellationToken)
+    {
+        var id = NextId();
+        _subscribeIds[id] = 0;
+
+        // Routed before the request leaves, so the initial state cannot arrive ahead of its parser.
+        Volatile.Write(ref _active, new ActiveSubscription(id, new SubscribeEntitiesParser(entities)));
+        var payload = Serialize(writer =>
+        {
+            writer.WriteNumber("id", id);
+            writer.WriteString("type", HomeAssistantCommandAllowList.SubscribeEntities);
+            writer.WriteStartArray("entity_ids");
+            foreach (var entity in entities)
+            {
+                writer.WriteStringValue(entity.Value);
+            }
+
+            writer.WriteEndArray();
+        });
+        await SendCommandPayloadAsync(transport, payload, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("Subscribed to {Count} Home Assistant entities", entities.Count);
     }
 
     private async Task KeepAliveAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
@@ -308,11 +403,34 @@ public sealed class HomeAssistantClient
             return;
         }
 
-        if (type.ValueEquals(Pong)
-            && message.TryGetProperty("id", out var id) && id.TryGetInt32(out var pongId)
-            && _pendingPongs.TryGetValue(pongId, out var pending))
+        var id = message.TryGetProperty("id", out var idElement) && idElement.TryGetInt32(out var parsed) ? parsed : (int?)null;
+        if (id is not { } messageId)
+        {
+            return;
+        }
+
+        if (type.ValueEquals(Pong) && _pendingPongs.TryGetValue(messageId, out var pending))
         {
             pending.TrySetResult();
+        }
+        else if (type.ValueEquals(Result) && _subscribeIds.ContainsKey(messageId)
+                 && !(message.TryGetProperty("success", out var success) && success.ValueKind == JsonValueKind.True))
+        {
+            // Without the subscription no signal is fresh; start over rather than sit connected and blind.
+            throw new HomeAssistantProtocolException($"subscribe_entities was refused: {ErrorMessageOf(message) ?? "no reason given"}");
+        }
+        else if (type.ValueEquals(Event) && Volatile.Read(ref _active) is { } active && active.Id == messageId
+                 && message.TryGetProperty("event", out var body))
+        {
+            var batch = active.Parser.Parse(body, out var problem);
+            if (batch is null)
+            {
+                _logger.LogWarning("Ignored a malformed Home Assistant state event: {Problem}", problem);
+                return;
+            }
+
+            _sessionWorked = true;
+            _subscriptions.Deliver(batch);
         }
     }
 
@@ -335,6 +453,13 @@ public sealed class HomeAssistantClient
             writer.WriteNumber("id", id);
             writer.WriteString("type", type);
         });
+        await SendCommandPayloadAsync(transport, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Every command passes here: the serialized bytes are checked against the allowed shape before the socket sees them.</summary>
+    private async Task SendCommandPayloadAsync(IWebSocketTransport transport, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
+    {
+        HomeAssistantCommandAllowList.EnsurePayloadAllowed(payload.Span);
         await SendFrameAsync(transport, payload, cancellationToken).ConfigureAwait(false);
     }
 
@@ -378,6 +503,12 @@ public sealed class HomeAssistantClient
     private static string? MessageOf(JsonElement message) =>
         message.ValueKind == JsonValueKind.Object
         && message.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String
+            ? text.GetString()
+            : null;
+
+    private static string? ErrorMessageOf(JsonElement message) =>
+        message.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+        && error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String
             ? text.GetString()
             : null;
 

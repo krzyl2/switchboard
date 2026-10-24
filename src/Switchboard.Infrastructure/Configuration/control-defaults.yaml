@@ -1,0 +1,100 @@
+# Control-parameter defaults shipped with Switchboard (docs/04-ALGORITHMS.md §1 and §7).
+# Starting values carried over from the Node-RED predecessor, not truths. The `control:` key of
+# switchboard.yaml overrides any of them, key by key, with exactly this structure; a key that is
+# not listed here is an error. Durations: <n>ms, <n>s, <n>m or <n>h.
+
+connection:
+  # Reserve per phase for loads Switchboard does not control, when connection.reserve_w omits a phase.
+  default_reserve_w: 2500
+
+breaker:
+  # I/In below which a breaker carries current indefinitely (IEC 60898 conventional non-tripping
+  # current 1.13 × In). An unknown characteristic gets no credit for the curve.
+  continuous_multiple:
+    B: 1.13
+    C: 1.13
+    unknown: 1.00
+  # Bands of I/In: each covers currents up to and including up_to; the last is open (up_to: null).
+  # B and C share the thermal region (both trip conventionally between 1.13 and 1.45 × In; C
+  # differs only in its magnetic trip, far above this table).
+  tiers:
+    B:
+      - { up_to: 0.90, allowed: unlimited, reaction: may_add }
+      - { up_to: 1.00, allowed: unlimited, reaction: hold }
+      - { up_to: 1.13, allowed: 15m, reaction: reduce_ordinary_cycle }
+      - { up_to: 1.25, allowed: 3m, reaction: reduce_next_cycle }
+      - { up_to: 1.45, allowed: 30s, reaction: shed_one_immediately }
+      - { up_to: null, allowed: 0s, reaction: shed_all_on_phase }
+    C:
+      - { up_to: 0.90, allowed: unlimited, reaction: may_add }
+      - { up_to: 1.00, allowed: unlimited, reaction: hold }
+      - { up_to: 1.13, allowed: 15m, reaction: reduce_ordinary_cycle }
+      - { up_to: 1.25, allowed: 3m, reaction: reduce_next_cycle }
+      - { up_to: 1.45, allowed: 30s, reaction: shed_one_immediately }
+      - { up_to: null, allowed: 0s, reaction: shed_all_on_phase }
+    unknown:
+      - { up_to: 0.90, allowed: unlimited, reaction: may_add }
+      - { up_to: 1.00, allowed: unlimited, reaction: hold }
+      - { up_to: 1.13, allowed: 15m, reaction: reduce_ordinary_cycle }
+      - { up_to: 1.25, allowed: 3m, reaction: reduce_next_cycle }
+      - { up_to: 1.45, allowed: 30s, reaction: shed_one_immediately }
+      - { up_to: null, allowed: 0s, reaction: shed_all_on_phase }
+
+budget:
+  # Overload budget with thermal memory (fraction of 1).
+  recovery_time: 600s
+  stop_increases_below: 0.50
+  shed_one_below: 0.25
+  top_tier_at_or_below: 0.00
+
+dispatch:
+  cycle: 30s
+  start_hysteresis_w: 300
+  stop_hysteresis_w: -200
+  relay_min_on: 6m
+  relay_min_off: 90s
+  max_step_change_stages: 1
+  phase_ranking_stability_cycles: 3
+  balance_credit_kwh: 0.25
+  persistence_up_cycles: 6
+  persistence_down_cycles: 2
+  max_simultaneous_increases: 1
+
+settling:
+  hard_timeout: 90s
+
+signals:
+  # Measurement noise per kind when a signal declares no sigma (A, W, V).
+  default_sigma:
+    current: 0.1
+    power: 25
+    voltage: 1
+  direction:
+    # Direction power within ±deadband_w counts as import.
+    deadband_w: 20
+    # The direction power may be reported at most this much earlier than the value it signs.
+    max_skew: 5s
+    # A changed value waits this long for its direction power from the same meter poll.
+    pairing_wait: 2s
+  refresh:
+    window_intervals: 64
+    min_intervals: 8
+    # A repeated value produces no event and doubles an interval, so a low quantile, not the median.
+    quantile: 0.25
+  freshness_probe:
+    # A signal silent for this fraction of its max_age gets its last_reported confirmed.
+    after_fraction: 0.5
+  balance:
+    # generation + import − loads below −residual_threshold_w (an impossible negative load) rejects the sample.
+    residual_threshold_w: 300
+    max_skew: 5s
+  # The longest max_age a signal may declare: a frozen sensor counts as fresh for its whole max_age,
+  # so a longer value (90h typed for 90s) is refused. At most 1193h, the platform's longest timer.
+  max_age_limit: 24h
+
+reserve_derivation:
+  # Minimum safe reserve per phase (SIG-07); see MinimumSafeReserve for the formula.
+  reference_step_w: 2000
+  shed_latency: 15s
+  sigma_multiplier: 3
+  floor_w: 0

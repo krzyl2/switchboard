@@ -22,6 +22,17 @@ public sealed class AddonPackagingTests
     }
 
     [Fact]
+    public void Local_build_version_matches_the_manifest_version()
+    {
+        // Release images take BUILD_VERSION, but a local run logs Directory.Build.props; when the two
+        // drift, a log from a dev build claims to be a release it is not.
+        var props = File.ReadAllText(RepoPaths.Combine("Directory.Build.props"));
+        var version = Regex.Match(props, @"<Version>([^<]+)</Version>");
+        Assert.True(version.Success, "Directory.Build.props has no <Version>.");
+        Assert.Equal(Scalar(Config.Value, "version"), version.Groups[1].Value);
+    }
+
+    [Fact]
     public void Ingress_is_enabled_on_the_port_the_process_listens_on()
     {
         // ingress_port is omitted while it equals the Supervisor default; if the shipped port

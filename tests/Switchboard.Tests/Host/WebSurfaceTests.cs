@@ -94,7 +94,7 @@ public sealed class WebSurfaceTests
         Assert.Equal(
             ["version", "mode", "homeAssistant", "mqtt", "healthy"],
             json.RootElement.EnumerateObject().Select(p => p.Name));
-        Assert.Equal("0.1.0", json.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.2.0", json.RootElement.GetProperty("version").GetString());
         Assert.Equal("shadow", json.RootElement.GetProperty("mode").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("homeAssistant").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("mqtt").GetString());
@@ -180,6 +180,26 @@ public sealed class WebSurfaceTests
             Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
             Assert.Contains("<title>Switchboard</title>", body, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public async Task Spa_shell_is_revalidated_and_hashed_bundles_are_cached_for_good()
+    {
+        // After an add-on update a cached shell would point at hashed bundles the new image no
+        // longer has: a blank page, or an old strict parser meeting a newer API shape.
+        using var root = new TempWebRoot("<!doctype html>");
+        Directory.CreateDirectory(Path.Combine(root.Path, "assets"));
+        await File.WriteAllTextAsync(Path.Combine(root.Path, "assets", "index-abc123.js"), "export {};", TestContext.Current.CancellationToken);
+        using var factory = new SwitchboardHostFactory(root.Path);
+
+        foreach (var path in new[] { "/", "/index.html", "/some/client/route" })
+        {
+            var shell = await SendAsync(factory, path, Supervisor, ingressPath: "/api/hassio_ingress/Zx9_token");
+            Assert.Equal((StatusCodes.Status200OK, "no-cache"), (shell.Response.StatusCode, shell.Response.Headers.CacheControl.ToString()));
+        }
+
+        var bundle = await SendAsync(factory, "/assets/index-abc123.js", Supervisor, ingressPath: "/api/hassio_ingress/Zx9_token");
+        Assert.Equal((StatusCodes.Status200OK, "public, max-age=31536000, immutable"), (bundle.Response.StatusCode, bundle.Response.Headers.CacheControl.ToString()));
     }
 
     [Fact]

@@ -1,0 +1,150 @@
+# Switchboard configuration, Stage 1 (signals): the maintainer's installation.
+# 3 × 25 A, characteristic B (assumed), 230 V, PV on a SolarEdge inverter with an M1 meter.
+#
+# Copy to /addon_configs/<id>_switchboard/switchboard.yaml on the Home Assistant host (the add-on
+# sees it as /config/switchboard.yaml). Changes are picked up within seconds, without a restart.
+#
+# Only primary measurements: never a template or derived sensor (sensor.usage and friends compute
+# a difference of two sources sampled out of step and dip periodically; see docs/07-PITFALLS.md).
+
+schema_version: 1
+
+connection:
+  topology: three_phase
+  breaker_rating_a: 25
+  characteristic: B          # assumed; confirm on the main breaker's label
+  voltage_v: 230
+  reserve_w: { L1: 2500, L2: 2500, L3: 2500 }
+
+signals:
+  # Main meter (SolarEdge M1, polled with the inverter). Meter phases A/B/C are assumed to be
+  # L1/L2/L3: UNVERIFIED. Switch one heater element on at a time and check that only its phase rises.
+
+  # Per-phase active power: signed, positive = export (negative = import).
+  grid_power_l1:
+    entity: sensor.solaredge_m1_ac_power_a
+    kind: power
+    unit: W
+    sign: positive_export
+    max_age: 90s
+    role: phase_power
+    phase: L1
+  grid_power_l2:
+    entity: sensor.solaredge_m1_ac_power_b
+    kind: power
+    unit: W
+    sign: positive_export
+    max_age: 90s
+    role: phase_power
+    phase: L2
+  grid_power_l3:
+    entity: sensor.solaredge_m1_ac_power_c
+    kind: power
+    unit: W
+    sign: positive_export
+    max_age: 90s
+    role: phase_power
+    phase: L3
+
+  # Per-phase current: unsigned (positive for import and export), so the direction comes from the
+  # power of the same phase. Protection reads these.
+  grid_current_l1:
+    entity: sensor.solaredge_m1_ac_current_a
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: grid_power_l1
+    sigma: 0.1
+    max_age: 90s
+    role: phase_current
+    phase: L1
+  grid_current_l2:
+    entity: sensor.solaredge_m1_ac_current_b
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: grid_power_l2
+    sigma: 0.1
+    max_age: 90s
+    role: phase_current
+    phase: L2
+  grid_current_l3:
+    entity: sensor.solaredge_m1_ac_current_c
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: grid_power_l3
+    sigma: 0.1
+    max_age: 90s
+    role: phase_current
+    phase: L3
+
+  grid_voltage_l1:
+    entity: sensor.solaredge_m1_ac_voltage_an
+    kind: voltage
+    unit: V
+    max_age: 90s
+    role: phase_voltage
+    phase: L1
+  grid_voltage_l2:
+    entity: sensor.solaredge_m1_ac_voltage_bn
+    kind: voltage
+    unit: V
+    max_age: 90s
+    role: phase_voltage
+    phase: L2
+  grid_voltage_l3:
+    entity: sensor.solaredge_m1_ac_voltage_cn
+    kind: voltage
+    unit: V
+    max_age: 90s
+    role: phase_voltage
+    phase: L3
+
+  # Inverter: production flows into the house busbar, so positive_import. It goes unavailable
+  # every night (asleep); unavailable_as_zero counts that as 0 W instead of unknown.
+  pv_power:
+    entity: sensor.solaredge_ac_power
+    kind: power
+    unit: W
+    sign: positive_import
+    max_age: 90s
+    role: inverter_power
+    unavailable_as_zero: true
+
+  # Inverter output current per phase: splits the production across the phases.
+  pv_current_l1:
+    entity: sensor.solaredge_ac_current_a
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: pv_power
+    max_age: 90s
+    role: inverter_phase_current
+    phase: L1
+  pv_current_l2:
+    entity: sensor.solaredge_ac_current_b
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: pv_power
+    max_age: 90s
+    role: inverter_phase_current
+    phase: L2
+  pv_current_l3:
+    entity: sensor.solaredge_ac_current_c
+    kind: current
+    unit: A
+    sign: unsigned
+    direction_from: pv_power
+    max_age: 90s
+    role: inverter_phase_current
+    phase: L3
+
+# devices: and circuit_groups: arrive in a later version.
+
+# control: overrides any control-parameter default, key by key, for example:
+# control:
+#   signals:
+#     balance:
+#       residual_threshold_w: 400

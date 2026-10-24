@@ -38,6 +38,10 @@ public sealed class OptionsValidationTests
         Assert.Equal(TimeSpan.FromSeconds(15), mqtt.KeepAlivePeriod);
         Assert.Equal(TimeSpan.FromSeconds(4), mqtt.ShutdownTimeout);
         Assert.Equal("ws://supervisor/core/websocket", homeAssistant.SupervisorWebSocketUrl);
+        Assert.Equal("http://supervisor/core/api/", homeAssistant.SupervisorRestUrl);
+        Assert.Equal(TimeSpan.FromSeconds(5), homeAssistant.StateReadTimeout);
+        var configuration = provider.GetRequiredService<IOptions<ConfigurationOptions>>().Value;
+        Assert.Equal((TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5), 262144), (configuration.ReloadDebounce, configuration.PollInterval, configuration.MaxFileBytes));
     }
 
     [Theory]
@@ -70,6 +74,37 @@ public sealed class OptionsValidationTests
         using var provider = Build((key, value));
 
         Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+    }
+
+    [Theory]
+    [InlineData("00:00:00")]
+    [InlineData("00:00:30")]
+    public void State_read_timeout_must_be_positive_and_shorter_than_a_keepalive(string timeout)
+    {
+        // A freshness probe slower than a ping period means the link itself is in trouble.
+        using var provider = Build(("Switchboard:HomeAssistant:StateReadTimeout", timeout));
+
+        AssertRejected<HomeAssistantOptions>(provider, "StateReadTimeout");
+    }
+
+    [Fact]
+    public void Rest_base_must_end_in_a_slash_so_entity_paths_append_to_it()
+    {
+        using var provider = Build(("Switchboard:HomeAssistant:SupervisorRestUrl", "http://supervisor/core/api"));
+
+        AssertRejected<HomeAssistantOptions>(provider, "SupervisorRestUrl");
+    }
+
+    [Theory]
+    [InlineData("Switchboard:Configuration:ReloadDebounce", "00:00:00", "ReloadDebounce")]
+    [InlineData("Switchboard:Configuration:PollInterval", "00:00:00", "PollInterval")]
+    [InlineData("Switchboard:Configuration:MaxFileBytes", "100", "MaxFileBytes")]
+    [InlineData("Switchboard:Configuration:MaxFileBytes", "4194304", "MaxFileBytes")]
+    public void Configuration_watching_parameters_are_validated(string key, string value, string fragment)
+    {
+        using var provider = Build((key, value));
+
+        AssertRejected<ConfigurationOptions>(provider, fragment);
     }
 
     [Fact]

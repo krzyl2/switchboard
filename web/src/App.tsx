@@ -1,9 +1,10 @@
+import { useEffect, useState } from 'preact/hooks';
 import type { ConnectionState, Status } from './api/status';
 import { PRODUCT_NAME } from './config';
 import { messages, type Lang, type Messages } from './i18n';
+import { SignalsPage } from './Signals';
+import { StateLabel, Timestamp, type Tone } from './ui';
 import { useStatus } from './useStatus';
-
-type Tone = 'ok' | 'warn' | 'crit';
 
 const CONNECTION_TONE: Record<ConnectionState, Tone> = {
   connected: 'ok',
@@ -20,21 +21,6 @@ function connectionLabel(t: Messages, state: ConnectionState): string {
     case 'disconnected':
       return t.connectionDisconnected;
   }
-}
-
-function StateLabel({ tone, label }: { tone: Tone; label: string }) {
-  return (
-    <span class="state" data-tone={tone}>
-      <span class="dot" aria-hidden="true" />
-      {label}
-    </span>
-  );
-}
-
-// Local wall-clock time only here, at the presentation edge; the machine-readable instant stays in dateTime.
-function Timestamp({ at, lang }: { at: Date; lang: Lang }) {
-  const text = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(at);
-  return <time dateTime={at.toISOString()}>{text}</time>;
 }
 
 function StatusList({ status, updatedAt, t, lang }: { status: Status; updatedAt: Date; t: Messages; lang: Lang }) {
@@ -72,28 +58,69 @@ function StatusList({ status, updatedAt, t, lang }: { status: Status; updatedAt:
   );
 }
 
-export function App({ lang }: { lang: Lang }) {
+function StatusPage({ lang }: { lang: Lang }) {
   const t = messages[lang];
   const view = useStatus();
 
   return (
-    <main class="page">
-      <h1>{PRODUCT_NAME}</h1>
-      <section class="card">
-        {view.kind === 'loading' && <p>{t.loading}</p>}
-        {view.kind === 'live' && <StatusList status={view.status} updatedAt={view.updatedAt} t={t} lang={lang} />}
-        {view.kind === 'unavailable' && (
-          <div role="alert">
-            <p class="unavailable">
-              <StateLabel tone="crit" label={t.unavailable} />
-            </p>
-            <p class="updated">
-              {t.lastSuccessfulUpdate}:{' '}
-              {view.lastSuccessAt ? <Timestamp at={view.lastSuccessAt} lang={lang} /> : t.never}
-            </p>
-          </div>
-        )}
-      </section>
+    <section class="card">
+      {view.kind === 'loading' && <p>{t.loading}</p>}
+      {view.kind === 'live' && <StatusList status={view.status} updatedAt={view.updatedAt} t={t} lang={lang} />}
+      {view.kind === 'unavailable' && (
+        <div role="alert">
+          <p class="unavailable">
+            <StateLabel tone="crit" label={t.unavailable} />
+          </p>
+          <p class="updated">
+            {t.lastSuccessfulUpdate}:{' '}
+            {view.lastSuccessAt ? <Timestamp at={view.lastSuccessAt} lang={lang} /> : t.never}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Route = 'status' | 'signals';
+
+// Hash routes: ingress serves the page under a per-session path prefix, and a fragment never leaves
+// the browser, so no route can address anything outside this add-on.
+const ROUTES: Record<Route, string> = { status: '#/', signals: '#/signals' };
+
+function currentRoute(): Route {
+  return window.location.hash === ROUTES.signals ? 'signals' : 'status';
+}
+
+function useRoute(): Route {
+  const [route, setRoute] = useState<Route>(currentRoute);
+  useEffect(() => {
+    const onHashChange = () => setRoute(currentRoute());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  return route;
+}
+
+export function App({ lang }: { lang: Lang }) {
+  const t = messages[lang];
+  const route = useRoute();
+  const link = (target: Route, label: string) => (
+    <a href={ROUTES[target]} aria-current={route === target ? 'page' : undefined}>
+      {label}
+    </a>
+  );
+
+  // Only the page on screen polls the add-on.
+  return (
+    <main class={route === 'signals' ? 'page wide' : 'page'}>
+      <header class="pagehead">
+        <h1>{PRODUCT_NAME}</h1>
+        <nav aria-label={t.navLabel}>
+          {link('status', t.navStatus)}
+          {link('signals', t.navSignals)}
+        </nav>
+      </header>
+      {route === 'signals' ? <SignalsPage lang={lang} /> : <StatusPage lang={lang} />}
       <aside class="card disclaimer" role="note">
         <strong>{t.notProtectiveTitle}</strong> {t.notProtectiveBody}
       </aside>

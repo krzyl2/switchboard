@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Switchboard.Domain/Switchboard.Domain.csproj" />
     <Project Path="src/Switchboard.Application/Switchboard.Application.csproj" />
     <Project Path="src/Switchboard.Infrastructure/Switchboard.Infrastructure.csproj" />
     <Project Path="src/Switchboard.Host/Switchboard.Host.csproj" />

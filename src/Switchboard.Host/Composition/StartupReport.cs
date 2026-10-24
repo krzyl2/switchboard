@@ -15,12 +15,16 @@ internal static class StartupReport
         var environment = services.GetRequiredService<RuntimeEnvironment>();
         var options = services.GetRequiredService<ResolvedAddonOptions>();
 
+        // Resolved here, before anything starts: a replay setting in an add-on stops the process.
+        var source = services.GetRequiredService<SignalSourceSelection>();
+
         logger.LogInformation(
-            "Switchboard {Version} starting as {Deployment}; mode {Mode}, log level {LogLevel}",
+            "Switchboard {Version} starting as {Deployment}; mode {Mode}, log level {LogLevel}; configuration {ConfigPath}",
             version.Value,
             environment.IsAddon ? "add-on" : "standalone container",
             options.Mode,
-            options.LogLevel);
+            options.LogLevel,
+            environment.ConfigPath);
 
         foreach (var warning in options.Warnings)
         {
@@ -30,6 +34,18 @@ internal static class StartupReport
         if (options.Mode == OperatingMode.Active)
         {
             logger.LogWarning("Mode is 'active', but this build contains no command path: nothing will be commanded.");
+        }
+
+        if (source.IsReplay)
+        {
+            logger.LogWarning(
+                "DEVELOPMENT REPLAY: signals come from {File} at {Speed}x speed on the recording's clock. Home Assistant and MQTT are not connected; no health entity is published.",
+                source.ReplayPath,
+                source.ReplaySpeed);
+            if (!string.IsNullOrEmpty(environment.MqttHost))
+            {
+                logger.LogWarning("{Variable} and the other MQTT settings are ignored in replay mode.", EnvironmentVariableNames.MqttHost);
+            }
         }
 
         if (services.GetRequiredService<IngressAccessPolicy>().TrustAllRequests)
