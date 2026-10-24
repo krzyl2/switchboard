@@ -2,6 +2,18 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.1
+
+Still shadow only; switches nothing.
+
+### Fixed
+
+- At night dispatch had no data and could raise no device: an inverter that reports 0 W at dusk and then falls silent until morning (SolarEdge) counted as an unknown production. With `unavailable_as_zero: true` it now counts as 0 W, like an inverter that goes `unavailable`. An inverter that falls silent while producing still counts as unknown.
+
+### Changed
+
+- Example configuration: the go-e charger's setpoint uses `state_reports: on_change`, because the go-e reports it only when it changes. Its draw sensors stay age-based, so an idle charger's draw is not trusted (no relief, no increases).
+
 ## 0.4.0
 
 Dispatch, in shadow mode only. Switchboard now also works out which device it would start, raise, lower or stop to use the headroom the guard leaves, and records it, but it **still switches nothing**: dispatch decisions are computed and logged, no command is sent to any device, whatever the `mode` option says (with `active` it stays in shadow mode and says that commanding is not enabled). Not a protective device; your breakers remain the protection.

@@ -78,12 +78,40 @@ public sealed class BalanceAndGenerationTests
         Assert.Equal(500, store.Dispatch(Phase.L1).Load!.Value.Value);
         Assert.Equal(SignalState.Unavailable, store.Reading("pv_power").State);
 
-        // A stale inverter is still unknown: only HA's own "unavailable" means asleep.
+        // An inverter that fell silent while producing is still unknown: its production may go on.
         store.Advance(TimeSpan.FromSeconds(1));
         store.Push(Inverter, "100");
         store.Advance(TimeSpan.FromSeconds(91));
         store.Push(PowerA, "-400");
         Assert.Null(store.Dispatch(Phase.L1).Load);
+    }
+
+    [Fact]
+    public void Inverter_declared_unavailable_as_zero_that_falls_silent_at_zero_is_asleep()
+    {
+        // Live 0.4.0: SolarEdge reports 0 W at dusk and then nothing until morning (status sleeping),
+        // never unavailable. Counting that silence as unknown left dispatch without data all night,
+        // so no device could ever be raised at night (the charger's main use).
+        var yaml = TestConfigurations.ThreePhase().Replace("role: inverter_power", "role: inverter_power\n    unavailable_as_zero: true", StringComparison.Ordinal);
+        var store = new StoreHarness(yaml);
+        store.Push(Inverter, "0");
+        store.Advance(TimeSpan.FromSeconds(91));
+        store.Push(PowerA, "-500");
+
+        Assert.Equal(SignalState.Stale, store.Reading("pv_power").State);
+        Assert.Equal(500, store.Dispatch(Phase.L1).Load!.Value.Value);
+        Assert.True(store.Dispatch(Phase.L1).DataValid);
+    }
+
+    [Fact]
+    public void Inverter_silent_at_zero_stays_unknown_without_the_declaration()
+    {
+        // Without unavailable_as_zero a silent inverter is never assumed asleep.
+        _store.Push(Inverter, "0");
+        _store.Advance(TimeSpan.FromSeconds(91));
+        _store.Push(PowerA, "-500");
+
+        Assert.Equal((false, DispatchInvalidReason.GenerationUnknown), (_store.Dispatch(Phase.L1).DataValid, _store.Dispatch(Phase.L1).InvalidReason));
     }
 
     [Fact]

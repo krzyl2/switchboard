@@ -90,7 +90,7 @@ Each signal maps one Home Assistant entity:
 | `role` | What the signal is used for: `phase_current` (required on every phase; a `three_phase_summed` connection needs `total_current` instead), `phase_power`, `phase_voltage`, `inverter_power`, `inverter_phase_current`, `total_current`, `total_power`. A signal without a role is only shown. |
 | `phase` | `L1`, `L2` or `L3`, for per-phase roles. |
 | `sigma` | Optional measurement noise in the signal's unit. |
-| `unavailable_as_zero` | `inverter_power` only: an inverter that goes `unavailable` at night produces 0 W instead of an unknown amount. |
+| `unavailable_as_zero` | `inverter_power` only: an inverter asleep at night produces 0 W instead of an unknown amount. Asleep means it goes `unavailable`, or it falls silent after reporting 0 W (SolarEdge does this). Silence after a production stays unknown. |
 
 Map **primary measurements only**: the meter's and the inverter's own entities. Never map a template, derivative, statistics or other calculated sensor (for example a "house consumption" computed as production minus grid): such sensors combine sources sampled at different moments and produce false dips. Switchboard derives house load itself.
 

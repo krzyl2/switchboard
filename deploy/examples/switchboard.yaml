@@ -101,8 +101,9 @@ signals:
     role: phase_voltage
     phase: L3
 
-  # Inverter: production flows into the house busbar, so positive_import. It goes unavailable
-  # every night (asleep); unavailable_as_zero counts that as 0 W instead of unknown.
+  # Inverter: production flows into the house busbar, so positive_import. Asleep at night it reports
+  # 0 W at dusk and then nothing until morning (live 0.4.0; it may also go unavailable);
+  # unavailable_as_zero counts either as 0 W instead of unknown. Silence after a production stays unknown.
   pv_power:
     entity: sensor.solaredge_ac_power
     kind: power
@@ -211,6 +212,10 @@ devices:
   # checking that it followed a change.
   # It has no stop actuator declared: the guard reduces it to 6 A at most and records any further
   # step as "would switch off". A go-e switch that stops charging could be declared as stop_actuator.
+  # Live 0.4.0: the go-e entities report only on change, so at rest the setpoint and both draw
+  # sensors are hours old. The setpoint is a device state: state_reports: on_change. The draw stays
+  # judged by age on purpose: an idle charger's draw is then "not trusted" (no relief, no
+  # increases), because a frozen old draw would claim relief the charger cannot give.
   - id: ev_charger
     type: modulating
     actuator: number.goe_422752_amp
@@ -219,6 +224,7 @@ devices:
     max: 20
     step: 1
     value_per_kwh: 2.03
+    state_reports: on_change
     draw:
       current: sensor.goe_422752_nrg_4   # A, the charger's own L1 current
       power: sensor.goe_422752_nrg_7     # W, the charger's own L1 power, positive = consumption

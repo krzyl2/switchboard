@@ -559,9 +559,10 @@ public sealed class SignalStore
     /// SIG-08: each phase's share of local generation, from primary measurements only. With the
     /// inverter's phase currents the production is split by them; without, it sits on the
     /// inverter's declared phase or is split equally. A mapped inverter that is not fresh makes the
-    /// share unknown, never zero, unless it is declared unavailable_as_zero and Home Assistant says
-    /// unavailable (an inverter asleep at night); "unknown" (HA has no value yet, as after a restart)
-    /// stays unknown. No inverter mapped means no generation.
+    /// share unknown, never zero, unless it is declared unavailable_as_zero and is asleep: Home
+    /// Assistant says unavailable, or it fell silent after reporting no production (SolarEdge
+    /// reports 0 W at dusk and nothing more until morning). "unknown" (HA has no value yet, as after
+    /// a restart) and silence after a production stay unknown. No inverter mapped means no generation.
     /// </summary>
     private GenerationShares Generation(DateTimeOffset now)
     {
@@ -579,7 +580,9 @@ public sealed class SignalStore
             production = Value(inverter);
             times.Add(inverter.Accepted!.Effective);
         }
-        else if (state == SignalState.Unavailable && inverter.Definition.UnavailableAsZero && detail == SignalDetail.StateUnavailable)
+        else if (inverter.Definition.UnavailableAsZero
+            && ((state == SignalState.Unavailable && detail == SignalDetail.StateUnavailable)
+                || (state == SignalState.Stale && inverter.Accepted is not null && Value(inverter) <= 0)))
         {
             return GenerationShares.Known(phases, _ => 0, []);
         }
