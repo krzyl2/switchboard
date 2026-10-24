@@ -17,8 +17,8 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// <para>
 /// The other entities come from <see cref="IMqttEntitySource"/>s (the guard's): discovery is
 /// retained and announced with the session, states are not retained and are published on connect,
-/// when Home Assistant comes online and whenever they change (an unchanged payload is not sent
-/// again). An object a valid configuration no longer declares is retracted (an empty retained
+/// when Home Assistant comes online, whenever they change and all again on every heartbeat (a state
+/// that reaches HA before its new entity's discovery is dropped). An object a valid configuration no longer declares is retracted (an empty retained
 /// discovery payload), including objects announced before a restart (the ledger in state.json).
 /// Command topics are subscribed only as the topic guard allows; a retained command is ignored, so
 /// a stale message in the broker can never engage anything.
@@ -141,7 +141,11 @@ public sealed class MqttLink : IHealthPublisher
         }
     }
 
-    /// <summary>Publishes the heartbeat state; dropped unless the session is fully announced.</summary>
+    /// <summary>
+    /// Publishes the heartbeat state, then every entity state again; dropped unless the session is
+    /// fully announced. States are not retained and Home Assistant drops one that reaches an entity
+    /// before its discovery is processed, so a value that never changes would otherwise stay unknown.
+    /// </summary>
     public async Task PublishHealthAsync(bool healthy, CancellationToken cancellationToken)
     {
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -153,6 +157,7 @@ public sealed class MqttLink : IHealthPublisher
             }
 
             await PublishStateAsync(healthy, cancellationToken).ConfigureAwait(false);
+            await PublishEntityStatesUnderGateAsync(force: true, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -346,18 +351,23 @@ public sealed class MqttLink : IHealthPublisher
                 return;
             }
 
-            foreach (var entity in _sources.SelectMany(s => s.Current().Entities))
-            {
-                await PublishIfChangedAsync(MqttIdentity.StateTopic(_mqtt.BaseTopic, entity.ObjectId), entity.State, force, cancellationToken).ConfigureAwait(false);
-                if (entity.Attributes is { } attributes)
-                {
-                    await PublishIfChangedAsync(GuardEntities.AttributesTopic(_mqtt.BaseTopic, entity.ObjectId), attributes, force, cancellationToken).ConfigureAwait(false);
-                }
-            }
+            await PublishEntityStatesUnderGateAsync(force, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _stateGate.Release();
+        }
+    }
+
+    private async Task PublishEntityStatesUnderGateAsync(bool force, CancellationToken cancellationToken)
+    {
+        foreach (var entity in _sources.SelectMany(s => s.Current().Entities))
+        {
+            await PublishIfChangedAsync(MqttIdentity.StateTopic(_mqtt.BaseTopic, entity.ObjectId), entity.State, force, cancellationToken).ConfigureAwait(false);
+            if (entity.Attributes is { } attributes)
+            {
+                await PublishIfChangedAsync(GuardEntities.AttributesTopic(_mqtt.BaseTopic, entity.ObjectId), attributes, force, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 

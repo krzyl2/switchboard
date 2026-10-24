@@ -19,12 +19,17 @@ public sealed class GuardSyntheticReplayRun
 
     public static readonly DateTimeOffset Start = new(2026, 10, 21, 22, 0, 0, TimeSpan.Zero);
 
+    // The maintainer's example with the default device state_max_age: the live heaters get 24h because
+    // their Modbus switches report only on change, but the fixture walks a frozen state through the
+    // default 10 min.
+    private static string Configuration => TestConfigurations.Example.ReplaceLineEndings("\n").Replace("    state_max_age: 24h\n", string.Empty, StringComparison.Ordinal);
+
     public GuardSyntheticReplayRun()
     {
         var data = ReplayData.Load(RepoPaths.Combine("tests", "fixtures", "replay", File));
-        Harness = new GuardReplayHarness(data, TestConfigurations.Example);
+        Harness = new GuardReplayHarness(data, Configuration);
         Harness.RunUntil(data.End);
-        Setup = ProtectionSetupFactory.Build(TestConfigurations.Valid(TestConfigurations.Example).Configuration!);
+        Setup = ProtectionSetupFactory.Build(TestConfigurations.Valid(Configuration).Configuration!);
         Analyzer = new ViolationAnalyzer(Setup, Harness.Observations, Harness.Decisions, Harness.Steps);
     }
 

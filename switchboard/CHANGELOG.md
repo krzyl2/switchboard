@@ -2,6 +2,18 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.1
+
+Still shadow only; controls nothing.
+
+### Fixed
+
+- Switchboard entities whose value never changes (overload budget at 100 %, recovery time 0, mode, kill switch) stayed `unknown` in Home Assistant: their first state could reach Home Assistant before the entity existed. Every entity state is now sent again with each heartbeat (10 s).
+
+### Changed
+
+- The overload budget thresholds (`budget.stop_increases_below`, `budget.shed_one_below`) can be raised in `control:` but no longer lowered below the built-in values.
+
 ## 0.3.0
 
 Guard, in shadow mode only. Switchboard now decides what it would do to protect each phase and records it, but it **still controls nothing**: no device is switched or changed, whatever the `mode` option says. Not a protective device; your breakers remain the protection.

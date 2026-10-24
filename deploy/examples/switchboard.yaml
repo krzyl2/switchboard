@@ -148,6 +148,9 @@ signals:
 #
 # Assumption: the house prefers charging the car, so the heater elements (lower value per kWh)
 # shed before the charger.
+#
+# The heater relays are Modbus switches that Home Assistant reports only when they change, so their
+# state can be hours old while still true; they get the longest state_max_age allowed (24h).
 devices:
   - id: heater_l1
     type: onoff
@@ -156,6 +159,7 @@ devices:
     rated_current_a: 6.6        # 1.5 kW element at 230 V
     rated_power_w: 1500
     value_per_kwh: 0.35
+    state_max_age: 24h
   - id: heater_l2
     type: onoff
     actuator: switch.grzalka_2
@@ -163,6 +167,7 @@ devices:
     rated_current_a: 6.6
     rated_power_w: 1500
     value_per_kwh: 0.35
+    state_max_age: 24h
   - id: heater_l3
     type: onoff
     actuator: switch.grzalka_3
@@ -170,6 +175,7 @@ devices:
     rated_current_a: 6.6
     rated_power_w: 1500
     value_per_kwh: 0.35
+    state_max_age: 24h
   # go-e charger forced to one phase; the actuator sets the charging current (6-20 A, 1 A steps).
   # It cannot be switched off before a stop actuator exists: the guard reduces it to 6 A and
   # records any further step as "would switch off".

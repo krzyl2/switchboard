@@ -30,6 +30,7 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
     private readonly KillSwitchState _killSwitch;
     private readonly RecordingDecisionRecorder _decisions = new();
     private MemoryLedger _ledger = new();
+    private MqttLink? _link;
     private Task? _run;
 
     public MqttGuardEntitiesLinkTests()
@@ -148,6 +149,24 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
         Assert.DoesNotContain(after, o => o.Topic == "switchboard/l3_headroom/state");
     }
 
+    [Fact]
+    public async Task Every_heartbeat_republishes_every_state()
+    {
+        // States are not retained, and Home Assistant drops a state that reaches a new entity before
+        // it has processed that entity's discovery. A value that never changes (budget 100 %, mode,
+        // kill switch OFF) would then stay unknown in HA for good; the heartbeat sends them all again.
+        _holder.Publish(_scenario.Evaluate().Status);
+        await StartAsync();
+        var before = _transport.Log.Count;
+
+        await _link!.PublishHealthAsync(healthy: true, CancellationToken.None);
+
+        var beat = _transport.Log.Skip(before).ToList();
+        Assert.Contains(beat, o => o.Topic == "switchboard/l1_overload_budget/state" && o.Payload == "100.0" && !o.Retain);
+        Assert.Contains(beat, o => o.Topic == "switchboard/kill_switch/state" && o.Payload == "OFF");
+        Assert.DoesNotContain(beat, o => o.Topic.EndsWith("/config", StringComparison.Ordinal));
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _stop.CancelAsync();
@@ -170,7 +189,7 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
             MsOptions.Create(TestOptions.Mqtt()),
             new AppVersion("0.3.0"),
             NullLogger<GuardEntities>.Instance);
-        var link = new MqttLink(
+        _link = new MqttLink(
             _transport,
             new FakeCredentialSource(),
             _mqttState,
@@ -182,7 +201,7 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
             _ledger,
             _time,
             NullLogger<MqttLink>.Instance);
-        _run = link.RunAsync(_stop.Token);
+        _run = _link.RunAsync(_stop.Token);
         return await _transport.UntilAsync(o => o.Topic == KillSwitchCommand && o.Kind == "subscribe");
     }
 }
