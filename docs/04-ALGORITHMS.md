@@ -169,6 +169,8 @@ Every decision carries one. The list is closed and versioned; the UI renders a h
 
 **Version 2** (2026-10-24): added `headroom_available` (a start, increase or restore permitted by headroom and rank — v1 had no code for the positive case) and `kill_switch` (SAFE-03, distinct from `safe_state` so the log says who stopped everything).
 
+**Version 3** (2026-10-25, maintainer survey): added `foreign_load` (a reduction, shed or refused increase whose cause is a foreign load detected under section 4, so the log tells "the house did this" from "the reserve is too small"; versions 1–2 used `reserve_threshold`) and `change_limit` (an increase deferred because another increase of this settling window is still in flight, section 3 "Simultaneous increases"; versions 1–2 used `settling_window_open`, which stays for a window that is open on the device itself).
+
 ```
 guard_tier_exceeded         guard_budget_low          guard_stale_signal
 reserve_threshold           headroom_insufficient     lockout_min_on
@@ -176,7 +178,7 @@ lockout_min_off             settling_window_open      awaiting_confirmation
 value_rank_below_cutoff     goal_met                  guard_expression_false
 device_unresponsive         manual_override           mode_shadow
 safe_state                  plan_slot_target          headroom_available
-kill_switch
+kill_switch                 foreign_load              change_limit
 ```
 
 ## 7. Default parameters
