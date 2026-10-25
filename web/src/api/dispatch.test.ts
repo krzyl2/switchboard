@@ -168,3 +168,25 @@ describe('postOverride', () => {
     await expect(postOverride('heater_l1', 'auto', new AbortController().signal)).rejects.toThrow();
   });
 });
+
+// Stage 4: a history entry says when the change was decided (or seen) and from which level to which,
+// so the device card shows "8.7 A → 6 A" next to its verdict.
+describe('parseDispatch, history levels', () => {
+  it('keeps the command time and the levels of each history entry', () => {
+    const entry = parseDispatch(payload()).devices[0]?.history[0];
+
+    expect(entry?.commandedAt?.toISOString()).toBe('2026-10-24T11:58:01.004Z');
+    expect(entry?.from).toEqual({ relays: [true], setpointA: null, enabled: true });
+    expect(entry?.to).toEqual({ relays: [false], setpointA: null, enabled: true });
+  });
+
+  it('accepts an entry recorded before 0.5.0, without them', () => {
+    const entry = parseDispatch(payload((p) => Object.assign(p.devices[0].history[0], { commandedAt: null, from: null, to: null }))).devices[0]?.history[0];
+
+    expect([entry?.commandedAt, entry?.from, entry?.to]).toEqual([null, null, null]);
+  });
+
+  it('rejects a level that is neither relays nor a setpoint', () => {
+    expect(() => parseDispatch(payload((p) => (p.devices[0].history[0].to.setpointA = 6)))).toThrow();
+  });
+});

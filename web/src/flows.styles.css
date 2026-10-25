@@ -1,0 +1,298 @@
+/* Screen 02 — Flows. Colours are only the tokens of styles.css, so every theme applies: the declared
+   devices draw in --load-controlled and a foreign load in --load-foreign, which never share a colour
+   (UI-11, theme.test.ts). The schematic scrolls inside its own container; the page never scrolls
+   sideways (UI-13). The file name ends in styles.css so the tests read it as shipped (vitest.config.ts). */
+
+.flowstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.flowstats .label {
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.flowstats .bignum {
+  font-size: 1.4rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowstats .bignum .unknown,
+.flowstats .bignum .sub-inline {
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.flowscroll {
+  overflow-x: auto;
+}
+
+.flowsvg {
+  display: block;
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+}
+
+.flowsvg .flow {
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+.flowsvg .flow[data-kind='pv'] {
+  stroke: var(--pv);
+}
+
+.flowsvg .flow[data-kind='grid'] {
+  stroke: var(--grid);
+}
+
+.flowsvg .flow[data-kind='storage'] {
+  stroke: var(--storage);
+}
+
+.flowsvg .flow[data-kind='feed'] {
+  stroke: var(--fg-dim);
+  opacity: 0.5;
+}
+
+.flowsvg .flow[data-kind='controlled'] {
+  stroke: var(--load-controlled);
+}
+
+.flowsvg .flow[data-kind='base'] {
+  stroke: var(--load-base);
+}
+
+.flowsvg .flow[data-kind='foreign'] {
+  stroke: var(--load-foreign);
+}
+
+.flowsvg .flow[data-kind='unattributed'] {
+  stroke: var(--load-unattributed);
+}
+
+.flowsvg .flow[data-state='stopped'] {
+  stroke: var(--line);
+  stroke-dasharray: 4 4;
+  opacity: 1;
+}
+
+.flowsvg .flow[data-state='unknown'] {
+  stroke-dasharray: 1 4;
+}
+
+/* Drawn in the direction of flow, so the dashes march that way. */
+.flowsvg .anim {
+  stroke-dasharray: 12 10;
+  animation: flows-march 1.4s linear infinite;
+}
+
+@keyframes flows-march {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+/* The page leaves the animation class out under reduced motion; this keeps it still if it ever is not. */
+@media (prefers-reduced-motion: reduce) {
+  .flowsvg .anim {
+    animation: none;
+  }
+}
+
+.flowsvg .laneframe {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 6 4;
+}
+
+.flowsvg .nbox {
+  fill: var(--surface-2);
+  stroke: var(--line);
+}
+
+.flowsvg .node[data-kind='controlled'] .nbox {
+  stroke: var(--load-controlled);
+}
+
+.flowsvg .node[data-kind='foreign'] .nbox {
+  stroke: var(--load-foreign);
+}
+
+.flowsvg .node[data-state='stopped'] .nbox {
+  stroke: var(--line);
+  stroke-dasharray: 4 3;
+}
+
+.flowsvg .node[data-state='unknown'] .nbox {
+  stroke-dasharray: 1 3;
+}
+
+.flowsvg .meterbox {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+
+.flowsvg .meterlink {
+  stroke: var(--line);
+  stroke-dasharray: 3 3;
+}
+
+.flowsvg .junction {
+  fill: var(--fg);
+}
+
+.flowsvg .busbar .nbox {
+  fill: var(--surface);
+  stroke: var(--fg-dim);
+  stroke-width: 1.5;
+}
+
+.flowsvg text {
+  font-family: var(--font-body);
+}
+
+.flowsvg .nttl {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--fg);
+}
+
+.flowsvg .node[data-state='stopped'] .nttl,
+.flowsvg .node[data-state='stopped'] .nval {
+  fill: var(--fg-dim);
+}
+
+.flowsvg .nsub {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  fill: var(--fg-dim);
+}
+
+.flowsvg .nval {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  fill: var(--fg);
+}
+
+.flowsvg .phl {
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--fg);
+}
+
+.flowsvg .strip {
+  fill: var(--surface-2);
+}
+
+.flowsvg .stripfill[data-tone='ok'] {
+  fill: var(--ok);
+}
+
+.flowsvg .stripfill[data-tone='warn'] {
+  fill: var(--warn);
+}
+
+.flowsvg .stripfill[data-tone='crit'] {
+  fill: var(--crit);
+}
+
+.flowsvg .striptick {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+
+.flowsvg .striptick.reserve {
+  stroke: var(--warn);
+  stroke-dasharray: 2 2;
+}
+
+.flowlegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+}
+
+.flowlegend i {
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 4px solid var(--fg-dim);
+}
+
+.flowlegend i[data-kind='pv'] {
+  border-top-color: var(--pv);
+}
+
+.flowlegend i[data-kind='grid'] {
+  border-top-color: var(--grid);
+}
+
+.flowlegend i[data-kind='storage'] {
+  border-top-color: var(--storage);
+}
+
+.flowlegend i[data-kind='feed'] {
+  border-top-color: var(--fg-dim);
+}
+
+.flowlegend i[data-kind='controlled'] {
+  border-top-color: var(--load-controlled);
+}
+
+.flowlegend i[data-kind='base'] {
+  border-top-color: var(--load-base);
+}
+
+.flowlegend i[data-kind='foreign'] {
+  border-top-color: var(--load-foreign);
+}
+
+.flowlegend i[data-kind='unknown'] {
+  border-top: 3px dotted var(--load-unattributed);
+}
+
+.flowlegend i[data-kind='stopped'] {
+  border-top: 2px dashed var(--line);
+}
+
+.flowcaption {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+
+.flowgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr));
+  gap: 16px;
+}
+
+/* The two tables are small: they fit a phone without the wide-table minimum of the other pages. */
+.flowgrid table {
+  min-width: 0;
+}
+
+.flowgrid td.num.neg {
+  color: var(--warn);
+}
+
+.flowgrid .badge {
+  white-space: nowrap;
+}
+
+/* An age under a number may wrap, so the number column stays narrow on a phone. */
+.flowgrid td.num .sub {
+  white-space: normal;
+}

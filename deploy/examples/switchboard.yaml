@@ -1,4 +1,4 @@
-# Switchboard configuration, Stage 3 (signals, devices and dispatch): the maintainer's installation.
+# Switchboard configuration (signals, devices and dispatch; display names from 0.5.0): the maintainer's installation.
 # 3 × 25 A, characteristic B (assumed), 230 V, PV on a SolarEdge inverter with an M1 meter.
 #
 # Copy to /addon_configs/<id>_switchboard/switchboard.yaml on the Home Assistant host (the add-on
@@ -175,8 +175,12 @@ signals:
 #
 # The three elements are identical and sit one per phase, so which one runs is free:
 # rotation_group lets dispatch start the element on the phase with the most headroom first.
+#
+# name: is shown in the UI next to the id (0.5.0 and later; 0.4.x refuses the key, so deploy this
+# file only once 0.5.0 is installed). It never takes part in a decision.
 devices:
   - id: heater_l1
+    name: Grzałka CWU L1
     type: onoff
     actuator: switch.grzalka_2      # moves meter phase A (see above)
     phase: L1
@@ -186,6 +190,7 @@ devices:
     state_reports: on_change
     rotation_group: cwu_heaters
   - id: heater_l2
+    name: Grzałka CWU L2
     type: onoff
     actuator: switch.grzalka_1      # moves meter phase B (see above)
     phase: L2
@@ -195,6 +200,7 @@ devices:
     state_reports: on_change
     rotation_group: cwu_heaters
   - id: heater_l3
+    name: Grzałka CWU L3
     type: onoff
     actuator: switch.grzalka_3      # L3 by elimination: no isolated switching recorded
     phase: L3
@@ -217,6 +223,7 @@ devices:
   # judged by age on purpose: an idle charger's draw is then "not trusted" (no relief, no
   # increases), because a frozen old draw would claim relief the charger cannot give.
   - id: ev_charger
+    name: Ładowarka go-e
     type: modulating
     actuator: number.goe_422752_amp
     phase: L1

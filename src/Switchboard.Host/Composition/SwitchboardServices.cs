@@ -10,6 +10,7 @@ using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
+using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Devices;
@@ -78,6 +79,7 @@ public static class SwitchboardServices
 
         services.AddSignalPipeline();
         services.AddGuard();
+        services.AddPresentation();
 
         services.AddSingleton(sp => new IngressAccessPolicy(
             sp.GetRequiredService<IOptions<IngressOptions>>().Value,
@@ -93,6 +95,10 @@ public static class SwitchboardServices
         services.AddHostedService<HomeAssistantLinkService>();
         services.AddHostedService<MqttLinkService>();
         services.AddHostedService<HeartbeatService>();
+
+        // Before the guard: it loads the statistics before the first step, and it stops right after
+        // the guard, so the shutdown step is counted before the final save.
+        services.AddHostedService<PresentationService>();
         services.AddHostedService<GuardService>();
         return services;
     }
@@ -107,6 +113,7 @@ public static class SwitchboardServices
         services.AddValidatedOptions<ConfigurationOptions, ConfigurationOptionsValidator>(ConfigurationOptions.SectionName);
         services.AddValidatedOptions<PersistenceOptions, PersistenceOptionsValidator>(PersistenceOptions.SectionName);
         services.AddValidatedOptions<GuardOptions, GuardOptionsValidator>(GuardOptions.SectionName);
+        services.AddValidatedOptions<StatisticsOptions, StatisticsOptionsValidator>(StatisticsOptions.SectionName);
         return services;
     }
 
@@ -207,6 +214,27 @@ public static class SwitchboardServices
             sp.GetRequiredService<AppVersion>(),
             sp.GetRequiredService<ILogger<DispatchEntities>>()));
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<DispatchEntities>());
+        return services;
+    }
+
+    /// <summary>
+    /// The runtime UI's read side: the presentation hub (a read-only listener of the guard runner),
+    /// statistics.json and excursions.json in the data folder, and their writer. Nothing here holds a
+    /// command port, the kill switch or the overrides.
+    /// </summary>
+    private static IServiceCollection AddPresentation(this IServiceCollection services)
+    {
+        services.AddSingleton<PresentationHub>();
+        services.AddSingleton<IPresentationSource>(sp => sp.GetRequiredService<PresentationHub>());
+        services.AddSingleton<IPresentationStore<StatisticsState>>(sp => new StatisticsFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
+            sp.GetRequiredService<ILogger<StatisticsFile>>()));
+        services.AddSingleton<IPresentationStore<ExcursionState>>(sp => new ExcursionFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
+            sp.GetRequiredService<ILogger<ExcursionFile>>()));
+        services.AddSingleton<PresentationPersistence>();
         return services;
     }
 

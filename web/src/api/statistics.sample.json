@@ -1,0 +1,283 @@
+{
+  "at": "2026-10-22T09:40:02+00:00",
+  "bucketMinutes": 5,
+  "stateFile": {
+    "status": "fresh",
+    "warning": null,
+    "writeError": null
+  },
+  "voltageMeasured": true,
+  "integratedTo": "2026-10-22T09:40:00+00:00",
+  "devices": [
+    {
+      "id": "heater_l1",
+      "name": "Grzałka CWU L1",
+      "valuePerKwh": 0.35
+    },
+    {
+      "id": "heater_l2",
+      "name": "Grzałka CWU L2",
+      "valuePerKwh": 0.35
+    },
+    {
+      "id": "heater_l3",
+      "name": "Grzałka CWU L3",
+      "valuePerKwh": 0.35
+    },
+    {
+      "id": "ev_charger",
+      "name": "Ładowarka go-e",
+      "valuePerKwh": 2.03
+    }
+  ],
+  "buckets": [
+    {
+      "start": "2026-10-22T09:20:00+00:00",
+      "totals": {
+        "observedS": 300,
+        "unobservedS": 0,
+        "gridImportKwh": 0.0731292116111111,
+        "gridExportKwh": 0.020695221972222202,
+        "generationKwh": 0.4784748144444458,
+        "loadKwh": 0.5309088040833331,
+        "uncontrolledKwh": 0.22411087019444448,
+        "storageChargeKwh": 0,
+        "storageDischargeKwh": 0,
+        "pv": {
+          "houseKwh": 0.18853084456980274,
+          "storageKwh": 0,
+          "exportKwh": 0.020695221972222202,
+          "unattributedKwh": 0
+        },
+        "devices": [
+          {
+            "id": "ev_charger",
+            "measuredKwh": 0.306797933888889,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0.26924874790241937,
+            "value": 0.6227998057944439
+          },
+          {
+            "id": "heater_l1",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          },
+          {
+            "id": "heater_l2",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          },
+          {
+            "id": "heater_l3",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          }
+        ],
+        "sheds": 0,
+        "wouldSheds": 1,
+        "voltageLosses": 0,
+        "supplyOutages": 0,
+        "voltageObservedS": 300
+      }
+    },
+    {
+      "start": "2026-10-22T09:25:00+00:00",
+      "totals": {
+        "observedS": 300,
+        "unobservedS": 0,
+        "gridImportKwh": 0,
+        "gridExportKwh": 0.06115650230555555,
+        "generationKwh": 0.4923581488888894,
+        "loadKwh": 0.431201646583334,
+        "uncontrolledKwh": 0.12455372380555553,
+        "storageChargeKwh": 0,
+        "storageDischargeKwh": 0,
+        "pv": {
+          "houseKwh": 0.12455372380555553,
+          "storageKwh": 0,
+          "exportKwh": 0.06115650230555555,
+          "unattributedKwh": 0
+        },
+        "devices": [
+          {
+            "id": "ev_charger",
+            "measuredKwh": 0.3066479227777776,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0.3066479227777776,
+            "value": 0.6224952832388884
+          },
+          {
+            "id": "heater_l1",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          },
+          {
+            "id": "heater_l2",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          },
+          {
+            "id": "heater_l3",
+            "measuredKwh": 0,
+            "modelKwh": 0,
+            "unknownS": 0,
+            "pvKwh": 0,
+            "value": 0
+          }
+        ],
+        "sheds": 0,
+        "wouldSheds": 0,
+        "voltageLosses": 0,
+        "supplyOutages": 0,
+        "voltageObservedS": 300
+      }
+    }
+  ],
+  "range": {
+    "from": "2026-10-22T09:20:00+00:00",
+    "to": "2026-10-22T09:30:00+00:00",
+    "buckets": 2,
+    "totals": {
+      "observedS": 600,
+      "unobservedS": 0,
+      "gridImportKwh": 0.0731292116111111,
+      "gridExportKwh": 0.08185172427777775,
+      "generationKwh": 0.9708329633333352,
+      "loadKwh": 0.9621104506666671,
+      "uncontrolledKwh": 0.348664594,
+      "storageChargeKwh": 0,
+      "storageDischargeKwh": 0,
+      "pv": {
+        "houseKwh": 0.31308456837535825,
+        "storageKwh": 0,
+        "exportKwh": 0.08185172427777775,
+        "unattributedKwh": 0
+      },
+      "devices": [
+        {
+          "id": "ev_charger",
+          "measuredKwh": 0.6134458566666665,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0.5758966706801969,
+          "value": 1.2452950890333323
+        },
+        {
+          "id": "heater_l1",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        },
+        {
+          "id": "heater_l2",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        },
+        {
+          "id": "heater_l3",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        }
+      ],
+      "sheds": 0,
+      "wouldSheds": 1,
+      "voltageLosses": 0,
+      "supplyOutages": 0,
+      "voltageObservedS": 600
+    }
+  },
+  "lastHour": {
+    "from": "2026-10-22T08:40:00+00:00",
+    "to": "2026-10-22T09:40:02+00:00",
+    "buckets": 12,
+    "totals": {
+      "observedS": 3600,
+      "unobservedS": 0,
+      "gridImportKwh": 0.08136786855555556,
+      "gridExportKwh": 1.3318417657777781,
+      "generationKwh": 5.298606463333338,
+      "loadKwh": 4.04813256611111,
+      "uncontrolledKwh": 1.595459669962963,
+      "storageChargeKwh": 0,
+      "storageDischargeKwh": 0,
+      "pv": {
+        "houseKwh": 1.557491312783436,
+        "storageKwh": 0,
+        "exportKwh": 1.3318417657777781,
+        "unattributedKwh": 0
+      },
+      "devices": [
+        {
+          "id": "ev_charger",
+          "measuredKwh": 2.452684056666665,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 2.4092733847721175,
+          "value": 4.9789486350333325
+        },
+        {
+          "id": "heater_l1",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        },
+        {
+          "id": "heater_l2",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        },
+        {
+          "id": "heater_l3",
+          "measuredKwh": 0,
+          "modelKwh": 0,
+          "unknownS": 0,
+          "pvKwh": 0,
+          "value": 0
+        }
+      ],
+      "sheds": 0,
+      "wouldSheds": 1,
+      "voltageLosses": 0,
+      "supplyOutages": 0,
+      "voltageObservedS": 3600
+    }
+  },
+  "lifetime": {
+    "since": "2026-10-22T06:00:00.002+00:00",
+    "sheds": 0,
+    "wouldSheds": 3,
+    "voltageLosses": 0,
+    "supplyOutages": 0,
+    "voltageObservedS": 13199.978
+  }
+}

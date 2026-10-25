@@ -154,6 +154,37 @@ public sealed class AddonPackagingTests
         }
     }
 
+    [Theory]
+    [InlineData("en")]
+    [InlineData("pl")]
+    public void Translations_describe_every_option_in_the_schema(string language)
+    {
+        // UI-14: every add-on option has a name AND a description in both languages, and only
+        // options that exist are translated (a stale entry would describe a setting nobody can set).
+        var translation = LoadYaml("switchboard", "translations", language + ".yaml");
+        var configuration = Map(translation, "configuration");
+        var options = Map(Config.Value, "schema").Keys.Cast<string>().Order(StringComparer.Ordinal).ToList();
+
+        Assert.Equal(options, configuration.Keys.Cast<string>().Order(StringComparer.Ordinal));
+        foreach (var option in options)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(Scalar(Map(configuration, option), "description")), $"{language}.yaml has no description for '{option}'.");
+        }
+    }
+
+    [Fact]
+    public void Polish_translations_are_translated_not_copied()
+    {
+        var en = Map(LoadYaml("switchboard", "translations", "en.yaml"), "configuration");
+        var pl = Map(LoadYaml("switchboard", "translations", "pl.yaml"), "configuration");
+
+        foreach (var option in en.Keys.Cast<string>())
+        {
+            Assert.NotEqual(Scalar(Map(en, option), "name"), Scalar(Map(pl, option), "name"));
+            Assert.NotEqual(Scalar(Map(en, option), "description"), Scalar(Map(pl, option), "description"));
+        }
+    }
+
     [Fact]
     public void Repository_descriptor_names_the_repository()
     {

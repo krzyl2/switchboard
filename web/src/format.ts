@@ -41,3 +41,39 @@ const FRACTION_DIGITS: Record<string, number> = { A: 2, W: 0, V: 1, kWh: 3, '%':
 export function formatQuantity(value: number, unit: string, lang: Lang): string {
   return `${formatNumber(value, lang, FRACTION_DIGITS[unit] ?? 2)} ${unit}`;
 }
+
+/**
+ * A number with exactly <paramref name="digits"/> decimals ("1.50"), rounded half away from zero
+ * first, so a value that rounds to zero prints "0.00", never "-0.00". The rounding rule the
+ * dashboard's sums are checked against.
+ */
+export function formatFixed(value: number, lang: Lang, digits: number): string {
+  const rounded = roundTo(value, digits);
+  return new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(rounded === 0 ? 0 : rounded);
+}
+
+/** Half away from zero to <paramref name="digits"/> decimals (what formatFixed shows). */
+export function roundTo(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return (Math.sign(value) * Math.round(Math.abs(value) * factor)) / factor;
+}
+
+/** A power in kW with two decimals, as the mockup shows it: 1500 W → "1.50 kW" (pl "1,50 kW"). */
+export function formatKw(watts: number, lang: Lang): string {
+  return `${formatFixed(watts / 1000, lang, 2)} kW`;
+}
+
+/** An energy with two decimals: "2.10 kWh". */
+export function formatKwh(kwh: number, lang: Lang): string {
+  return `${formatFixed(kwh, lang, 2)} kWh`;
+}
+
+/** A current with one decimal, as the phase bars show it: "12.6 A". */
+export function formatAmps(amperes: number, lang: Lang): string {
+  return `${formatFixed(amperes, lang, 1)} A`;
+}
+
+/** A share as a percentage without decimals: 0.504 → "50%". */
+export function formatPercent(fraction: number, lang: Lang): string {
+  return new Intl.NumberFormat(lang, { style: 'percent', maximumFractionDigits: 0 }).format(fraction);
+}

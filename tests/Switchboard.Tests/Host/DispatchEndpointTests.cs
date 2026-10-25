@@ -63,7 +63,7 @@ public sealed class DispatchEndpointTests
         Assert.Equal(["since", "retryAt"], Names(device.GetProperty("unresponsive")));
         Assert.Equal(["mode", "changedAt", "source"], Names(device.GetProperty("override")));
         Assert.Equal(["currentA", "powerW", "fresh"], Names(body.GetProperty("devices")[1].GetProperty("draw")));
-        Assert.Equal(["at", "kind", "expected", "measured", "unit", "verdict"], Names(device.GetProperty("history")[0]));
+        Assert.Equal(["at", "kind", "expected", "measured", "unit", "verdict", "commandedAt", "from", "to"], Names(device.GetProperty("history")[0]));
     }
 
     [Fact]
@@ -259,7 +259,12 @@ public sealed class DispatchEndpointTests
                     new DeviceOverride(OverrideMode.ForceOn, At - TimeSpan.FromMinutes(1), OverrideSource.Api),
                     null,
                     [
-                        new VerificationRecord(At - TimeSpan.FromMinutes(6), HistoryKind.Command, 1500, 0, MeasureUnit.Watts, Verdict.Mismatch),
+                        new VerificationRecord(At - TimeSpan.FromMinutes(6), HistoryKind.Command, 1500, 0, MeasureUnit.Watts, Verdict.Mismatch)
+                        {
+                            CommandedAt = At - TimeSpan.FromMinutes(6.5),
+                            From = DeviceLevel.Relay(false),
+                            To = DeviceLevel.Relay(true),
+                        },
                         new VerificationRecord(At - TimeSpan.FromMinutes(2), HistoryKind.Observed, 1500, 1460, MeasureUnit.Watts, Verdict.Match),
                     ]),
                 new DispatchDeviceStatus(

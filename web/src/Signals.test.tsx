@@ -399,6 +399,7 @@ describe('signals page', () => {
 describe('navigation', () => {
   it('navigates between status and signals, and only the page on screen polls', async () => {
     serve(() => respond(payload()));
+    window.location.hash = '#/status';
     render(<App lang="en" />);
     await advance();
     const nav = screen.getByRole('navigation');
@@ -437,6 +438,7 @@ describe('navigation', () => {
     render(<App lang="en" />);
 
     const links = within(screen.getByRole('navigation')).getAllByRole('link');
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/signals', '#/guard']);
+    // The mockup's screens (setup and day plan are not links: not in this version), then diagnostics.
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/flows', '#/devices', '#/guard', '#/log', '#/signals', '#/status']);
   });
 });

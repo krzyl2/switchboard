@@ -47,6 +47,8 @@ export interface Tier {
   /** Upper limit as a multiple of In, inclusive; null for the open top band. */
   upTo: number | null;
   upToA: number | null;
+  /** The same limit as power per phase at the nominal voltage (display only); null for the open top band. */
+  upToW: number | null;
   /** Allowed duration; null for unlimited. */
   allowedS: number | null;
   reaction: TierReaction;
@@ -57,6 +59,8 @@ export interface Breaker {
   characteristic: Characteristic;
   continuousMultiple: number;
   continuousA: number;
+  /** How long an empty overload budget takes to refill at or below the continuous current. */
+  budgetRecoveryTimeS: number;
   tiers: Tier[];
 }
 
@@ -146,6 +150,7 @@ function tier(raw: unknown, path: string): Tier {
   return {
     upTo: n('upTo'),
     upToA: n('upToA'),
+    upToW: n('upToW'),
     allowedS: n('allowedS'),
     reaction: oneOf(TIER_REACTIONS, field(r, 'reaction', path), `${path}.reaction`),
   };
@@ -163,6 +168,7 @@ function breaker(raw: unknown, path: string): Breaker {
     characteristic: oneOf(CHARACTERISTICS, field(r, 'characteristic', path), `${path}.characteristic`),
     continuousMultiple: number(field(r, 'continuousMultiple', path), `${path}.continuousMultiple`),
     continuousA: number(field(r, 'continuousA', path), `${path}.continuousA`),
+    budgetRecoveryTimeS: number(field(r, 'budgetRecoveryTimeS', path), `${path}.budgetRecoveryTimeS`),
     tiers,
   };
 }

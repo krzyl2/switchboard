@@ -2,6 +2,30 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.0
+
+The runtime screens. Still shadow only: Switchboard **switches nothing** in this version, whatever the `mode` option says, and every screen says so. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- New screens in the add-on panel, with the mockup's navigation: **Dashboard** (phase bars, power balance, allocation queue, reserve banner), **Flows** (where the power comes from and goes, per phase), **Device card** (connection, value per kWh, state, history of changes and their checks), **Limits and overloads** and **Decision log** (filters, signal health, daily summary). Signals and Status stay under Diagnostics. Setup and the day plan are listed as not in this version.
+- Light and dark theme: follows the system, with a toggle kept per browser. Usable on a phone.
+- `GET api/power`, `api/statistics`, `api/excursions` and `api/devices` for those screens (read only, ingress only); `api/decisions` filters by kind.
+- Energy statistics: the power picture of every control step is integrated in 5-minute buckets on Switchboard's own clock (never read from the Recorder). Time without valid data is counted as unobserved, never as zero. Kept for 26 hours in `/data/statistics.json`, written when a bucket closes and at shutdown, so a crash loses at most the open bucket. A damaged file is set aside as `statistics.json.corrupt` and the statistics start fresh; it never stops the add-on.
+- The last and the worst excursion above the reserve threshold per phase, for the Limits chart, in `/data/excursions.json`.
+- The daily summary counts possible breaker trips: a phase voltage lost on one or two phases while the others stay up and Home Assistant is connected (a loss of one grid phase looks the same). A loss on every phase at once is counted as a supply outage, because a grid outage and a trip of a multi-pole breaker cannot be told apart. A trip that also stops Home Assistant or the meter cannot be seen, and without a phase voltage signal trips are shown as not measured, never as 0. Savings are not shown (they need a tariff, planned for v2); the value of the energy delivered at each device's `value_per_kwh` is shown without a currency.
+- `devices[].name` in `switchboard.yaml`: an optional display name (1 to 40 characters). It never takes part in a decision. The example configuration names its devices.
+
+### Changed
+
+- The dashboard is the home page; the status page moved to Diagnostics → Status.
+- The add-on log says the guard *watches* the declared devices (it said *protects*): Switchboard is not a protective device.
+
+### Downgrade
+
+- 0.4.x ignores `statistics.json` and `excursions.json`.
+- 0.4.x refuses `name:` under `devices:` (unknown key): the configuration becomes invalid and the guard holds every device in safe state. Remove the names before going back.
+
 ## 0.4.1
 
 Still shadow only; switches nothing.

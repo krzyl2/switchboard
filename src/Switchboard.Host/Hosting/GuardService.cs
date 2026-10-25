@@ -135,7 +135,7 @@ internal sealed class GuardService(
 
         _devices = devices;
         logger.LogInformation(
-            "Guard protects {Count} declared device(s): {Devices}; effective mode {Mode}",
+            "Guard watches {Count} declared device(s): {Devices}; effective mode {Mode}",
             published.Devices.Length,
             devices.Length == 0 ? "none" : devices,
             published.Mode.Effective);

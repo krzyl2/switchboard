@@ -1,0 +1,314 @@
+{
+  "at": "2026-10-22T09:21:02+00:00",
+  "evaluatedAt": "2026-10-22T09:21:00+00:00",
+  "cycleS": 30,
+  "dataValid": true,
+  "invalidReason": null,
+  "total": {
+    "generation": {
+      "w": 5683,
+      "unknown": null,
+      "reportedAt": "2026-10-22T09:20:30.004+00:00"
+    },
+    "generationNote": null,
+    "netImport": {
+      "w": 1502.9,
+      "unknown": null,
+      "reportedAt": "2026-10-22T09:20:50.015+00:00"
+    },
+    "load": {
+      "w": 7185.900000000001,
+      "unknown": null,
+      "reportedAt": "2026-10-22T09:20:30.004+00:00"
+    },
+    "controlled": {
+      "w": 3662,
+      "unknown": null,
+      "reportedAt": "2026-10-22T09:20:57.502+00:00"
+    },
+    "unknownDevices": [],
+    "storage": {
+      "w": null,
+      "unknown": "not_declared",
+      "reportedAt": null
+    },
+    "uncontrolled": {
+      "w": 3523.8999999999996,
+      "unknown": null,
+      "reportedAt": "2026-10-22T09:20:30.004+00:00"
+    },
+    "modelExceedsLoad": false
+  },
+  "phases": [
+    {
+      "phase": "L1",
+      "currentA": 19.12,
+      "direction": "import",
+      "currentReportedAt": "2026-10-22T09:20:50.01+00:00",
+      "reserveThresholdA": 14.130434782608695,
+      "ratingA": 25,
+      "continuousA": 28.249999999999996,
+      "voltageV": 230,
+      "voltageMeasured": true,
+      "balance": {
+        "generation": {
+          "w": 1894.3333333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "generationNote": null,
+        "netImport": {
+          "w": 4394.6,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:50.015+00:00"
+        },
+        "load": {
+          "w": 6288.933333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "controlled": {
+          "w": 3662,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:57.502+00:00"
+        },
+        "unknownDevices": [],
+        "storage": {
+          "w": null,
+          "unknown": "not_declared",
+          "reportedAt": null
+        },
+        "uncontrolled": {
+          "w": 2626.9333333333334,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "modelExceedsLoad": false
+      },
+      "foreignStepW": 1837.4499791126423,
+      "foreignBaselineW": 789.4833542206911,
+      "foreignDetectedAt": "2026-10-22T09:20:00.015+00:00",
+      "bar": [
+        {
+          "kind": "base",
+          "a": 1.7763568394002505E-15,
+          "w": 789.4833542206911
+        },
+        {
+          "kind": "controlled",
+          "a": 12.731716856400535,
+          "w": 3662
+        },
+        {
+          "kind": "foreign",
+          "a": 6.388283143599464,
+          "w": 1837.4499791126423
+        }
+      ],
+      "barScaled": true,
+      "overReserve": true
+    },
+    {
+      "phase": "L2",
+      "currentA": -6.49,
+      "direction": "export",
+      "currentReportedAt": "2026-10-22T09:20:50.011+00:00",
+      "reserveThresholdA": 14.130434782608695,
+      "ratingA": 25,
+      "continuousA": 28.249999999999996,
+      "voltageV": 230,
+      "voltageMeasured": true,
+      "balance": {
+        "generation": {
+          "w": 1894.3333333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "generationNote": null,
+        "netImport": {
+          "w": -1489.3,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:50.016+00:00"
+        },
+        "load": {
+          "w": 405.0333333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "controlled": {
+          "w": 0,
+          "unknown": null,
+          "reportedAt": null
+        },
+        "unknownDevices": [],
+        "storage": {
+          "w": null,
+          "unknown": "not_declared",
+          "reportedAt": null
+        },
+        "uncontrolled": {
+          "w": 405.0333333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "modelExceedsLoad": false
+      },
+      "foreignStepW": 2.3179155405556457,
+      "foreignBaselineW": 402.71541779277766,
+      "foreignDetectedAt": null,
+      "bar": [
+        {
+          "kind": "export",
+          "a": 6.49,
+          "w": 1489.3
+        }
+      ],
+      "barScaled": false,
+      "overReserve": false
+    },
+    {
+      "phase": "L3",
+      "currentA": -6.11,
+      "direction": "export",
+      "currentReportedAt": "2026-10-22T09:20:50.012+00:00",
+      "reserveThresholdA": 14.130434782608695,
+      "ratingA": 25,
+      "continuousA": 28.249999999999996,
+      "voltageV": 230,
+      "voltageMeasured": true,
+      "balance": {
+        "generation": {
+          "w": 1894.3333333333333,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "generationNote": null,
+        "netImport": {
+          "w": -1402.4,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:50.017+00:00"
+        },
+        "load": {
+          "w": 491.93333333333317,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "controlled": {
+          "w": 0,
+          "unknown": null,
+          "reportedAt": null
+        },
+        "unknownDevices": [],
+        "storage": {
+          "w": null,
+          "unknown": "not_declared",
+          "reportedAt": null
+        },
+        "uncontrolled": {
+          "w": 491.93333333333317,
+          "unknown": null,
+          "reportedAt": "2026-10-22T09:20:30.004+00:00"
+        },
+        "modelExceedsLoad": false
+      },
+      "foreignStepW": 0,
+      "foreignBaselineW": 497.21047605112994,
+      "foreignDetectedAt": null,
+      "bar": [
+        {
+          "kind": "export",
+          "a": 6.11,
+          "w": 1402.4
+        }
+      ],
+      "barScaled": false,
+      "overReserve": false
+    }
+  ],
+  "devices": [
+    {
+      "id": "heater_l1",
+      "phases": [
+        {
+          "phase": "L1",
+          "powerW": 0,
+          "source": "rated_model",
+          "reportedAt": null
+        }
+      ],
+      "totalW": 0,
+      "source": "rated_model"
+    },
+    {
+      "id": "heater_l2",
+      "phases": [
+        {
+          "phase": "L2",
+          "powerW": 0,
+          "source": "rated_model",
+          "reportedAt": null
+        }
+      ],
+      "totalW": 0,
+      "source": "rated_model"
+    },
+    {
+      "id": "heater_l3",
+      "phases": [
+        {
+          "phase": "L3",
+          "powerW": 0,
+          "source": "rated_model",
+          "reportedAt": null
+        }
+      ],
+      "totalW": 0,
+      "source": "rated_model"
+    },
+    {
+      "id": "ev_charger",
+      "phases": [
+        {
+          "phase": "L1",
+          "powerW": 3662,
+          "source": "measured",
+          "reportedAt": "2026-10-22T09:20:57.502+00:00"
+        }
+      ],
+      "totalW": 3662,
+      "source": "measured"
+    }
+  ],
+  "banners": [
+    {
+      "phase": "L1",
+      "currentA": 19.12,
+      "effectiveCurrentA": 19.12,
+      "thresholdA": 14.130434782608695,
+      "foreignStepW": 1837.4499791126423,
+      "foreignDetectedAt": "2026-10-22T09:20:00.015+00:00",
+      "reaction": "may_add",
+      "reductionRequested": true,
+      "timing": "next_boundary",
+      "dueAt": "2026-10-22T09:21:30+00:00",
+      "planned": [
+        {
+          "device": "ev_charger",
+          "from": {
+            "relays": null,
+            "setpointA": 20,
+            "enabled": true
+          },
+          "to": {
+            "relays": null,
+            "setpointA": 10,
+            "enabled": true
+          },
+          "origin": "dispatch",
+          "reason": "reserve_threshold",
+          "dueAt": null
+        }
+      ]
+    }
+  ]
+}

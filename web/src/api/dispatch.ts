@@ -94,6 +94,12 @@ export interface HistoryEntry {
   measured: number;
   unit: MeasureUnit;
   verdict: Verdict;
+  /** When the change was decided (shadow: not applied) or the switching was seen; null for records from before 0.5.0. */
+  commandedAt: Date | null;
+  /** The level the change started from. */
+  from: Level | null;
+  /** The level it led to. */
+  to: Level | null;
 }
 
 export interface DispatchDevice {
@@ -202,6 +208,9 @@ function historyEntry(raw: unknown, path: string): HistoryEntry {
     measured: number(field(r, 'measured', path), `${path}.measured`),
     unit: oneOf(MEASURE_UNITS, field(r, 'unit', path), `${path}.unit`),
     verdict: oneOf(VERDICTS, field(r, 'verdict', path), `${path}.verdict`),
+    commandedAt: nullable(field(r, 'commandedAt', path), `${path}.commandedAt`, instant),
+    from: nullable(field(r, 'from', path), `${path}.from`, parseLevel),
+    to: nullable(field(r, 'to', path), `${path}.to`, parseLevel),
   };
 }
 

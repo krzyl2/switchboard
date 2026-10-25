@@ -1,0 +1,68 @@
+/* Screen 04 — Device card. The mockup's two columns (connection, energy value) above dispatch's state
+   and the verification history; one column at phone width. Colours come only from the tokens in
+   styles.css, so both themes apply. Long entity IDs wrap inside their box instead of widening the page. */
+.dc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.dc-fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dc-state {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 20px;
+}
+
+.dc-field {
+  min-width: 0;
+}
+
+.dc-field dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.dc-field dd {
+  margin: 2px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dc-field .sub {
+  margin-top: 2px;
+}
+
+code.entity {
+  font-size: 0.85rem;
+  padding: 0 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+
+/* Five short columns: narrower than the shared table minimum, still scrolling inside its box. */
+.dc-history table {
+  min-width: 560px;
+}
+
+.dc-history td.mono .sub {
+  font-family: var(--font-body);
+}
+
+@media (max-width: 760px) {
+  .dc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

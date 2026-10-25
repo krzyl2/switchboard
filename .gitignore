@@ -23,3 +23,6 @@ deploy/.env
 
 # Real household consumption recorded from the maintainer's installation; not published without approval
 tests/fixtures/replay/live-*.csv.gz
+
+# Playwright MCP console logs from local UI checks
+.playwright-mcp/

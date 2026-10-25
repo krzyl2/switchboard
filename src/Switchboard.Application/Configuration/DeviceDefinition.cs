@@ -52,6 +52,9 @@ public sealed record DeviceDefinition(
     /// <summary>The circuit group the device sits behind (CONN-03).</summary>
     public GroupName? CircuitGroup { get; init; }
 
+    /// <summary>An optional display name (<c>name:</c>), shown in the UI next to the id; never used for a decision.</summary>
+    public string? Name { get; init; }
+
     public DeviceSpec ToSpec() => new(
         Id,
         Type,

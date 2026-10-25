@@ -1,0 +1,157 @@
+{
+  "at": "2026-10-22T09:40:02+00:00",
+  "configuration": "valid",
+  "devices": [
+    {
+      "id": "heater_l1",
+      "name": "Grzałka CWU L1",
+      "type": "on_off",
+      "phases": [
+        "L1"
+      ],
+      "stages": [
+        {
+          "stage": 1,
+          "actuator": "switch.grzalka_2",
+          "stateEntity": "switch.grzalka_2",
+          "phases": [
+            "L1"
+          ],
+          "ratedCurrentA": 7,
+          "ratedPowerW": 1700
+        }
+      ],
+      "stopActuator": null,
+      "range": null,
+      "reactionTimeS": 1,
+      "minOnS": 360,
+      "minOffS": 90,
+      "stateReports": "on_change",
+      "stateMaxAgeS": null,
+      "draw": null,
+      "valuePerKwh": 0.35,
+      "shedPriority": null,
+      "noShed": false,
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null
+    },
+    {
+      "id": "heater_l2",
+      "name": "Grzałka CWU L2",
+      "type": "on_off",
+      "phases": [
+        "L2"
+      ],
+      "stages": [
+        {
+          "stage": 1,
+          "actuator": "switch.grzalka_1",
+          "stateEntity": "switch.grzalka_1",
+          "phases": [
+            "L2"
+          ],
+          "ratedCurrentA": 7,
+          "ratedPowerW": 1700
+        }
+      ],
+      "stopActuator": null,
+      "range": null,
+      "reactionTimeS": 1,
+      "minOnS": 360,
+      "minOffS": 90,
+      "stateReports": "on_change",
+      "stateMaxAgeS": null,
+      "draw": null,
+      "valuePerKwh": 0.35,
+      "shedPriority": null,
+      "noShed": false,
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null
+    },
+    {
+      "id": "heater_l3",
+      "name": "Grzałka CWU L3",
+      "type": "on_off",
+      "phases": [
+        "L3"
+      ],
+      "stages": [
+        {
+          "stage": 1,
+          "actuator": "switch.grzalka_3",
+          "stateEntity": "switch.grzalka_3",
+          "phases": [
+            "L3"
+          ],
+          "ratedCurrentA": 7,
+          "ratedPowerW": 1700
+        }
+      ],
+      "stopActuator": null,
+      "range": null,
+      "reactionTimeS": 1,
+      "minOnS": 360,
+      "minOffS": 90,
+      "stateReports": "on_change",
+      "stateMaxAgeS": null,
+      "draw": null,
+      "valuePerKwh": 0.35,
+      "shedPriority": null,
+      "noShed": false,
+      "rotationGroup": "cwu_heaters",
+      "circuitGroup": null
+    },
+    {
+      "id": "ev_charger",
+      "name": "Ładowarka go-e",
+      "type": "modulating",
+      "phases": [
+        "L1"
+      ],
+      "stages": [
+        {
+          "stage": 1,
+          "actuator": "number.goe_422752_amp",
+          "stateEntity": "number.goe_422752_amp",
+          "phases": [
+            "L1"
+          ],
+          "ratedCurrentA": 20,
+          "ratedPowerW": null
+        }
+      ],
+      "stopActuator": null,
+      "range": {
+        "minA": 6,
+        "maxA": 20,
+        "stepA": 1,
+        "unit": "A"
+      },
+      "reactionTimeS": 20,
+      "minOnS": 60,
+      "minOffS": 60,
+      "stateReports": "on_change",
+      "stateMaxAgeS": null,
+      "draw": {
+        "current": [
+          {
+            "phase": "L1",
+            "entity": "sensor.goe_422752_nrg_4"
+          }
+        ],
+        "power": [
+          {
+            "phase": "L1",
+            "entity": "sensor.goe_422752_nrg_7"
+          }
+        ],
+        "maxAgeS": 60
+      },
+      "valuePerKwh": 2.03,
+      "shedPriority": null,
+      "noShed": false,
+      "rotationGroup": null,
+      "circuitGroup": null
+    }
+  ]
+}

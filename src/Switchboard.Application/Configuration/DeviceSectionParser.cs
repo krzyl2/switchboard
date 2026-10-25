@@ -31,7 +31,10 @@ internal static class DeviceSectionParser
     // Schema bound, not a control parameter: a house with more is a typo or a generated file.
     private const int MaxDevices = 64;
 
-    private static readonly string[] CommonKeys = ["id", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group"];
+    // Display bound for a device's name: it labels a row on a phone screen, not a description.
+    private const int MaxNameLength = 40;
+
+    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group"];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
     private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
     private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator"];
@@ -300,6 +303,7 @@ internal static class DeviceSectionParser
             ?? (setpoint ? control?.Devices.ModulatingMinOff : control?.Dispatch.RelayMinOff);
         var stateReports = ReadStateReports(mapping, path, issues);
         var stateMaxAge = ReadStateMaxAge(mapping, path, control, stateReports, issues);
+        var name = ReadName(mapping, path, issues);
 
         var stages = new List<StageDraft>();
         ModulatingRange? range = null;
@@ -353,7 +357,39 @@ internal static class DeviceSectionParser
             RotationNode = rotation.Node,
             CircuitGroup = circuit,
             ShedPriorityDeclared = shedPriority is not null,
+            Name = name,
         };
+    }
+
+    /// <summary>
+    /// The optional display name: trimmed, 1 to 40 characters, no control characters. It is shown in
+    /// the UI only and never takes part in a decision; the id stays what every record names.
+    /// </summary>
+    private static string? ReadName(ConfigMapping mapping, string path, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(mapping, "name") is not { } node)
+        {
+            return null;
+        }
+
+        var keyPath = ConfigRead.Join(path, "name");
+        if (ConfigRead.String(node, keyPath, issues) is not { } text)
+        {
+            return null;
+        }
+
+        var trimmed = text.Trim();
+        if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(char.IsControl))
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                keyPath,
+                node,
+                string.Create(CultureInfo.InvariantCulture, $"A device name is 1 to {MaxNameLength} characters of text without control characters (line breaks, tabs)."));
+            return null;
+        }
+
+        return trimmed;
     }
 
     /// <summary>Each type has an exact key set; later keys warn, a power range is refused, anything else is unknown.</summary>
@@ -1021,6 +1057,8 @@ internal static class DeviceSectionParser
 
         public bool ShedPriorityDeclared { get; init; }
 
+        public string? Name { get; init; }
+
         public DeviceDefinition Build()
         {
             var name = id!.Value;
@@ -1055,6 +1093,7 @@ internal static class DeviceSectionParser
                     Draw.MaxAge),
                 RotationGroup = RotationGroup,
                 CircuitGroup = CircuitGroup,
+                Name = Name,
             };
         }
 

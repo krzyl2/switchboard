@@ -62,7 +62,30 @@ public sealed record DispatchEvent(DecisionScope Scope, Phase? Phase, DecisionAc
 public sealed record DeviceDispatchState(DeviceName Device, ReasonCode? Reason, ReasonCode? Pending, int? StartRank, DeviceLevel? Wish);
 
 /// <summary>Foreign load and phase priority of one phase.</summary>
-public sealed record PhaseDispatchState(Phase Phase, Watts? Foreign, Watts? Baseline, int? Rank);
+public sealed record PhaseDispatchState(Phase Phase, Watts? Foreign, Watts? Baseline, int? Rank)
+{
+    /// <summary>
+    /// Read-only exposure: Σ of every declared device's power on the phase (storage included) as this
+    /// step counted it for foreign load (house load − ours); null while one of them is unknown.
+    /// </summary>
+    public Watts? Ours { get; init; }
+}
+
+/// <summary>Where a device's power figure comes from.</summary>
+public enum PowerSource
+{
+    /// <summary>Its own fresh power draw.</summary>
+    Measured,
+
+    /// <summary>A relay's rated power while it reports on (0 W while off): the model, never a measurement.</summary>
+    RatedModel,
+
+    /// <summary>Not known: a stale draw, an unknown state, or a setpoint device without a power draw.</summary>
+    Unknown,
+}
+
+/// <summary>A device's power on one phase as foreign load detection counted it (read-only exposure).</summary>
+public sealed record DevicePhasePower(DeviceName Device, Phase Phase, Watts? Power, PowerSource Source);
 
 public sealed record DispatchEvaluation(
     DateTimeOffset At,
@@ -72,6 +95,9 @@ public sealed record DispatchEvaluation(
     ImmutableArray<PhaseDispatchState> Phases,
     ImmutableArray<Phase> Ranking)
 {
+    /// <summary>Read-only exposure: every declared device's power per phase, as this step counted it for foreign load.</summary>
+    public ImmutableArray<DevicePhasePower> DevicePowers { get; init; } = [];
+
     public static DispatchEvaluation Empty(DateTimeOffset at) => new(at, [], [], [], [], []);
 
     public DispatchWish? Wish(DeviceName device) => Wishes.FirstOrDefault(w => w.Device == device);

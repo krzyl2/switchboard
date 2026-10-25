@@ -34,11 +34,13 @@ public sealed record SafeStateDto(bool Active, string Scope, string? Reason, IRe
 
 public sealed record KillSwitchDto(bool Engaged, DateTimeOffset? ChangedAt, string? Source);
 
-public sealed record BreakerDto(double RatingA, string Characteristic, double ContinuousMultiple, double ContinuousA, IReadOnlyList<TierDto> Tiers);
+/// <param name="BudgetRecoveryTimeS">How long an empty overload budget takes to refill at or below the continuous current.</param>
+public sealed record BreakerDto(double RatingA, string Characteristic, double ContinuousMultiple, double ContinuousA, double BudgetRecoveryTimeS, IReadOnlyList<TierDto> Tiers);
 
 /// <param name="UpTo">The band's upper limit as a multiple of In (inclusive); null for the open band.</param>
+/// <param name="UpToW">The same limit as power per phase at the nominal voltage (display only); null for the open band.</param>
 /// <param name="AllowedS">The allowed duration in seconds; null for unlimited.</param>
-public sealed record TierDto(double? UpTo, double? UpToA, double? AllowedS, string Reaction);
+public sealed record TierDto(double? UpTo, double? UpToA, double? UpToW, double? AllowedS, string Reaction);
 
 public sealed record GuardPhaseDto(
     string Phase,
@@ -184,7 +186,13 @@ internal static class GuardEndpoint
                     breaker.Characteristic == BreakerCharacteristic.Unknown ? "unknown" : breaker.Characteristic.ToString(),
                     breaker.ContinuousMultiple,
                     breaker.Continuous.Value,
-                    [.. breaker.Tiers.Select(t => new TierDto(t.UpTo, t.UpTo * breaker.Rating.Value, t.Allowed?.TotalSeconds, ApiText.Snake(t.Reaction)))])
+                    diagnostics.Snapshot.Protection.Setup?.Budget.RecoveryTime.TotalSeconds ?? 0,
+                    [.. breaker.Tiers.Select(t => new TierDto(
+                        t.UpTo,
+                        t.UpTo * breaker.Rating.Value,
+                        t.UpTo is { } upTo && voltage is { } nominal ? SignalUnits.PowerAt(breaker.Rating * upTo, nominal).Value : null,
+                        t.Allowed?.TotalSeconds,
+                        ApiText.Snake(t.Reaction)))])
                 : null,
             [.. status.Phases.Select(p => new GuardPhaseDto(
                 p.Phase.ToString(),

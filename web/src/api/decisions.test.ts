@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DECISION_ACTIONS, DECISION_ORIGINS, MODE_NOTES, REASON_CODES, SAFE_STATE_CAUSES, parseDecisionsPage } from './decisions';
+import { DECISION_ACTIONS, DECISION_KINDS, DECISION_ORIGINS, MODE_NOTES, REASON_CODES, SAFE_STATE_CAUSES, parseDecisionsPage } from './decisions';
 import sample from './decisions.sample.json';
 
 // The sample has the keys GET api/decisions really writes (GuardSpaContractTests compares them).
@@ -125,5 +125,29 @@ describe('parseDecisionsPage, dispatch decisions', () => {
     );
 
     expect(parsed.items.find((d) => d.action === 'mode_resolved')?.inputs.mode?.note).toBe(note);
+  });
+});
+
+// Stage 4: every decision carries its kind, what the decision log filters by.
+describe('parseDecisionsPage, decision kinds', () => {
+  it('keeps the kind the add-on assigned: action first, then origin', () => {
+    const items = parseDecisionsPage(payload()).items;
+
+    expect(items.find((d) => d.action === 'foreign_load_detected')?.kind).toBe('foreign_load');
+    expect(items.find((d) => d.action === 'marked_unresponsive')?.kind).toBe('verification');
+    expect(items.find((d) => d.action === 'switch_on')?.kind).toBe('dispatch');
+    expect(items.find((d) => d.action === 'mode_resolved')?.kind).toBe('system');
+    expect(items[0]?.kind).toBe('protection');
+  });
+
+  it.each(DECISION_KINDS)('accepts the kind %s', (kind) => {
+    expect(parseDecisionsPage(payload((p) => (p.items[0].kind = kind))).items[0]?.kind).toBe(kind);
+  });
+
+  it.each([
+    ['an unknown kind', (p: any) => (p.items[0].kind = 'guard')],
+    ['a missing kind', (p: any) => delete p.items[0].kind],
+  ])('rejects %s', (_case, change) => {
+    expect(() => parseDecisionsPage(payload(change))).toThrow();
   });
 });

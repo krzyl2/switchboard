@@ -18,6 +18,7 @@ public sealed record DecisionsResponse(IReadOnlyList<DecisionDto> Items, string?
 /// <param name="Origin">guard, dispatch or override for a device change; null for events and for 0.3.x decisions.</param>
 /// <param name="Group">The circuit group the decision is about or was caused by.</param>
 /// <param name="Target">The device's target level after the decision (what Switchboard intends; in shadow mode nothing is applied).</param>
+/// <param name="Kind">protection, dispatch, override, verification, foreign_load or system: what the decision log filters by.</param>
 public sealed record DecisionDto(
     string Id,
     DateTimeOffset At,
@@ -26,6 +27,7 @@ public sealed record DecisionDto(
     int? Stage,
     string? Phase,
     string Action,
+    string Kind,
     string Reason,
     string? Overridden,
     string Mode,
@@ -114,7 +116,7 @@ internal static class DecisionsEndpoint
             if (Parse(request.Query, options.Value.DecisionMaxPageSize) is not { } query)
             {
                 return Results.Problem(
-                    $"Filters: device (a device name), phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), limit (1 to {options.Value.DecisionMaxPageSize}), before (a cursor from 'next').",
+                    $"Filters: device (a device name), phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), kind ({string.Join(", ", Enum.GetValues<DecisionKind>().Select(ApiText.Snake))}), limit (1 to {options.Value.DecisionMaxPageSize}), before (a cursor from 'next').",
                     statusCode: StatusCodes.Status400BadRequest);
             }
 
@@ -165,6 +167,16 @@ internal static class DecisionsEndpoint
             }
         }
 
+        DecisionKind? kind = null;
+        if (query.TryGetValue("kind", out var kindText))
+        {
+            kind = Enum.GetValues<DecisionKind>().Where(k => ApiText.Snake(k) == kindText).Select(k => (DecisionKind?)k).SingleOrDefault();
+            if (kind is null)
+            {
+                return null;
+            }
+        }
+
         var limit = DefaultLimit;
         if (query.TryGetValue("limit", out var limitText)
             && !(int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) && limit >= 1 && limit <= maxLimit))
@@ -182,7 +194,7 @@ internal static class DecisionsEndpoint
             }
         }
 
-        return new DecisionQuery(device, phase, reason, Math.Min(limit, maxLimit), before);
+        return new DecisionQuery(device, phase, reason, Math.Min(limit, maxLimit), before) { Kind = kind };
     }
 
     internal static DecisionDto Dto(Decision decision) => new(
@@ -193,6 +205,7 @@ internal static class DecisionsEndpoint
         decision.Stage,
         decision.Phase?.ToString(),
         ApiText.Snake(decision.Action),
+        ApiText.Snake(DecisionKinds.Of(decision)),
         ReasonCodes.Name(decision.Reason),
         decision.Overridden is { } overridden ? ReasonCodes.Name(overridden) : null,
         ApiText.Snake(decision.Mode),

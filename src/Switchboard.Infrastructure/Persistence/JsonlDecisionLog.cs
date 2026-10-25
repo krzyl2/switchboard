@@ -155,7 +155,8 @@ public sealed class JsonlDecisionLog : IDecisionRecorder
                 if (entry.Sequence < before
                     && (query.Device is null || decision.Device == query.Device)
                     && (query.Phase is null || decision.Phase == query.Phase)
-                    && (query.Reason is null || decision.Reason == query.Reason))
+                    && (query.Reason is null || decision.Reason == query.Reason)
+                    && (query.Kind is null || DecisionKinds.Of(decision) == query.Kind))
                 {
                     matches.Add(entry);
                 }

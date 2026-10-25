@@ -72,4 +72,7 @@ public sealed record SignalSnapshot(
     /// <see cref="Dispatch"/>, never inside it (dispatch inputs carry watts only, SIG-04).
     /// </summary>
     public DispatchSetup? DispatchSetup { get; init; }
+
+    /// <summary>What only the presentation reads, from the same cycle; null without a valid configuration.</summary>
+    public PresentationInputs? Presentation { get; init; }
 }

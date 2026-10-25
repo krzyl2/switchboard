@@ -46,6 +46,11 @@ public static class SignalUnits
 
     /// <summary>A current expressed as power at the nominal voltage; for display at the presentation edge only, never for a decision.</summary>
     public static Watts PowerAt(Amperes current, Volts voltage) => new(current.Value * voltage.Value);
+
+    /// <summary>The energy a constant power delivers over a duration (W × h ÷ 1000): the statistics' only integration step.</summary>
+    public static KilowattHours EnergyOf(Watts power, TimeSpan duration) => new(power.Value * duration.TotalHours / WattsPerKilowatt);
+
+    private const double WattsPerKilowatt = 1000;
 }
 
 public enum NormalizationOutcome

@@ -73,7 +73,9 @@ public sealed class DispatchEngine
 
         Sync(setup);
         var events = new List<DispatchEvent>();
-        ObserveForeignLoad(input, setup, events);
+        var ours = new Dictionary<Phase, Watts?>();
+        var devicePowers = ImmutableArray.CreateBuilder<DevicePhasePower>();
+        ObserveForeignLoad(input, setup, events, ours, devicePowers);
 
         var overridesChanged = input.Overrides.Version != _overrideVersion;
         var changed = overridesChanged
@@ -110,9 +112,9 @@ public sealed class DispatchEngine
         {
             var (foreign, baseline) = _foreign.Last(p);
             var rank = _ranking.Adopted.IndexOf(p);
-            return new PhaseDispatchState(p, foreign, baseline, rank < 0 ? null : rank + 1);
+            return new PhaseDispatchState(p, foreign, baseline, rank < 0 ? null : rank + 1) { Ours = ours.GetValueOrDefault(p) };
         });
-        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted);
+        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = devicePowers.ToImmutable() };
     }
 
     /// <summary>Dispatch adds no deadline of its own: it acts at the guard's cycle boundaries.</summary>
@@ -155,9 +157,10 @@ public sealed class DispatchEngine
     /// show yet counts as ours (the meter may see the load before the relay reports), so our own
     /// command is never foreign, until its verification refuted it: a relay that measurably did not
     /// follow is not counted as on, so a real kettle is not hidden behind it and the end of its
-    /// command is no "foreign" rise that would excuse its next mismatch.
+    /// command is no "foreign" rise that would excuse its next mismatch. What it counted (ours per
+    /// phase, each device's power and where it came from) is handed back for read-only consumers.
     /// </summary>
-    private void ObserveForeignLoad(DispatchInput input, DispatchSetup setup, List<DispatchEvent> events)
+    private void ObserveForeignLoad(DispatchInput input, DispatchSetup setup, List<DispatchEvent> events, Dictionary<Phase, Watts?> oursByPhase, ImmutableArray<DevicePhasePower>.Builder devicePowers)
     {
         var active = input.Mode.Effective == OperatingMode.Active;
         foreach (var phase in setup.Phases)
@@ -181,8 +184,14 @@ public sealed class DispatchEngine
                 }
 
                 ours = ours is { } sum && own is { } add ? sum + add : null;
+                devicePowers.Add(new DevicePhasePower(
+                    device.Id,
+                    phase,
+                    own,
+                    own is null ? PowerSource.Unknown : device.HasPowerDraw(phase) ? PowerSource.Measured : PowerSource.RatedModel));
             }
 
+            oursByPhase[phase] = ours;
             Watts? foreign = dispatch is { DataValid: true, Load: { } houseLoad } && ours is { } controlled ? houseLoad - controlled : null;
             if (_foreign.Observe(phase, foreign, dispatch?.PowerReportedAt, setup.ForeignLoad))
             {

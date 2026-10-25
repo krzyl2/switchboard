@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    // The stylesheet is part of the contract (theme.test.ts reads its tokens through ?raw); vitest
+    // leaves CSS empty unless it is processed.
+    css: { include: [/styles\.css/] },
   },
 });

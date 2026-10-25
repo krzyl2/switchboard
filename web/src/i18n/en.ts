@@ -1,3 +1,12 @@
+import { dashboard } from './dashboard';
+import { device } from './device';
+import { flows } from './flows';
+import { limits } from './limits';
+import { log } from './log';
+import { shell } from './shell';
+
+// The chrome of Stages 0-3 lives here; the runtime screens (Stage 4) keep their texts in one file
+// each (shell, dashboard, flows, device, limits, log), so parallel work never edits the same file.
 export const en = {
   loading: 'Loading status…',
   rowMode: 'Mode',
@@ -451,6 +460,13 @@ export const en = {
   'verdict.not_applied': 'not applied (shadow mode)',
   'verdict.unverifiable': 'cannot be verified (no draw signal)',
   'verdict.timed_out': 'no new measurement in time',
+
+  ...shell.en,
+  ...dashboard.en,
+  ...flows.en,
+  ...device.en,
+  ...limits.en,
+  ...log.en,
 };
 
 export type Messages = { [K in keyof typeof en]: string };

@@ -18,7 +18,8 @@ namespace Switchboard.Tests.Host;
 /// <summary>
 /// Hosted services stop in reverse registration order, and that order is the shutdown contract:
 /// the guard first (shutdown safe state recorded and written while the links are still up), then
-/// the heartbeat (no more ON), then MQTT (OFF, offline, disconnect), then the HA socket.
+/// the presentation (the shutdown step counted, statistics written), the heartbeat (no more ON),
+/// then MQTT (OFF, offline, disconnect), then the HA socket.
 /// </summary>
 public sealed class CompositionTests
 {
@@ -33,7 +34,8 @@ public sealed class CompositionTests
         Assert.NotNull(provider.GetRequiredService<ConfigurationFileWatcher>());
         Assert.NotNull(provider.GetRequiredService<GuardRunner>());
         Assert.NotNull(provider.GetRequiredService<JsonlDecisionLog>());
-        Assert.Equal(7, provider.GetServices<IHostedService>().Count());
+        Assert.NotNull(provider.GetRequiredService<Switchboard.Application.Presentation.PresentationPersistence>());
+        Assert.Equal(8, provider.GetServices<IHostedService>().Count());
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public sealed class CompositionTests
             [
                 typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
                 typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
-                typeof(GuardService),
+                typeof(PresentationService), typeof(GuardService),
             ],
             provider.GetServices<IHostedService>().Select(s => s.GetType()));
     }

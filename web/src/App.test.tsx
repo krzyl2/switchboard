@@ -47,12 +47,15 @@ beforeEach(() => {
   vi.setSystemTime(START);
   fetchMock = vi.fn<typeof fetch>();
   vi.stubGlobal('fetch', fetchMock);
+  // Since Stage 4 the dashboard is the home page; the status page lives at #/status.
+  window.location.hash = '#/status';
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  window.location.hash = '';
 });
 
 describe('status page', () => {

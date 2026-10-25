@@ -39,8 +39,8 @@ public sealed class GuardEndpointTests
         Assert.Equal(["ceiling", "uiChoice", "effective", "note"], Names(body.GetProperty("mode")));
         Assert.Equal(["active", "scope", "reason", "phases", "since"], Names(body.GetProperty("safeState")));
         Assert.Equal(["engaged", "changedAt", "source"], Names(body.GetProperty("killSwitch")));
-        Assert.Equal(["ratingA", "characteristic", "continuousMultiple", "continuousA", "tiers"], Names(body.GetProperty("breaker")));
-        Assert.Equal(["upTo", "upToA", "allowedS", "reaction"], Names(body.GetProperty("breaker").GetProperty("tiers")[0]));
+        Assert.Equal(["ratingA", "characteristic", "continuousMultiple", "continuousA", "budgetRecoveryTimeS", "tiers"], Names(body.GetProperty("breaker")));
+        Assert.Equal(["upTo", "upToA", "upToW", "allowedS", "reaction"], Names(body.GetProperty("breaker").GetProperty("tiers")[0]));
         Assert.Equal(
             ["phase", "dataValid", "invalidReason", "currentA", "effectiveCurrentA", "multiple", "band", "reaction", "continuousA", "reserveThresholdA",
                 "headroomA", "headroomW", "breakerHeadroomA", "budget", "budgetTrend", "recoveryRemainingS", "increasesAllowed", "reductionRequested", "state", "direction", "reportedAt"],
@@ -52,7 +52,7 @@ public sealed class GuardEndpointTests
         Assert.Equal(["writable", "lastError", "dropped"], Names(body.GetProperty("decisionLog")));
         Assert.Equal(["status", "warning"], Names(body.GetProperty("stateFile")));
         var decision = body.GetProperty("decisions")[0];
-        Assert.Equal(["id", "at", "scope", "device", "stage", "phase", "action", "reason", "overridden", "mode", "commanded", "refusedBy", "origin", "group", "target", "inputs"], Names(decision));
+        Assert.Equal(["id", "at", "scope", "device", "stage", "phase", "action", "kind", "reason", "overridden", "mode", "commanded", "refusedBy", "origin", "group", "target", "inputs"], Names(decision));
         Assert.Equal(["phase", "device", "mode", "killSwitch", "safeStateCause", "dispatch"], Names(decision.GetProperty("inputs")));
     }
 

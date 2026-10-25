@@ -53,12 +53,16 @@
     {
       "id": "heater_l1",
       "type": "on_off",
-      "phases": ["L1"],
+      "phases": [
+        "L1"
+      ],
       "rotationGroup": "cwu_heaters",
       "circuitGroup": null,
       "intended": null,
       "reported": {
-        "relays": [false],
+        "relays": [
+          false
+        ],
         "setpointA": null,
         "enabled": true
       },
@@ -74,7 +78,9 @@
       },
       "deferred": {
         "target": {
-          "relays": [true],
+          "relays": [
+            true
+          ],
           "setpointA": null,
           "enabled": true
         },
@@ -99,23 +105,44 @@
           "expected": -1700,
           "measured": -1649,
           "unit": "watts",
-          "verdict": "match"
+          "verdict": "match",
+          "commandedAt": "2026-10-24T11:58:01.004+00:00",
+          "from": {
+            "relays": [
+              true
+            ],
+            "setpointA": null,
+            "enabled": true
+          },
+          "to": {
+            "relays": [
+              false
+            ],
+            "setpointA": null,
+            "enabled": true
+          }
         }
       ]
     },
     {
       "id": "heater_l2",
       "type": "on_off",
-      "phases": ["L2"],
+      "phases": [
+        "L2"
+      ],
       "rotationGroup": "cwu_heaters",
       "circuitGroup": null,
       "intended": {
-        "relays": [true],
+        "relays": [
+          true
+        ],
         "setpointA": null,
         "enabled": true
       },
       "reported": {
-        "relays": [false],
+        "relays": [
+          false
+        ],
         "setpointA": null,
         "enabled": true
       },
@@ -144,11 +171,15 @@
     {
       "id": "heater_l3",
       "type": "on_off",
-      "phases": ["L3"],
+      "phases": [
+        "L3"
+      ],
       "rotationGroup": "cwu_heaters",
       "circuitGroup": null,
       "intended": {
-        "relays": [false],
+        "relays": [
+          false
+        ],
         "setpointA": null,
         "enabled": true
       },
@@ -183,7 +214,22 @@
           "expected": 1700,
           "measured": 12,
           "unit": "watts",
-          "verdict": "mismatch"
+          "verdict": "mismatch",
+          "commandedAt": "2026-10-24T11:39:30.004+00:00",
+          "from": {
+            "relays": [
+              false
+            ],
+            "setpointA": null,
+            "enabled": true
+          },
+          "to": {
+            "relays": [
+              true
+            ],
+            "setpointA": null,
+            "enabled": true
+          }
         },
         {
           "at": "2026-10-24T11:31:30.004+00:00",
@@ -191,14 +237,31 @@
           "expected": 1700,
           "measured": 1705,
           "unit": "watts",
-          "verdict": "match"
+          "verdict": "match",
+          "commandedAt": "2026-10-24T11:31:00.004+00:00",
+          "from": {
+            "relays": [
+              false
+            ],
+            "setpointA": null,
+            "enabled": true
+          },
+          "to": {
+            "relays": [
+              true
+            ],
+            "setpointA": null,
+            "enabled": true
+          }
         }
       ]
     },
     {
       "id": "ev_charger",
       "type": "modulating",
-      "phases": ["L1"],
+      "phases": [
+        "L1"
+      ],
       "rotationGroup": null,
       "circuitGroup": "carport",
       "intended": {
@@ -242,14 +305,27 @@
           "expected": 6,
           "measured": 9.6,
           "unit": "amperes",
-          "verdict": "not_applied"
+          "verdict": "not_applied",
+          "commandedAt": "2026-10-24T12:00:15.004+00:00",
+          "from": {
+            "relays": null,
+            "setpointA": 16.0,
+            "enabled": true
+          },
+          "to": {
+            "relays": null,
+            "setpointA": 6,
+            "enabled": true
+          }
         }
       ]
     },
     {
       "id": "battery",
       "type": "storage",
-      "phases": ["L2"],
+      "phases": [
+        "L2"
+      ],
       "rotationGroup": null,
       "circuitGroup": null,
       "intended": null,

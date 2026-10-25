@@ -78,7 +78,17 @@ public enum HistoryKind
 }
 
 /// <summary>One verification or observation of a device (UI-12 history).</summary>
-public sealed record VerificationRecord(DateTimeOffset At, HistoryKind Kind, double Expected, double Measured, MeasureUnit Unit, Verdict Verdict);
+public sealed record VerificationRecord(DateTimeOffset At, HistoryKind Kind, double Expected, double Measured, MeasureUnit Unit, Verdict Verdict)
+{
+    /// <summary>When the window opened: the (virtual, in shadow mode) command, or the observed transition. Read-only exposure for the device card.</summary>
+    public DateTimeOffset? CommandedAt { get; init; }
+
+    /// <summary>The level the window's change started from.</summary>
+    public DeviceLevel? From { get; init; }
+
+    /// <summary>The level the window's change led to.</summary>
+    public DeviceLevel? To { get; init; }
+}
 
 /// <summary>The ledger's view of one device, for dispatch and the status.</summary>
 /// <param name="Target">The resolved target; null while unset (it then follows the reported state).</param>

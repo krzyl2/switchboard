@@ -305,7 +305,12 @@ public sealed class EffectorGate
             ? (Verdict.TimedOut, 0.0, 0.0, MeasureUnit.Watts)
             : window.Kind == WindowKind.Command && !window.Applied ? (Verdict.NotApplied, 0.0, 0.0, MeasureUnit.Watts)
             : Verify(context, device, dispatchDevice, window);
-        AddHistory(state, new VerificationRecord(context.Now, window.Kind == WindowKind.Command ? HistoryKind.Command : HistoryKind.Observed, expected, measured, unit, verdict));
+        AddHistory(state, new VerificationRecord(context.Now, window.Kind == WindowKind.Command ? HistoryKind.Command : HistoryKind.Observed, expected, measured, unit, verdict)
+        {
+            CommandedAt = window.Times.CommandedAt,
+            From = window.From,
+            To = window.To,
+        });
         if (window.Kind != WindowKind.Command)
         {
             return;

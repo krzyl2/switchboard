@@ -39,3 +39,26 @@ export const DISPATCH_REQUEST_TIMEOUT_MS = 1_800;
  * Guard:ApiEvaluationTimeout (2 s); longer than that, so a late evaluation is reported as such.
  */
 export const OVERRIDE_REQUEST_TIMEOUT_MS = 5_000;
+
+// Runtime screens (Stage 4). Each request times out before its next poll is due, so a hung request
+// never delays the next one and a frozen add-on shows up as "unavailable".
+
+/** The power picture (dashboard, flows): as often as the guard's view, so bars and ages visibly tick. */
+export const POWER_REFRESH_INTERVAL_MS = 2_000;
+export const POWER_REQUEST_TIMEOUT_MS = 1_800;
+
+/** The declared devices change only with the configuration file. */
+export const DEVICES_REFRESH_INTERVAL_MS = 10_000;
+export const DEVICES_REQUEST_TIMEOUT_MS = 8_000;
+
+/** The recorded excursions change at most once per meter sample. */
+export const EXCURSIONS_REFRESH_INTERVAL_MS = 10_000;
+export const EXCURSIONS_REQUEST_TIMEOUT_MS = 8_000;
+
+/** The energy buckets: a bucket is minutes long, so half a minute is fresh enough. */
+export const STATISTICS_REFRESH_INTERVAL_MS = 30_000;
+export const STATISTICS_REQUEST_TIMEOUT_MS = 10_000;
+
+/** The decision log page. */
+export const DECISION_LOG_REFRESH_INTERVAL_MS = 5_000;
+export const DECISION_LOG_REQUEST_TIMEOUT_MS = 4_000;

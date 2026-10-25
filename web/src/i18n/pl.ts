@@ -1,4 +1,10 @@
+import { dashboard } from './dashboard';
+import { device } from './device';
 import type { Messages } from './en';
+import { flows } from './flows';
+import { limits } from './limits';
+import { log } from './log';
+import { shell } from './shell';
 
 // Vocabulary follows docs/mockups ("Obserwacja", "Sterowanie aktywne", the protective-device note).
 export const pl: Messages = {
@@ -454,4 +460,11 @@ export const pl: Messages = {
   'verdict.not_applied': 'nie wykonano (tryb Obserwacja)',
   'verdict.unverifiable': 'nie da się sprawdzić (brak pomiaru poboru)',
   'verdict.timed_out': 'brak nowego pomiaru na czas',
+
+  ...shell.pl,
+  ...dashboard.pl,
+  ...flows.pl,
+  ...device.pl,
+  ...limits.pl,
+  ...log.pl,
 };

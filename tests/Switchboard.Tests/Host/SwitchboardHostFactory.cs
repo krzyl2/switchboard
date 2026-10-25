@@ -4,15 +4,16 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Switchboard.Application.Signals;
 using Switchboard.Host.Hosting;
 
 namespace Switchboard.Tests.Host;
 
 /// <summary>
-/// The real Program in memory, with the background links, the signal pipeline and the guard
-/// removed: these tests exercise the web surface, and link states, signal diagnostics and the guard
-/// status are set directly through their ports. Runtime state and the decision log go to a data
-/// folder inside the throwaway web root, never to /data.
+/// The real Program in memory, with the background links, the signal pipeline, the guard and the
+/// presentation writer removed: these tests exercise the web surface, and link states, signal
+/// diagnostics, the guard status and the presentation hub are set directly through their ports.
+/// Runtime state and the decision log go to a data folder inside the throwaway web root, never to /data.
 /// </summary>
 internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
 {
@@ -20,20 +21,23 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
     [
         typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
         typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
-        typeof(GuardService),
+        typeof(PresentationService), typeof(GuardService),
     ];
 
     private readonly Dictionary<string, string?> _settings;
     private readonly string _webRoot;
     private readonly Action<IServiceCollection>? _replaceLinks;
+    private readonly TimeProvider? _signalTime;
 
     /// <param name="replaceLinks">
     /// When given, the background links stay registered and this replaces their transports instead.
     /// </param>
-    public SwitchboardHostFactory(string webRoot, IDictionary<string, string?>? settings = null, Action<IServiceCollection>? replaceLinks = null)
+    /// <param name="signalTime">When given, the signal clock (what the endpoints call now) runs on it instead of the host clock.</param>
+    public SwitchboardHostFactory(string webRoot, IDictionary<string, string?>? settings = null, Action<IServiceCollection>? replaceLinks = null, TimeProvider? signalTime = null)
     {
         _webRoot = webRoot;
         _replaceLinks = replaceLinks;
+        _signalTime = signalTime;
         _settings = new Dictionary<string, string?>
         {
             // Never read a real /data/options.json, and never inherit the developer's environment.
@@ -59,6 +63,11 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(_settings));
         builder.ConfigureTestServices(services =>
         {
+            if (_signalTime is not null)
+            {
+                services.AddSingleton(new SignalClock(_signalTime));
+            }
+
             if (_replaceLinks is not null)
             {
                 _replaceLinks(services);

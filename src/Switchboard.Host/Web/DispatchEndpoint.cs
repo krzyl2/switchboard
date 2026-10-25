@@ -83,7 +83,10 @@ public sealed record DrawDto(double? CurrentA, double? PowerW, bool Fresh);
 
 /// <param name="Kind">command (a change of ours) or observed (another controller switched the device).</param>
 /// <param name="Unit">amperes or watts.</param>
-public sealed record HistoryDto(DateTimeOffset At, string Kind, double Expected, double Measured, string Unit, string Verdict);
+/// <param name="CommandedAt">When the change was decided (shadow: not applied) or the switching was seen; null for records from before 0.5.0.</param>
+/// <param name="From">The level the change started from.</param>
+/// <param name="To">The level it led to.</param>
+public sealed record HistoryDto(DateTimeOffset At, string Kind, double Expected, double Measured, string Unit, string Verdict, DateTimeOffset? CommandedAt, LevelDto? From, LevelDto? To);
 
 /// <summary>Body of POST api/devices/{id}/override.</summary>
 public sealed record OverrideRequest(OverrideMode Mode);
@@ -198,7 +201,7 @@ internal static class DispatchEndpoint
             d.Mismatches,
             new OverrideDto(ApiText.Snake(d.Override.Mode), d.Override.ChangedAt, ApiText.SnakeOrNull(d.Override.Source)),
             d.Draw is { } draw ? new DrawDto(draw.Current?.Value, draw.Power?.Value, draw.Fresh) : null,
-            [.. d.History.Reverse().Select(h => new HistoryDto(h.At, ApiText.Snake(h.Kind), h.Expected, h.Measured, ApiText.Snake(h.Unit), ApiText.Snake(h.Verdict)))]))]);
+            [.. d.History.Reverse().Select(h => new HistoryDto(h.At, ApiText.Snake(h.Kind), h.Expected, h.Measured, ApiText.Snake(h.Unit), ApiText.Snake(h.Verdict), h.CommandedAt, ApiText.Level(h.From), ApiText.Level(h.To)))]))]);
 
     private static string? Name(ReasonCode? reason) => reason is { } code ? ReasonCodes.Name(code) : null;
 

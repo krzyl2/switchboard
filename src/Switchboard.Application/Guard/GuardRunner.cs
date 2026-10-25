@@ -15,6 +15,9 @@ public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decisi
     public DispatchEvaluation? Dispatch { get; init; }
 
     public DispatchStatus? DispatchStatus { get; init; }
+
+    /// <summary>The control inputs this step read (one store cycle); for read-only consumers such as the presentation.</summary>
+    public ControlInputs? Inputs { get; init; }
 }
 
 /// <summary>
@@ -148,7 +151,7 @@ public sealed class GuardRunner : IDisposable
             _holder.Publish(evaluation.Status);
             var dispatchStatus = DispatchStatusFactory.Build(evaluation, dispatch, _gate.Ledger, overrides, _lockouts, inputs, mode, now);
             _dispatchHolder.Publish(dispatchStatus);
-            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export()) { Dispatch = dispatch, DispatchStatus = dispatchStatus });
+            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export()) { Dispatch = dispatch, DispatchStatus = dispatchStatus, Inputs = inputs });
             return now;
         }
     }

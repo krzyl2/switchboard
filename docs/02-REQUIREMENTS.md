@@ -76,14 +76,14 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Runtime UI
 
-- [ ] **UI-07**: Flow view — sources, meter, per-phase busbars, devices; path thickness proportional to power; flow direction animated, honouring `prefers-reduced-motion`
-- [ ] **UI-08**: Per-phase headroom table: current, headroom to reserve threshold, headroom to breaker, state
-- [ ] **UI-09**: Device queue with state, power and the reason for the current state
-- [ ] **UI-10**: Stopped devices remain visible with their blocking reason rather than disappearing
-- [ ] **UI-11**: Foreign (uncontrolled) load is visually distinct from controlled load throughout
+- [x] **UI-07**: Flow view — sources, meter, per-phase busbars, devices; path thickness proportional to power; flow direction animated, honouring `prefers-reduced-motion`
+- [x] **UI-08**: Per-phase headroom table: current, headroom to reserve threshold, headroom to breaker, state
+- [x] **UI-09**: Device queue with state, power and the reason for the current state
+- [x] **UI-10**: Stopped devices remain visible with their blocking reason rather than disappearing
+- [x] **UI-11**: Foreign (uncontrolled) load is visually distinct from controlled load throughout
 - [ ] **UI-12**: Device card: connection, phase, limits, reaction time, value per kWh, goal, and recent command/verification history
-- [ ] **UI-13**: Full light and dark theming; layout usable at phone width
-- [ ] **UI-14**: Polish and English translations for all add-on options and UI chrome
+- [x] **UI-13**: Full light and dark theming; layout usable at phone width
+- [x] **UI-14**: Polish and English translations for all add-on options and UI chrome
 
 ## Packaging and distribution
 

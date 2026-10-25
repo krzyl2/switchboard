@@ -27,7 +27,14 @@ public interface IDispatchInputSource
 /// cycle). Protection reads only <see cref="Protection"/>; dispatch reads only
 /// <see cref="Dispatch"/> and <see cref="DispatchSetup"/> plus the guard's envelope (SIG-04).
 /// </summary>
-public sealed record ControlInputs(ProtectionInputs Protection, DispatchInputs Dispatch, DispatchSetup? DispatchSetup);
+public sealed record ControlInputs(ProtectionInputs Protection, DispatchInputs Dispatch, DispatchSetup? DispatchSetup)
+{
+    /// <summary>
+    /// What only the presentation reads (nominal voltage, how generation was obtained, display
+    /// names), from the same store cycle. The guard, dispatch and the effector gate never read it.
+    /// </summary>
+    public PresentationInputs? Presentation { get; init; }
+}
 
 /// <summary>The control port: both input views of one store cycle. The guard runner depends on this and on nothing wider.</summary>
 public interface IControlInputSource
@@ -115,5 +122,5 @@ public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInpu
     }
 
     private static ControlInputs Control(SignalDiagnostics diagnostics) =>
-        new(diagnostics.Snapshot.Protection, diagnostics.Snapshot.Dispatch, diagnostics.Snapshot.DispatchSetup);
+        new(diagnostics.Snapshot.Protection, diagnostics.Snapshot.Dispatch, diagnostics.Snapshot.DispatchSetup) { Presentation = diagnostics.Snapshot.Presentation };
 }

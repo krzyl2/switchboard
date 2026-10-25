@@ -23,7 +23,11 @@ public interface IDecisionRecorder
 
 /// <summary>Recent decisions, newest first, optionally filtered.</summary>
 /// <param name="Before">An opaque cursor from a previous page's <see cref="DecisionPage.Next"/>.</param>
-public sealed record DecisionQuery(DeviceName? Device, Phase? Phase, ReasonCode? Reason, int Limit, string? Before);
+public sealed record DecisionQuery(DeviceName? Device, Phase? Phase, ReasonCode? Reason, int Limit, string? Before)
+{
+    /// <summary>Only decisions of this kind (<see cref="DecisionKinds.Of"/>); null for every kind.</summary>
+    public DecisionKind? Kind { get; init; }
+}
 
 /// <param name="Next">The cursor for the following (older) page; null when there is none.</param>
 public sealed record DecisionPage(ImmutableArray<Decision> Items, string? Next, bool LogWritable);

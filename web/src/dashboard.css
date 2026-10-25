@@ -1,0 +1,114 @@
+/* Screen 01 — Dashboard. Layout only: every colour is a token of styles.css, so light, dark and
+   the explicit theme choice (UI-13) and the load colours (UI-11) stay defined in one place. Class
+   names start with dash- so no other screen's rules can reach them. */
+
+.dash-subhead {
+  margin-top: 14px;
+}
+
+.dash-invalid {
+  margin-top: 8px;
+}
+
+/* The mockup's swatches: a small square in the segment's own colour (styles.css .key[data-kind]). */
+.dash-legend {
+  margin-top: 10px;
+}
+
+.dash-legend .key.dash-swatch {
+  width: 10px;
+  height: 10px;
+  border-left: 0;
+  border-radius: 2px;
+}
+
+.dash-legend .key.continuous {
+  border-left-style: dotted;
+}
+
+/* Balance and queue side by side; one column below 2 × 290 px, never wider than the page (400 px). */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.dash-kv {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.dash-kv dt {
+  color: var(--fg-dim);
+  min-width: 0;
+}
+
+.dash-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dash-kv dd .age {
+  margin-left: 8px;
+}
+
+.dash-why {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.dash-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dash-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 11px 0;
+  align-items: center;
+}
+
+.dash-row + .dash-row {
+  border-top: 1px solid var(--line);
+}
+
+.dash-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.dash-name {
+  font-weight: 600;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.dash-power {
+  text-align: right;
+}
+
+.dash-power small {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--fg-dim);
+}
+
+.dash-meta,
+.dash-reason {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}

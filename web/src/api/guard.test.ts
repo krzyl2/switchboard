@@ -112,3 +112,20 @@ describe('parseGuard', () => {
     expect(() => parseGuard(make())).toThrow();
   });
 });
+
+// Stage 4: the tier table in kilowatts for this installation and the budget's recovery time.
+describe('parseGuard, Stage 4 breaker fields', () => {
+  it('keeps the limit of each band in kW and the recovery time', () => {
+    const breaker = parseGuard(payload()).breaker!;
+
+    expect(breaker.budgetRecoveryTimeS).toBe(600);
+    expect(breaker.tiers.map((t) => t.upToW)).toEqual([5175, 5750, 6497.5, 7187.5, 8337.5, null]);
+  });
+
+  it.each([
+    ['a missing recovery time', (p: any) => delete p.breaker.budgetRecoveryTimeS],
+    ['a missing kW limit', (p: any) => delete p.breaker.tiers[0].upToW],
+  ])('rejects %s', (_case, change) => {
+    expect(() => parseGuard(payload(change))).toThrow();
+  });
+});

@@ -391,6 +391,12 @@ public sealed class SignalStore
             rejections)
         {
             DispatchSetup = _dispatchSetup,
+            Presentation = new PresentationInputs(
+                configuration.Connection.Voltage,
+                generation.State,
+                generation.ReportedAt,
+                phases.ToImmutableDictionary(p => p, p => WithRole(SignalRole.PhaseVoltage, p) is not null),
+                configuration.Devices.Where(d => d.Name is not null).ToImmutableDictionary(d => d.Id, d => d.Name!)),
         };
     }
 
@@ -569,10 +575,11 @@ public sealed class SignalStore
         var phases = _configuration!.Connection.Phases;
         if (WithRole(SignalRole.InverterPower) is not { } inverter)
         {
-            return GenerationShares.Known(phases, _ => 0, []);
+            return GenerationShares.Known(phases, _ => 0, []) with { State = GenerationState.NotDeclared };
         }
 
         var (state, detail) = Classify(inverter, now);
+        var reportedAt = inverter.Accepted?.Effective;
         double production;
         var times = new List<DateTimeOffset>();
         if (state == SignalState.Fresh)
@@ -584,29 +591,29 @@ public sealed class SignalStore
             && ((state == SignalState.Unavailable && detail == SignalDetail.StateUnavailable)
                 || (state == SignalState.Stale && inverter.Accepted is not null && Value(inverter) <= 0)))
         {
-            return GenerationShares.Known(phases, _ => 0, []);
+            return GenerationShares.Known(phases, _ => 0, []) with { State = GenerationState.AsleepCountedAsZero, ReportedAt = reportedAt };
         }
         else
         {
-            return GenerationShares.Unknown;
+            return GenerationShares.Unknown with { State = GenerationState.Unknown, ReportedAt = reportedAt };
         }
 
         var currents = phases.Select(p => WithRole(SignalRole.InverterPhaseCurrent, p)).ToArray();
         if (currents.All(c => c is null))
         {
-            return inverter.Definition.Phase is { } own
+            return (inverter.Definition.Phase is { } own
                 ? GenerationShares.Known(phases, p => p == own ? production : 0, times)
-                : GenerationShares.Known(phases, _ => production / phases.Length, times);
+                : GenerationShares.Known(phases, _ => production / phases.Length, times)) with { ReportedAt = reportedAt };
         }
 
         if (production == 0)
         {
-            return GenerationShares.Known(phases, _ => 0, times);
+            return GenerationShares.Known(phases, _ => 0, times) with { ReportedAt = reportedAt };
         }
 
         if (currents.Any(c => c is null || Classify(c, now).State != SignalState.Fresh))
         {
-            return GenerationShares.Unknown;
+            return GenerationShares.Unknown with { State = GenerationState.Unknown, ReportedAt = reportedAt };
         }
 
         var magnitudes = currents.Select(c => Math.Abs(Value(c!))).ToArray();
@@ -615,7 +622,7 @@ public sealed class SignalStore
         return GenerationShares.Known(
             phases,
             p => sum == 0 ? production / phases.Length : production * magnitudes[phases.IndexOf(p)] / sum,
-            times);
+            times) with { ReportedAt = reportedAt };
     }
 
     /// <summary>Σ of the fresh device power draws on a phase that are aligned with the trigger (see <see cref="BalanceAccepts"/>).</summary>
@@ -1066,6 +1073,12 @@ public sealed class SignalStore
     private sealed record GenerationShares(ImmutableDictionary<Phase, Watts>? Shares, ImmutableArray<DateTimeOffset> InputTimes)
     {
         public static GenerationShares Unknown { get; } = new(null, []);
+
+        /// <summary>How the shares came about, for the presentation only; nothing in control reads it.</summary>
+        public GenerationState State { get; init; } = GenerationState.Measured;
+
+        /// <summary>When the inverter last reported a usable value (presentation only).</summary>
+        public DateTimeOffset? ReportedAt { get; init; }
 
         public static GenerationShares Known(ImmutableArray<Phase> phases, Func<Phase, double> share, IEnumerable<DateTimeOffset> times) =>
             new(phases.ToImmutableDictionary(p => p, p => new Watts(share(p))), [.. times]);

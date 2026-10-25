@@ -1,0 +1,82 @@
+/* Screen 07 — Decision log. Colours come only from the theme tokens in styles.css. Class names start
+   with log- so no other screen's rules apply here. Wide tables scroll inside .tablewrap; the panels
+   stack below 760 px so the page never scrolls sideways. styles.css comes later in the bundle, so a
+   rule that overrides one of its classes carries that class too (.status.log-summary). */
+.log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+}
+
+.log-filters label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.log-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 12px;
+}
+
+.log-button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.log-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.log-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* Three short columns need no 760 px minimum: they fit a phone as they are. */
+table.log-compact {
+  min-width: 0;
+}
+
+table.log-compact td:first-child {
+  overflow-wrap: anywhere;
+}
+
+.status.log-summary {
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+}
+
+.log-metric {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .log-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status.log-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px 0;
+  }
+
+  .status.log-summary dd {
+    margin-bottom: 10px;
+  }
+}

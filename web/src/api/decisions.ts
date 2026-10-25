@@ -54,6 +54,8 @@ export const DECISION_ACTIONS = [
   'settling_timed_out',
   'foreign_load_detected',
 ] as const;
+/** What a decision is about, for filtering the decision log (backend DecisionKinds.Of: action first, then origin). */
+export const DECISION_KINDS = ['protection', 'dispatch', 'override', 'verification', 'foreign_load', 'system'] as const;
 export const OPERATING_MODES = ['shadow', 'active'] as const;
 /** active_unavailable_before_stage3 is written by 0.3.x only; its lines stay readable for the log's retention. */
 export const MODE_NOTES = ['none', 'active_unavailable_before_stage3', 'active_not_enabled'] as const;
@@ -98,6 +100,7 @@ export const OVERRIDE_MODES = ['auto', 'force_on', 'force_off'] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 export type DecisionScope = (typeof DECISION_SCOPES)[number];
 export type DecisionAction = (typeof DECISION_ACTIONS)[number];
+export type DecisionKind = (typeof DECISION_KINDS)[number];
 export type OperatingMode = (typeof OPERATING_MODES)[number];
 export type ModeNote = (typeof MODE_NOTES)[number];
 export type KillSwitchSource = (typeof KILL_SWITCH_SOURCES)[number];
@@ -206,6 +209,7 @@ export interface Decision {
   stage: number | null;
   phase: PhaseName | null;
   action: DecisionAction;
+  kind: DecisionKind;
   reason: ReasonCode;
   /** A rule the decision outranked (a min_on lockout). */
   overridden: ReasonCode | null;
@@ -376,6 +380,7 @@ export function parseDecision(raw: unknown, path: string): Decision {
     stage: nullable(field(r, 'stage', path), `${path}.stage`, positive),
     phase,
     action: oneOf(DECISION_ACTIONS, field(r, 'action', path), `${path}.action`),
+    kind: oneOf(DECISION_KINDS, field(r, 'kind', path), `${path}.kind`),
     reason: reason(field(r, 'reason', path), `${path}.reason`),
     overridden: nullable(field(r, 'overridden', path), `${path}.overridden`, reason),
     mode: oneOf(OPERATING_MODES, field(r, 'mode', path), `${path}.mode`),
@@ -403,6 +408,15 @@ export function parseDecisions(raw: unknown, path: string): Decision[] {
   return list(raw, path, parseDecision);
 }
 
+/** Filters of GET api/decisions; a missing one does not filter. */
+export interface DecisionQuery {
+  device?: string;
+  kind?: DecisionKind;
+  /** The cursor of an older page (a previous page's next). */
+  before?: string;
+  limit?: number;
+}
+
 /** GET api/decisions: one page of recent decisions, newest first. */
 export function parseDecisionsPage(raw: unknown): DecisionsPage {
   const r = object(raw, 'payload');
@@ -411,4 +425,21 @@ export function parseDecisionsPage(raw: unknown): DecisionsPage {
     next: nullable(field(r, 'next', 'payload'), 'next', text),
     logWritable: bool(field(r, 'logWritable', 'payload'), 'logWritable'),
   };
+}
+
+/** GET api/decisions with the given filters (the add-on refuses an unknown one with 400). */
+export async function fetchDecisions(signal: AbortSignal, query: DecisionQuery = {}): Promise<DecisionsPage> {
+  const parameters = new URLSearchParams();
+  if (query.device !== undefined) parameters.set('device', query.device);
+  if (query.kind !== undefined) parameters.set('kind', query.kind);
+  if (query.before !== undefined) parameters.set('before', query.before);
+  if (query.limit !== undefined) parameters.set('limit', String(query.limit));
+  const search = parameters.toString();
+  const response = await fetch(search === '' ? 'api/decisions' : `api/decisions?${search}`, {
+    signal,
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`Decisions request failed with HTTP ${response.status}.`);
+  return parseDecisionsPage(await response.json());
 }
