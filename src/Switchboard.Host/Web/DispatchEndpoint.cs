@@ -11,9 +11,10 @@ namespace Switchboard.Host.Web;
 
 /// <summary>
 /// Shape of GET api/dispatch: what dispatch and the effector gate make of every declared device
-/// (DISP-04 … DISP-10, SAFE-04, UI-10). <c>commandPath</c> is false in this version: decisions are
-/// computed and logged, nothing is switched, so <c>intended</c> is what Switchboard would have the
-/// device at and <c>reported</c> what Home Assistant says it is. Enum values are snake_case.
+/// (DISP-04 … DISP-10, SAFE-04, UI-10). <c>commandPath</c> says whether commands leave now (effective
+/// mode active, or the safe state's offs during an invalid configuration); without it decisions are
+/// computed and logged, nothing is switched, and <c>intended</c> is what Switchboard would have the
+/// device at, <c>reported</c> what Home Assistant says it is. Enum values are snake_case.
 /// </summary>
 public sealed record DispatchResponse(
     DateTimeOffset At,
@@ -65,7 +66,18 @@ public sealed record DispatchDeviceDto(
     int Mismatches,
     OverrideDto Override,
     DrawDto? Draw,
-    IReadOnlyList<HistoryDto> History);
+    IReadOnlyList<HistoryDto> History,
+    string Start,
+    BaselineDto? Baseline,
+    CommandWarningDto? CommandWarning,
+    DateTimeOffset? SelfStarted);
+
+/// <summary>What restore_only brings the device back to, and since when Switchboard holds it lower.</summary>
+/// <param name="Commanded">The reduction was sent (active mode); false for a shadow ("would") baseline.</param>
+public sealed record BaselineDto(LevelDto Level, DateTimeOffset Since, bool Commanded);
+
+/// <summary>Home Assistant acknowledged a command the device's reported state has not shown since <paramref name="Since"/>.</summary>
+public sealed record CommandWarningDto(DateTimeOffset Since);
 
 /// <summary>Remaining minimum on and off times on the dispatch (target) timeline, in seconds.</summary>
 public sealed record LockoutDto(double MinOnRemainingS, double MinOffRemainingS);
@@ -201,7 +213,11 @@ internal static class DispatchEndpoint
             d.Mismatches,
             new OverrideDto(ApiText.Snake(d.Override.Mode), d.Override.ChangedAt, ApiText.SnakeOrNull(d.Override.Source)),
             d.Draw is { } draw ? new DrawDto(draw.Current?.Value, draw.Power?.Value, draw.Fresh) : null,
-            [.. d.History.Reverse().Select(h => new HistoryDto(h.At, ApiText.Snake(h.Kind), h.Expected, h.Measured, ApiText.Snake(h.Unit), ApiText.Snake(h.Verdict), h.CommandedAt, ApiText.Level(h.From), ApiText.Level(h.To)))]))]);
+            [.. d.History.Reverse().Select(h => new HistoryDto(h.At, ApiText.Snake(h.Kind), h.Expected, h.Measured, ApiText.Snake(h.Unit), ApiText.Snake(h.Verdict), h.CommandedAt, ApiText.Level(h.From), ApiText.Level(h.To)))],
+            ApiText.Snake(d.Start),
+            d.Baseline is { } baseline ? new BaselineDto(ApiText.Level(baseline.Level)!, baseline.Since, baseline.Commanded) : null,
+            d.UnconfirmedSince is { } since ? new CommandWarningDto(since) : null,
+            d.SelfStarted))]);
 
     private static string? Name(ReasonCode? reason) => reason is { } code ? ReasonCodes.Name(code) : null;
 

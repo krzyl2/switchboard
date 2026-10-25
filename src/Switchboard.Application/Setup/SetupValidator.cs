@@ -306,6 +306,12 @@ public static class SetupValidator
                 all.Add(new Input($"{path}.actuator", $"{path}.actuator", device.Actuator, null, null, InputKind.DeviceState, i));
             }
 
+            if (device.StopActuator is not null)
+            {
+                // A stop actuator reports its own state (device_<id>_stop): an input like a state entity.
+                all.Add(new Input($"{path}.stopActuator", $"{path}.stopActuator", device.StopActuator, null, null, InputKind.DeviceState, i));
+            }
+
             if (device.Draw is { } draw)
             {
                 // The unit the runtime will read the draw in (current_unit / power_unit, else A / W) must be Home Assistant's own.

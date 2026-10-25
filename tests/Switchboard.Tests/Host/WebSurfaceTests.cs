@@ -94,7 +94,7 @@ public sealed class WebSurfaceTests
         Assert.Equal(
             ["version", "mode", "homeAssistant", "mqtt", "healthy"],
             json.RootElement.EnumerateObject().Select(p => p.Name));
-        Assert.Equal("0.6.1", json.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.7.0", json.RootElement.GetProperty("version").GetString());
         Assert.Equal("shadow", json.RootElement.GetProperty("mode").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("homeAssistant").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("mqtt").GetString());
@@ -142,8 +142,8 @@ public sealed class WebSurfaceTests
     [Fact]
     public async Task Active_option_is_reported_as_the_effective_shadow_mode()
     {
-        // The option is a ceiling (MODE-01). This version has no command path, so even an active
-        // option runs in shadow, and the status page must say what really runs.
+        // The option is a ceiling (MODE-01). Control allowed starts off after an install, so even an
+        // active option runs in shadow, and the status page must say what really runs.
         using var root = new TempWebRoot();
         var options = Path.Combine(root.Path, "options.json");
         await File.WriteAllTextAsync(options, """{"mode":"active","log_level":"info"}""", TestContext.Current.CancellationToken);

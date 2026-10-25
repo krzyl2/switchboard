@@ -190,6 +190,48 @@ public sealed record DeviceEvidenceDto(string Id, string StateEntity, string Pha
 /// entity: discovery and readouts go through the read-only discovery link, and the self-test only
 /// watches while the user switches the device.
 /// </summary>
+/// <param name="Code">One of the closed refusal codes (control_not_active, headroom_insufficient, lockout_min_off, ...).</param>
+/// <param name="Phase">The phase concerned (headroom_insufficient).</param>
+/// <param name="RemainingS">Seconds until it ends (lockout_min_off).</param>
+public sealed record ActiveTestRefusalDto(string Code, string? Phase, double? RemainingS);
+
+/// <summary>GET api/setup/active-test/preconditions: whether the active phase self-test can start now, and how long it would take.</summary>
+public sealed record ActiveTestPreconditionsResponse(bool Ok, IReadOnlyList<ActiveTestRefusalDto> Refusals, double? ExpectedDurationS);
+
+/// <summary>Body of POST api/setup/active-test: a declared device of the configuration in force, and its relay stage (default 1).</summary>
+public sealed record ActiveTestStartRequest
+{
+    public string? Device { get; init; }
+
+    public int? Stage { get; init; }
+}
+
+public sealed record ActiveTestStartedResponse(string Id, double ExpectedDurationS);
+
+/// <summary>Why the active self-test did not start (409).</summary>
+public sealed record ActiveTestRefusedResponse(string Code, IReadOnlyList<ActiveTestRefusalDto> Refusals);
+
+/// <summary>GET api/setup/active-test/{id}.</summary>
+/// <param name="State">running, finished or aborted.</param>
+/// <param name="Phase">pending_on, on, pending_off, judging or done.</param>
+/// <param name="Verdict">The classifier's verdict over the test's own on and off (null until judged).</param>
+/// <param name="AbortReason">guard_acted, safe_state, kill_switch, increases_stopped, not_confirmed, cancelled, control_left_active or configuration_changed.</param>
+public sealed record ActiveTestResponse(
+    string Id,
+    string Device,
+    int Stage,
+    string StateEntity,
+    string ExpectedPhase,
+    string State,
+    string Phase,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? OnAt,
+    DateTimeOffset? OffAt,
+    double ExpectedDurationS,
+    SelfTestSummaryDto? Verdict,
+    IReadOnlyList<ObservationDto> Observations,
+    string? AbortReason);
+
 internal static class SetupEndpoint
 {
     private static readonly JsonSerializerOptions Strict = new(JsonSerializerDefaults.Web)
@@ -332,6 +374,35 @@ internal static class SetupEndpoint
         endpoints.MapDelete("/api/setup/self-test/{id}", (string id, [FromServices] PhaseSelfTestService selfTest) =>
             Guid.TryParseExact(id, "N", out var guid) && selfTest.Cancel(guid) ? Results.NoContent() : Results.NotFound());
 
+        // The active phase self-test (CONN-05): Switchboard switches a declared, idle relay stage on and
+        // off through the effector gate, below protection, only in effective active mode.
+        endpoints.MapGet("/api/setup/active-test/preconditions", (string? device, int? stage, [FromServices] ActivePhaseTestService activeTest) =>
+            DeviceName.TryParse(device, out var name)
+                ? Json(Preconditions(activeTest.Check(name.Value, stage ?? 1)))
+                : Results.Problem("Name a declared device: ?device=<id>&stage=<n>.", statusCode: StatusCodes.Status400BadRequest));
+
+        endpoints.MapPost("/api/setup/active-test", async (HttpRequest request, [FromServices] ActivePhaseTestService activeTest, CancellationToken cancellationToken) =>
+        {
+            if (await ReadAsync<ActiveTestStartRequest>(request, cancellationToken).ConfigureAwait(false) is not { Device: { } device } body
+                || !DeviceName.TryParse(device, out var name) || body.Stage is < 1)
+            {
+                return JsonRequired("{\"device\": \"<id>\", \"stage\": 1}");
+            }
+
+            var (test, preconditions) = activeTest.Start(name.Value, body.Stage ?? 1);
+            return test is null
+                ? Json(new ActiveTestRefusedResponse("refused", [.. preconditions.Refusals.Select(Refusal)]), StatusCodes.Status409Conflict)
+                : Json(new ActiveTestStartedResponse(test.Id.ToString("N"), test.ExpectedDuration.TotalSeconds), StatusCodes.Status202Accepted);
+        });
+
+        endpoints.MapGet("/api/setup/active-test/{id}", (string id, [FromServices] ActivePhaseTestService activeTest) =>
+            Guid.TryParseExact(id, "N", out var guid) && activeTest.Get(guid) is { } view
+                ? Json(ActiveTest(view))
+                : Results.NotFound());
+
+        endpoints.MapDelete("/api/setup/active-test/{id}", (string id, [FromServices] ActivePhaseTestService activeTest) =>
+            Guid.TryParseExact(id, "N", out var guid) && activeTest.Cancel(guid) ? Results.NoContent() : Results.NotFound());
+
         endpoints.MapGet("/api/setup/evidence", (
             [FromServices] PhaseEvidenceStore evidence,
             [FromServices] ISignalDiagnosticsSource diagnostics,
@@ -440,6 +511,27 @@ internal static class SetupEndpoint
         new SelfTestExpectedDto(view.Request.ExpectedPhase.ToString(), view.Request.ExpectedStep, view.Request.Unit, view.Request.StateEntity.Value),
         [.. view.Observations.Select(Observation)],
         Summary(view.Summary));
+
+    internal static ActiveTestPreconditionsResponse Preconditions(ActiveTestPreconditions preconditions) =>
+        new(preconditions.Ok, [.. preconditions.Refusals.Select(Refusal)], preconditions.ExpectedDuration?.TotalSeconds);
+
+    internal static ActiveTestRefusalDto Refusal(ActiveTestRefusal refusal) => new(Snake(refusal.Code), refusal.Phase?.ToString(), refusal.Remaining?.TotalSeconds);
+
+    internal static ActiveTestResponse ActiveTest(ActiveTestView view) => new(
+        view.Id.ToString("N"),
+        view.Device.Value,
+        view.Stage,
+        view.StateEntity.Value,
+        view.ExpectedPhase.ToString(),
+        Snake(view.State),
+        Snake(view.Phase),
+        view.StartedAt,
+        view.OnAt,
+        view.OffAt,
+        view.ExpectedDuration.TotalSeconds,
+        view.Judgement is { } judgement ? Summary(judgement.Summary) : null,
+        [.. (view.Judgement?.Observations ?? []).Select(Observation)],
+        view.AbortReason is { } reason ? Snake(reason) : null);
 
     internal static EvidenceResponse Evidence(PhaseEvidenceStore evidence, SignalDiagnostics diagnostics, SetupDefaults defaults)
     {

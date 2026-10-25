@@ -97,16 +97,16 @@ public sealed class HomeAssistantUrlsTests
 public sealed class HomeAssistantCommandAllowListTests
 {
     [Fact]
-    public void Allow_list_is_the_live_types_plus_three_read_only_queries()
+    public void Allow_list_is_the_live_types_three_read_only_queries_and_one_service_call()
     {
         // Stage 2 adds unsubscribe_events (own superseded subscriptions only), Stage 5 three read-only
-        // discovery queries; nothing that changes state.
-        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        // discovery queries, Stage C call_service (declared actuators only, CallServiceAllowListTests);
+        // nothing else that changes state.
+        Assert.Equal(["call_service", "config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
         Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states"], HomeAssistantCommandAllowList.ReadOnlyQueries.Order(StringComparer.Ordinal));
     }
 
     [Theory]
-    [InlineData("call_service")]
     [InlineData("fire_event")]
     [InlineData("execute_script")]
     [InlineData("subscribe_events")]

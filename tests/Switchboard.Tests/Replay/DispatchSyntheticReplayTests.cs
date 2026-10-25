@@ -32,15 +32,15 @@ public sealed class DispatchSyntheticReplayRun
     public DispatchSyntheticReplayRun()
     {
         Data = ReplayData.Load(RepoPaths.Combine("tests", "fixtures", "replay", File));
-        var configuration = TestConfigurations.Valid(Configuration).Configuration!;
+        var configuration = TestConfigurations.Valid(HeadroomConfiguration).Configuration!;
         Setup = DispatchSetupFactory.Build(configuration);
         Protection = ProtectionSetupFactory.Build(configuration);
 
-        Shadow = new GuardReplayHarness(Data, Configuration, dispatch: true);
+        Shadow = new GuardReplayHarness(Data, HeadroomConfiguration, dispatch: true);
         Shadow.RunUntil(Data.End);
         ShadowAnalyzer = new DispatchAnalyzer(Shadow.Steps, Shadow.Decisions, Setup, Protection);
 
-        Active = new GuardReplayHarness(Data, Configuration, dispatch: true, mode: new ActiveSemantics(), port: Port);
+        Active = new GuardReplayHarness(Data, HeadroomConfiguration, dispatch: true, mode: new ActiveSemantics(), port: Port, followSetpoints: true);
         Active.RunUntil(Data.End);
         ActiveAnalyzer = new DispatchAnalyzer(Active.Steps, Active.Decisions, Setup, Protection);
     }
@@ -58,6 +58,9 @@ public sealed class DispatchSyntheticReplayRun
             return grouped;
         }
     }
+
+    /// <summary>The same with start: headroom: these scenarios are Stage 3's dispatch, which starts devices within headroom.</summary>
+    internal static string HeadroomConfiguration => Configuration + "\ncontrol:\n  devices:\n    default_start: headroom\n";
 
     internal ReplayData Data { get; }
 
@@ -86,6 +89,8 @@ public sealed class DispatchSyntheticReplayRun
     private sealed class ActiveSemantics : IModeSource
     {
         public ModeStatus Current { get; } = DispatchScenario.Active;
+
+        public ModeStatus For(bool configurationValid) => configurationValid ? Current : ModeState.Resolve(OperatingMode.Active, true, false, true);
     }
 }
 
@@ -214,7 +219,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
     }
 
     // DISP-09: a reduction wanted inside min_on is recorded once as deferred and applied when the
-    // lockout expires (the L3 element started 06:04:30, the kettle came at 06:06).
+    // lockout expires (the L3 element started 06:04:30, the kettle came at 06:06: a foreign load, v3).
     [Fact]
     public void A_reduction_inside_min_on_is_deferred_once_and_applied_at_expiry()
     {
@@ -222,7 +227,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var start = DispatchSyntheticReplayRun.Of(run.Shadow, "heater_l3", DecisionAction.SwitchOn).First();
         var stop = DispatchSyntheticReplayRun.Of(run.Shadow, "heater_l3", DecisionAction.SwitchOff).First();
 
-        Assert.Equal((ReasonCode.ReserveThreshold, ReasonCode.LockoutMinOn), (deferred.Reason, deferred.RefusedBy));
+        Assert.Equal((ReasonCode.ForeignLoad, ReasonCode.LockoutMinOn), (deferred.Reason, deferred.RefusedBy));
         Assert.Equal(DispatchSyntheticReplayRun.At(6, 4, 30), start.At);
         Assert.Equal(start.At + run.Protection.Device(DeviceName.Parse("heater_l3"))!.MinOn, stop.At);
         Assert.Equal(deferred.At, stop.Inputs.Dispatch!.DeferredSince);

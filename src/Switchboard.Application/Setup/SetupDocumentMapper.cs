@@ -41,6 +41,7 @@ public static class SetupDocumentMapper
         ("rated_current_a", "ratedCurrentA"), ("rated_power_w", "ratedPowerW"), ("min", "min"), ("max", "max"), ("step", "step"),
         ("value_per_kwh", "valuePerKwh"), ("state_reports", "stateReports"), ("state_max_age", "stateReports"), ("reaction_time", "reactionTime"),
         ("min_on", "minOn"), ("min_off", "minOff"), ("rotation_group", "rotationGroup"), ("circuit_group", "circuitGroup"), ("draw", "draw"),
+        ("stop_actuator", "stopActuator"), ("start", "start"),
     ];
 
     private static readonly string[] EditableTypes = ["onoff", "modulating", "storage"];
@@ -143,7 +144,8 @@ public static class SetupDocumentMapper
     /// editable are decided here from the document by id; the draft's Existing flag is only used to
     /// refuse a new device that reuses the id of one in the file.
     /// </summary>
-    public static MappedDocument Apply(ConfigNode? root, SetupDraft draft)
+    /// <param name="defaultStart">The start policy a device without <c>start:</c> gets under this document (devices.default_start): a draft value equal to it is not written unless the file had the key.</param>
+    public static MappedDocument Apply(ConfigNode? root, SetupDraft draft, string? defaultStart = null)
     {
         ArgumentNullException.ThrowIfNull(draft);
         var fields = new FieldMap();
@@ -175,7 +177,7 @@ public static class SetupDocumentMapper
         var phases = TopologyPhasesOf(draft.Connection.Topology);
         document = document.Set(Connection, ApplyConnection(document.GetMapping(Connection) ?? ConfigTree.EmptyMapping(), draft.Connection, phases, fields));
         document = document.Set(Signals, ApplySignals(document.GetMapping(Signals) ?? ConfigTree.EmptyMapping(), draft, phases, fields));
-        var devices = ApplyDevices(document.Get(Devices) as ConfigSequence, draft.Devices, fields, issues);
+        var devices = ApplyDevices(document.Get(Devices) as ConfigSequence, draft.Devices, fields, issues, defaultStart);
         document = devices.Items.IsEmpty ? document.Remove(Devices) : document.Set(Devices, devices);
         fields.Add(Devices, Devices);
         return new MappedDocument(document, fields, issues.ToImmutable());
@@ -255,6 +257,8 @@ public static class SetupDocumentMapper
             ValuePerKwh = ConfigTree.AsNumber(device.Get("value_per_kwh")),
             CircuitGroup = ConfigTree.AsText(device.Get("circuit_group")),
             RotationGroup = ConfigTree.AsText(device.Get("rotation_group")),
+            StopActuator = ConfigTree.AsText(device.Get("stop_actuator")),
+            Start = ConfigTree.AsText(device.Get("start")),
             Draw = draw is null ? null : new DrawDraft
             {
                 Current = ConfigTree.AsText(draw.Get("current")),
@@ -401,7 +405,7 @@ public static class SetupDocumentMapper
 
     private static string Lower(Phase phase) => phase.ToString().ToLowerInvariant();
 
-    private static ConfigSequence ApplyDevices(ConfigSequence? existing, IReadOnlyList<DeviceDraft> drafts, FieldMap fields, ImmutableArray<SetupIssue>.Builder issues)
+    private static ConfigSequence ApplyDevices(ConfigSequence? existing, IReadOnlyList<DeviceDraft> drafts, FieldMap fields, ImmutableArray<SetupIssue>.Builder issues, string? defaultStart)
     {
         var byId = new Dictionary<string, ConfigMapping>(StringComparer.Ordinal);
         foreach (var item in existing?.Items ?? [])
@@ -444,7 +448,7 @@ public static class SetupDocumentMapper
                         $"{path}.id",
                         $"The id '{id}' is already used by a device in the file (removed in this edit or not); choose another id for the new device.",
                         ("device", id)));
-                    items.Add(Patch(ConfigTree.EmptyMapping().SetText("id", id).SetPlain("type", draft.Type), draft, draft.Type));
+                    items.Add(Patch(ConfigTree.EmptyMapping().SetText("id", id).SetPlain("type", draft.Type), draft, draft.Type, defaultStart));
                     continue;
                 }
 
@@ -466,7 +470,7 @@ public static class SetupDocumentMapper
                         ("type", type)));
                 }
 
-                items.Add(Patch(base_, draft, type));
+                items.Add(Patch(base_, draft, type, defaultStart));
                 continue;
             }
 
@@ -482,17 +486,21 @@ public static class SetupDocumentMapper
                 created = created.SetPlain("type", draft.Type);
             }
 
-            items.Add(Patch(created, draft, draft.Type));
+            items.Add(Patch(created, draft, draft.Type, defaultStart));
         }
 
         return ConfigTree.Sequence(items);
     }
 
     /// <summary>The wizard's keys of one device; keys valid only for another type are removed (they are owned too).</summary>
-    private static ConfigMapping Patch(ConfigMapping device, DeviceDraft draft, string? type)
+    private static ConfigMapping Patch(ConfigMapping device, DeviceDraft draft, string? type, string? defaultStart)
     {
         var relay = type == "onoff";
         var setpoint = type is "modulating" or "storage";
+
+        // start: the default needs no key (a later default still applies); a key the file had stays
+        // written, whatever its value, so the wizard never silently changes what the user wrote.
+        var start = draft.Start is { } wanted && (device.Get("start") is not null || wanted != defaultStart) ? wanted : null;
         device = device
             .SetText("name", draft.Name)
             .SetText("actuator", draft.Actuator)
@@ -509,7 +517,9 @@ public static class SetupDocumentMapper
             .SetPlain("min_on", draft.MinOn)
             .SetPlain("min_off", draft.MinOff)
             .SetText("rotation_group", relay ? draft.RotationGroup : null)
-            .SetText("circuit_group", draft.CircuitGroup);
+            .SetText("circuit_group", draft.CircuitGroup)
+            .SetText("stop_actuator", type == "modulating" ? draft.StopActuator : null)
+            .SetPlain("start", start);
 
         // state_max_age belongs to an age-judged state; next to on_change the parser refuses it, at a
         // key the wizard would otherwise not own.

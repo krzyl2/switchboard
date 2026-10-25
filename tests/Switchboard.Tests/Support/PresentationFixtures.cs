@@ -67,7 +67,7 @@ internal static class TestSteps
         bool voltageMapped = true,
         DispatchStatus? status = null)
     {
-        var mode = ModeState.Resolve(OperatingMode.Shadow, OperatingMode.Shadow);
+        var mode = TestModes.Shadow;
         var phases = new[] { Phase.L1, Phase.L2, Phase.L3 };
         var dispatch = new DispatchInputs(0, at, [.. phases.Select(p => new PhaseDispatch(
             p, true, null, Watts.Zero, Watts.Zero, Watts.Zero, voltages is not null && voltages.TryGetValue(p, out var v) && v is { } volts ? new Volts(volts) : null))]);
@@ -132,7 +132,7 @@ internal static class TestSteps
         var setup = Setup;
         return new DispatchStatus(
             at,
-            ModeState.Resolve(OperatingMode.Shadow, OperatingMode.Shadow),
+            TestModes.Shadow,
             false,
             [],
             [.. devices.Select(d =>

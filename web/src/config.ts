@@ -13,6 +13,20 @@ export const STATUS_REFRESH_INTERVAL_MS = 5_000;
  */
 export const STATUS_REQUEST_TIMEOUT_MS = 4_000;
 
+/** The mode banner every page shows (shadow or active, MODE-02): as often as the status page. */
+export const MODE_REFRESH_INTERVAL_MS = 5_000;
+export const MODE_REQUEST_TIMEOUT_MS = 4_000;
+
+/** The control block (Status page, setup step 5): the switch, the mode it results in, the command path. */
+export const CONTROL_REFRESH_INTERVAL_MS = 5_000;
+export const CONTROL_REQUEST_TIMEOUT_MS = 4_000;
+
+/**
+ * The add-on answers a change of the control switch (or the state confirmation) only after the guard
+ * evaluated it, waiting up to its own Guard:ApiEvaluationTimeout (2 s); longer than that.
+ */
+export const CONTROL_CHANGE_TIMEOUT_MS = 5_000;
+
 /**
  * How often the signals page asks for every signal. Faster than the status page: ages are the point
  * of that page, and a meter refreshing every few seconds should visibly tick.

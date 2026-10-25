@@ -81,8 +81,9 @@ describe('limits page', () => {
     serve();
     await open();
 
-    // Relative, so the requests stay under the ingress prefix.
-    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual(['api/guard', 'api/excursions', 'api/devices']);
+    // Relative, so the requests stay under the ingress prefix (the shell's mode banner polls api/mode
+    // on every page: Shell.test).
+    expect(fetchMock.mock.calls.map(([input]) => input).filter((input) => input !== 'api/mode')).toEqual(['api/guard', 'api/excursions', 'api/devices']);
   });
 
   it('shows the effective mode, the breaker and when the guard last evaluated', async () => {
@@ -308,7 +309,8 @@ describe('recorded excursion', () => {
     expect(items[0]?.textContent).toContain('Foreign load detected');
     expect(items[0]?.textContent).toContain('Load appeared on the phase without a command of ours.');
     expect(items[2]?.textContent).toContain('would lower the current of Ładowarka go-e');
-    expect(items[2]?.textContent).toContain('The phase is, or with this setpoint would be, above the reserve threshold.');
+    // Reason list version 3: a reduction caused by a detected foreign load says so (version 2 said reserve_threshold).
+    expect(items[2]?.textContent).toContain('Load appeared on the phase without a command of ours.');
     expect(items[2]?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-10-22T09:21:00.000Z');
     expect(chart.textContent).toContain('Switchboard switched nothing (shadow mode)');
     expect(chart.textContent).toContain(`Peak 19.1 A at ${localClock(new Date('2026-10-22T09:20:10.01Z'), 'en')}; above the reserve threshold for 3 min.`);
@@ -428,7 +430,7 @@ describe('kill switch', () => {
   it('engages it with a JSON post and shows the evaluated answer at once', async () => {
     const engaged = copy(guardSample, (p) => {
       p.at = '2026-10-24T10:00:01.000+00:00';
-      p.killSwitch = { engaged: true, changedAt: '2026-10-24T10:00:01.000+00:00', source: 'api' };
+      p.killSwitch = { engaged: true, changedAt: '2026-10-24T10:00:01.000+00:00', source: 'api', locked: false, switchesDevices: false };
     });
     serve({ post: () => respond(engaged) });
     await open();
@@ -462,7 +464,7 @@ describe('kill switch', () => {
   });
 
   it('shows an engaged kill switch from Home Assistant as a banner above everything', async () => {
-    serve({ guard: () => respond(copy(guardSample, (p) => (p.killSwitch = { engaged: true, changedAt: '2026-10-24T09:58:00.000+00:00', source: 'mqtt' }))) });
+    serve({ guard: () => respond(copy(guardSample, (p) => (p.killSwitch = { engaged: true, changedAt: '2026-10-24T09:58:00.000+00:00', source: 'mqtt', locked: false, switchesDevices: false }))) });
     await open();
 
     const alert = screen.getAllByRole('alert')[0] as HTMLElement;

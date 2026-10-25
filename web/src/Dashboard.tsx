@@ -315,9 +315,17 @@ function plannedText(change: PlannedChange, type: DeviceType | null, name: NameO
 /**
  * The banner the mockup draws under the phase bars, placed above the queue (05-UI-SPEC): the phase,
  * the foreign load that pushed it over, the reduction dispatch or protection would make with its
- * timing from the guard's own documented reaction, and, in this version, that nothing is switched.
+ * timing from the guard's own documented reaction, and, while commands do not go out (dispatch's
+ * commandPath is false), that nothing is switched. Unknown until dispatch answered: never claimed.
  */
-function Banner({ banner, power, configs, name, ...ctx }: { banner: ReserveBanner; power: Power; configs: DeviceConfig[] | null; name: NameOf } & Ctx) {
+function Banner({
+  banner,
+  power,
+  configs,
+  name,
+  commandPath,
+  ...ctx
+}: { banner: ReserveBanner; power: Power; configs: DeviceConfig[] | null; name: NameOf; commandPath: boolean | null } & Ctx) {
   const { t, lang, zone } = ctx;
   const phase = power.phases.find((p) => p.phase === banner.phase) ?? null;
   const current = Math.abs(banner.currentA);
@@ -371,8 +379,8 @@ function Banner({ banner, power, configs, name, ...ctx }: { banner: ReserveBanne
   } else if (phase !== null && current > phase.ratingA && banner.reaction !== null) {
     lines.push(fill(t['dashboard.aboveBreaker'], { rating: formatQuantity(phase.ratingA, 'A', lang), reaction: t[`tierReaction.${banner.reaction}`] }));
   }
-  // This version has no command path: whatever the banner names is what Switchboard would do.
-  lines.push(t['dashboard.bannerShadow']);
+  // Without a command path whatever the banner names is only what Switchboard would do.
+  if (commandPath === false) lines.push(t['dashboard.bannerShadow']);
 
   const id = `reserve-banner-${banner.phase}`;
   return (
@@ -678,7 +686,9 @@ export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: s
         <PollStatus view={power} evaluatedAt={live?.evaluatedAt ?? null} now={live?.at} lang={lang} t={t} />
         {live !== null && <PhaseLoad power={live} name={name} {...ctx} />}
       </section>
-      {live?.banners.map((banner) => <Banner key={banner.phase} banner={banner} power={live} configs={configs} name={name} {...ctx} />)}
+      {live?.banners.map((banner) => (
+        <Banner key={banner.phase} banner={banner} power={live} configs={configs} name={name} commandPath={dispatch.kind === 'live' ? dispatch.data.commandPath : null} {...ctx} />
+      ))}
       <div class="dash-grid">
         <BalanceCard view={power} name={name} {...ctx} />
         <QueueCard view={dispatch} power={live} configs={configs} name={name} {...ctx} />

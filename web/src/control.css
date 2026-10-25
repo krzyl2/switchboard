@@ -1,0 +1,169 @@
+/* The control block (Status page, setup step 5). Layout only; colours come from the tokens in
+   styles.css. Prefixed ctl- so no other screen's rules apply; nothing here may make the page scroll
+   sideways at 400 px. */
+
+.ctl-inline {
+  margin: 0 0 14px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.ctl-inline .cardhead h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.ctl-facts {
+  margin-top: 4px;
+}
+
+.ctl-facts dd .badge {
+  margin-right: 6px;
+}
+
+.ctl-switchline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.ctl-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px 3px 4px;
+  cursor: pointer;
+}
+
+.ctl-switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ctl-knob {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.ctl-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.ctl-switch[aria-checked='true'] .ctl-knob {
+  background: var(--accent);
+}
+
+.ctl-switch[aria-checked='true'] .ctl-knob::after {
+  left: 16px;
+}
+
+.ctl-switch[aria-checked='true'] .ctl-switchtext {
+  font-weight: 600;
+}
+
+.ctl-confirm,
+.ctl-lock {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ctl-lock {
+  margin: 0 0 12px;
+  border-left-color: var(--crit);
+}
+
+.ctl-lock .log-button {
+  align-self: flex-start;
+}
+
+.ctl-confirm-title {
+  font-weight: 600;
+}
+
+.ctl-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ctl-primary {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.ctl-notice {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.9rem;
+}
+
+.ctl-missing,
+.ctl-reduced,
+.ctl-commands {
+  margin-top: 14px;
+}
+
+.ctl-missing p {
+  font-weight: 600;
+}
+
+.ctl-missing li + li,
+.ctl-reduced li + li {
+  margin-top: 4px;
+}
+
+.ctl-commands p + p,
+.ctl-unconfirmed {
+  margin-top: 8px;
+}
+
+.ctl .mono,
+.ctl .sub {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  /* .status (styles.css) is loaded later: two classes so this wins. */
+  .status.ctl-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .status.ctl-facts dd {
+    margin-bottom: 8px;
+  }
+}
+
+/* The mode banner in every page's header (App.tsx): a badge that links to the control block. */
+.modebanner {
+  white-space: normal;
+  text-decoration: none;
+}
+
+.modebanner:hover {
+  border-color: var(--fg-dim);
+}

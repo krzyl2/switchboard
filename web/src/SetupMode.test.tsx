@@ -3,36 +3,56 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/pre
 import { useReducer, useState } from 'preact/hooks';
 import { SetupMode } from './SetupMode';
 import { emptyDraft, parseDraftView, parseSaved, type DraftView, type SaveOutcome, type SetupDraft, type SetupIssue } from './api/setup';
+import controlSample from './api/control.sample.json';
 import draftSample from './api/setup-draft.sample.json';
-import modeSample from './api/mode.sample.json';
 import savedSample from './api/setup-saved.sample.json';
 import { messages } from './i18n';
 import { draftReducer, issuesAt, issuesOfStep, newDevice, type StepName } from './setupDraft';
 import { advance, respond } from './screens.test-support';
 import type { SetupState } from './useSetup';
 
-// Step 5 (Mode) and the finish flow. The rules under test: shadow is the only mode that can be
-// chosen in this version (no command path exists); the wizard cannot finish without the
-// not-a-protective-device acknowledgement (SAFE-06); a refused save says what to fix and where
+// Step 5 (Mode) and the finish flow. The rules under test: the step shows the real control state
+// (the add-on option, the "control allowed" switch, the mode in force and what keeps it in shadow)
+// instead of a mode choice, and finishing never changes it (MODE-02); the wizard cannot finish without
+// the not-a-protective-device acknowledgement (SAFE-06); a refused save says what to fix and where
 // (UI-05); a save shows what it writes, keeps every device the user did not remove, and confirms the
-// hot reload (UI-06); the mode choice is recorded only after a save, and only as shadow (MODE-02).
+// hot reload (UI-06); after a save the control state is read again, since a valid configuration may
+// change the mode in force.
 
 let fetchMock: Mock<typeof fetch>;
 let goTo: Mock<(step: StepName) => void>;
 let reload: Mock<() => void>;
 let saves: SetupDraft[];
 let calls: string[];
+let controlReads: number;
 
-/** The add-on's GET and POST api/mode; every request is logged in order with the saves. */
-function serveMode({ mode = modeSample as unknown, post = () => respond(structuredClone(modeSample)) }: { mode?: unknown; post?: () => Promise<Response> } = {}) {
+/** Option active, valid configuration, control on: commands go out. */
+const IN_FORCE = {
+  ...controlSample,
+  controlAllowed: true,
+  changedAt: '2026-10-25T09:00:00+00:00',
+  source: 'api',
+  mode: { ...controlSample.mode, ceiling: 'active', controlAllowed: true, configurationValid: true, effective: 'active', missing: [] },
+};
+
+/**
+ * The add-on's GET api/control (the control block). Any POST would be logged in order with the saves:
+ * the step itself must never send one, so finishing can never turn control on.
+ */
+function serveControl(control: unknown = controlSample) {
   fetchMock.mockImplementation((input, init) => {
-    if (String(input) !== 'api/mode') return respond({}, 404);
     if (init?.method === 'POST') {
-      calls.push(`mode ${String(init.body)}`);
-      return post();
+      calls.push(`post ${String(input)} ${String(init.body)}`);
+      return respond({}, 500);
     }
-    return respond(structuredClone(mode));
+    if (String(input) !== 'api/control') return respond({}, 404);
+    controlReads += 1;
+    return respond(structuredClone(control));
   });
+}
+
+function controlBlock(): HTMLElement {
+  return screen.getByRole('heading', { name: /^(Control|Sterowanie)$/ }).closest('section') as HTMLElement;
 }
 
 /** The wizard's file as loaded from deploy/examples: four devices, comments, a revision. */
@@ -130,7 +150,8 @@ beforeEach(() => {
   reload = vi.fn<() => void>();
   saves = [];
   calls = [];
-  serveMode();
+  controlReads = 0;
+  serveControl();
 });
 
 afterEach(() => {
@@ -172,45 +193,65 @@ describe('SetupMode', () => {
   });
 });
 
-// Hard constraint: no command path exists, so active is shown (the product has it) but can never be
-// chosen, and the reason is said; shadow is the default and the only choice.
-describe('mode choice', () => {
-  it('shadow is chosen; active is visible but disabled, with the reason', async () => {
+// MODE-02: step 5 shows the real state in place of a mode choice: the add-on option (the ceiling),
+// the control switch, the mode in force and every condition that keeps it in shadow. An active
+// add-on option never reads as active control, and nothing on the step changes the mode by itself.
+describe('control state', () => {
+  it('shows the add-on option, the switch and the mode in force as reported, with what is missing, and offers no mode choice', async () => {
+    serveControl({ ...controlSample, mode: { ...controlSample.mode, ceiling: 'active', configurationValid: true, missing: ['control_off'] } });
     await mount();
 
-    const shadow = screen.getByRole('radio', { name: /Shadow — recommended to start/ }) as HTMLInputElement;
-    const active = screen.getByRole('radio', { name: /Active control/ }) as HTMLInputElement;
-    expect(shadow.checked).toBe(true);
-    expect(active.disabled).toBe(true);
-    expect(active.checked).toBe(false);
-    const reason = document.getElementById(active.getAttribute('aria-describedby')!);
-    expect(reason?.textContent).toContain('Not available in this version: commanding is not enabled');
-    // Nothing on the step can ask the add-on for active: no mode request is made before a save.
+    const block = controlBlock();
+    expect(block.getAttribute('data-effective')).toBe('shadow');
+    expect(block.querySelector('[data-fact="option"]')?.textContent).toContain('mode: active');
+    expect(block.querySelector('[data-fact="effective"]')?.textContent).toContain('Shadow');
+    expect(within(block).getByRole('switch', { name: 'Control allowed' }).getAttribute('aria-checked')).toBe('false');
+    expect([...block.querySelectorAll('[data-condition]')].map((c) => c.getAttribute('data-condition'))).toEqual(['control_off']);
+    expect(screen.queryAllByRole('radio')).toEqual([]);
     expect(calls).toEqual([]);
   });
 
-  it('uses the mockup’s Polish names for the two modes', async () => {
-    await mount({ lang: 'pl' });
-
-    expect((screen.getByRole('radio', { name: /Obserwacja — zalecane na start/ }) as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByRole('radio', { name: /Sterowanie aktywne/ }) as HTMLInputElement).disabled).toBe(true);
-  });
-
-  // MODE-02: the choice and the effective mode are shown as the add-on reports them, so an active
-  // add-on option never reads as active control.
-  it('shows the add-on option, the choice and the mode in force as reported', async () => {
-    serveMode({ mode: { ceiling: 'active', uiChoice: 'shadow', effective: 'shadow', note: 'active_not_enabled' } });
+  it('reads active only when the add-on reports it', async () => {
+    serveControl(IN_FORCE);
     await mount();
 
-    expect(document.querySelector('[data-mode]')?.textContent).toBe('In force now: Shadow · add-on option: Active · your choice: Shadow');
+    expect(controlBlock().getAttribute('data-effective')).toBe('active');
+    expect(controlBlock().querySelector('[data-condition]')).toBeNull();
   });
 
-  it('says so when the mode cannot be read, without guessing one', async () => {
+  // The switch is the user's own act: on the step it still asks first, and nothing is sent until then.
+  it('allowing control from the step asks first and sends nothing before the confirmation', async () => {
+    await mount();
+
+    fireEvent.click(within(controlBlock()).getByRole('switch'));
+    await advance();
+
+    expect(within(controlBlock()).getByRole('group', { name: 'Allow Switchboard to switch your devices?' })).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+
+  it('keeps the command path diagnostics to the Status page', async () => {
+    serveControl(IN_FORCE);
+    await mount();
+
+    expect(screen.queryByRole('heading', { name: 'Commands to Home Assistant' })).toBeNull();
+  });
+
+  it('uses the mockup’s Polish names', async () => {
+    serveControl(IN_FORCE);
+    await mount({ lang: 'pl' });
+
+    expect(within(controlBlock()).getByRole('switch', { name: 'Sterowanie dozwolone' })).toBeTruthy();
+    expect(controlBlock().querySelector('[data-fact="effective"]')?.textContent).toContain('Sterowanie aktywne');
+  });
+
+  it('says so when the control state cannot be read, without guessing a mode', async () => {
     fetchMock.mockImplementation(() => respond({}, 500));
     await mount();
 
-    expect(document.querySelector('[data-mode]')?.getAttribute('data-mode')).toBe('unavailable');
-    expect(document.body.textContent).not.toContain('In force now');
+    expect(within(controlBlock()).getByRole('alert').textContent).toContain('Unavailable');
+    expect(controlBlock().hasAttribute('data-effective')).toBe(false);
+    expect(within(controlBlock()).queryByRole('switch')).toBeNull();
   });
 });
 
@@ -221,7 +262,7 @@ describe('acknowledgements before finishing', () => {
     await mount({ view: cleanView() });
 
     expect(screen.getByRole('note').textContent).toContain('This is not a protective device.');
-    expect(screen.getByRole('note').textContent).toContain('in this version it only records what it would do');
+    expect(screen.getByRole('note').textContent).toContain('it switches off every controlled device while control is in force; in shadow it only records what it would do');
     expect(finishButton().disabled).toBe(true);
     expect(document.getElementById('smode-finish-needs')?.textContent).toContain('confirm the statement that Switchboard is not a protective device');
 
@@ -273,21 +314,21 @@ async function acknowledgeAll() {
 }
 
 // UI-06 and MODE-02: finishing writes the file through the add-on, says where the old one went and
-// whether the running add-on loaded it, then records the (shadow) mode choice.
+// whether the running add-on loaded it, then reads the control state again (it records no mode).
 describe('finishing', () => {
-  it('saves with the acknowledgements, then records shadow, and confirms the hot reload and the backup', async () => {
+  it('saves with the acknowledgements, records no mode, and confirms the hot reload and the backup', async () => {
     await mount();
     await acknowledgeAll();
 
     await finish();
 
-    expect(calls).toEqual(['save', 'mode {"uiChoice":"shadow"}']);
+    expect(calls).toEqual(['save']);
     expect(saves[0]?.acknowledgements).toEqual({ notProtective: true, commentsDropped: true, replaceUnreadable: false });
     expect(saves[0]?.devices.map((d) => d.id)).toEqual(['heater_l1', 'heater_l2', 'heater_l3', 'ev_charger']);
     const status = screen.getByRole('status', { name: /Configuration saved/ });
     expect(status.textContent).toContain('The running add-on loaded it without a restart.');
     expect(within(status).getByText(savedSample.backup).classList.contains('mono')).toBe(true);
-    expect(status.textContent).toContain('Mode recorded: Shadow. In force: Shadow.');
+    expect(status.querySelector('[data-saved-mode]')?.textContent).toBe('In force now: Shadow.The Control section above says what is missing.');
     expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
 
     fireEvent.click(within(status).getByRole('button', { name: 'Edit again (loads the saved file)' }));
@@ -386,15 +427,33 @@ describe('finishing', () => {
     expect(finishButton().disabled).toBe(false);
   });
 
-  it('a mode choice the add-on refuses is reported, and the save still stands', async () => {
-    serveMode({ post: () => respond({ code: 'active_not_enabled' }, 409) });
+  it('after a save the control state is read again and shown as the add-on reports it, and nothing is posted to change it', async () => {
     await mount();
     await acknowledgeAll();
+    // The saved file is valid and the user had allowed control before: the mode in force changes.
+    serveControl(IN_FORCE);
+    const readsBefore = controlReads;
+
+    await finish();
+
+    expect(controlReads).toBeGreaterThan(readsBefore);
+    const status = screen.getByRole('status', { name: /Configuration saved/ });
+    expect(status.querySelector('[data-saved-mode]')?.getAttribute('data-saved-mode')).toBe('active');
+    expect(status.querySelector('[data-saved-mode]')?.textContent).toBe('In force now: Active.');
+    expect(controlBlock().getAttribute('data-effective')).toBe('active');
+    expect(calls).toEqual(['save']);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toEqual([]);
+  });
+
+  it('a mode that cannot be read after the save says so, and the save still stands', async () => {
+    await mount();
+    await acknowledgeAll();
+    fetchMock.mockImplementation(() => respond({}, 500));
 
     await finish();
 
     const status = screen.getByRole('status', { name: /Configuration saved/ });
-    expect(status.textContent).toContain('The add-on did not record the mode choice (active_not_enabled).');
+    expect(status.textContent).toContain('The mode in force cannot be read right now.');
   });
 });
 

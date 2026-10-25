@@ -300,6 +300,9 @@ public sealed class DiscoveryLinkTests : IAsyncDisposable
                 ReconnectMinDelay = TestOptions.ReconnectMin,
                 ReconnectMaxDelay = TestOptions.ReconnectMax,
                 StateReadTimeout = TestOptions.StateReadTimeout,
+                CommandTimeout = TestOptions.CommandTimeout,
+                ShutdownCommandWait = TimeSpan.FromMilliseconds(500),
+                CloseTimeout = TimeSpan.FromMilliseconds(500),
             }),
             MsOptions.Create(Options(maxReadouts: 3)),
             new CandidateReadoutStore(64, 256, SetupFixtures.Control.Signals.Refresh),
@@ -323,6 +326,7 @@ public sealed class DiscoveryLinkTests : IAsyncDisposable
         MaxBackups = 10,
         ReloadConfirmTimeout = TimeSpan.FromSeconds(9),
         EvidencePerDevice = 20,
+        EvidenceMaxFileBytes = 262144,
     };
 
     [Fact]
@@ -553,6 +557,9 @@ public sealed class DiscoveryLinkProbeTests : IAsyncDisposable
                 ReconnectMinDelay = TestOptions.ReconnectMin,
                 ReconnectMaxDelay = TestOptions.ReconnectMax,
                 StateReadTimeout = TestOptions.StateReadTimeout,
+                CommandTimeout = TestOptions.CommandTimeout,
+                ShutdownCommandWait = TimeSpan.FromMilliseconds(500),
+                CloseTimeout = TimeSpan.FromMilliseconds(500),
             }),
             MsOptions.Create(DiscoveryLinkTests.Options()),
             new CandidateReadoutStore(64, 256, SetupFixtures.Control.Signals.Refresh),

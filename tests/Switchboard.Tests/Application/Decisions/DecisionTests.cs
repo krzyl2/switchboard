@@ -25,9 +25,10 @@ public sealed class DecisionTests
     }
 
     [Fact]
-    public void Reason_codes_are_exactly_list_version_2()
+    public void Reason_codes_are_exactly_list_version_3()
     {
-        // 04 §6, version 2 (2026-10-24): the UI renders a sentence per code, so the list is closed.
+        // 04 §6, version 3 (2026-10-25): the UI renders a sentence per code, so the list is closed.
+        // Version 3 only appended, so a version-2 log line keeps its meaning.
         string[] specification =
         [
             "guard_tier_exceeded", "guard_budget_low", "guard_stale_signal",
@@ -36,12 +37,15 @@ public sealed class DecisionTests
             "value_rank_below_cutoff", "goal_met", "guard_expression_false",
             "device_unresponsive", "manual_override", "mode_shadow",
             "safe_state", "plan_slot_target", "headroom_available",
-            "kill_switch",
+            "kill_switch", "foreign_load", "change_limit",
         ];
 
-        Assert.Equal(2, ReasonCodes.ListVersion);
+        Assert.Equal(3, ReasonCodes.ListVersion);
         Assert.Equal(specification, ReasonCodes.All.Select(ReasonCodes.Name));
         Assert.False(ReasonCodes.IsDefined(default));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.KillSwitch, ReasonCodes.PreviousListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.ForeignLoad, ReasonCodes.PreviousListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.PreviousListVersion));
     }
 
     [Fact]

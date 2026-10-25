@@ -24,7 +24,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **CONN-02**: Each device is assigned to a phase (or to all three); the assignment drives every protection decision
 - [x] **CONN-03**: Sub-breaker groups: a set of devices sharing a downstream breaker with its own per-phase limit, enforced alongside the main limit
 - [x] **CONN-04**: Configurable power reserve per phase, reserved for loads the system does not control
-- [ ] **CONN-05**: Phase-assignment self-test — energize one known device, observe which phase rose, report a mismatch
+- [x] **CONN-05**: Phase-assignment self-test — energize one known device, observe which phase rose, report a mismatch
 - [x] **CONN-06**: Mapping validation before the wizard completes: entities exist, values are plausible, phases sum to the total, refresh matches the declaration
 
 ## Breaker thermal model
@@ -61,7 +61,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 ## Modes and operation
 
 - [x] **MODE-01**: `shadow` and `active` modes; `shadow` computes and logs decisions without commanding anything, and is the default after install
-- [ ] **MODE-02**: Mode switch takes effect without a restart
+- [x] **MODE-02**: Mode switch takes effect without a restart
 - [x] **MODE-03**: Every decision records a machine-readable reason code and the inputs that produced it
 - [x] **MODE-04**: Decision log queryable in the UI and retained for a configurable period
 

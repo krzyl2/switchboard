@@ -25,7 +25,12 @@ public sealed record ControlParameters(
     DecisionLogParameters DecisionLog,
     SafetyEnvelope Limits,
     ForeignLoadParameters ForeignLoad,
-    CircuitGroupDefaults CircuitGroups);
+    CircuitGroupDefaults CircuitGroups,
+    EffectorParameters Effector);
+
+/// <summary>The command path's confirmation of acknowledged commands (0.7.0).</summary>
+/// <param name="ConfirmTimeout">After Home Assistant acknowledged a command, how long beyond the device's reaction time its reported state may take to show it before the device is flagged unconfirmed.</param>
+public sealed record EffectorParameters(TimeSpan ConfirmTimeout);
 
 public sealed record ConnectionDefaults(Watts DefaultReserve);
 
@@ -88,12 +93,14 @@ public sealed record SignalParameters(
 /// <param name="ReactionTime">From a command to the load changing, per device type; the shed order prefers the faster.</param>
 /// <param name="ModulatingMinOn">Lockouts of a modulating or storage device; relays use the dispatch relay lockouts.</param>
 /// <param name="DrawMaxAge">max_age of a device's draw signals when its draw declares none.</param>
+/// <param name="DefaultStart">The start policy of a device that declares no <c>start:</c>.</param>
 public sealed record DeviceDefaults(
     TimeSpan StateMaxAge,
     ImmutableDictionary<DeviceType, TimeSpan> ReactionTime,
     TimeSpan ModulatingMinOn,
     TimeSpan ModulatingMinOff,
-    TimeSpan DrawMaxAge);
+    TimeSpan DrawMaxAge,
+    StartPolicy DefaultStart);
 
 /// <param name="RetentionDays">Daily decision files older than this are deleted (MODE-03, MODE-04).</param>
 public sealed record DecisionLogParameters(int RetentionDays);

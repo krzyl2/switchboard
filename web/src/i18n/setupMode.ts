@@ -1,24 +1,15 @@
 // Setup wizard, step 5 (Mode) and the finish flow: its own texts, so the steps can be built in
 // parallel without editing one file. Keys start with 'setupMode.'; both languages here (mockup
-// vocabulary: "Obserwacja — zalecane na start", "Sterowanie aktywne", "Zakończ konfigurację").
+// vocabulary: "Tryb pracy", "Zakończ konfigurację"). The mode itself is the control block's
+// (i18n/control.ts).
 
 const en = {
   'setupMode.title': 'Operating mode',
   'setupMode.stepLine': 'Step 5 of 5',
-  'setupMode.lead': 'Choose the mode, confirm the statement, check what will be saved, and finish.',
-  'setupMode.modes.legend': 'Mode after setup',
-  'setupMode.shadow.title': 'Shadow — recommended to start',
-  'setupMode.shadow.text':
-    'The system computes the decisions and shows them in the decision log, but switches nothing. Leave it for a few days and check that the decisions make sense.',
-  'setupMode.active.title': 'Active control',
-  'setupMode.active.text': 'The system sends commands to the devices.',
-  'setupMode.active.unavailable':
-    'Not available in this version: commanding is not enabled, so Switchboard computes and logs decisions and switches nothing.',
-  'setupMode.current': 'In force now: {effective} · add-on option: {ceiling} · your choice: {choice}',
-  'setupMode.current.unavailable': 'The add-on’s current mode cannot be read right now.',
+  'setupMode.lead': 'See the mode in force, confirm the statement, review what will be saved, and finish.',
   'setupMode.statement.title': 'This is not a protective device.',
   'setupMode.statement.body':
-    'The system limits power draw as well as it can from Home Assistant data, but it does not replace circuit breakers or the charger’s own protection. With a missing or stale measurement it would switch off every controlled device; in this version it only records what it would do.',
+    'The system limits power draw as well as it can from Home Assistant data, but it does not replace circuit breakers or the charger’s own protection. With a missing or stale measurement it switches off every controlled device while control is in force; in shadow it only records what it would do.',
   'setupMode.ack.notProtective': 'I have read this: Switchboard is not a protective device and does not replace breakers or the charger’s protection.',
   'setupMode.comments.text':
     'The current file has comments. The wizard writes a structured file, so its comments are not kept; the original, with its comments, is kept next to it as a backup.',
@@ -54,7 +45,7 @@ const en = {
   'setupMode.review.drop': 'Remove this section when saving (the backup keeps it)',
   'setupMode.review.default': 'default',
   'setupMode.review.notSet': 'not set',
-  'setupMode.review.notWritten': 'The mode is not written to the file: the add-on keeps your choice in its runtime state.',
+  'setupMode.review.notWritten': 'The mode is not written to the file: the add-on option and the Control allowed switch decide it.',
   'setupMode.finish': 'Finish setup',
   'setupMode.finish.before': 'Before finishing:',
   'setupMode.finish.needsStatement': 'confirm the statement that Switchboard is not a protective device',
@@ -74,9 +65,9 @@ const en = {
   'setupMode.saved.loadedInvalid': 'The running add-on read it but found it invalid, so it stays in safe state; the Signals page shows why.',
   'setupMode.saved.loadedMissing': 'The running add-on reports no configuration file; check the add-on log.',
   'setupMode.saved.notConfirmed': 'The running add-on has not confirmed loading it yet; it reads the file at its next check (the Signals page shows when).',
-  'setupMode.saved.mode': 'Mode recorded: {choice}. In force: {effective}.',
-  'setupMode.saved.modeRefused': 'The add-on did not record the mode choice ({code}).',
-  'setupMode.saved.modeFailed': 'The mode choice could not be recorded right now.',
+  'setupMode.saved.mode': 'In force now: {effective}.',
+  'setupMode.saved.modeMissing': 'The Control section above says what is missing.',
+  'setupMode.saved.modeFailed': 'The mode in force cannot be read right now.',
   'setupMode.saved.next': 'Watch the decisions for a few days before relying on them.',
   'setupMode.saved.again': 'Edit again (loads the saved file)',
 };
@@ -86,20 +77,10 @@ export const setupMode: { en: typeof en; pl: Record<keyof typeof en, string> } =
   pl: {
     'setupMode.title': 'Tryb pracy',
     'setupMode.stepLine': 'Krok 5 z 5',
-    'setupMode.lead': 'Wybierz tryb, potwierdź zastrzeżenie, sprawdź, co zostanie zapisane, i zakończ.',
-    'setupMode.modes.legend': 'Tryb po konfiguracji',
-    'setupMode.shadow.title': 'Obserwacja — zalecane na start',
-    'setupMode.shadow.text':
-      'System liczy decyzje i pokazuje je w dzienniku, ale niczego nie przełącza. Zostaw na kilka dni i sprawdź, czy decyzje mają sens.',
-    'setupMode.active.title': 'Sterowanie aktywne',
-    'setupMode.active.text': 'System wysyła komendy do urządzeń.',
-    'setupMode.active.unavailable':
-      'Niedostępne w tej wersji: sterowanie nie jest włączone, więc Switchboard liczy i zapisuje decyzje, a niczego nie przełącza.',
-    'setupMode.current': 'Obowiązuje teraz: {effective} · opcja dodatku: {ceiling} · Twój wybór: {choice}',
-    'setupMode.current.unavailable': 'Nie da się teraz odczytać bieżącego trybu dodatku.',
+    'setupMode.lead': 'Zobacz obowiązujący tryb, potwierdź zastrzeżenie, sprawdź, co zostanie zapisane, i zakończ.',
     'setupMode.statement.title': 'To nie jest zabezpieczenie elektryczne.',
     'setupMode.statement.body':
-      'System ogranicza pobór mocy najlepiej jak potrafi na podstawie danych z Home Assistant, ale nie zastępuje bezpieczników ani zabezpieczeń ładowarki. Przy braku lub przeterminowaniu pomiaru wyłączyłby wszystkie sterowane odbiorniki; w tej wersji tylko zapisuje, co by zrobił.',
+      'System ogranicza pobór mocy najlepiej jak potrafi na podstawie danych z Home Assistant, ale nie zastępuje bezpieczników ani zabezpieczeń ładowarki. Przy braku lub przeterminowaniu pomiaru wyłącza wszystkie sterowane odbiorniki, gdy sterowanie obowiązuje; w trybie Obserwacja tylko zapisuje, co by zrobił.',
     'setupMode.ack.notProtective': 'Rozumiem: Switchboard nie jest zabezpieczeniem elektrycznym i nie zastępuje bezpieczników ani zabezpieczeń ładowarki.',
     'setupMode.comments.text':
       'Obecny plik ma komentarze. Kreator zapisuje plik strukturalnie, więc komentarze nie zostaną zachowane; oryginał z komentarzami zostaje obok jako kopia zapasowa.',
@@ -136,7 +117,7 @@ export const setupMode: { en: typeof en; pl: Record<keyof typeof en, string> } =
     'setupMode.review.drop': 'Usuń tę sekcję przy zapisie (kopia zapasowa ją zachowuje)',
     'setupMode.review.default': 'domyślny',
     'setupMode.review.notSet': 'nie ustawiono',
-    'setupMode.review.notWritten': 'Tryb nie jest zapisywany w pliku: dodatek przechowuje Twój wybór w swoim stanie.',
+    'setupMode.review.notWritten': 'Tryb nie jest zapisywany w pliku: decydują o nim opcja dodatku i przełącznik „Sterowanie dozwolone”.',
     'setupMode.finish': 'Zakończ konfigurację',
     'setupMode.finish.before': 'Przed zakończeniem:',
     'setupMode.finish.needsStatement': 'potwierdź zastrzeżenie, że Switchboard nie jest zabezpieczeniem elektrycznym',
@@ -156,9 +137,9 @@ export const setupMode: { en: typeof en; pl: Record<keyof typeof en, string> } =
     'setupMode.saved.loadedInvalid': 'Działający dodatek odczytał plik, ale uznał go za nieprawidłowy, więc pozostaje w stanie bezpiecznym; przyczynę pokazuje strona Sygnały.',
     'setupMode.saved.loadedMissing': 'Działający dodatek nie widzi pliku konfiguracji; sprawdź dziennik dodatku.',
     'setupMode.saved.notConfirmed': 'Działający dodatek nie potwierdził jeszcze wczytania; odczyta plik przy następnym sprawdzeniu (strona Sygnały pokaże kiedy).',
-    'setupMode.saved.mode': 'Zapisany wybór trybu: {choice}. Obowiązuje: {effective}.',
-    'setupMode.saved.modeRefused': 'Dodatek nie zapisał wyboru trybu ({code}).',
-    'setupMode.saved.modeFailed': 'Nie udało się teraz zapisać wyboru trybu.',
+    'setupMode.saved.mode': 'Obowiązuje teraz: {effective}.',
+    'setupMode.saved.modeMissing': 'Sekcja Sterowanie powyżej pokazuje, czego brakuje.',
+    'setupMode.saved.modeFailed': 'Nie da się teraz odczytać obowiązującego trybu.',
     'setupMode.saved.next': 'Obserwuj decyzje przez kilka dni, zanim zaczniesz na nich polegać.',
     'setupMode.saved.again': 'Edytuj ponownie (wczytuje zapisany plik)',
   },

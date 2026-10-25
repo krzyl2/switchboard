@@ -1,3 +1,4 @@
+import { control } from './control';
 import { dashboard } from './dashboard';
 import { device } from './device';
 import { flows } from './flows';
@@ -23,7 +24,7 @@ export const en = {
   modeShadow: 'Shadow',
   modeShadowNote: 'Computes and logs, never switches.',
   modeActive: 'Active',
-  modeActiveNote: 'This build has no command path and cannot switch anything.',
+  modeActiveNote: 'Sends commands to the declared actuators.',
   connectionConnected: 'Connected',
   connectionConnecting: 'Connecting',
   connectionDisconnected: 'Disconnected',
@@ -231,6 +232,8 @@ export const en = {
   'killSwitchSource.api': 'from the API',
   'killSwitchSource.mqtt': 'from Home Assistant',
   'killSwitchSource.restored': 'restored after a restart',
+  'killSwitchSource.corrupt_state': 'engaged at start: the saved state could not be trusted, held until you confirm it',
+  'killSwitchSource.confirmation': 'released by your confirmation of the state',
   'safeStateCause.shutdown': 'the add-on is stopping',
   'safeStateCause.starting': 'starting: no configuration read yet',
   'safeStateCause.configuration_invalid': 'configuration invalid',
@@ -367,6 +370,7 @@ export const en = {
   'origin.guard': 'decided by protection',
   'origin.dispatch': 'decided by dispatch',
   'origin.override': 'manual override',
+  'origin.self_test': 'switched by the active phase self-test',
   groupDetail: 'circuit group {group}',
   targetDetail: 'target: {level}',
   headroomDetail: '{constraint}: may add {envelope}',
@@ -374,7 +378,7 @@ export const en = {
   foreignDetail: 'foreign load {measured} against a baseline of {baseline}',
   overrideDetail: 'override: {mode}',
 
-  // Reason codes, list version 2 (04-ALGORITHMS §6): one sentence per code.
+  // Reason codes, list version 3 (04-ALGORITHMS §6): one sentence per code.
   'reason.guard_tier_exceeded': 'Phase current above a tier of the breaker profile.',
   'reason.guard_budget_low': 'The overload budget of the phase is low.',
   'reason.guard_stale_signal': 'A signal the limits depend on is stale or unavailable.',
@@ -395,13 +399,14 @@ export const en = {
   'reason.plan_slot_target': 'Target of the current plan slot.',
   'reason.headroom_available': 'Headroom is available again.',
   'reason.kill_switch': 'The kill switch is engaged.',
+  'reason.change_limit': 'Another increase of this settling window is still in flight; one change at a time.',
   // The end of a condition is worded by its action: the reason code still names the condition that ended.
   'reason.kill_switch.released': 'The kill switch was released.',
   'reason.safe_state.exited': 'Valid data again; the safe state ended.',
   'reason.device_unresponsive.cleared': 'A probe matched: the device responds again and takes part in dispatch.',
   'reason.settling_window_open.timed_out':
     'A measurement the settling window waits for stayed silent until its hard timeout; no mismatch was counted.',
-  // Foreign load events carry reserve_threshold (list version 2 has no code of their own).
+  // A code since list version 3; version 2 lines carry reserve_threshold and are worded by their action.
   'reason.foreign_load': 'Load appeared on the phase without a command of ours.',
 
   // Dispatch on the Limits page (GET api/dispatch). Stage 4 rebuilds this into the dashboard queue.
@@ -479,6 +484,7 @@ export const en = {
   ...setupSources.en,
   ...setupLoads.en,
   ...setupMode.en,
+  ...control.en,
 };
 
 export type Messages = { [K in keyof typeof en]: string };

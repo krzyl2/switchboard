@@ -7,13 +7,19 @@ using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Setup.SelfTest;
 
+/// <summary>The switchings the active phase self-test caused, so the recorder tags their observations as active.</summary>
+public interface IActiveTestTransitions
+{
+    bool IsActive(DeviceName device, int stage, DateTimeOffset at);
+}
+
 /// <summary>
-/// The passive self-test's recorded evidence (CONN-05): a read-only listener of the guard runner,
-/// like the presentation hub. When a declared single-phase relay changes its reported state (someone
-/// else switched it: Switchboard switches nothing), it keeps the per-phase reports around that moment
+/// The self-test's recorded evidence (CONN-05): a read-only listener of the guard runner, like the
+/// presentation hub. When a declared relay stage on one phase changes its reported state (someone
+/// switched it, or the active self-test did), it keeps the per-phase reports around that moment
 /// and, once the window has passed, stores a raw observation with the meter mapping and the state
-/// entity it was measured with. It never touches guard, dispatch or effector state, and runs on the
-/// signal clock of the step it reads.
+/// entity it was measured with, tagged active when the self-test caused it. It never touches guard,
+/// dispatch or effector state, and runs on the signal clock of the step it reads.
 /// </summary>
 public sealed class PhaseEvidenceRecorder
 {
@@ -26,17 +32,20 @@ public sealed class PhaseEvidenceRecorder
     private readonly Dictionary<Phase, List<ReportPoint>> _current = [];
     private readonly Dictionary<Phase, bool> _currentCautious = [];
     private readonly Dictionary<(DeviceName Device, int Stage), bool> _relays = [];
-    private readonly List<(DeviceName Device, DateTimeOffset At)> _transitions = [];
+    private readonly List<(DeviceName Device, int Stage, DateTimeOffset At)> _transitions = [];
     private readonly Dictionary<DeviceName, List<ReportPoint>> _drawCurrent = [];
     private readonly Dictionary<DeviceName, List<ReportPoint>> _drawPower = [];
     private readonly List<Pending> _pending = [];
+    private readonly IActiveTestTransitions? _active;
 
-    public PhaseEvidenceRecorder(PhaseEvidenceStore store, ISetupRuntimeView runtime, SetupDefaults defaults, int historyLength)
+    /// <param name="active">The active self-test, whose switchings are tagged active; null where none runs.</param>
+    public PhaseEvidenceRecorder(PhaseEvidenceStore store, ISetupRuntimeView runtime, SetupDefaults defaults, int historyLength, IActiveTestTransitions? active = null)
     {
         _store = store;
         _runtime = runtime;
         _defaults = defaults;
         _historyLength = historyLength;
+        _active = active;
     }
 
     /// <summary>Follows the guard runner. Call once.</summary>
@@ -68,7 +77,8 @@ public sealed class PhaseEvidenceRecorder
             foreach (var pending in _pending.ToList())
             {
                 var device = configuration.Devices.FirstOrDefault(d => d.Id == pending.Device);
-                if (device is null || device.Type != DeviceType.OnOff || device.Stages.Length != 1 || device.Stages[0].Phases.Length != 1)
+                if (device is null || device.Type is not (DeviceType.OnOff or DeviceType.Stepped) || pending.Stage > device.Stages.Length
+                    || device.Stages[pending.Stage - 1].Phases.Length != 1)
                 {
                     _pending.Remove(pending);
                     continue;
@@ -125,13 +135,13 @@ public sealed class PhaseEvidenceRecorder
             if (_relays.TryGetValue(key, out var was) && was != relay.On)
             {
                 var at = sample.ReportedAt ?? now;
-                _transitions.Add((sample.Device, at));
+                _transitions.Add((sample.Device, sample.Stage, at));
                 if (_transitions.Count > _historyLength)
                 {
                     _transitions.RemoveRange(0, _transitions.Count - _historyLength);
                 }
 
-                _pending.Add(new Pending(sample.Device, at, relay.On ? 1 : -1));
+                _pending.Add(new Pending(sample.Device, sample.Stage, at, relay.On ? 1 : -1));
                 if (_pending.Count > _historyLength)
                 {
                     _pending.RemoveRange(0, _pending.Count - _historyLength);
@@ -145,7 +155,8 @@ public sealed class PhaseEvidenceRecorder
     /// <summary>The observation of one switching once its window has passed; null while it is still open.</summary>
     private PhaseObservation? Observe(Pending pending, DeviceDefinition device, SwitchboardConfiguration configuration, DateTimeOffset now)
     {
-        var stage = device.Stages[0];
+        var stage = device.Stages[pending.Stage - 1];
+        var source = _active?.IsActive(pending.Device, pending.Stage, pending.At) == true ? ObservationSource.Active : ObservationSource.Recorded;
         var phases = configuration.Connection.Phases;
         var powerSignals = phases.Select(p => configuration.Signals.FirstOrDefault(s => s.Role == SignalRole.PhasePower && s.Phase == p)).ToList();
         var usePower = powerSignals.All(s => s is not null);
@@ -165,7 +176,7 @@ public sealed class PhaseEvidenceRecorder
             // Without a detected refresh the window is unknown: inconclusive, never a guess.
             return now - pending.At < _defaults.SelfTest.Isolation
                 ? null
-                : new PhaseObservation(pending.At, pending.Direction, stage.StateEntity, ObservationSource.Recorded, unit, false, false, meter, ImmutableDictionary<Phase, Domain.Connection.PhaseStepMeasurement>.Empty, true, "refresh_not_detected");
+                : new PhaseObservation(pending.At, pending.Direction, stage.StateEntity, source, unit, false, false, meter, ImmutableDictionary<Phase, Domain.Connection.PhaseStepMeasurement>.Empty, true, "refresh_not_detected");
         }
 
         if (now < pending.At + span)
@@ -188,11 +199,11 @@ public sealed class PhaseEvidenceRecorder
         }
 
         var parameters = _defaults.SelfTest.Classifier;
-        var isolated = !_transitions.Any(t => t.Device != pending.Device && t.At > pending.At - span && t.At <= pending.At + span)
+        var isolated = !_transitions.Any(t => (t.Device != pending.Device || t.Stage != pending.Stage) && t.At > pending.At - span && t.At <= pending.At + span)
             && !configuration.Devices.Where(d => d.Id != pending.Device).Any(d =>
                 (_drawCurrent.TryGetValue(d.Id, out var amps) && StepWindow.Changed(amps, pending.At, span, Quiet(parameters, stage.RatedCurrent.Value, configuration.Control.Signals.DefaultSigma.GetValueOrDefault(SignalKind.Current))))
                 || (_drawPower.TryGetValue(d.Id, out var watts) && StepWindow.Changed(watts, pending.At, span, Quiet(parameters, stage.RatedPower?.Value ?? 0, configuration.Control.Signals.DefaultSigma.GetValueOrDefault(SignalKind.Power)))));
-        return new PhaseObservation(pending.At, pending.Direction, stage.StateEntity, ObservationSource.Recorded, unit, unsigned, houseLoad, meter, measurements.ToImmutable(), isolated, null);
+        return new PhaseObservation(pending.At, pending.Direction, stage.StateEntity, source, unit, unsigned, houseLoad, meter, measurements.ToImmutable(), isolated, null);
     }
 
     /// <summary>T_quiet of the device under test, in the unit of a draw: a smaller draw change is left to the per-phase checks.</summary>
@@ -223,5 +234,5 @@ public sealed class PhaseEvidenceRecorder
     /// <summary>One phase power report: net import, and the house load when generation was fresh.</summary>
     private readonly record struct PowerPoint(DateTimeOffset At, double Net, double? Load);
 
-    private sealed record Pending(DeviceName Device, DateTimeOffset At, int Direction);
+    private sealed record Pending(DeviceName Device, int Stage, DateTimeOffset At, int Direction);
 }

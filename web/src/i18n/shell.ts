@@ -1,11 +1,15 @@
-// Chrome shared by every runtime screen: navigation (mockup vocabulary), the shadow-mode pill, the
+// Chrome shared by every runtime screen: navigation (mockup vocabulary), the mode banner, the
 // theme toggle, ages and poll states, and the words for power figures, bar segments and their
 // sources that the dashboard and the flow view both use. Keys are prefixed so a screen file can
 // never collide with them; i18n.test.ts checks both languages carry the same keys and placeholders.
 
 const en = {
   'shell.tagline': 'Phase-aware load dispatch',
-  'shell.shadowPill': 'Shadow mode — Switchboard switches nothing in this version',
+  'shell.mode.shadow': 'Shadow mode — Switchboard switches nothing',
+  'shell.mode.active': 'Active control — Switchboard switches the declared devices',
+  'shell.mode.offsOnly': 'Configuration invalid — Switchboard only switches devices off',
+  'shell.mode.loading': 'Reading the mode…',
+  'shell.mode.unknown': 'Mode unknown — the add-on does not answer',
   'nav.dashboard': 'Dashboard',
   'nav.flows': 'Flows',
   'nav.setup': 'Setup',
@@ -58,7 +62,11 @@ export const shell: { en: typeof en; pl: Record<keyof typeof en, string> } = {
   en,
   pl: {
     'shell.tagline': 'Rozdział mocy na fazy',
-    'shell.shadowPill': 'Obserwacja — w tej wersji Switchboard niczego nie przełącza',
+    'shell.mode.shadow': 'Obserwacja — Switchboard niczego nie przełącza',
+    'shell.mode.active': 'Sterowanie aktywne — Switchboard przełącza zadeklarowane urządzenia',
+    'shell.mode.offsOnly': 'Błędna konfiguracja — Switchboard tylko wyłącza urządzenia',
+    'shell.mode.loading': 'Odczytywanie trybu…',
+    'shell.mode.unknown': 'Tryb nieznany — dodatek nie odpowiada',
     'nav.dashboard': 'Pulpit',
     'nav.flows': 'Przepływy',
     'nav.setup': 'Konfiguracja wstępna',

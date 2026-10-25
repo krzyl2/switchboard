@@ -101,6 +101,19 @@ public sealed class LockoutClocks : ILockoutView, IReadOnlyLockouts
     /// <summary>The stage switched without confirming the target (another controller, a manual switch): the contacts moved, the target lockout restarts now.</summary>
     public void Switched(DeviceName device, int stage, bool on, DateTimeOffset now) => _target[(device, stage)] = new Clock(on, now);
 
+    /// <summary>
+    /// Commands start to leave (control allowed in active mode): the target timeline, which followed
+    /// virtual commands in shadow mode, restarts now from the physical state, so no lockout counts
+    /// from a change that never happened.
+    /// </summary>
+    public void RestartTargets(DateTimeOffset now)
+    {
+        foreach (var key in _target.Keys.ToList())
+        {
+            _target[key] = new Clock(_physical.TryGetValue(key, out var physical) ? physical.On : _target[key].On, now);
+        }
+    }
+
     /// <summary>A backward clock step: every lockout restarts now.</summary>
     public void RestartAll(DateTimeOffset now)
     {

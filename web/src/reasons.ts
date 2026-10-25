@@ -5,7 +5,7 @@ import { fill, type Lang, type Messages } from './i18n';
 // Human sentences for decisions (04-ALGORITHMS §6: the UI renders a sentence per reason code). Kept
 // apart from the page so the full decision log (Stage 4) words every decision the same way.
 
-/** The sentence for a reason code; every code of list version 2 has one in each language. */
+/** The sentence for a reason code; every code of list version 3 has one in each language. */
 export function reasonSentence(t: Messages, code: ReasonCode): string {
   return t[`reason.${code}`];
 }
@@ -63,8 +63,8 @@ const DEVICE_ACTIONS: ReadonlySet<Decision['action']> = new Set([
 
 /**
  * Decisions whose reason code names the condition they report on rather than what happened (the
- * end of a condition, a timeout, a foreign load, which list version 2 has no code of its own for):
- * they are worded by their action.
+ * end of a condition, a timeout, a foreign load, which list version 2 had no code of its own for and
+ * whose version-2 lines still carry reserve_threshold): they are worded by their action.
  */
 function actionReason(decision: Decision, t: Messages): string | null {
   switch (decision.action) {

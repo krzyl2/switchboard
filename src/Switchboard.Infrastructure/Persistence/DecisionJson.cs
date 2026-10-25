@@ -25,6 +25,10 @@ namespace Switchboard.Infrastructure.Persistence;
 /// <para>
 /// Format 2 (Stage 3) adds <c>origin</c>, <c>group</c> and <c>target</c> on every line and the
 /// dispatch inputs; lines of format 1 (0.3.x, kept for the retention period) still read, without them.
+/// Reason-code list version 3 (0.7.0) only appended codes, so lines of version 2 still read; a
+/// version 2 line carrying a version 3 code is not a decision. 0.7.0 adds, inside the same format,
+/// the control switch to the mode inputs and <c>reasserted</c> to the dispatch inputs (both optional
+/// on read).
 /// </para>
 /// </summary>
 public static class DecisionJson
@@ -95,13 +99,15 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") != ReasonCodes.ListVersion)
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion))
             {
                 return null;
             }
 
+            var codes = Int(root, "codes");
             var current = Int(root, "v") == FormatVersion;
             var device = OptionalString(root, "device") is { } name ? DeviceName.Parse(name) : (DeviceName?)null;
+            ReasonCode Code(string text) => Reason(text) is var code && ReasonCodes.InVersion(code, codes) ? code : throw new FormatException($"reason {text} in list version {codes}");
             return new Decision(
                 String(root, "id"),
                 Time(root, "at"),
@@ -110,11 +116,11 @@ public static class DecisionJson
                 OptionalInt(root, "stage"),
                 OptionalPhase(root, "phase"),
                 EnumValue<DecisionAction>(root, "action"),
-                Reason(String(root, "reason")),
-                OptionalString(root, "overridden") is { } overridden ? Reason(overridden) : null,
+                Code(String(root, "reason")),
+                OptionalString(root, "overridden") is { } overridden ? Code(overridden) : null,
                 EnumValue<OperatingMode>(root, "mode"),
                 Bool(root, "commanded"),
-                OptionalString(root, "refused_by") is { } refused ? Reason(refused) : null,
+                OptionalString(root, "refused_by") is { } refused ? Code(refused) : null,
                 Inputs(Property(root, "inputs", JsonValueKind.Object), current),
                 current ? OptionalEnum<DecisionOrigin>(root, "origin") : null,
                 current && OptionalString(root, "group") is { } group ? GroupName.Parse(group) : null,
@@ -170,6 +176,21 @@ public static class DecisionJson
             writer.WriteString("ceiling", Snake(mode.Ceiling));
             writer.WriteString("ui_choice", Snake(mode.UiChoice));
             writer.WriteString("note", Snake(mode.Note));
+            if (mode.ControlAllowed is { } allowed)
+            {
+                writer.WriteBoolean("control_allowed", allowed);
+                writer.WriteBoolean("configuration_valid", mode.ConfigurationValid ?? true);
+                writer.WriteBoolean("state_confirmed", mode.StateConfirmed ?? true);
+                writer.WriteStartArray("missing");
+                foreach (var condition in mode.Missing.IsDefault ? [] : mode.Missing)
+                {
+                    writer.WriteStringValue(Snake(condition));
+                }
+
+                writer.WriteEndArray();
+                WriteOptional(writer, "source", mode.Source is { } changedBy ? Snake(changedBy) : null);
+            }
+
             writer.WriteEndObject();
         }
 
@@ -242,6 +263,11 @@ public static class DecisionJson
         writer.WriteNumber("min_off_remaining_s", dispatch.MinOffRemaining.TotalSeconds);
         WriteOptional(writer, "deferred_since", dispatch.DeferredSince is { } since ? FormatTime(since) : null);
         writer.WriteString("override", Snake(dispatch.Override));
+        if (dispatch.Reasserted)
+        {
+            writer.WriteBoolean("reasserted", true);
+        }
+
         writer.WriteEndObject();
     }
 
@@ -357,7 +383,10 @@ public static class DecisionJson
             Seconds(d, "min_on_remaining_s"),
             Seconds(d, "min_off_remaining_s"),
             OptionalString(d, "deferred_since") is { } since ? ParseTime(since) : null,
-            EnumValue<OverrideMode>(d, "override"));
+            EnumValue<OverrideMode>(d, "override"))
+        {
+            Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
+        };
     }
 
     private static ConstraintKey Key(JsonElement element) =>
@@ -424,6 +453,18 @@ public static class DecisionJson
                 case "mode" when mode is null:
                     var m = property.Value;
                     mode = new ModeDecisionInputs(EnumValue<OperatingMode>(m, "ceiling"), EnumValue<OperatingMode>(m, "ui_choice"), EnumValue<ModeNote>(m, "note"));
+                    if (m.TryGetProperty("control_allowed", out _))
+                    {
+                        mode = mode with
+                        {
+                            ControlAllowed = Bool(m, "control_allowed"),
+                            ConfigurationValid = Bool(m, "configuration_valid"),
+                            StateConfirmed = Bool(m, "state_confirmed"),
+                            Missing = [.. Property(m, "missing", JsonValueKind.Array).EnumerateArray().Select(c => Parse<ModeCondition>(c.GetString()))],
+                            Source = OptionalEnum<ControlSwitchSource>(m, "source"),
+                        };
+                    }
+
                     break;
                 case "kill_switch" when killSwitch is null:
                     killSwitch = Parse<KillSwitchSource>(property.Value.GetString());

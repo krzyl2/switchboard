@@ -401,6 +401,22 @@ public sealed class JsonlDecisionLog : IDecisionRecorder
         }
     }
 
+    /// <summary>
+    /// The UTC start of the oldest daily file on disk (null when there is none): how long this
+    /// installation has been observing when its state.json predates 0.7.0.
+    /// </summary>
+    public DateTimeOffset? OldestDay()
+    {
+        try
+        {
+            return DayFiles().FirstOrDefault() is { } oldest ? new DateTimeOffset(oldest.Date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The daily files present, oldest first; other files in the folder are left alone.</summary>
     private List<DayFile> DayFiles() =>
         [.. _files.List(_directory)

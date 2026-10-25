@@ -5,6 +5,7 @@ using Switchboard.Application;
 using Switchboard.Application.Connectivity;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Configuration;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
@@ -24,6 +25,9 @@ using Switchboard.Infrastructure.Replay;
 using Switchboard.Infrastructure.Runtime;
 
 namespace Switchboard.Host.Composition;
+
+/// <summary>The development plant, when one is loaded (replay only).</summary>
+public sealed record PlantHolder(SimulatedPlant? Plant);
 
 public static class SwitchboardServices
 {
@@ -87,9 +91,10 @@ public static class SwitchboardServices
             sp.GetRequiredService<RuntimeEnvironment>().DevTrustAllRequests));
 
         // Started in this order, stopped in reverse: the guard stops first (shutdown safe state
-        // recorded, decision log and state.json written), then the heartbeat, then MQTT leaves the
-        // entity OFF and offline, then the Home Assistant socket closes; the signal pipeline (which
-        // the links feed) starts before them and stops after them.
+        // recorded and, in active mode, sent through the command path while it still runs, decision
+        // log and state.json written), then the command path, then the heartbeat, then MQTT leaves
+        // the entity OFF and offline, then the Home Assistant socket closes; the signal pipeline
+        // (which the links feed) starts before them and stops after them.
         services.AddHostedService<SignalStoreService>();
         services.AddHostedService<ConfigurationWatcherService>();
         services.AddHostedService<ReplayService>();
@@ -103,6 +108,12 @@ public static class SwitchboardServices
 
         // Stops right after the guard: a self-test session ends and the read-only discovery link closes.
         services.AddHostedService<SetupLinkService>();
+        services.AddHostedService<RuntimeDerivedCheckService>();
+        services.AddHostedService<PhaseEvidenceService>();
+
+        // The command path's sender runs until the guard has stopped, so the shutdown safe state's
+        // commands still leave (bounded by HomeAssistant:ShutdownCommandWait).
+        services.AddHostedService<CommandPathService>();
         services.AddHostedService<GuardService>();
         return services;
     }
@@ -123,10 +134,11 @@ public static class SwitchboardServices
     }
 
     /// <summary>
-    /// The guard and dispatch (on the signal clock, like the store they read), the effector gate that
-    /// only records, the kill switch, the overrides, the mode, the decision log and runtime state in
-    /// the data folder, and the guard's and dispatch's MQTT entities. Nothing here holds a Home
-    /// Assistant command sender, and no command port is registered.
+    /// The guard and dispatch (on the signal clock, like the store they read), the effector gate with
+    /// the one command port (Home Assistant service calls through the outbound allow-list, or in
+    /// development replay the development sink), the kill switch, the control switch, the overrides,
+    /// the mode, the decision log and runtime state in the data folder, and the guard's and
+    /// dispatch's MQTT entities. Only the gate holds the command port.
     /// </summary>
     private static IServiceCollection AddGuard(this IServiceCollection services)
     {
@@ -139,17 +151,51 @@ public static class SwitchboardServices
         services.AddSingleton<IInFlightView>(sp => sp.GetRequiredService<DeviceTargets>());
         services.AddSingleton<GuardEngine>();
         services.AddSingleton<DispatchEngine>();
+        services.AddSingleton<SelfTestSlot>();
 
-        // The gate is built through its public constructor, which takes no command port: this
-        // version commands nothing, and no command port is registered anywhere in production.
+        // The command path: the actuators of the configuration loaded now (published by the signal
+        // store runner), the channel (the protection link, or the development sink in replay) and the
+        // port, which only the effector gate receives.
+        services.AddSingleton<ActuatorDirectoryHolder>();
+        services.AddSingleton<IActuatorDirectory>(sp => sp.GetRequiredService<ActuatorDirectoryHolder>());
+        services.AddSingleton<HomeAssistantCallServiceChannel>();
+        services.AddSingleton(sp => DevPlant(sp));
+        services.AddSingleton<ICallServiceChannel>(sp =>
+        {
+            // Resolved first, whatever the source: a development plant set as an add-on stops the start.
+            var plant = sp.GetRequiredService<PlantHolder>().Plant;
+            return sp.GetRequiredService<SignalSourceSelection>().IsReplay
+                ? new DevCommandSink(sp.GetRequiredService<SignalClock>(), plant)
+                : sp.GetRequiredService<HomeAssistantCallServiceChannel>();
+        });
+        services.AddSingleton(sp => new HomeAssistantDeviceCommandPort(
+            sp.GetRequiredService<ICallServiceChannel>(),
+            sp.GetRequiredService<IActuatorDirectory>(),
+            sp.GetRequiredService<IModeSource>(),
+            sp.GetRequiredService<GuardInbox>(),
+            sp.GetRequiredService<IOptions<HomeAssistantOptions>>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<HomeAssistantDeviceCommandPort>>(),
+            sp.GetRequiredService<ControlSwitchState>()));
+        services.AddSingleton<ICommandPathStatus>(sp => sp.GetRequiredService<HomeAssistantDeviceCommandPort>());
         services.AddSingleton(sp => new EffectorSettings(sp.GetRequiredService<IOptions<GuardOptions>>().Value.DeviceHistoryLength));
-        services.AddSingleton<EffectorGate>();
+        services.AddSingleton(sp => new EffectorGate(
+            sp.GetRequiredService<LockoutClocks>(),
+            sp.GetRequiredService<DeviceTargets>(),
+            sp.GetRequiredService<DecisionIdGenerator>(),
+            sp.GetRequiredService<EffectorSettings>(),
+            sp.GetRequiredService<ILogger<EffectorGate>>(),
+            sp.GetRequiredService<HomeAssistantDeviceCommandPort>(),
+            sp.GetRequiredService<SelfTestSlot>()));
         services.AddSingleton<DeviceOverrides>();
         services.AddSingleton<IDeviceOverrideControl>(sp => sp.GetRequiredService<DeviceOverrides>());
         services.AddSingleton<IDeviceOverrideView>(sp => sp.GetRequiredService<DeviceOverrides>());
         services.AddSingleton<KillSwitchState>();
         services.AddSingleton<IKillSwitchControl>(sp => sp.GetRequiredService<KillSwitchState>());
         services.AddSingleton<IKillSwitchView>(sp => sp.GetRequiredService<KillSwitchState>());
+        services.AddSingleton<ControlSwitchState>();
+        services.AddSingleton<IControlSwitch>(sp => sp.GetRequiredService<ControlSwitchState>());
+        services.AddSingleton<IControlSwitchView>(sp => sp.GetRequiredService<ControlSwitchState>());
 
         services.AddSingleton<IRuntimeStateStore>(sp => new RuntimeStateFile(
             sp.GetRequiredService<RuntimeEnvironment>().DataPath,
@@ -166,20 +212,23 @@ public static class SwitchboardServices
         services.AddSingleton<IDiscoveryLedger>(sp => sp.GetRequiredService<RuntimeStateCoordinator>());
         services.AddSingleton<ILastKnownStates>(sp => sp.GetRequiredService<RuntimeStateCoordinator>());
 
-        // The add-on option is the ceiling; the UI choice persisted in state.json counts only under it.
-        // A change of the UI choice wakes the guard, which records it (MODE-02).
+        // The add-on option is the ceiling; the control switch persisted in state.json counts only
+        // under it, and only with a valid configuration. A change of the switch wakes the guard,
+        // which records the mode decision (MODE-02).
         services.AddSingleton(sp => new ModeState(
             sp.GetRequiredService<ResolvedAddonOptions>().Mode,
-            sp.GetRequiredService<RuntimeStateLoad>().State.UiMode,
-            sp.GetRequiredService<GuardInbox>()));
+            sp.GetRequiredService<IControlSwitchView>(),
+            sp.GetRequiredService<IControlInputSource>()));
         services.AddSingleton<IModeSource>(sp => sp.GetRequiredService<ModeState>());
+        // Before the first guard step nothing is resolved: the initial status reads no input (a
+        // broken input port must fail the guard loop, not the composition) and claims no validity.
         services.AddSingleton(sp => new GuardStatusHolder(
-            GuardStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().Current),
+            GuardStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().For(false)),
             sp.GetRequiredService<ILogger<GuardStatusHolder>>()));
         services.AddSingleton<IGuardStatusSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
         services.AddSingleton<IGuardEnvelopeSource>(sp => sp.GetRequiredService<GuardStatusHolder>());
         services.AddSingleton(sp => new DispatchStatusHolder(
-            DispatchStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().Current),
+            DispatchStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().For(false)),
             sp.GetRequiredService<ILogger<DispatchStatusHolder>>()));
         services.AddSingleton<IDispatchStatusSource>(sp => sp.GetRequiredService<DispatchStatusHolder>());
 
@@ -209,7 +258,8 @@ public static class SwitchboardServices
                 () => diagnostics.Current.Snapshot.Connection?.Voltage,
                 sp.GetRequiredService<IOptions<MqttOptions>>(),
                 sp.GetRequiredService<AppVersion>(),
-                sp.GetRequiredService<ILogger<GuardEntities>>());
+                sp.GetRequiredService<ILogger<GuardEntities>>(),
+                sp.GetRequiredService<IControlSwitch>());
         });
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<GuardEntities>());
         services.AddSingleton(sp => new DispatchEntities(
@@ -326,6 +376,31 @@ public static class SwitchboardServices
             EmbeddedControlDefaults.Load()));
         services.AddSingleton<ConfigurationFileWatcher>();
         return services;
+    }
+
+    /// <summary>
+    /// The development plant (SWITCHBOARD_DEV_PLANT): replay and standalone only, refused as an
+    /// add-on like replay itself; it answers the development sink's calls in the replayed signals.
+    /// </summary>
+    private static PlantHolder DevPlant(IServiceProvider sp)
+    {
+        var environment = sp.GetRequiredService<RuntimeEnvironment>();
+        if (environment.DevPlantPath is not { } path)
+        {
+            return new PlantHolder(null);
+        }
+
+        var selection = sp.GetRequiredService<SignalSourceSelection>();
+        if (environment.IsAddon || !selection.IsReplay)
+        {
+            throw new InvalidOperationException(
+                $"{EnvironmentVariableNames.DevPlant} is for standalone development replay only; refusing to start with it set {(environment.IsAddon ? "as an add-on" : $"without {EnvironmentVariableNames.DevReplay}")}.");
+        }
+
+        var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();
+        var plant = new SimulatedPlant(PlantDefinition.Load(path), sp.GetRequiredService<ReplayData>(), () => diagnostics.Current.Configuration?.Configuration);
+        plant.Attach(sp.GetRequiredService<ReplaySignalSource>());
+        return new PlantHolder(plant);
     }
 
     private static void AddValidatedOptions<TOptions, TValidator>(this IServiceCollection services, string section)

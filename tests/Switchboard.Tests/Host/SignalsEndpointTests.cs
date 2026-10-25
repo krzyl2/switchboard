@@ -35,7 +35,7 @@ public sealed class SignalsEndpointTests
         var body = json.RootElement;
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Assert.Equal(["generatedAt", "snapshotAt", "sequence", "source", "configuration", "connection", "phases", "signals", "rejections"], Names(body));
+        Assert.Equal(["generatedAt", "snapshotAt", "sequence", "source", "configuration", "connection", "phases", "signals", "rejections", "configurationWarnings"], Names(body));
         Assert.Equal(["kind", "status"], Names(body.GetProperty("source")));
         Assert.Equal(["state", "path", "loadedAt", "errors", "warnings"], Names(body.GetProperty("configuration")));
         Assert.Equal(["topology", "breakerRatingA", "characteristic", "voltageV"], Names(body.GetProperty("connection")));

@@ -275,7 +275,7 @@
   "lifetime": {
     "since": "2026-10-22T06:00:00.002+00:00",
     "sheds": 0,
-    "wouldSheds": 3,
+    "wouldSheds": 1,
     "voltageLosses": 0,
     "supplyOutages": 0,
     "voltageObservedS": 13199.978

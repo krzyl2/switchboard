@@ -59,12 +59,14 @@ public sealed record DispatchTiming(
 /// <param name="VerificationSigmaMultiplier">… or within this many standard deviations of the measurement, whichever is larger.</param>
 /// <param name="MismatchLimit">Consecutive mismatches that mark a device unresponsive.</param>
 /// <param name="UnresponsiveRetryAfter">How long an unresponsive device waits for its probe increase.</param>
+/// <param name="ConfirmTimeout">After Home Assistant acknowledged a command, how long beyond the device's reaction time its reported state may take to show it (effector.confirm_timeout).</param>
 public sealed record SettlingSetup(
     TimeSpan HardTimeout,
     double VerificationTolerance,
     double VerificationSigmaMultiplier,
     int MismatchLimit,
-    TimeSpan UnresponsiveRetryAfter);
+    TimeSpan UnresponsiveRetryAfter,
+    TimeSpan ConfirmTimeout);
 
 /// <summary>Foreign load detection (04 §4).</summary>
 /// <param name="BaselineTimeConstant">Time constant of the slow baseline (exponential moving average).</param>

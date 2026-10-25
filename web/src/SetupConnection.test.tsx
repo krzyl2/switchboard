@@ -154,7 +154,7 @@ describe('kettle arithmetic', () => {
 
     expect(arithmetic()).toContain('about 31.0 A, i.e. 1.24 × the breaker rating.');
     expect(document.querySelector('[data-part="band"]')?.textContent).toBe(
-      'The breaker curve tolerates that for up to 3 min; within that time the system plans a reduction (in this version it only records it).',
+      'The breaker curve tolerates that for up to 3 min; within that time the system plans a reduction (while control is not in force it only records it).',
     );
   });
 
@@ -162,7 +162,7 @@ describe('kettle arithmetic', () => {
     mount({ verdict: () => validation((v) => Object.assign(v.reserve!.explanation, { reaction: 'shed_one_immediately', allowedS: 30 })) });
     await settle();
 
-    expect(document.querySelector('[data-part="band"]')?.textContent).toBe('The reserve is too small: a kettle would force a shed (in this version the system only records it).');
+    expect(document.querySelector('[data-part="band"]')?.textContent).toBe('The reserve is too small: a kettle would force a shed (while control is not in force the system only records it).');
   });
 
   it('asks the add-on again shortly after a change, not on every keystroke', async () => {

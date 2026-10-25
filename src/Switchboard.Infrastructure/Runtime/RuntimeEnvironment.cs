@@ -49,6 +49,9 @@ public sealed class RuntimeEnvironment
     /// <summary>Discovery fixtures for the setup wizard in development replay; null when unset.</summary>
     public string? DevDiscoveryPath { get; init; }
 
+    /// <summary>The simulated plant answering the development command sink in replay; null when unset.</summary>
+    public string? DevPlantPath { get; init; }
+
     /// <summary>Dev compose only: turns off the ingress source-address check.</summary>
     public bool DevTrustAllRequests { get; init; }
 
@@ -62,6 +65,7 @@ public sealed class RuntimeEnvironment
         var dataPath = lookup(EnvironmentVariableNames.DataPath);
         var replay = lookup(EnvironmentVariableNames.DevReplay);
         var discovery = lookup(EnvironmentVariableNames.DevDiscovery);
+        var plant = lookup(EnvironmentVariableNames.DevPlant);
         return new RuntimeEnvironment
         {
             SupervisorToken = lookup(EnvironmentVariableNames.SupervisorToken),
@@ -79,10 +83,11 @@ public sealed class RuntimeEnvironment
             DevReplayPath = string.IsNullOrWhiteSpace(replay) ? null : replay,
             DevReplaySpeed = lookup(EnvironmentVariableNames.DevReplaySpeed),
             DevDiscoveryPath = string.IsNullOrWhiteSpace(discovery) ? null : discovery,
+            DevPlantPath = string.IsNullOrWhiteSpace(plant) ? null : plant,
             DevTrustAllRequests = bool.TryParse(lookup(EnvironmentVariableNames.DevTrustAllRequests), out var trust) && trust,
         };
     }
 
     public override string ToString() =>
-        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DataPath = {DataPath}, DevReplay = {DevReplayPath is not null}, DevDiscovery = {DevDiscoveryPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
+        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DataPath = {DataPath}, DevReplay = {DevReplayPath is not null}, DevDiscovery = {DevDiscoveryPath is not null}, DevPlant = {DevPlantPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
 }

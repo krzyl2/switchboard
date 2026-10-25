@@ -57,7 +57,7 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            var warning = $"{FileName} could not be read ({ex.Message}); the runtime UI started without its history.";
+            var warning = $"{FileName} could not be read ({ex.Message}); {LostText}.";
             _logger.LogWarning("{Warning}", warning);
             return new PresentationLoad<T>(null, StateFileStatus.ResetCorrupt, warning);
         }
@@ -139,18 +139,21 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
     /// </summary>
     protected abstract T? Trim(T state, double ratio);
 
+    /// <summary>What a set-aside file costs, for the warning: the runtime UI's history unless the file says otherwise.</summary>
+    protected virtual string LostText => "the runtime UI started without its history";
+
     private bool TrimReported { get; set; }
 
     private PresentationLoad<T> Reset(string reason)
     {
-        var warning = $"{FileName} was not usable ({reason}); it was kept as {FileName}{CorruptSuffix} and the runtime UI started without its history.";
+        var warning = $"{FileName} was not usable ({reason}); it was kept as {FileName}{CorruptSuffix} and {LostText}.";
         try
         {
             File.Move(FilePath, FilePath + CorruptSuffix, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            warning = $"{FileName} was not usable ({reason}) and could not be renamed ({ex.Message}); the runtime UI started without its history.";
+            warning = $"{FileName} was not usable ({reason}) and could not be renamed ({ex.Message}); {LostText}.";
         }
 
         _logger.LogWarning("{Warning}", warning);

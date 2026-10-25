@@ -1,6 +1,13 @@
 {
   "ceiling": "shadow",
-  "uiChoice": "shadow",
+  "controlAllowed": false,
+  "configurationValid": false,
+  "stateConfirmed": true,
   "effective": "shadow",
+  "missing": [
+    "option_shadow",
+    "control_off",
+    "configuration_invalid"
+  ],
   "note": "none"
 }

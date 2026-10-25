@@ -24,9 +24,9 @@ public sealed partial class Stage5ArchitectureTests
     private static readonly Type[] Setup = [.. typeof(SetupService).Assembly.GetTypes().Where(t => t.Namespace?.StartsWith("Switchboard.Application.Setup", StringComparison.Ordinal) == true)];
 
     [Fact]
-    public void Allow_list_is_exactly_three_live_types_plus_three_read_only_queries()
+    public void Allow_list_is_three_live_types_one_service_call_and_three_read_only_queries()
     {
-        Assert.Equal(["ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Except(HomeAssistantCommandAllowList.ReadOnlyQueries).Order(StringComparer.Ordinal));
+        Assert.Equal(["call_service", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Except(HomeAssistantCommandAllowList.ReadOnlyQueries).Order(StringComparer.Ordinal));
         Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states"], HomeAssistantCommandAllowList.ReadOnlyQueries.Order(StringComparer.Ordinal));
         foreach (var query in HomeAssistantCommandAllowList.ReadOnlyQueries)
         {
@@ -40,12 +40,14 @@ public sealed partial class Stage5ArchitectureTests
     [Fact]
     public void No_literal_in_src_names_a_state_changing_message_type()
     {
+        // Stage C: the allow-list alone holds call_service and its three services, as whole literals.
         var offenders = new List<string>();
         foreach (var file in SourceFiles("src"))
         {
+            var allowList = Path.GetFileName(file) == "HomeAssistantCommandAllowList.cs";
             foreach (Match literal in StringLiteral().Matches(File.ReadAllText(file)))
             {
-                if (StateChanging().IsMatch(literal.Value))
+                if (StateChanging().IsMatch(literal.Value) && !(allowList && ServiceCall().IsMatch(literal.Value)))
                 {
                     offenders.Add($"{Path.GetFileName(file)}: {literal.Value}");
                 }
@@ -108,9 +110,11 @@ public sealed partial class Stage5ArchitectureTests
     public void The_evidence_recorder_only_listens_to_the_guard_runner()
     {
         // Like the presentation hub: it reads the step it is handed and the narrow runtime view, and
-        // has no way to hand anything back to the control loop.
+        // has no way to hand anything back to the control loop. Stage C adds a read-only question to
+        // the active self-test (was this transition its own?), which answers a bool and nothing more.
         var parameters = typeof(PhaseEvidenceRecorder).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
-        Assert.Equal([typeof(PhaseEvidenceStore), typeof(ISetupRuntimeView), typeof(SetupDefaults), typeof(int)], parameters);
+        Assert.Equal([typeof(PhaseEvidenceStore), typeof(ISetupRuntimeView), typeof(SetupDefaults), typeof(int), typeof(IActiveTestTransitions)], parameters);
+        Assert.Equal([typeof(bool)], typeof(IActiveTestTransitions).GetMethods().Select(m => m.ReturnType));
     }
 
     private static IEnumerable<string> SourceFiles(params string[] roots) =>
@@ -148,4 +152,7 @@ public sealed partial class Stage5ArchitectureTests
 
     [GeneratedRegex(@"\bQueryAsync\(")]
     private static partial Regex QueryCall();
+
+    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value)\"$")]
+    private static partial Regex ServiceCall();
 }

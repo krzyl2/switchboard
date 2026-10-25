@@ -51,7 +51,7 @@ public static class DispatchSetupFactory
                 dispatch.MaxStepChangeStages,
                 dispatch.PhaseRankingStabilityCycles,
                 dispatch.MaxSimultaneousIncreases),
-            new SettlingSetup(settling.HardTimeout, settling.VerificationTolerance, settling.VerificationSigmaMultiplier, settling.MismatchLimit, settling.UnresponsiveRetryAfter),
+            new SettlingSetup(settling.HardTimeout, settling.VerificationTolerance, settling.VerificationSigmaMultiplier, settling.MismatchLimit, settling.UnresponsiveRetryAfter, control.Effector.ConfirmTimeout),
             new ForeignLoadSetup(foreign.BaselineTimeConstant, foreign.StepThreshold, foreign.RearmFraction),
             loadSigma);
     }

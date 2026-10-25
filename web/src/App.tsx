@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ConnectionState, Status } from './api/status';
 import { PRODUCT_NAME } from './config';
+import { ControlBlock, modeKind, type ModeKind } from './ControlBlock';
 import { Dashboard } from './Dashboard';
 import { DecisionLog } from './DecisionLog';
 import { DeviceCard } from './DeviceCard';
@@ -12,6 +13,7 @@ import type { StepName } from './setupDraft';
 import { SignalsPage } from './Signals';
 import { applyTheme, nextTheme, readTheme, saveTheme, type ThemeChoice } from './theme';
 import { StateLabel, Timestamp, type Tone } from './ui';
+import { useControl, useModeBanner } from './useControl';
 import { useStatus } from './useStatus';
 
 const CONNECTION_TONE: Record<ConnectionState, Tone> = {
@@ -69,23 +71,27 @@ function StatusList({ status, updatedAt, t, lang }: { status: Status; updatedAt:
 function StatusPage({ lang }: { lang: Lang }) {
   const t = messages[lang];
   const view = useStatus();
+  const control = useControl();
 
   return (
-    <section class="card">
-      {view.kind === 'loading' && <p>{t.loading}</p>}
-      {view.kind === 'live' && <StatusList status={view.status} updatedAt={view.updatedAt} t={t} lang={lang} />}
-      {view.kind === 'unavailable' && (
-        <div role="alert">
-          <p class="unavailable">
-            <StateLabel tone="crit" label={t.unavailable} />
-          </p>
-          <p class="updated">
-            {t.lastSuccessfulUpdate}:{' '}
-            {view.lastSuccessAt ? <Timestamp at={view.lastSuccessAt} lang={lang} /> : t.never}
-          </p>
-        </div>
-      )}
-    </section>
+    <>
+      <section class="card">
+        {view.kind === 'loading' && <p>{t.loading}</p>}
+        {view.kind === 'live' && <StatusList status={view.status} updatedAt={view.updatedAt} t={t} lang={lang} />}
+        {view.kind === 'unavailable' && (
+          <div role="alert">
+            <p class="unavailable">
+              <StateLabel tone="crit" label={t.unavailable} />
+            </p>
+            <p class="updated">
+              {t.lastSuccessfulUpdate}:{' '}
+              {view.lastSuccessAt ? <Timestamp at={view.lastSuccessAt} lang={lang} /> : t.never}
+            </p>
+          </div>
+        )}
+      </section>
+      <ControlBlock state={control} t={t} lang={lang} place="status" />
+    </>
   );
 }
 
@@ -184,6 +190,33 @@ function NavEntry({ item, route, t }: { item: NavItem; route: Route; t: Messages
   );
 }
 
+const BANNER: Record<ModeKind, { tone: Tone; key: 'shell.mode.shadow' | 'shell.mode.active' | 'shell.mode.offsOnly' }> = {
+  shadow: { tone: 'muted', key: 'shell.mode.shadow' },
+  active: { tone: 'ok', key: 'shell.mode.active' },
+  offs_only: { tone: 'crit', key: 'shell.mode.offsOnly' },
+};
+
+/**
+ * MODE-02 on every page: whether Switchboard switches anything right now, as api/mode reports it.
+ * Never guessed: before the first answer, and when the add-on does not answer, it says so.
+ */
+function ModeBanner({ t }: { t: Messages }) {
+  const view = useModeBanner();
+  const kind = view.kind === 'live' ? modeKind(view.data) : null;
+  const [mode, tone, text]: [string, Tone, string] =
+    kind !== null
+      ? [kind, BANNER[kind].tone, t[BANNER[kind].key]]
+      : view.kind === 'loading'
+        ? ['loading', 'muted', t['shell.mode.loading']]
+        : ['unknown', 'warn', t['shell.mode.unknown']];
+  return (
+    <a class="badge modebanner" data-tone={tone} data-mode={mode} href={HREF.status}>
+      <span class="dot" aria-hidden="true" />
+      {text}
+    </a>
+  );
+}
+
 /** UI-13: system → light → dark, applied at once and kept for this browser when it allows. */
 function ThemeToggle({ t }: { t: Messages }) {
   const [choice, setChoice] = useState<ThemeChoice>(readTheme);
@@ -230,10 +263,7 @@ export function App({ lang }: { lang: Lang }) {
         <div class="page">
           <header class="pagehead">
             <h1>{PRODUCT_NAME}</h1>
-            <span class="badge shadowpill" data-tone="muted">
-              <span class="dot" aria-hidden="true" />
-              {t['shell.shadowPill']}
-            </span>
+            <ModeBanner t={t} />
           </header>
           {route.page === 'dashboard' && <Dashboard lang={lang} />}
           {route.page === 'flows' && <Flows lang={lang} />}

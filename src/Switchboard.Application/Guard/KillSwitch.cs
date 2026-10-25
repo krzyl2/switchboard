@@ -8,16 +8,30 @@ public interface IKillSwitchView
     KillSwitchStatus Status { get; }
 }
 
+/// <summary>What happened to a request to set the kill switch.</summary>
+public enum KillSwitchSetResult
+{
+    Applied,
+
+    /// <summary>The kill switch already was in that position.</summary>
+    Unchanged,
+
+    /// <summary>A release while state.json waits for the user's confirmation (it started corrupt): only the confirmation releases it.</summary>
+    RefusedLocked,
+}
+
 /// <summary>Sets the global kill switch (SAFE-03): from Home Assistant over MQTT, or from the API.</summary>
 public interface IKillSwitchControl : IKillSwitchView
 {
-    void Set(bool engaged, KillSwitchSource source);
+    KillSwitchSetResult Set(bool engaged, KillSwitchSource source);
 }
 
 /// <summary>
 /// The kill switch. Setting it changes memory and wakes the guard first, so it is respected within
 /// one cycle whatever happens next; only then are listeners (state.json persistence) told, and a
 /// listener that fails, a full disk for example, is logged and never undoes or delays the switch.
+/// After a corrupt or unreadable state.json it starts engaged and locked: no release from MQTT or
+/// the API until the user confirms (<see cref="Unlock"/>, through the control switch's confirmation).
 /// </summary>
 public sealed class KillSwitchState : IKillSwitchControl
 {
@@ -60,23 +74,78 @@ public sealed class KillSwitchState : IKillSwitchControl
         _inbox.Post(GuardTrigger.KillSwitch);
     }
 
-    public void Set(bool engaged, KillSwitchSource source)
+    /// <summary>
+    /// At start, when state.json was corrupt or unreadable: engaged and locked until the user
+    /// confirms in the UI (maintainer survey 2026-10-25), before the guard's first evaluation.
+    /// </summary>
+    public void EngageLocked()
+    {
+        KillSwitchStatus status;
+        lock (_gate)
+        {
+            status = new KillSwitchStatus(true, _time.GetUtcNow(), KillSwitchSource.CorruptState) { Locked = true };
+            _status = status;
+        }
+
+        _inbox.Post(GuardTrigger.KillSwitch);
+        _logger.LogWarning("Kill switch engaged because state.json could not be trusted; it stays engaged until the state is confirmed in the UI");
+        Notify(status);
+    }
+
+    public KillSwitchSetResult Set(bool engaged, KillSwitchSource source)
     {
         KillSwitchStatus status;
         lock (_gate)
         {
             if (_status.Engaged == engaged)
             {
-                return;
+                return KillSwitchSetResult.Unchanged;
             }
 
-            status = new KillSwitchStatus(engaged, _time.GetUtcNow(), source);
+            if (_status.Locked && !engaged)
+            {
+                return KillSwitchSetResult.RefusedLocked;
+            }
+
+            status = new KillSwitchStatus(engaged, _time.GetUtcNow(), source) { Locked = _status.Locked };
             _status = status;
         }
 
         _inbox.Post(GuardTrigger.KillSwitch);
         _logger.LogWarning("Kill switch {State} from {Source}", engaged ? "engaged" : "released", source);
+        Notify(status);
+        return KillSwitchSetResult.Applied;
+    }
 
+    /// <summary>
+    /// The user confirmed the state after a corrupt start: the lock ends, and the kill switch is
+    /// released only if it is still the one engaged by that start (one the user engaged since stays).
+    /// </summary>
+    /// <returns>False when nothing was locked.</returns>
+    public bool Unlock()
+    {
+        KillSwitchStatus status;
+        lock (_gate)
+        {
+            if (!_status.Locked)
+            {
+                return false;
+            }
+
+            status = _status.Source == KillSwitchSource.CorruptState
+                ? new KillSwitchStatus(false, _time.GetUtcNow(), KillSwitchSource.Confirmation)
+                : _status with { Locked = false };
+            _status = status;
+        }
+
+        _inbox.Post(GuardTrigger.KillSwitch);
+        _logger.LogWarning("State confirmed by the user; the kill switch is {State}", status.Engaged ? "still engaged" : "released");
+        Notify(status);
+        return true;
+    }
+
+    private void Notify(KillSwitchStatus status)
+    {
         foreach (var handler in Changed?.GetInvocationList() ?? [])
         {
             try
@@ -86,7 +155,7 @@ public sealed class KillSwitchState : IKillSwitchControl
             catch (Exception ex)
             {
                 // Persistence is best effort; the switch itself already holds.
-                _logger.LogError(ex, "A kill switch listener failed; the kill switch stays {State}", engaged ? "engaged" : "released");
+                _logger.LogError(ex, "A kill switch listener failed; the kill switch stays {State}", status.Engaged ? "engaged" : "released");
             }
         }
     }

@@ -90,6 +90,15 @@ public sealed record VerificationRecord(DateTimeOffset At, HistoryKind Kind, dou
     public DeviceLevel? To { get; init; }
 }
 
+/// <summary>
+/// The level a device had before Switchboard reduced it (restore_only, maintainer survey
+/// 2026-10-25): dispatch restores it at most up to this level, and never starts it beyond.
+/// </summary>
+/// <param name="Level">The pre-intervention level, as the device last reported it.</param>
+/// <param name="Shed">The level Switchboard brought it to: after a restart a persisted baseline stands only while the device still reports this level.</param>
+/// <param name="Commanded">The reduction was sent to Home Assistant (active mode); a shadow ("would") baseline is virtual and never persisted.</param>
+public sealed record StartBaseline(DeviceLevel Level, DeviceLevel Shed, DateTimeOffset Since, bool Commanded);
+
 /// <summary>The ledger's view of one device, for dispatch and the status.</summary>
 /// <param name="Target">The resolved target; null while unset (it then follows the reported state).</param>
 /// <param name="SettlingTimedOut">The last command window closed by its hard timeout.</param>
@@ -112,6 +121,15 @@ public sealed record LedgerEntry(
 
     /// <summary>The verification of the current target's command was a mismatch: the device measurably did not follow, so it no longer counts as ours.</summary>
     public bool CommandRefuted { get; init; }
+
+    /// <summary>What Switchboard reduced the device from (restore_only restores up to it); null when nothing is to be restored.</summary>
+    public StartBaseline? Baseline { get; init; }
+
+    /// <summary>When dispatch switched the device on under start: headroom (only such a device gets a final off when it is removed).</summary>
+    public DateTimeOffset? SelfStarted { get; init; }
+
+    /// <summary>Since when an acknowledged command was not confirmed by the device's reported state (shown as a warning).</summary>
+    public DateTimeOffset? UnconfirmedSince { get; init; }
 }
 
 /// <summary>What dispatch reads from the ledger: targets, windows, deferrals, unresponsive devices.</summary>
@@ -122,9 +140,11 @@ public interface IDispatchLedgerView : IInFlightView
 
 /// <summary>
 /// The effector's ledger (03 EffectorGate): per device the resolved target, a deferred intent,
-/// the open settling window, the mismatch count, the unresponsive flag and a short history.
-/// Nothing here is persisted (SAFE-07): a restart starts every device unset. Owned by the gate and
-/// touched only on the guard runner's thread; the guard and dispatch read it through the views.
+/// the open settling window, the mismatch count, the unresponsive flag, a short history, the
+/// command's confirmation and the restore baseline. Only commanded restore baselines and the
+/// devices dispatch started under start: headroom are persisted (state.json); everything else
+/// starts unset after a restart (SAFE-07). Owned by the gate and touched only on the guard
+/// runner's thread; the guard and dispatch read it through the views.
 /// </summary>
 public sealed class DeviceTargets : IDispatchLedgerView
 {
@@ -139,7 +159,14 @@ public sealed class DeviceTargets : IDispatchLedgerView
 
     public LedgerEntry? Entry(DeviceName device) =>
         _devices.TryGetValue(device, out var s)
-            ? new LedgerEntry(s.Target, s.Origin, s.Reason, s.Deferred, s.Window is { Open: true } w ? w : null, s.TimedOut, s.Mismatches, s.UnresponsiveSince, s.RetryAt, [.. s.History]) { TargetCommanded = s.TargetCommanded, CommandRefuted = s.CommandRefuted }
+            ? new LedgerEntry(s.Target, s.Origin, s.Reason, s.Deferred, s.Window is { Open: true } w ? w : null, s.TimedOut, s.Mismatches, s.UnresponsiveSince, s.RetryAt, [.. s.History])
+            {
+                TargetCommanded = s.TargetCommanded,
+                CommandRefuted = s.CommandRefuted,
+                Baseline = s.Baseline,
+                SelfStarted = s.SelfStarted,
+                UnconfirmedSince = s.UnconfirmedSince,
+            }
             : null;
 
     internal IEnumerable<DeviceName> Devices => _devices.Keys;
@@ -202,6 +229,53 @@ public sealed class DeviceTargets : IDispatchLedgerView
         /// <summary>The override last recorded for this device (Auto until one is set).</summary>
         public Dispatch.OverrideMode Override { get; set; }
 
+        /// <summary>The pre-intervention level restore_only restores up to.</summary>
+        public StartBaseline? Baseline { get; set; }
+
+        /// <summary>A reduction taken while the reported level was unknown: the first fresh report decides its baseline.</summary>
+        public StartBaseline? BaselinePending { get; set; }
+
+        /// <summary>An acknowledged command reached the device after <see cref="BaselinePending"/> was taken: its first report no longer shows the user's level.</summary>
+        public bool AckedSincePending { get; set; }
+
+        /// <summary>The baseline came from state.json: it stands only if the first fresh report still shows the level it was shed to.</summary>
+        public bool BaselineRestored { get; set; }
+
+        /// <summary>Dispatch switched the device on under start: headroom (off to on), and it has not been switched off since.</summary>
+        public DateTimeOffset? SelfStarted { get; set; }
+
+        /// <summary>When an acknowledged command must show in the reported state: ack + reaction time + effector.confirm_timeout.</summary>
+        public DateTimeOffset? ConfirmBy { get; set; }
+
+        /// <summary>The reported state did not show the acknowledged target by <see cref="ConfirmBy"/>.</summary>
+        public DateTimeOffset? UnconfirmedSince { get; set; }
+
+        /// <summary>A mismatch was counted for the current target's command already (at most one per command).</summary>
+        public bool CommandMismatchCounted { get; set; }
+
+        /// <summary>Home Assistant answered the current target's command with an error: one mismatch is counted in the step's resolution.</summary>
+        public bool PendingMismatch { get; set; }
+
+        /// <summary>The last command of a protective or lowering target failed or timed out: re-sent at every cycle boundary while the device still differs.</summary>
+        public bool ProtectiveFailed { get; set; }
+
+        /// <summary>A re-send of the failing protective target was recorded (once per episode).</summary>
+        public bool ResendRecorded { get; set; }
+
+        /// <summary>A new Home Assistant link delivered its states: a protective target the device does not show is re-sent once.</summary>
+        public bool ReassertPending { get; set; }
+
+        /// <summary>Tickets of commands not yet answered, for the current target.</summary>
+        public HashSet<long> OpenTickets { get; } = [];
+
+        public void ClearBaseline()
+        {
+            Baseline = null;
+            BaselinePending = null;
+            AckedSincePending = false;
+            BaselineRestored = false;
+        }
+
         public void Unset()
         {
             Target = null;
@@ -216,6 +290,13 @@ public sealed class DeviceTargets : IDispatchLedgerView
             Mismatches = 0;
             UnresponsiveSince = null;
             RetryAt = null;
+            ConfirmBy = null;
+            UnconfirmedSince = null;
+            CommandMismatchCounted = false;
+            PendingMismatch = false;
+            ProtectiveFailed = false;
+            ResendRecorded = false;
+            OpenTickets.Clear();
         }
     }
 }

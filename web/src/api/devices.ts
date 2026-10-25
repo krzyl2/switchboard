@@ -13,13 +13,16 @@ import { bool, fail, field, instant, list, nullable, number, object, oneOf, posi
 export const CONFIGURATION_STATES = ['valid', 'invalid', 'missing'] as const;
 /** age: judged by state_max_age; on_change: by availability, with no age limit. */
 export const STATE_REPORTS = ['age', 'on_change'] as const;
+/** What dispatch may increase a device to (start:): restore_only brings back only what Switchboard took away, headroom fills free capacity. */
+export const START_POLICIES = ['restore_only', 'headroom'] as const;
+export type StartPolicy = (typeof START_POLICIES)[number];
 
 export type ConfigurationState = (typeof CONFIGURATION_STATES)[number];
 export type StateReports = (typeof STATE_REPORTS)[number];
 
 export interface StageConfig {
   stage: number;
-  /** The only entity that may ever be commanded for this stage; nothing commands it in this version. */
+  /** The only entity that may ever be commanded for this stage, and only while control is in force. */
   actuator: string;
   stateEntity: string;
   phases: PhaseName[];
@@ -48,6 +51,7 @@ export interface DeviceConfig {
   noShed: boolean;
   rotationGroup: string | null;
   circuitGroup: string | null;
+  start: StartPolicy;
 }
 
 export interface Devices {
@@ -118,6 +122,7 @@ function device(raw: unknown, path: string): DeviceConfig {
     noShed: bool(field(r, 'noShed', path), `${path}.noShed`),
     rotationGroup: nullable(field(r, 'rotationGroup', path), `${path}.rotationGroup`, text),
     circuitGroup: nullable(field(r, 'circuitGroup', path), `${path}.circuitGroup`, text),
+    start: oneOf(START_POLICIES, field(r, 'start', path), `${path}.start`),
   };
 }
 

@@ -33,7 +33,7 @@ internal static class StartupReport
 
         if (options.Mode == OperatingMode.Active)
         {
-            logger.LogWarning("Mode is 'active', but this build contains no command path: nothing will be commanded.");
+            logger.LogWarning("Mode option is 'active': declared devices are commanded only while 'Control allowed' is on and the configuration is valid (the guard logs the effective mode at its first step).");
         }
 
         if (source.IsReplay)

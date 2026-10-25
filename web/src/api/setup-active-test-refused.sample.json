@@ -1,0 +1,15 @@
+{
+  "code": "refused",
+  "refusals": [
+    {
+      "code": "control_not_active",
+      "phase": null,
+      "remainingS": null
+    },
+    {
+      "code": "not_declared",
+      "phase": null,
+      "remainingS": null
+    }
+  ]
+}

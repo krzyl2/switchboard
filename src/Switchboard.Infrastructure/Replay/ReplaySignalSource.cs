@@ -5,6 +5,12 @@ using Switchboard.Domain.Signals;
 
 namespace Switchboard.Infrastructure.Replay;
 
+/// <summary>Development replay only: changes a replayed state on its way out (the simulated plant's loads).</summary>
+public interface IReplayOverlay
+{
+    string Transform(EntityId entity, string state, DateTimeOffset at);
+}
+
 /// <summary>
 /// Development replay: stands in for Home Assistant and plays recorded history on the signal clock.
 /// Tracking an entity delivers its latest row at or before now; later rows are delivered as their
@@ -25,6 +31,9 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
     private ITimer? _timer;
     private int _next;
     private bool _ended;
+
+    /// <summary>The simulated plant's changes to replayed states (development only); null leaves the recording as it is.</summary>
+    public IReplayOverlay? Overlay { get; set; }
 
     public ReplaySignalSource(ReplayData data, SignalInbox inbox, SignalClock clock, ILogger<ReplaySignalSource> logger)
     {
@@ -71,7 +80,7 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
                 if (LatestAtOrBefore(entity, now) is { } index)
                 {
                     var row = _data.Rows[index];
-                    updates.Add(new EntityUpdate(entity, row.State, unit, row.Timestamp, row.Timestamp));
+                    updates.Add(new EntityUpdate(entity, State(entity, row.State, row.Timestamp), unit, row.Timestamp, row.Timestamp));
                 }
                 else
                 {
@@ -111,7 +120,22 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
                 reported = row.Timestamp;
             }
 
-            _inbox.Post(new EntityUpdateBatch(BatchOrigin.Probe, [new EntityUpdate(entity, row.State, unit, row.Timestamp, reported)], [], []));
+            _inbox.Post(new EntityUpdateBatch(BatchOrigin.Probe, [new EntityUpdate(entity, State(entity, row.State, row.Timestamp), unit, row.Timestamp, reported)], [], []));
+        }
+    }
+
+    /// <summary>The simulated plant reports a new state of one of its entities now (development only).</summary>
+    public void Inject(EntityId entity, string state)
+    {
+        lock (_gate)
+        {
+            if (!_tracked.TryGetValue(entity, out var unit))
+            {
+                return;
+            }
+
+            var now = _time.GetUtcNow();
+            _inbox.Post(new EntityUpdateBatch(BatchOrigin.Change, [new EntityUpdate(entity, state, unit, now, now)], [], []));
         }
     }
 
@@ -140,7 +164,7 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
                 var row = _data.Rows[_next++];
                 if (_tracked.TryGetValue(row.Entity, out var unit))
                 {
-                    updates.Add(new EntityUpdate(row.Entity, row.State, unit, row.Timestamp, row.Timestamp));
+                    updates.Add(new EntityUpdate(row.Entity, State(row.Entity, row.State, row.Timestamp), unit, row.Timestamp, row.Timestamp));
                 }
             }
 
@@ -152,6 +176,8 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
             Arm(now);
         }
     }
+
+    private string State(EntityId entity, string recorded, DateTimeOffset at) => Overlay?.Transform(entity, recorded, at) ?? recorded;
 
     private void Arm(DateTimeOffset now)
     {

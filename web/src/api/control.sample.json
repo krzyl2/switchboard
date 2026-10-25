@@ -1,0 +1,29 @@
+{
+  "controlAllowed": false,
+  "changedAt": null,
+  "source": "default",
+  "locked": false,
+  "lockReason": null,
+  "mode": {
+    "ceiling": "shadow",
+    "controlAllowed": false,
+    "configurationValid": false,
+    "stateConfirmed": true,
+    "effective": "shadow",
+    "missing": [
+      "option_shadow",
+      "control_off",
+      "configuration_invalid"
+    ],
+    "note": "none"
+  },
+  "observation": null,
+  "commands": {
+    "linkReady": true,
+    "pending": 0,
+    "lastAcknowledgedAt": null,
+    "lastFailure": null,
+    "unconfirmed": []
+  },
+  "leftReduced": []
+}

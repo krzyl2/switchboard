@@ -43,6 +43,7 @@ public sealed class PresentationSpaContractTests
         { Decisions, "DECISION_KINDS", Snake<DecisionKind>() },
         { Devices, "CONFIGURATION_STATES", Snake<ConfigurationStatus>() },
         { Devices, "STATE_REPORTS", Snake<StateFreshness>() },
+        { Devices, "START_POLICIES", Snake<Switchboard.Domain.Devices.StartPolicy>() },
     };
 
     [Theory]

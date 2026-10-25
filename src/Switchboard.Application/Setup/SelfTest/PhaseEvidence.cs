@@ -20,6 +20,9 @@ public enum ObservationSource
 
     /// <summary>A switching the running add-on saw (someone else switched a declared device).</summary>
     Recorded,
+
+    /// <summary>A switching of the active phase self-test: Switchboard switched the device on and off on the user's request (CONN-05).</summary>
+    Active,
 }
 
 /// <summary>
@@ -144,13 +147,18 @@ public static class MeterValues
 }
 
 /// <summary>
-/// The observations kept in memory (never persisted), bounded per switched entity. Both the guided
-/// watch and the running add-on's own observations land here.
+/// The observations, bounded per switched entity: the guided watch's, the running add-on's own and
+/// the active self-test's land here. Persisted in /data (phase-evidence.json) by a writer of its own
+/// (<see cref="Changed"/> wakes it; never a file write on the guard thread), so evidence survives a
+/// restart; loaded before the first step.
 /// </summary>
 public sealed class PhaseEvidenceStore(int perEntity)
 {
     private readonly object _gate = new();
     private readonly Dictionary<EntityId, List<PhaseObservation>> _observations = [];
+
+    /// <summary>Raised after an observation was added (outside the lock); handlers must only note it, never write inline.</summary>
+    public event EventHandler? Changed;
 
     public void Add(PhaseObservation observation)
     {
@@ -167,6 +175,36 @@ public sealed class PhaseEvidenceStore(int perEntity)
             if (list.Count > perEntity)
             {
                 list.RemoveRange(0, list.Count - perEntity);
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Every observation now, per switched entity, oldest first: what the evidence file holds.</summary>
+    public ImmutableDictionary<EntityId, ImmutableArray<PhaseObservation>> Snapshot()
+    {
+        lock (_gate)
+        {
+            return _observations.ToImmutableDictionary(o => o.Key, o => o.Value.ToImmutableArray());
+        }
+    }
+
+    /// <summary>The observations persisted at the last stop, applied before anything is added; bounded like new ones.</summary>
+    public void Load(IReadOnlyDictionary<EntityId, ImmutableArray<PhaseObservation>> observations)
+    {
+        ArgumentNullException.ThrowIfNull(observations);
+        lock (_gate)
+        {
+            foreach (var (entity, list) in observations)
+            {
+                var kept = list.Where(o => o.StateEntity == entity).OrderBy(o => o.At).ToList();
+                if (kept.Count > perEntity)
+                {
+                    kept.RemoveRange(0, kept.Count - perEntity);
+                }
+
+                _observations[entity] = kept;
             }
         }
     }
@@ -217,4 +255,22 @@ public static class PhaseEvidence
 
     public static bool Same(ImmutableDictionary<Phase, MeterTerm> a, ImmutableDictionary<Phase, MeterTerm> b) =>
         a.Count == b.Count && a.All(t => b.TryGetValue(t.Key, out var other) && other == t.Value);
+
+    /// <summary>The meter terms a configuration maps for one role on every phase (power, or current); null when a phase has none.</summary>
+    public static ImmutableDictionary<Phase, MeterTerm>? Terms(Configuration.SwitchboardConfiguration configuration, SignalRole role)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var builder = ImmutableDictionary.CreateBuilder<Phase, MeterTerm>();
+        foreach (var phase in configuration.Connection.Phases)
+        {
+            if (configuration.Signals.FirstOrDefault(s => s.Role == role && s.Phase == phase) is not { } signal)
+            {
+                return null;
+            }
+
+            builder[phase] = new MeterTerm(signal.Entity, signal.Unit ?? string.Empty, MeterValues.SignName(signal.Sign));
+        }
+
+        return builder.ToImmutable();
+    }
 }

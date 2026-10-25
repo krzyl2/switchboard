@@ -46,24 +46,49 @@ public sealed class DispatchEngineTests
     {
         // DISP-08: three heaters could all start at the sixth boundary; one does, and the next only
         // after its settling window closed (here the meter is silent, so the window stays open for
-        // its 90 s timeout and the second heater waits with settling_window_open).
+        // its 90 s timeout and the second heater waits with change_limit, 04 §6 v3: another
+        // increase is in flight, while settling_window_open is kept for a window on the device itself).
         var s = Scenario(DispatchDevices.Heaters, off: ["heater_l1", "heater_l2", "heater_l3"]);
         s.PollUntil(T0 + (6 * Cycle), 3, 3, 3);
         Assert.Single(s.Decisions, d => d.Action == DecisionAction.SwitchOn);
 
         s.RunUntil(T0 + (7 * Cycle));
         Assert.Single(s.Decisions, d => d.Action == DecisionAction.SwitchOn);
-        Assert.Contains(s.Dispatches[^1].Devices, d => d.Pending == ReasonCode.SettlingWindowOpen);
+        Assert.Contains(s.Dispatches[^1].Devices, d => d.Pending == ReasonCode.ChangeLimit);
 
         s.PollUntil(T0 + (10 * Cycle), 3, 3, 3);
         Assert.Equal(3, s.Decisions.Count(d => d.Action == DecisionAction.SwitchOn));
     }
 
     [Fact]
+    public void Only_one_increase_in_flight_also_when_commands_leave()
+    {
+        // DISP-08 with the command path: never two increases sent together; each next start leaves
+        // only after the previous one's settling window closed, and each is acknowledged.
+        var port = new RecordingDeviceCommandPort();
+        var s = DispatchScenario.Create(DispatchDevices.Heaters, ["heater_l1", "heater_l2", "heater_l3"], "  dispatch:\n    persistence_up_cycles: 1\n", mode: DispatchScenario.Active, port: port);
+        s.Follow(port);
+        var follow = port.OnSubmit!;
+        var sentAt = new List<DateTimeOffset>();
+        port.OnSubmit = command =>
+        {
+            sentAt.Add(s.Now);
+            follow(command);
+        };
+
+        s.PollUntil(T0 + (10 * Cycle), 3, 3, 3);
+
+        Assert.Equal(3, port.Submitted.Count(c => c.On));
+        Assert.Equal(3, sentAt.Distinct().Count());
+        Assert.All(s.Decisions.Where(d => d.Action == DecisionAction.SwitchOn), d => Assert.True(d.Commanded));
+    }
+
+    [Fact]
     public void Decreases_ignore_the_increase_limit_and_open_windows()
     {
         // Two running heaters lose their headroom at once: both are reduced at the same boundary
-        // (after persistence_down_cycles), although a settling window is open on another phase.
+        // (after persistence_down_cycles), although a settling window is open on another phase. The
+        // 7 A jump is a detected foreign step on L1 and L2, so the reductions say foreign_load (v3).
         var s = Scenario(DispatchDevices.Heaters, off: ["heater_l3"]);
         s.PollUntil(T0 + (6 * Cycle), 9.6, 9.6, 3);
         Assert.Single(s.Decisions, d => d.Action == DecisionAction.SwitchOn && d.Device!.Value.Value == "heater_l3");
@@ -75,7 +100,7 @@ public sealed class DispatchEngineTests
         var stops = s.Decisions.Where(d => d.Action == DecisionAction.SwitchOff && d.Origin == DecisionOrigin.Dispatch).ToList();
         Assert.Equal(["heater_l1", "heater_l2"], stops.Select(d => d.Device!.Value.Value).Order());
         Assert.Single(stops.Select(d => d.At).Distinct());
-        Assert.All(stops, d => Assert.Equal(ReasonCode.ReserveThreshold, d.Reason));
+        Assert.All(stops, d => Assert.Equal(ReasonCode.ForeignLoad, d.Reason));
     }
 
     [Fact]

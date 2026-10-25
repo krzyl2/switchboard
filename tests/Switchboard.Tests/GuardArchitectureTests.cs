@@ -22,14 +22,14 @@ public sealed class GuardArchitectureTests
     {
         // Everything the gate, the engines and the runner hold or receive comes from Application,
         // Domain, the BCL or logging: no transport, no client, nothing named like a sender of
-        // commands. The one exception is the gate's command port, set only by its internal
-        // constructor (tests); the public constructors carry no port, and production builds the
-        // gate through them (Only_tests_can_hand_the_gate_a_port).
+        // commands. The one exception is the gate's command port (an Application interface, Stage C),
+        // and the gate is the only one of them that holds it: the runner, the engines and the kill
+        // switch can never send anything themselves (ControlArchitectureTests pins who calls it).
+        var port = typeof(IDeviceCommandPort);
         var types = new[] { typeof(EffectorGate), typeof(GuardRunner), typeof(GuardEngine), typeof(DispatchEngine), typeof(KillSwitchState), typeof(LockoutClocks), typeof(DeviceOverrides) };
-        var portField = typeof(EffectorGate).GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Single(f => f.FieldType == typeof(IDeviceCommandPort));
         var offenders = types
-            .SelectMany(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Where(f => f != portField).Select(f => f.FieldType)
-                .Concat(t.GetConstructors().SelectMany(c => c.GetParameters()).Select(p => p.ParameterType)))
+            .SelectMany(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Where(f => f.FieldType != port).Select(f => f.FieldType)
+                .Concat(t.GetConstructors().SelectMany(c => c.GetParameters()).Where(p => p.ParameterType != port).Select(p => p.ParameterType)))
             .SelectMany(Unwrap)
             .Where(type => !Allowed(type) || type.Name.Contains("Command", StringComparison.Ordinal) || type.Name.Contains("Mqtt", StringComparison.Ordinal) || type.Name.Contains("HomeAssistant", StringComparison.Ordinal))
             .Select(type => type.FullName)
@@ -37,7 +37,11 @@ public sealed class GuardArchitectureTests
             .ToList();
 
         Assert.Empty(offenders);
-        Assert.Single(typeof(EffectorGate).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic), c => c.IsAssembly && c.GetParameters().Any(p => p.ParameterType == typeof(IDeviceCommandPort)));
+        Assert.Equal(
+            [typeof(EffectorGate)],
+            types.Where(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Any(f => f.FieldType == port)
+                || t.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SelectMany(c => c.GetParameters()).Any(p => p.ParameterType == port)));
+        Assert.Equal(typeof(AppVersion).Assembly, port.Assembly);
     }
 
     [Fact]

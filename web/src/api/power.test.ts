@@ -30,7 +30,8 @@ describe('parsePower', () => {
     ]);
     const banner = parsed.banners[0]!;
     expect(banner).toMatchObject({ phase: 'L1', timing: 'next_boundary', reductionRequested: true });
-    expect(banner.planned[0]).toMatchObject({ device: 'ev_charger', origin: 'dispatch', reason: 'reserve_threshold' });
+    // Reason list version 3: the planned reduction under a detected foreign load carries foreign_load.
+    expect(banner.planned[0]).toMatchObject({ device: 'ev_charger', origin: 'dispatch', reason: 'foreign_load' });
     expect(banner.planned[0]?.to.setpointA).toBeLessThan(banner.planned[0]?.from?.setpointA ?? 0);
     expect(parsed.at.toISOString()).toBe('2026-10-22T09:21:02.000Z');
   });

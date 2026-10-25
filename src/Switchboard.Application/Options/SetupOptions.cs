@@ -47,8 +47,11 @@ public sealed class SetupOptions
     /// <summary>After a save, how long the wizard waits for the running add-on to load the new file.</summary>
     public required TimeSpan ReloadConfirmTimeout { get; init; }
 
-    /// <summary>Phase observations kept in memory per switched entity, for the self-test verdict.</summary>
+    /// <summary>Phase observations kept per switched entity (in memory and in phase-evidence.json), for the self-test verdict.</summary>
     public required int EvidencePerDevice { get; init; }
+
+    /// <summary>A larger phase-evidence.json is refused unread (set aside); a write above it drops the oldest observations first.</summary>
+    public required int EvidenceMaxFileBytes { get; init; }
 }
 
 public sealed class SetupOptionsValidator : IValidateOptions<SetupOptions>
@@ -58,6 +61,8 @@ public sealed class SetupOptionsValidator : IValidateOptions<SetupOptions>
     private const int MaxReadouts = 500;
     private const int MaxHistory = 10_000;
     private const int MaxBackupFiles = 1000;
+    private const int MinEvidenceBytes = 4096;
+    private const int MaxEvidenceBytes = 16 * 1024 * 1024;
 
     public ValidateOptionsResult Validate(string? name, SetupOptions options)
     {
@@ -75,6 +80,10 @@ public sealed class SetupOptionsValidator : IValidateOptions<SetupOptions>
         Range(failures, $"{section}:MaxRetainedReadouts", options.MaxRetainedReadouts, MaxEntities);
         Range(failures, $"{section}:MaxBackups", options.MaxBackups, MaxBackupFiles);
         Range(failures, $"{section}:EvidencePerDevice", options.EvidencePerDevice, MaxHistory);
+        if (options.EvidenceMaxFileBytes < MinEvidenceBytes || options.EvidenceMaxFileBytes > MaxEvidenceBytes)
+        {
+            failures.Add($"{section}:EvidenceMaxFileBytes must be between {MinEvidenceBytes} and {MaxEvidenceBytes}.");
+        }
         if (options.MaxRetainedReadouts < options.MaxReadoutEntities)
         {
             failures.Add($"{section}:MaxRetainedReadouts must be at least MaxReadoutEntities.");

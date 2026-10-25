@@ -143,6 +143,18 @@ devices:
     modulating:
       min_on: 60s
       min_off: 60s
+  # What dispatch may do with a device that declares no start: (restore_only | headroom).
+  # restore_only: never start or raise a device beyond the level it had before Switchboard reduced
+  # it; only restore what protection or dispatch shed. headroom: start and raise within headroom
+  # and rank (the behaviour before 0.7.0). Maintainer survey 2026-10-25.
+  default_start: restore_only
+
+effector:
+  # After Home Assistant acknowledged a command, the device's reported state may take its reaction
+  # time plus this long to show it; otherwise the device is flagged unconfirmed and one mismatch
+  # counts (a Modbus relay or charger whose link is down may acknowledge and not switch). A new
+  # starting value with no origin in 04 (DECISIONS 2026-10-25).
+  confirm_timeout: 30s
 
 decision_log:
   # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.

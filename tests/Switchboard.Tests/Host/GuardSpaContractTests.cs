@@ -51,6 +51,8 @@ public sealed partial class GuardSpaContractTests
         { DecisionsContract, "OPERATING_MODES", Snake<OperatingMode>() },
         { DecisionsContract, "MODE_NOTES", Snake<ModeNote>() },
         { DecisionsContract, "KILL_SWITCH_SOURCES", Snake<KillSwitchSource>() },
+        { DecisionsContract, "MODE_CONDITIONS", Snake<ModeCondition>() },
+        { DecisionsContract, "CONTROL_SWITCH_SOURCES", Snake<ControlSwitchSource>() },
         { DecisionsContract, "SAFE_STATE_CAUSES", Snake<SafeStateCause>() },
         { DecisionsContract, "TIER_REACTIONS", Snake<TierReaction>() },
         { DecisionsContract, "DEVICE_STATE_INVALID_REASONS", Snake<DeviceStateInvalidReason>() },
@@ -70,10 +72,10 @@ public sealed partial class GuardSpaContractTests
     }
 
     [Fact]
-    public void Spa_reason_codes_are_list_version_2_in_the_order_of_04()
+    public void Spa_reason_codes_are_list_version_3_in_the_order_of_04()
     {
-        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 2.
-        Assert.Equal(2, ReasonCodes.ListVersion);
+        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 3.
+        Assert.Equal(3, ReasonCodes.ListVersion);
         Assert.Equal(ReasonCodes.All.Select(ReasonCodes.Name), SpaList(DecisionsContract, "REASON_CODES"));
     }
 

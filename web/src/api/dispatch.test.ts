@@ -190,3 +190,27 @@ describe('parseDispatch, history levels', () => {
     expect(() => parseDispatch(payload((p) => (p.devices[0].history[0].to.setpointA = 6)))).toThrow();
   });
 });
+
+// Stage C: restore_only devices carry the level Switchboard would bring back and since when it holds
+// them lower; an acknowledged command the device did not follow is a warning on its card.
+describe('parseDispatch, control stage fields', () => {
+  it('reads the start policy, the restore baseline, the command warning and the self-start', () => {
+    const parsed = parseDispatch(payload());
+    const heater = parsed.devices[0]!;
+
+    expect(heater.start).toBe('restore_only');
+    expect(heater.baseline).toMatchObject({ level: { relays: [true] }, commanded: true });
+    expect(heater.commandWarning?.since).toBeInstanceOf(Date);
+    expect(heater.selfStarted).toBeInstanceOf(Date);
+    expect(parsed.devices[3]).toMatchObject({ start: 'headroom', baseline: null, commandWarning: null, selfStarted: null });
+  });
+
+  it.each([
+    ['an unknown start policy', (p: any) => (p.devices[0].start = 'eager')],
+    ['a baseline without its level', (p: any) => delete p.devices[0].baseline.level],
+    ['a baseline without saying whether it was commanded', (p: any) => delete p.devices[0].baseline.commanded],
+    ['a missing command warning key', (p: any) => delete p.devices[1].commandWarning],
+  ])('refuses %s', (_case, change) => {
+    expect(() => parseDispatch(payload(change))).toThrow();
+  });
+});

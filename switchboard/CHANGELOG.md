@@ -2,6 +2,35 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.0
+
+Control. Switchboard can now switch the devices you declared, but only when you allow it twice: the add-on option `mode: active` **and** the new **Control allowed** switch, which is off after install and after this update. Until you do both it still controls nothing: shadow stays the default. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- **Control allowed** switch: in the panel (`GET`/`POST api/control`) and as `switch.switchboard_control_allowed` over MQTT; kept in `state.json`. Commands need the option `active`, the switch on, a valid configuration and a confirmed state; `GET api/mode` lists whatever is missing, and every change is a mode decision in the log. Switching it off sends nothing: devices stay where they are, and the panel lists the devices Switchboard left reduced (the one exception: an automatic phase test that has its device on sends that test's own off once).
+- Commands: service calls only on the entities you declared as `actuator` or `stop_actuator`, only `turn_on`/`turn_off` on a `switch` or `input_boolean` and `set_value` on a `number` or `input_number` (in the actuator's unit, on its step grid, within its range). Each call is checked again against the configuration loaded at that moment. Nothing else that changes anything in Home Assistant can be sent.
+- `"commanded": true` means Home Assistant acknowledged the call; an error, no answer within 5 s or a lost link is logged as not commanded (`device_unresponsive`); only an error counts against the device, a lost link leaves the verdict to its reported state. A device whose state does not show an acknowledged command within its reaction time plus 30 s is flagged and counted as one mismatch. After a reconnect, a switch-off the device does not show is sent again; a switch-off or lowered setpoint that failed or got no answer (from protection, dispatch or the phase test) is sent again at every cycle boundary while the device still shows otherwise.
+- Safe state with commands: at start before the first reading, on stale data, Home Assistant disconnected and shutdown, every controlled device is switched off. During an invalid configuration only the offs (and minimum setpoints) of the last valid file are sent. The kill switch sends every off once.
+- `start:` per device and `control.devices.default_start`: `restore_only` (default) brings a device back only to the level Switchboard took it from; `headroom` lets dispatch start it with free capacity. What Switchboard took away is remembered until it was really given back: across switching control off and on, and across a restart (in `state.json`), including a switch-off the start-up safe state had to send; a level you changed yourself meanwhile is never raised. A device Switchboard started that you remove from the file is switched off once more (waiting for Home Assistant if it is reconnecting); a device it only restored to your own state is left alone.
+- Active phase self-test in Setup: with control in force and headroom on every phase, Switchboard switches one idle relay on and off itself and judges the meter's steps; it stops and switches the device off the moment protection acts anywhere. Phase evidence (passive and active) is kept in `/data/phase-evidence.json`.
+- A hand-written `switchboard.yaml` is checked for derived (template) sensors as measurement inputs whenever another configuration is in force (start, every reload), and again every minute while Home Assistant's registry cannot be read: warnings on the Signals page and in the log, never a refusal.
+- Reason codes, list version 3: `foreign_load` (a reduction or refused increase caused by a detected foreign load; was `reserve_threshold`) and `change_limit` (an increase deferred while another increase of the settling window is in flight).
+- `effector.confirm_timeout` (30 s) in `control:`.
+
+### Changed
+
+- `POST api/mode` is removed; the setup wizard records no mode any more and shows the mode in force after saving.
+- An untrusted `state.json` (corrupt or unreadable) starts with control locked off and the kill switch on until you confirm the state in the panel.
+- `Mqtt:ShutdownTimeout` 3 s → 2 s, so the last switch-offs of a stop fit the container's stop grace.
+
+### Compatibility
+
+- `state.json` is now written in schema 3 (control switch, observation record, restore baselines). **A downgrade to 0.6.x sets it aside**: the kill switch starts released, the overload budgets full and the manual overrides forgotten. Turn control off before downgrading.
+- A 0.6.x `state.json` is read; its UI mode choice is ignored and control starts off.
+- Decision log lines written by 0.6.x (reason codes list version 2) still read.
+- No new add-on option. New file in `/data`: `phase-evidence.json`.
+
 ## 0.6.1
 
 Still shadow only; switches nothing.

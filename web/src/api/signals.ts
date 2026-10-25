@@ -1,4 +1,4 @@
-import { array, bool, count, fail, field, instant, nullable, number, object, oneOf, text } from './strict';
+import { array, bool, count, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
 
 // Contract of GET api/signals (src/Switchboard.Host/Web/SignalsEndpoint.cs). Every closed list below
 // mirrors a backend enum or code list; SignalsSpaContractTests (tests/Switchboard.Tests) compares
@@ -59,6 +59,9 @@ export const ISSUE_CODES = [
   'group_rating_above_main',
   'max_age_short_for_probe',
 ] as const;
+/** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
+export const CONFIGURATION_WARNING_CODES = ['derived_measurement_input', 'measurement_not_in_registry', 'derived_check_unavailable'] as const;
+export type ConfigurationWarningCode = (typeof CONFIGURATION_WARNING_CODES)[number];
 export const TOPOLOGIES = ['three_phase', 'three_phase_summed', 'single_phase'] as const;
 export const CHARACTERISTICS = ['B', 'C', 'unknown'] as const;
 export const PHASES = ['L1', 'L2', 'L3'] as const;
@@ -221,6 +224,17 @@ export interface Signals {
   phases: Phase[];
   signals: Signal[];
   rejections: { total: number; balanceResidual: number; invalidSample: number };
+  configurationWarnings: ConfigurationWarning[];
+}
+
+export interface ConfigurationWarning {
+  code: ConfigurationWarningCode;
+  /** The logical signal; null for derived_check_unavailable. */
+  signal: string | null;
+  entity: string | null;
+  /** The registry platform of a derived input (template, statistics, …). */
+  platform: string | null;
+  checkedAt: Date;
 }
 
 // Relative on purpose: ingress serves the page under a per-session prefix.
@@ -377,6 +391,16 @@ export function parseSignals(raw: unknown): Signals {
       balanceResidual: count(field(rejections, 'balanceResidual', 'rejections'), 'rejections.balanceResidual'),
       invalidSample: count(field(rejections, 'invalidSample', 'rejections'), 'rejections.invalidSample'),
     },
+    configurationWarnings: list(field(r, 'configurationWarnings', 'payload'), 'configurationWarnings', (v, p) => {
+      const w = object(v, p);
+      return {
+        code: oneOf(CONFIGURATION_WARNING_CODES, field(w, 'code', p), `${p}.code`),
+        signal: nullable(field(w, 'signal', p), `${p}.signal`, text),
+        entity: nullable(field(w, 'entity', p), `${p}.entity`, text),
+        platform: nullable(field(w, 'platform', p), `${p}.platform`, text),
+        checkedAt: instant(field(w, 'checkedAt', p), `${p}.checkedAt`),
+      };
+    }),
   };
 }
 

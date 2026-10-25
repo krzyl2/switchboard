@@ -191,6 +191,12 @@ public sealed record DeviceDraft
     public string? RotationGroup { get; init; }
 
     public DrawDraft? Draw { get; init; }
+
+    /// <summary>A modulating device's stop actuator (a switch that disables it); suggested by discovery, never preselected: only the user declares it.</summary>
+    public string? StopActuator { get; init; }
+
+    /// <summary>restore_only or headroom (<c>start:</c>); written only when it differs from the default or the file already had it.</summary>
+    public string? Start { get; init; }
 }
 
 /// <summary>A single-phase device's own draw sensors.</summary>

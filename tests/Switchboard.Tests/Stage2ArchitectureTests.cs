@@ -18,25 +18,29 @@ namespace Switchboard.Tests;
 public sealed partial class Stage2ArchitectureTests
 {
     [Fact]
-    public void Allow_list_is_exactly_the_live_types_and_the_read_only_queries()
+    public void Allow_list_is_exactly_the_live_types_the_read_only_queries_and_one_service_call()
     {
-        // Stage 5 adds read-only queries only (setup discovery); nothing that changes state.
+        // Stage 5 adds read-only queries only (setup discovery); Stage C the one state-changing type,
+        // call_service on a declared actuator (ControlArchitectureTests).
         Assert.Equal(
-            ["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"],
+            ["call_service", "config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"],
             HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
     }
 
     [Fact]
-    public void No_source_mentions_call_service()
+    public void Only_the_allow_list_names_a_service_call()
     {
-        // String literals only (comments may explain what is refused): no source builds a message
-        // or a URL that changes state in Home Assistant.
+        // String literals only (comments may explain what is refused): since Stage C the allow-list
+        // holds the one service call and its three services; no other source builds a message or a
+        // URL that changes state in Home Assistant, and nothing anywhere names fire_event,
+        // execute_script or the REST services API.
         var offenders = new List<string>();
         foreach (var file in SourceFiles("src"))
         {
+            var allowList = Path.GetFileName(file) == "HomeAssistantCommandAllowList.cs";
             foreach (Match literal in StringLiteral().Matches(File.ReadAllText(file)))
             {
-                if (Commanding().IsMatch(literal.Value))
+                if (Commanding().IsMatch(literal.Value) && !(allowList && ServiceCall().IsMatch(literal.Value)))
                 {
                     offenders.Add($"{Path.GetFileName(file)}: {literal.Value}");
                 }
@@ -108,4 +112,7 @@ public sealed partial class Stage2ArchitectureTests
 
     [GeneratedRegex(@"call_service|fire_event|execute_script|api/services|/services/(?!mqtt)|turn_on|turn_off|set_value", RegexOptions.IgnoreCase)]
     private static partial Regex Commanding();
+
+    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value)\"$")]
+    private static partial Regex ServiceCall();
 }

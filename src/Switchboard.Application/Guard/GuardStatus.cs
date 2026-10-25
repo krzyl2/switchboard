@@ -90,12 +90,21 @@ public enum KillSwitchSource
 
     /// <summary>Restored from state.json at start.</summary>
     Restored,
+
+    /// <summary>Engaged at start because state.json was corrupt or unreadable: held until the user confirms.</summary>
+    CorruptState,
+
+    /// <summary>Released by the user's confirmation after a corrupt state.json.</summary>
+    Confirmation,
 }
 
 /// <summary>The global kill switch (SAFE-03); while engaged every controlled device is held off.</summary>
 public sealed record KillSwitchStatus(bool Engaged, DateTimeOffset? ChangedAt, KillSwitchSource? Source)
 {
     public static KillSwitchStatus Off { get; } = new(false, null, null);
+
+    /// <summary>Engaged by a corrupt state.json at start and held until the user confirms: no release is accepted before.</summary>
+    public bool Locked { get; init; }
 }
 
 public sealed record BreakerStatus(

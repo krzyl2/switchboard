@@ -45,7 +45,14 @@ internal static class WebPipeline
         app.MapDevicesApi();
         app.MapSetupApi();
         app.MapModeApi();
+        app.MapControlApi();
         app.MapDecisionHistoryApi();
+
+        // The development sink's record exists only in standalone development replay.
+        if (app.Services.GetRequiredService<Composition.SignalSourceSelection>().IsReplay)
+        {
+            app.MapDevApi();
+        }
 
         // Unknown API routes are 404s, not the SPA shell.
         app.Map("/api/{**rest}", () => Results.NotFound());

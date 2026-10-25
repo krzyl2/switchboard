@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
@@ -12,8 +13,15 @@ namespace Switchboard.Application.State;
 public sealed record StageLastKnown(AppliedState Applied, DateTimeOffset At);
 
 /// <summary>
-/// What survives a restart (/data/state.json, schema version 2; version 1 files of 0.3.x read with
-/// no overrides and no group budgets). Lockout timers are deliberately absent, and so are dispatch
+/// When the installation started observing and how often its configuration was invalid: advice
+/// for the UI ("observing for N days"), never enforced (maintainer survey 2026-10-25).
+/// </summary>
+/// <param name="ConfigurationErrors">System-wide safe states entered because the configuration was invalid or missing.</param>
+public sealed record ObservationRecord(DateTimeOffset FirstStartedAt, int ConfigurationErrors, DateTimeOffset? LastConfigurationErrorAt);
+
+/// <summary>
+/// What survives a restart (/data/state.json, schema version 3; versions 1 and 2 of 0.3.x … 0.6.x
+/// read with the control switch off). Lockout timers are deliberately absent, and so are dispatch
 /// targets, deferred intents, settling windows and unresponsive flags: every lockout restarts from
 /// the restart instant, never from a persisted expiry (SAFE-07).
 /// </summary>
@@ -21,6 +29,7 @@ public sealed record StageLastKnown(AppliedState Applied, DateTimeOffset At);
 /// <param name="Budgets">Overload budget per phase with the moment it held that value.</param>
 /// <param name="Devices">Last known applied state per device stage (index = stage number − 1; null when never seen).</param>
 /// <param name="Discovered">MQTT discovery objects published so far (<c>component/object_id</c>), so removed ones are retracted.</param>
+/// <param name="UiMode">The Stage 5 UI choice of a schema 1 or 2 file: read and ignored (the control switch replaced it, off after the upgrade); never written.</param>
 public sealed record RuntimeState(
     DateTimeOffset? SavedAt,
     bool CleanShutdown,
@@ -31,9 +40,12 @@ public sealed record RuntimeState(
     ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> Devices,
     ImmutableSortedSet<string> Discovered)
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
-    /// <summary>The 0.3.x schema: still read, and still written while the state has no override and no group budget.</summary>
+    /// <summary>The 0.4.x … 0.6.x schema: still read (the control switch reads off).</summary>
+    public const int PreviousSchemaVersion = 2;
+
+    /// <summary>The 0.3.x schema: still read (no overrides, no group budgets, control off).</summary>
     public const int LegacySchemaVersion = 1;
 
     /// <summary>A first start, or a corrupt file: full budgets, kill switch off, UI choice shadow, nothing discovered.</summary>
@@ -54,6 +66,18 @@ public sealed record RuntimeState(
     public ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>> GroupBudgets { get; init; } =
         ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>>.Empty;
 
+    /// <summary>The global "control allowed" switch (default off) and the lock of a corrupt start.</summary>
+    public ControlSwitchStatus Control { get; init; } = ControlSwitchStatus.Default;
+
+    /// <summary>When observing began and how often the configuration was invalid; null until set (a first start, or a file written before 0.7.0).</summary>
+    public ObservationRecord? Observation { get; init; }
+
+    /// <summary>The commanded restore baselines (start: restore_only), so a restart does not forget what to restore.</summary>
+    public ImmutableDictionary<DeviceName, StartBaseline> StartBaselines { get; init; } = ImmutableDictionary<DeviceName, StartBaseline>.Empty;
+
+    /// <summary>The devices dispatch switched on under start: headroom (only these get a final off when removed).</summary>
+    public ImmutableDictionary<DeviceName, DateTimeOffset> SelfStarted { get; init; } = ImmutableDictionary<DeviceName, DateTimeOffset>.Empty;
+
     public GuardMemory GuardMemory => new(Budgets, CleanShutdown) { GroupBudgets = GroupBudgets };
 }
 
@@ -65,7 +89,10 @@ public enum StateFileStatus
     /// <summary>No file: a first start.</summary>
     Fresh,
 
-    /// <summary>The file failed validation; it was kept as state.json.corrupt and the run started fresh.</summary>
+    /// <summary>
+    /// The file failed validation or could not be read; it was kept as state.json.corrupt and the run
+    /// started fresh with control locked off and the kill switch on until the user confirms.
+    /// </summary>
     ResetCorrupt,
 }
 

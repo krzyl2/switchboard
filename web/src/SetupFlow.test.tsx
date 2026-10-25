@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { ComponentType } from 'preact';
 import { useState } from 'preact/hooks';
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
-import modeSample from './api/mode.sample.json';
+import controlSample from './api/control.sample.json';
 import savedSample from './api/setup-saved.sample.json';
 import { messages } from './i18n';
 import { advance, respond } from './screens.test-support';
@@ -62,14 +62,14 @@ function Wizard({ onStep }: { onStep: (step: StepName) => void }) {
   ) : null;
 }
 
-/** The step-test fetch double, plus what a save and the mode choice answer. */
+/** The step-test fetch double, plus what a save and step 5's control block answer. */
 function serveCleanInstall() {
   serve(fetchMock, { draft: cleanDraft() });
   const base = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation((input, init) => {
     const path = String(input).split('?')[0];
     if (path === 'api/setup/save' && init?.method === 'POST') return respond(structuredClone(savedSample));
-    if (path === 'api/mode') return respond(structuredClone(modeSample));
+    if (path === 'api/control' && init?.method !== 'POST') return respond(structuredClone(controlSample));
     return base(input, init);
   });
 }
@@ -138,7 +138,7 @@ describe('clean install end to end', () => {
     await settle();
     expect(step).toBe('mode');
 
-    // Step 5: the statement must be acknowledged; shadow is the only mode offered.
+    // Step 5: the statement must be acknowledged; the control state is shown, never chosen.
     const finish = screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement;
     expect(finish.disabled).toBe(true);
     fireEvent.click(screen.getByRole('checkbox', { name: /I have read this/ }));
@@ -176,9 +176,9 @@ describe('clean install end to end', () => {
       draw: null,
     });
     expect(draft.acknowledgements).toEqual({ notProtective: true, commentsDropped: false, replaceUnreadable: false });
-    // Only shadow is ever chosen; active is never sent.
-    const modes = posted(fetchMock, 'api/mode');
-    expect(modes.map((m) => m.uiChoice)).toEqual(['shadow']);
+    // The wizard records no mode and never touches the control switch (api/control).
+    expect(posted(fetchMock, 'api/mode')).toEqual([]);
+    expect(posted(fetchMock, 'api/control')).toEqual([]);
     // The saved draft is not kept for the tab any more.
     expect(window.sessionStorage.getItem('switchboard.setup.draft')).toBeNull();
     expect(samples.templatesSample.templates.map((t) => t.id)).toContain('water_heater_element');

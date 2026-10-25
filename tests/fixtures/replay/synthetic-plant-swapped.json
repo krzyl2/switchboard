@@ -1,0 +1,5 @@
+{
+  "switch.grzalka_2": { "phase": "L3", "power_w": 1700, "current_a": 7.0 },
+  "switch.grzalka_1": { "phase": "L2", "power_w": 1700, "current_a": 7.0 },
+  "switch.grzalka_3": { "phase": "L1", "power_w": 1700, "current_a": 7.0 }
+}

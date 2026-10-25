@@ -23,7 +23,12 @@ internal sealed class GuardReplayHarness
 
     /// <param name="dispatch">False runs protection alone (dispatch sees no setup and wants nothing): the Stage 2 view of a tier walk.</param>
     /// <param name="mode">Shadow unless a test drives active semantics (with <paramref name="port"/>, the recording double).</param>
-    public GuardReplayHarness(ReplayData data, string yaml, bool dispatch = true, IModeSource? mode = null, IDeviceCommandPort? port = null)
+    /// <param name="followSetpoints">
+    /// A setpoint command shows in the device's state at once (the charger's number entity reports the
+    /// value it was set to), which the recording cannot do; relays still never follow (an unresponsive effector).
+    /// </param>
+    /// <param name="selfTest">The self-test slot the gate and the runner share (the active phase self-test).</param>
+    public GuardReplayHarness(ReplayData data, string yaml, bool dispatch = true, IModeSource? mode = null, IDeviceCommandPort? port = null, bool followSetpoints = false, SelfTestSlot? selfTest = null)
     {
         Replay = new ReplayHarness(data, yaml);
         var clock = new SignalClock(Replay.Time);
@@ -32,8 +37,21 @@ internal sealed class GuardReplayHarness
         Observations.Add(protection.Current);
 
         var inputs = (IControlInputSource)Replay.Holder;
-        Loop = new ControlLoop(dispatch ? inputs : new GuardOnlyInputs(inputs), clock, mode ?? new ModeState(OperatingMode.Shadow, OperatingMode.Shadow), "replay", port);
+        Loop = new ControlLoop(dispatch ? inputs : new GuardOnlyInputs(inputs), clock, mode ?? TestModes.State(OperatingMode.Shadow, false), "replay", port, selfTest: selfTest);
         Runner.Stepped += (_, step) => Steps.Add(step);
+        if (followSetpoints && port is RecordingDeviceCommandPort recording)
+        {
+            var devices = TestConfigurations.Valid(yaml).Configuration!.Devices;
+            recording.OnSubmit = command =>
+            {
+                if (command.Kind == DeviceCommandKind.Setpoint && devices.FirstOrDefault(d => d.Id == command.Device) is { } device)
+                {
+                    var value = command.Setpoint!.Value.Value / SignalUnits.Factor(device.RangeUnit ?? "A");
+                    Replay.Source.Inject(device.Stages[0].StateEntity, value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+                }
+            };
+        }
+
         StepGuard();
     }
 

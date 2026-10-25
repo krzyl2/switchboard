@@ -1,4 +1,5 @@
-using Switchboard.Application.Guard;
+using System.Collections.Immutable;
+using Switchboard.Application.Signals;
 
 namespace Switchboard.Application.Modes;
 
@@ -14,102 +15,140 @@ public enum ModeNote
     ActiveUnavailableBeforeStage3,
 
     /// <summary>
-    /// The add-on option allows active mode, but commanding is not enabled in this version: dispatch
-    /// decisions are computed and logged, nothing is switched, and the effective mode stays shadow.
+    /// Written by 0.4.x … 0.6.x when the option allowed active mode while no command path existed.
+    /// Kept so their decision lines still read; never written any more.
     /// </summary>
     ActiveNotEnabled,
 }
 
-/// <summary>
-/// The mode rule (DECISIONS, MODE-01): the add-on option is a ceiling, and option shadow forces
-/// shadow. The UI choice persisted in state.json matters only under an active ceiling.
-/// </summary>
-/// <param name="Ceiling">The add-on option (or SWITCHBOARD_MODE).</param>
-/// <param name="UiChoice">The choice persisted in state.json.</param>
-/// <param name="Effective">What the effector gate runs in.</param>
-public sealed record ModeStatus(OperatingMode Ceiling, OperatingMode UiChoice, OperatingMode Effective, ModeNote Note);
-
-public interface IModeSource
+/// <summary>A condition that keeps the effective mode in shadow (MODE-02); the UI names each one.</summary>
+public enum ModeCondition
 {
-    ModeStatus Current { get; }
+    /// <summary>The add-on option (the ceiling) is shadow.</summary>
+    OptionShadow,
+
+    /// <summary>The global "control allowed" switch is off.</summary>
+    ControlOff,
+
+    /// <summary>There is no valid configuration.</summary>
+    ConfigurationInvalid,
+
+    /// <summary>state.json was corrupt or unreadable at start and the user has not confirmed yet.</summary>
+    StateUnconfirmed,
 }
 
 /// <summary>
-/// Holds the mode for the process. In this version the effective mode is always shadow: no
-/// production command path exists (the maintainer's rule: nothing may command a Home Assistant
-/// entity outside a test double), so an active ceiling only produces the note that commanding is
-/// not enabled. The UI choice can change at run time (MODE-02): the change wakes the guard, which
-/// records it as a mode decision in its next evaluation, and listeners persist it in state.json.
+/// The mode rule (DECISIONS, maintainer survey 2026-10-25): commands need the add-on option active
+/// (the ceiling), the global control switch on, a valid configuration and a confirmed state;
+/// anything missing keeps the effective mode in shadow and is named in <see cref="Missing"/>.
+/// </summary>
+/// <param name="Ceiling">The add-on option (or SWITCHBOARD_MODE).</param>
+/// <param name="ControlAllowed">The global "control allowed" switch, persisted in state.json.</param>
+/// <param name="Effective">What the effector gate runs in.</param>
+/// <param name="Missing">Every condition that keeps the effective mode in shadow, in the order of <see cref="ModeCondition"/>.</param>
+public sealed record ModeStatus(
+    OperatingMode Ceiling,
+    bool ControlAllowed,
+    bool ConfigurationValid,
+    bool StateConfirmed,
+    OperatingMode Effective,
+    ImmutableArray<ModeCondition> Missing,
+    ModeNote Note)
+{
+    /// <summary>The control switch in the vocabulary of the Stage 5 UI choice: active while control is allowed.</summary>
+    public OperatingMode UiChoice => ControlAllowed ? OperatingMode.Active : OperatingMode.Shadow;
+
+    /// <summary>
+    /// The only thing missing is a valid configuration: the gate may still send the safe state's
+    /// offs and minimums to the devices of the last valid document (04 §8), never an increase.
+    /// </summary>
+    public bool DecreasesOnly => Effective == OperatingMode.Shadow && Missing.Length == 1 && Missing[0] == ModeCondition.ConfigurationInvalid;
+
+    /// <summary>Commands may leave at all (every one in active mode, decreases only during an invalid configuration).</summary>
+    public bool Commands => Effective == OperatingMode.Active || DecreasesOnly;
+
+    public bool Equals(ModeStatus? other) =>
+        other is not null
+        && Ceiling == other.Ceiling
+        && ControlAllowed == other.ControlAllowed
+        && ConfigurationValid == other.ConfigurationValid
+        && StateConfirmed == other.StateConfirmed
+        && Effective == other.Effective
+        && Note == other.Note
+        && Missing.SequenceEqual(other.Missing);
+
+    public override int GetHashCode() => HashCode.Combine(Ceiling, ControlAllowed, ConfigurationValid, StateConfirmed, Effective, Note);
+}
+
+public interface IModeSource
+{
+    /// <summary>The mode now, with the configuration validity of the latest published inputs.</summary>
+    ModeStatus Current { get; }
+
+    /// <summary>The mode for a given configuration validity: what the guard runner resolves from the inputs of its own step.</summary>
+    ModeStatus For(bool configurationValid);
+}
+
+/// <summary>
+/// Holds the mode for the process: the add-on option (fixed for the process) and the control switch
+/// (changed at run time, MODE-02). Resolved fresh on every read, so a change of the switch is in
+/// force at once; the switch wakes the guard itself, which records the change as a mode decision.
 /// </summary>
 public sealed class ModeState : IModeSource
 {
-    private readonly object _gate = new();
-    private readonly GuardInbox? _inbox;
-    private ModeStatus _current;
+    private readonly IControlSwitchView _control;
+    private readonly IControlInputSource? _inputs;
 
-    /// <param name="inbox">The guard's inbox, woken on a change of the UI choice; null where nothing evaluates (tests of the rule alone).</param>
-    public ModeState(OperatingMode ceiling, OperatingMode uiChoice, GuardInbox? inbox = null)
+    /// <param name="inputs">The control inputs whose configuration validity <see cref="Current"/> reads; null treats the configuration as valid (tests of the rule alone).</param>
+    public ModeState(OperatingMode ceiling, IControlSwitchView control, IControlInputSource? inputs = null)
     {
-        _current = Resolve(ceiling, uiChoice);
-        _inbox = inbox;
+        ArgumentNullException.ThrowIfNull(control);
+        Ceiling = ceiling;
+        _control = control;
+        _inputs = inputs;
     }
 
-    /// <summary>Raised after the guard has been woken; for persistence. Handlers must not block.</summary>
-    public event EventHandler<ModeStatus>? Changed;
+    public OperatingMode Ceiling { get; }
 
-    public ModeStatus Current
+    public ModeStatus Current => For(_inputs is null || _inputs.Current.Protection.Setup is not null);
+
+    public ModeStatus For(bool configurationValid)
     {
-        get
+        var control = _control.Status;
+        return Resolve(Ceiling, control.Allowed, configurationValid, !control.Locked);
+    }
+
+    /// <summary>Active only when nothing is missing: option active, control allowed, configuration valid, state confirmed.</summary>
+    public static ModeStatus Resolve(OperatingMode ceiling, bool controlAllowed, bool configurationValid, bool stateConfirmed)
+    {
+        var missing = ImmutableArray.CreateBuilder<ModeCondition>();
+        if (ceiling != OperatingMode.Active)
         {
-            lock (_gate)
-            {
-                return _current;
-            }
+            missing.Add(ModeCondition.OptionShadow);
         }
-    }
 
-    public static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice) => Resolve(ceiling, uiChoice, commandPathEnabled: false);
+        if (!controlAllowed)
+        {
+            missing.Add(ModeCondition.ControlOff);
+        }
 
-    /// <summary>
-    /// Active only with both deliberate acts (option and UI choice) and a command path; production
-    /// always passes false. Tests pass true to drive active semantics through a test double.
-    /// </summary>
-    internal static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice, bool commandPathEnabled)
-    {
-        var active = commandPathEnabled && ceiling == OperatingMode.Active && uiChoice == OperatingMode.Active;
-        return new(
+        if (!configurationValid)
+        {
+            missing.Add(ModeCondition.ConfigurationInvalid);
+        }
+
+        if (!stateConfirmed)
+        {
+            missing.Add(ModeCondition.StateUnconfirmed);
+        }
+
+        return new ModeStatus(
             ceiling,
-            uiChoice,
-            active ? OperatingMode.Active : OperatingMode.Shadow,
-            ceiling == OperatingMode.Active && !commandPathEnabled ? ModeNote.ActiveNotEnabled : ModeNote.None);
-    }
-
-    /// <summary>
-    /// The UI choice (MODE-02). While commanding is not enabled only shadow can be chosen: active is
-    /// refused (null) and nothing changes, so no version that later enables a command path can start
-    /// active on an upgrade without a new deliberate act.
-    /// </summary>
-    public ModeStatus? Choose(OperatingMode uiChoice) => uiChoice == OperatingMode.Active ? null : Apply(uiChoice);
-
-    /// <summary>The mechanism without the refusal of active; for tests of persistence and evaluation only.</summary>
-    internal ModeStatus ChooseUnchecked(OperatingMode uiChoice) => Apply(uiChoice);
-
-    private ModeStatus Apply(OperatingMode uiChoice)
-    {
-        ModeStatus next;
-        lock (_gate)
-        {
-            next = Resolve(_current.Ceiling, uiChoice);
-            if (next == _current)
-            {
-                return next;
-            }
-
-            _current = next;
-        }
-
-        _inbox?.Post(GuardTrigger.Mode);
-        Changed?.Invoke(this, next);
-        return next;
+            controlAllowed,
+            configurationValid,
+            stateConfirmed,
+            missing.Count == 0 ? OperatingMode.Active : OperatingMode.Shadow,
+            missing.ToImmutable(),
+            ModeNote.None);
     }
 }

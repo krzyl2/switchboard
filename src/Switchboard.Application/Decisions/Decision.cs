@@ -20,12 +20,15 @@ public enum DecisionScope
     Group,
 }
 
-/// <summary>Who decided: protection, dispatch, or a manual override (SAFE-04).</summary>
+/// <summary>Who decided: protection, dispatch, a manual override (SAFE-04), or the active phase self-test (CONN-05).</summary>
 public enum DecisionOrigin
 {
     Guard,
     Dispatch,
     Override,
+
+    /// <summary>The active phase self-test switched the device on and off on the user's request (reason manual_override).</summary>
+    SelfTest,
 }
 
 /// <summary>What was decided. Device actions are protective or releases; the rest are phase or system events.</summary>
@@ -85,7 +88,7 @@ public enum DecisionAction
 public sealed record Decision
 {
     /// <param name="overridden">A rule protection outranked to take this decision (a min_on lockout).</param>
-    /// <param name="commanded">Whether a command was sent. Always false before Stage 3: nothing can be commanded.</param>
+    /// <param name="commanded">Whether a command was sent and acknowledged by Home Assistant (never in shadow mode).</param>
     /// <param name="refusedBy">Why it was not commanded (mode_shadow, a lockout); null for events that are not commands.</param>
     /// <param name="origin">Who decided a device change: protection, dispatch or a manual override.</param>
     /// <param name="group">The circuit group a decision is about or was caused by.</param>
@@ -110,9 +113,9 @@ public sealed record Decision
     {
         ArgumentException.ThrowIfNullOrEmpty(id);
         ArgumentNullException.ThrowIfNull(inputs);
-        Require(ReasonCodes.IsDefined(reason), "The reason is not a code of list version 2.");
-        Require(overridden is null || ReasonCodes.IsDefined(overridden.Value), "The overridden rule is not a code of list version 2.");
-        Require(refusedBy is null || ReasonCodes.IsDefined(refusedBy.Value), "The refusal is not a code of list version 2.");
+        Require(ReasonCodes.IsDefined(reason), "The reason is not a code of list version 3.");
+        Require(overridden is null || ReasonCodes.IsDefined(overridden.Value), "The overridden rule is not a code of list version 3.");
+        Require(refusedBy is null || ReasonCodes.IsDefined(refusedBy.Value), "The refusal is not a code of list version 3.");
         Require(Enum.IsDefined(scope) && Enum.IsDefined(action) && Enum.IsDefined(mode), "Scope, action and mode must be defined values.");
         Require(scope != DecisionScope.Device || device is not null, "A device decision names its device.");
         Require(scope != DecisionScope.Phase || phase is not null, "A phase decision names its phase.");
@@ -172,6 +175,13 @@ public sealed record Decision
 
     /// <summary>The device's target level after the decision; null for events and for decisions written before Stage 3.</summary>
     public DeviceLevel? Target { get; }
+
+    /// <summary>
+    /// The same decision (same id and time) with the outcome of its commands: commanded only when
+    /// every command was sent and acknowledged, otherwise the reason it was not.
+    /// </summary>
+    public Decision WithCommand(bool commanded, ReasonCode? refusedBy) =>
+        new(Id, At, Scope, Device, Stage, Phase, Action, Reason, Overridden, Mode, commanded, refusedBy, Inputs, Origin, Group, Target);
 
     private static void Require(bool condition, string message)
     {

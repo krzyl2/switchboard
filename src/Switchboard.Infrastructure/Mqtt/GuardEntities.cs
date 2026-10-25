@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Switchboard.Application;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Guard;
+using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
@@ -22,7 +23,8 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// <see cref="MqttIdentity"/>: per phase in the topology the headroom to the reserve threshold (A
 /// and W), the headroom to the continuous current, the overload budget, the remaining recovery
 /// time and the guard state; the effective mode, the last decision (its reason code, or the action
-/// for a decision that ends a condition) and the kill switch; per declared device its state.
+/// for a decision that ends a condition), the kill switch and the control switch ("control
+/// allowed", MODE-02); per declared device its state.
 /// Headroom is computed from the measured current, never from the "as if applied" estimate: in
 /// shadow mode nothing is applied, and an automation must not act on a hypothetical number. Watts are derived at this presentation edge from the configured voltage only.
 /// <para>
@@ -33,6 +35,7 @@ namespace Switchboard.Infrastructure.Mqtt;
 public sealed partial class GuardEntities : IMqttEntitySource
 {
     public const string KillSwitchObjectId = "kill_switch";
+    public const string ControlAllowedObjectId = "control_allowed";
     public const string ModeObjectId = "mode";
     public const string LastDecisionObjectId = "last_decision";
     public const string PayloadOn = "ON";
@@ -62,6 +65,7 @@ public sealed partial class GuardEntities : IMqttEntitySource
     private readonly IGuardStatusSource _status;
     private readonly IDecisionRecorder _decisions;
     private readonly IKillSwitchControl _killSwitch;
+    private readonly IControlSwitch? _control;
     private readonly IDiscoveryLedger _ledger;
     private readonly Func<Volts?> _voltage;
     private readonly MqttOptions _mqtt;
@@ -77,7 +81,8 @@ public sealed partial class GuardEntities : IMqttEntitySource
         Func<Volts?> voltage,
         IOptions<MqttOptions> mqtt,
         AppVersion version,
-        ILogger<GuardEntities> logger)
+        ILogger<GuardEntities> logger,
+        IControlSwitch? control = null)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(mqtt);
@@ -89,7 +94,10 @@ public sealed partial class GuardEntities : IMqttEntitySource
         _mqtt = mqtt.Value;
         _version = version;
         _logger = logger;
-        CommandTopics = [CommandTopic(_mqtt.BaseTopic, KillSwitchObjectId)];
+        _control = control;
+        CommandTopics = control is null
+            ? [CommandTopic(_mqtt.BaseTopic, KillSwitchObjectId)]
+            : [CommandTopic(_mqtt.BaseTopic, KillSwitchObjectId), CommandTopic(_mqtt.BaseTopic, ControlAllowedObjectId)];
         _status.Published += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -115,6 +123,10 @@ public sealed partial class GuardEntities : IMqttEntitySource
         entities.Add(Mode(status));
         entities.Add(LastDecision());
         entities.Add(KillSwitch(status));
+        if (_control is not null)
+        {
+            entities.Add(ControlAllowed(status));
+        }
 
         var phases = authoritative ? status.Phases.Select(p => p.Phase) : LedgerPhases();
         foreach (var phase in phases.Order())
@@ -133,21 +145,48 @@ public sealed partial class GuardEntities : IMqttEntitySource
 
     public void HandleCommand(string topic, string payload)
     {
-        if (topic != CommandTopics[0])
+        if (topic == CommandTopics[0])
+        {
+            switch (payload)
+            {
+                case PayloadOn:
+                    _killSwitch.Set(true, KillSwitchSource.Mqtt);
+                    break;
+                case PayloadOff when _killSwitch.Set(false, KillSwitchSource.Mqtt) == KillSwitchSetResult.RefusedLocked:
+                    // Held until the state after a corrupt state.json is confirmed in the UI: Home
+                    // Assistant's switch is set back to what is in force.
+                    _logger.LogWarning("Ignored a kill switch release from Home Assistant: the state must be confirmed in the Switchboard UI first");
+                    Changed?.Invoke(this, EventArgs.Empty);
+                    break;
+                case PayloadOff:
+                    break;
+                default:
+                    _logger.LogWarning("Ignored a kill switch command that is neither {On} nor {Off}", PayloadOn, PayloadOff);
+                    break;
+            }
+
+            return;
+        }
+
+        if (_control is null || CommandTopics.Count < 2 || topic != CommandTopics[1])
         {
             return;
         }
 
         switch (payload)
         {
+            case PayloadOn when _control.Set(true, ControlSwitchSource.Mqtt) == ControlSetResult.RefusedLocked:
+                _logger.LogWarning("Ignored control allowed from Home Assistant: the state after a corrupt state.json must be confirmed in the Switchboard UI first");
+                Changed?.Invoke(this, EventArgs.Empty);
+                break;
             case PayloadOn:
-                _killSwitch.Set(true, KillSwitchSource.Mqtt);
                 break;
             case PayloadOff:
-                _killSwitch.Set(false, KillSwitchSource.Mqtt);
+                _control.Set(false, ControlSwitchSource.Mqtt);
                 break;
             default:
-                _logger.LogWarning("Ignored a kill switch command that is neither {On} nor {Off}", PayloadOn, PayloadOff);
+                _logger.LogWarning("Ignored a control command that is neither {On} nor {Off}", PayloadOn, PayloadOff);
+                Changed?.Invoke(this, EventArgs.Empty);
                 break;
         }
     }
@@ -162,6 +201,8 @@ public sealed partial class GuardEntities : IMqttEntitySource
             ["ceiling"] = Snake(status.Mode.Ceiling),
             ["ui_choice"] = Snake(status.Mode.UiChoice),
             ["note"] = Snake(status.Mode.Note),
+            ["control_allowed"] = status.Mode.ControlAllowed,
+            ["missing"] = status.Mode.Missing.Select(Snake).ToArray(),
         }));
 
     private MqttEntity LastDecision()
@@ -184,6 +225,11 @@ public sealed partial class GuardEntities : IMqttEntitySource
             }));
     }
 
+    /// <summary>
+    /// The kill switch. Its attributes say whether it switches anything: while the effective mode is
+    /// not active its holds are recorded only, and a user reaching for it in an emergency must not
+    /// believe the loads were switched off.
+    /// </summary>
     private MqttEntity KillSwitch(GuardStatus status) => new(
         Switch,
         KillSwitchObjectId,
@@ -194,9 +240,40 @@ public sealed partial class GuardEntities : IMqttEntitySource
             ["payload_off"] = PayloadOff,
             ["optimistic"] = false,
             ["retain"] = false,
+            ["json_attributes_topic"] = AttributesTopic(_mqtt.BaseTopic, KillSwitchObjectId),
         }),
         status.KillSwitch.Engaged ? PayloadOn : PayloadOff,
-        null);
+        Json(new Dictionary<string, object?>
+        {
+            ["switches_devices"] = status.Mode.Commands,
+            ["note"] = status.Mode.Commands ? null : "nothing is switched: control is not active",
+            ["locked"] = status.KillSwitch.Locked,
+        }));
+
+    /// <summary>The global "control allowed" switch (MODE-02): commands also need the add-on option active and a valid configuration.</summary>
+    private MqttEntity ControlAllowed(GuardStatus status)
+    {
+        var control = _control!.Status;
+        return new MqttEntity(
+            Switch,
+            ControlAllowedObjectId,
+            Config(Switch, ControlAllowedObjectId, "Control allowed", new()
+            {
+                ["command_topic"] = CommandTopics[1],
+                ["payload_on"] = PayloadOn,
+                ["payload_off"] = PayloadOff,
+                ["optimistic"] = false,
+                ["retain"] = false,
+                ["json_attributes_topic"] = AttributesTopic(_mqtt.BaseTopic, ControlAllowedObjectId),
+            }),
+            control.Allowed ? PayloadOn : PayloadOff,
+            Json(new Dictionary<string, object?>
+            {
+                ["effective"] = Snake(status.Mode.Effective),
+                ["missing"] = status.Mode.Missing.Select(Snake).ToArray(),
+                ["locked"] = control.Locked,
+            }));
+    }
 
     private IEnumerable<MqttEntity> PhaseEntities(Phase phase, PhaseGuardStatus? status)
     {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectLanguage, fill, messages } from '.';
+import { control } from './control';
 import { dashboard } from './dashboard';
 import { device } from './device';
 import { flows } from './flows';
@@ -72,7 +73,7 @@ describe('fill', () => {
 // file. A key defined twice would be silently overwritten by the later spread, so the files must not
 // overlap, and every key of a screen file starts with that screen's own prefix.
 describe('per-screen translation files', () => {
-  const files = { shell, dashboard, flows, device, limits, log, setup, setupMeter, setupConnection, setupSources, setupLoads, setupMode };
+  const files = { shell, dashboard, flows, device, limits, log, setup, setupMeter, setupConnection, setupSources, setupLoads, setupMode, control };
   const prefixes: Record<string, string[]> = {
     shell: ['shell.', 'nav.', 'theme.', 'common.', 'age.', 'poll.', 'powerUnknown.', 'generationNote.', 'segment.', 'source.', 'bar.'],
     dashboard: ['dashboard.'],
@@ -86,6 +87,7 @@ describe('per-screen translation files', () => {
     setupSources: ['setupSources.'],
     setupLoads: ['setupLoads.'],
     setupMode: ['setupMode.'],
+    control: ['control.'],
   };
 
   it.each(Object.entries(files))('%s: en and pl define exactly the same keys, each with its prefix', (name, file) => {
@@ -112,7 +114,9 @@ describe('per-screen translation files', () => {
     expect(messages.pl['nav.flows']).toBe('Przepływy');
     expect(messages.pl['nav.device']).toBe('Karta urządzenia');
     expect(messages.pl['nav.log']).toBe('Dziennik decyzji');
-    expect(messages.pl['shell.shadowPill']).toContain('niczego nie przełącza');
+    expect(messages.pl['shell.mode.shadow']).toBe('Obserwacja — Switchboard niczego nie przełącza');
+    expect(messages.pl['shell.mode.active']).toContain('Sterowanie aktywne');
+    expect(messages.pl['control.row.switch']).toBe('Sterowanie dozwolone');
   });
 });
 

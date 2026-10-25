@@ -48,7 +48,8 @@ public sealed record SetupSources(IEntityDiscoverySource Discovery, ICandidateRe
 /// <summary>
 /// The setup wizard's backend (Stage 5). It reads Home Assistant only through the read-only
 /// discovery link, writes only the configuration file (with backups next to it), and holds no
-/// command port, kill switch or override control. In development replay with
+/// command port, kill switch or override control: the active phase self-test asks the effector gate
+/// through the self-test slot, below protection, like any other ordinary change. In development replay with
 /// SWITCHBOARD_DEV_DISCOVERY, discovery and readouts come from fixtures instead; that setting is
 /// refused in add-on mode and without replay, like replay itself.
 /// </summary>
@@ -62,6 +63,22 @@ public static class SetupServices
             SwitchboardDocumentParser.BindControl(null, EmbeddedControlDefaults.Load())
             ?? throw new InvalidOperationException("The embedded control defaults do not bind.")));
         services.AddSingleton(sp => new PhaseEvidenceStore(sp.GetRequiredService<IOptions<SetupOptions>>().Value.EvidencePerDevice));
+        services.AddSingleton<IPhaseEvidenceFile>(sp => new PhaseEvidenceFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<IOptions<SetupOptions>>().Value,
+            sp.GetRequiredService<ILogger<PhaseEvidenceFile>>()));
+        services.AddSingleton<PhaseEvidencePersistence>();
+        services.AddSingleton<ActivePhaseTestService>();
+        services.AddSingleton<ConfigurationWarningsHolder>();
+        services.AddSingleton(sp => new RuntimeDerivedCheckRunner(
+            sp.GetRequiredService<EntityDiscoveryCache>(),
+            sp.GetRequiredService<ISetupRuntimeView>(),
+            sp.GetRequiredService<IControlInputSource>(),
+            sp.GetRequiredService<SetupDefaults>(),
+            sp.GetRequiredService<ConfigurationWarningsHolder>(),
+            sp.GetRequiredService<IOptions<SetupOptions>>().Value.DiscoveryCacheTtl,
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<RuntimeDerivedCheckRunner>>()));
         services.AddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<SetupOptions>>().Value;
@@ -111,7 +128,8 @@ public static class SetupServices
             sp.GetRequiredService<PhaseEvidenceStore>(),
             sp.GetRequiredService<ISetupRuntimeView>(),
             sp.GetRequiredService<SetupDefaults>(),
-            sp.GetRequiredService<IOptions<SetupOptions>>().Value.ReadoutHistoryLength));
+            sp.GetRequiredService<IOptions<SetupOptions>>().Value.ReadoutHistoryLength,
+            sp.GetRequiredService<ActivePhaseTestService>()));
         services.AddSingleton<IDecisionHistory>(sp =>
         {
             var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();

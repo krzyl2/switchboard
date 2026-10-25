@@ -32,7 +32,9 @@ public sealed record GuardModeDto(string Ceiling, string UiChoice, string Effect
 
 public sealed record SafeStateDto(bool Active, string Scope, string? Reason, IReadOnlyList<string> Phases, DateTimeOffset? Since);
 
-public sealed record KillSwitchDto(bool Engaged, DateTimeOffset? ChangedAt, string? Source);
+/// <param name="Locked">Engaged by a corrupt state.json at start: released only by the confirmation.</param>
+/// <param name="SwitchesDevices">While the effective mode is not active its holds are recorded only: nothing is switched.</param>
+public sealed record KillSwitchDto(bool Engaged, DateTimeOffset? ChangedAt, string? Source, bool Locked, bool SwitchesDevices);
 
 /// <param name="BudgetRecoveryTimeS">How long an empty overload budget takes to refill at or below the continuous current.</param>
 public sealed record BreakerDto(double RatingA, string Characteristic, double ContinuousMultiple, double ContinuousA, double BudgetRecoveryTimeS, IReadOnlyList<TierDto> Tiers);
@@ -140,7 +142,13 @@ internal static class GuardEndpoint
             holder.Published += OnPublished;
             try
             {
-                killSwitch.Set(body.Engaged, KillSwitchSource.Api);
+                if (killSwitch.Set(body.Engaged, KillSwitchSource.Api) == KillSwitchSetResult.RefusedLocked)
+                {
+                    return Results.Json(
+                        new { code = ControlEndpoint.StateUnconfirmed, message = "state.json could not be trusted at start: the kill switch stays engaged until the state is confirmed (POST api/control/confirm)." },
+                        statusCode: StatusCodes.Status409Conflict);
+                }
+
                 if (holder.Current.KillSwitch.Engaged == body.Engaged)
                 {
                     evaluated.TrySetResult(holder.Current);
@@ -179,7 +187,7 @@ internal static class GuardEndpoint
                 status.SafeState.Reason is { } reason ? Domain.Decisions.ReasonCodes.Name(reason) : null,
                 [.. status.SafeState.Phases.Select(p => p.ToString())],
                 status.SafeState.Since),
-            new KillSwitchDto(status.KillSwitch.Engaged, status.KillSwitch.ChangedAt, ApiText.SnakeOrNull(status.KillSwitch.Source)),
+            new KillSwitchDto(status.KillSwitch.Engaged, status.KillSwitch.ChangedAt, ApiText.SnakeOrNull(status.KillSwitch.Source), status.KillSwitch.Locked, status.Mode.Commands),
             status.Breaker is { } breaker
                 ? new BreakerDto(
                     breaker.Rating.Value,

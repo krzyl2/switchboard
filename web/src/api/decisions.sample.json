@@ -363,7 +363,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -431,7 +432,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -503,7 +505,8 @@
           "minOnRemainingS": 60,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "force_off"
+          "override": "force_off",
+          "reasserted": false
         }
       }
     },
@@ -560,7 +563,8 @@
           "minOnRemainingS": 60,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "force_off"
+          "override": "force_off",
+          "reasserted": false
         }
       }
     },
@@ -623,7 +627,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 42,
           "deferredSince": "2026-10-24T09:01:30.004+00:00",
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -691,7 +696,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -742,7 +748,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -810,7 +817,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -889,7 +897,15 @@
         "mode": {
           "ceiling": "shadow",
           "uiChoice": "shadow",
-          "note": "none"
+          "note": "none",
+          "controlAllowed": false,
+          "configurationValid": true,
+          "stateConfirmed": true,
+          "missing": [
+            "option_shadow",
+            "control_off"
+          ],
+          "source": "default"
         },
         "killSwitch": null,
         "safeStateCause": null,

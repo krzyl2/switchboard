@@ -102,6 +102,8 @@ export function newDevice(prefill: Record<string, string | number> = {}, templat
     valuePerKwh: null,
     circuitGroup: null,
     rotationGroup: null,
+    stopActuator: null,
+    start: null,
     draw: null,
   };
   for (const [key, value] of Object.entries(prefill)) {

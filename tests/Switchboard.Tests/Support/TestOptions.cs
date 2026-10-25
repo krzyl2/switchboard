@@ -17,6 +17,7 @@ internal static class TestOptions
     public static readonly TimeSpan MqttKeepAlive = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan MqttShutdownTimeout = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan StateReadTimeout = TimeSpan.FromSeconds(4);
+    public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(6);
 
     public static HomeAssistantOptions HomeAssistant() => new()
     {
@@ -27,6 +28,9 @@ internal static class TestOptions
         ReconnectMinDelay = ReconnectMin,
         ReconnectMaxDelay = ReconnectMax,
         StateReadTimeout = StateReadTimeout,
+        CommandTimeout = CommandTimeout,
+        ShutdownCommandWait = TimeSpan.FromMilliseconds(500),
+        CloseTimeout = TimeSpan.FromMilliseconds(500),
     };
 
     public static MqttOptions Mqtt() => new()

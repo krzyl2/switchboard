@@ -38,7 +38,7 @@ public sealed class GuardEndpointTests
         Assert.Equal(["at", "mode", "safeState", "killSwitch", "breaker", "phases", "devices", "decisionLog", "stateFile", "decisions"], Names(body));
         Assert.Equal(["ceiling", "uiChoice", "effective", "note"], Names(body.GetProperty("mode")));
         Assert.Equal(["active", "scope", "reason", "phases", "since"], Names(body.GetProperty("safeState")));
-        Assert.Equal(["engaged", "changedAt", "source"], Names(body.GetProperty("killSwitch")));
+        Assert.Equal(["engaged", "changedAt", "source", "locked", "switchesDevices"], Names(body.GetProperty("killSwitch")));
         Assert.Equal(["ratingA", "characteristic", "continuousMultiple", "continuousA", "budgetRecoveryTimeS", "tiers"], Names(body.GetProperty("breaker")));
         Assert.Equal(["upTo", "upToA", "upToW", "allowedS", "reaction"], Names(body.GetProperty("breaker").GetProperty("tiers")[0]));
         Assert.Equal(

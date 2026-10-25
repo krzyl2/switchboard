@@ -20,7 +20,7 @@ function decision(index: number, change?: (d: any) => void): Decision {
 // 04-ALGORITHMS §6: the UI renders a human sentence per reason code. A missing or shared sentence
 // would make two different reasons read the same in the log, or show a blank reason.
 describe('reason sentences', () => {
-  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 2', (_lang, t) => {
+  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 3', (_lang, t) => {
     const sentences = REASON_CODES.map((code) => reasonSentence(t, code));
 
     expect(sentences.every((s) => typeof s === 'string' && s.trim().length > 0)).toBe(true);
@@ -72,7 +72,20 @@ describe('describeDecision', () => {
     const safe = describeDecision(decision(3), t, 'en');
     const kill = describeDecision(decision(KILL_SWITCH_ENGAGED), t, 'en');
     const mode = describeDecision(
-      decision(MODE_RESOLVED, (d) => (d.inputs.mode = { ceiling: 'active', uiChoice: 'active', note: 'active_not_enabled' })),
+      decision(
+        MODE_RESOLVED,
+        (d) =>
+          (d.inputs.mode = {
+            ceiling: 'active',
+            uiChoice: 'active',
+            note: 'active_not_enabled',
+            controlAllowed: null,
+            configurationValid: null,
+            stateConfirmed: null,
+            missing: [],
+            source: null,
+          }),
+      ),
       t,
       'en',
     );
@@ -253,5 +266,29 @@ describe('describeDecision, dispatch decisions', () => {
     [{ expected: 6, measured: 0, unit: 'amperes', verdict: 'unverifiable' }, 'cannot be verified (no draw signal)'],
   ] as const)('words the verification %j as %s', (v, text) => {
     expect(verificationText(v, t, 'en')).toBe(text);
+  });
+});
+
+// Stage C: the active self-test switches devices itself, and the log must say so; a refusal because
+// another increase is in flight reads as its own reason, not as a closed settling window.
+describe('describeDecision, control stage', () => {
+  it('names the active self-test as the origin of a switching', () => {
+    const switchOn = describeDecision(decision(SWITCH_ON, (d) => (d.origin = 'self_test')), messages.en, 'en');
+
+    expect(switchOn.details).toContain('switched by the active phase self-test');
+  });
+
+  it('words change_limit apart from settling_window_open, in both languages', () => {
+    for (const t of [messages.en, messages.pl]) {
+      expect(reasonSentence(t, 'change_limit')).not.toBe(reasonSentence(t, 'settling_window_open'));
+    }
+    const deferred = describeDecision(decision(SWITCH_ON, (d) => Object.assign(d, { commanded: false, refusedBy: 'change_limit' })), messages.en, 'en');
+    expect(deferred.command).toBe(`${messages.en.notCommanded}: ${messages.en['reason.change_limit']}`);
+  });
+
+  it('says a kill switch held after an untrusted state.json is held until confirmed', () => {
+    const kill = describeDecision(decision(KILL_SWITCH_ENGAGED, (d) => (d.inputs.killSwitch = 'corrupt_state')), messages.en, 'en');
+
+    expect(kill.details).toEqual([messages.en['killSwitchSource.corrupt_state']]);
   });
 });

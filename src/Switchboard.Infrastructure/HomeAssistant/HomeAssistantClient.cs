@@ -4,7 +4,9 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Switchboard.Application.Configuration;
 using Switchboard.Application.Connectivity;
+using Switchboard.Application.Effector;
 using Switchboard.Application.Options;
 using Switchboard.Application.Resilience;
 using Switchboard.Application.Signals;
@@ -15,9 +17,10 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// In-house client for the Home Assistant WebSocket API: auth handshake, keepalive, reconnect with
 /// backoff, and a <c>subscribe_entities</c> subscription filtered to the mapped entities, replaced
 /// (and the old one ended with <c>unsubscribe_events</c>) when that set changes. The setup
-/// wizard's discovery link adds read-only queries (<see cref="QueryAsync"/>). It can only send what
-/// <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it has no
-/// public send method at all.
+/// wizard's discovery link adds read-only queries (<see cref="QueryAsync"/>), and the command path
+/// (through its channel only) service calls on declared actuators (<see cref="CallServiceAsync"/>).
+/// It can only send what <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the
+/// allowed shape, and it has no public send method at all.
 /// </summary>
 public sealed class HomeAssistantClient
 {
@@ -37,6 +40,7 @@ public sealed class HomeAssistantClient
     private readonly IEntitySubscriptionSink _subscriptions;
     private readonly ConcurrentDictionary<int, TaskCompletionSource> _pendingPongs = new();
     private readonly ConcurrentDictionary<int, PendingQuery> _pendingQueries = new();
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<CallOutcome>> _pendingCalls = new();
     private readonly ConcurrentDictionary<int, byte> _subscribeIds = new();
 
     // unsubscribe_events request id -> the subscription it ends.
@@ -61,6 +65,9 @@ public sealed class HomeAssistantClient
     // subscribe); only then does the reconnect backoff start over.
     private volatile bool _sessionWorked;
 
+    // Sessions that delivered their initial states; the command path re-asserts protective targets once per new one.
+    private long _sessionGeneration;
+
     public HomeAssistantClient(
         IWebSocketTransportFactory transportFactory,
         HomeAssistantEndpoint endpoint,
@@ -80,6 +87,12 @@ public sealed class HomeAssistantClient
         _onTrackedChanged = (_, _) => _trackedChanged.Writer.TryWrite(true);
         _subscriptions.TrackedChanged += _onTrackedChanged;
     }
+
+    /// <summary>Grows by one each time a session has delivered its initial states (the gate then re-asserts protective targets once).</summary>
+    public long SessionGeneration => Interlocked.Read(ref _sessionGeneration);
+
+    /// <summary>A session is up and has delivered its initial states: service calls can be sent.</summary>
+    public bool Ready => _sessionWorked && _state.Current == ConnectionState.Connected && Volatile.Read(ref _transport) is not null;
 
     /// <summary>
     /// Stops following the sink's tracked set. A client whose sink outlives it (the discovery link
@@ -214,6 +227,51 @@ public sealed class HomeAssistantClient
     /// <summary>A read-only query waiting for its result.</summary>
     private sealed record PendingQuery(string Type, TaskCompletionSource<JsonElement> Result);
 
+    /// <summary>
+    /// Sends one service call for one declared actuator and returns its outcome; only the command
+    /// path's channel calls this. The serialized call is checked by
+    /// <see cref="HomeAssistantCommandAllowList.EnsureCallServiceAllowed"/> against
+    /// <paramref name="isDeclared"/> (the configuration loaded now) before the socket is touched; a
+    /// refusal throws <see cref="HomeAssistantCommandRefusedException"/>. The answer is matched by
+    /// id and timed out on the injected clock; success:false is a failure with Home Assistant's
+    /// message. A session that ends first is no answer, like a timeout (the call may or may not have
+    /// run): the device's reported state decides, never a mismatch counted against it.
+    /// </summary>
+    internal async Task<CallOutcome> CallServiceAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        var transport = Volatile.Read(ref _transport);
+        if (transport is null || !Ready)
+        {
+            return new CallOutcome(CommandOutcome.NotSent, "Home Assistant is not connected");
+        }
+
+        var id = NextId();
+        var payload = CallServicePayload.Build(id, call);
+        HomeAssistantCommandAllowList.EnsureCallServiceAllowed(payload.Span, isDeclared);
+        var answer = new TaskCompletionSource<CallOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingCalls[id] = answer;
+        try
+        {
+            // Armed before the call leaves, like a ping's timeout.
+            var answered = answer.Task.WaitAsync(timeout, _time, cancellationToken);
+            await SendFrameAsync(transport, payload, cancellationToken).ConfigureAwait(false);
+            return await answered.ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new CallOutcome(CommandOutcome.TimedOut, $"no answer within {timeout}");
+        }
+        catch (Exception ex) when (ex is System.Net.WebSockets.WebSocketException or IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            return new CallOutcome(CommandOutcome.TimedOut, $"link closed ({ex.Message})");
+        }
+        finally
+        {
+            _pendingCalls.TryRemove(id, out _);
+        }
+    }
+
     /// <summary>The subscription currently routed to the sink; events of superseded ones are ignored.</summary>
     private sealed record ActiveSubscription(int Id, SubscribeEntitiesParser Parser);
 
@@ -299,6 +357,15 @@ public sealed class HomeAssistantClient
             }
 
             _pendingQueries.Clear();
+
+            // A service call whose answer cannot come any more: it may or may not have run, so it
+            // counts as no answer (the device's reported state decides), never as an error.
+            foreach (var call in _pendingCalls.Values)
+            {
+                call.TrySetResult(new CallOutcome(CommandOutcome.TimedOut, "link closed before the answer arrived"));
+            }
+
+            _pendingCalls.Clear();
             _sessionFailure = null;
             _subscribeIds.Clear();
             _unsubscribes.Clear();
@@ -363,7 +430,7 @@ public sealed class HomeAssistantClient
                 if (tracked.Count == 0)
                 {
                     Volatile.Write(ref _active, null);
-                    _sessionWorked = true;
+                    MarkWorked();
                     _subscriptions.SessionReady();
                 }
                 else
@@ -528,6 +595,12 @@ public sealed class HomeAssistantClient
                 query.Result.TrySetException(new HomeAssistantQueryFailedException(query.Type, ErrorMessageOf(message) ?? "no reason given"));
             }
         }
+        else if (type.ValueEquals(Result) && _pendingCalls.TryRemove(messageId, out var call))
+        {
+            call.TrySetResult(message.TryGetProperty("success", out var called) && called.ValueKind == JsonValueKind.True
+                ? new CallOutcome(CommandOutcome.Acknowledged, null)
+                : new CallOutcome(CommandOutcome.Failed, ErrorMessageOf(message) ?? "Home Assistant refused the call without a reason"));
+        }
         else if (type.ValueEquals(Result) && _unsubscribes.TryRemove(messageId, out var ended))
         {
             if (message.TryGetProperty("success", out var done) && done.ValueKind == JsonValueKind.True)
@@ -556,8 +629,9 @@ public sealed class HomeAssistantClient
                 return;
             }
 
-            _sessionWorked = true;
+            // The batch first: the command path's re-assert must see the states this session brought.
             _subscriptions.Deliver(batch);
+            MarkWorked();
         }
     }
 
@@ -604,6 +678,15 @@ public sealed class HomeAssistantClient
     }
 
     private int NextId() => Interlocked.Increment(ref _lastId);
+
+    private void MarkWorked()
+    {
+        if (!_sessionWorked)
+        {
+            _sessionWorked = true;
+            Interlocked.Increment(ref _sessionGeneration);
+        }
+    }
 
     private async Task<JsonElement> ReceiveMessageAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
     {

@@ -200,7 +200,7 @@ public sealed class DispatchEngine
                     DecisionScope.Phase,
                     phase,
                     DecisionAction.ForeignLoadDetected,
-                    ReasonCode.ReserveThreshold,
+                    ReasonCode.ForeignLoad,
                     DecisionInputs.None with
                     {
                         Dispatch = new DispatchDecisionInputs(
@@ -248,9 +248,16 @@ public sealed class DispatchEngine
             var constraints = Constraints(spec, protection);
             var mode = input.Overrides.For(spec.Id).Mode;
             var state = _devices[spec.Id];
+            if (mode == OverrideMode.Auto && spec.Start == StartPolicy.RestoreOnly)
+            {
+                // restore_only: never beyond the level the device had before Switchboard reduced it
+                // (its baseline), and without one never above where it is: only what was shed returns.
+                capIndex = Math.Min(capIndex, IndexAtOrBelow(spec, levels, DeviceLevels.Cap(spec, ledger?.Baseline?.Level ?? basis, limits)));
+            }
 
             var guardAllows = constraints.All(k => envelope.For(k) is { IncreasesAllowed: true });
-            var windowFree = !openWindows.Any(w => SharesConstraint(w.Device.Spec, spec, protection));
+            var blocking = openWindows.Where(w => SharesConstraint(w.Device.Spec, spec, protection)).ToList();
+            var windowFree = blocking.Count == 0;
             var dataValid = spec.Phases.All(p => input.Inputs.For(p) is { DataValid: true }) && (load?.DrawFresh ?? false) && PowerDrawsFresh(device, input.Inputs);
             var unresponsive = ledger?.Unresponsive == true;
             var probeDue = unresponsive && ledger!.RetryAt is { } retry && now >= retry;
@@ -263,11 +270,31 @@ public sealed class DispatchEngine
             {
                 GuardAllows = guardAllows,
                 WindowFree = windowFree,
+                OwnWindow = blocking.Any(w => w.Device.Id == spec.Id),
+                IncreaseInFlight = blocking.Any(w => w.Device.Id != spec.Id && w.Window!.Increase),
+                ForeignActive = spec.Phases.Any(_foreign.IsActive),
                 DataValid = dataValid && known,
                 Gates = gates,
                 MinAllowed = lockedMin,
                 MaxAllowed = provisional ? capIndex : Math.Min(basisIndex, capIndex),
             };
+
+            if (input.SelfTest is { } test)
+            {
+                // CONN-05: the tested device is the self-test's alone (its level stays reserved), and
+                // no other device starts or rises while it runs: two changes in one window would
+                // spoil the test's attribution, as they spoil verification (DISP-08).
+                if (test.Device == spec.Id)
+                {
+                    plan.MinAllowed = Math.Min(basisIndex, capIndex);
+                    plan.MaxAllowed = plan.MinAllowed;
+                    plans.Add(plan);
+                    continue;
+                }
+
+                plan.MaxAllowed = Math.Min(plan.MaxAllowed, Math.Min(basisIndex, capIndex));
+                plan.TestWaiting = true;
+            }
 
             if (mode == OverrideMode.ForceOff)
             {
@@ -292,9 +319,10 @@ public sealed class DispatchEngine
                     var breakerAllows = constraints.All(k => envelope.For(k) is { OverrideAllowed: true });
                     var room = constraints.All(k => envelope.For(k) is { BreakerRoom: { } r }
                         && DeviceLevels.Ceiling(spec, levels[forced], k.Phase) - (load?.EstimateOn(k) ?? Amperes.Zero) <= r);
+                    var headroom = plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.HeadroomInsufficient;
                     plan.BlockedBy = !breakerAllows
-                        ? constraints.Any(k => envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : ReasonCode.HeadroomInsufficient
-                        : !room ? ReasonCode.HeadroomInsufficient
+                        ? constraints.Any(k => envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : headroom
+                        : !room ? headroom
                         : null;
                     var can = plan.BlockedBy is null && atBoundary && windowFree && known;
                     plan.Forced = can ? forced : basisIndex;
@@ -401,11 +429,14 @@ public sealed class DispatchEngine
                 var applyNow = (plan.Mode != OverrideMode.Auto || atBoundary)
                     && (plan.Mode != OverrideMode.Auto || plan.Excluded || reduction || preempted || state.DecreaseStreak >= setup.Timing.PersistenceDownCycles);
 
+                // A reduction a detected foreign load caused says so (04 §6 v3): the house did this,
+                // the reserve is not too small.
+                var reserve = plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.ReserveThreshold;
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
-                    : reduction ? ReasonCode.ReserveThreshold
+                    : reduction ? reserve
                     : preempted || allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
-                    : ReasonCode.ReserveThreshold;
+                    : reserve;
                 if (!applyNow)
                 {
                     level = plan.Basis;
@@ -423,6 +454,7 @@ public sealed class DispatchEngine
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
                     : allocation.Limit == AllocationLimit.None ? ReasonCode.HeadroomAvailable
                     : allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
+                    : plan.ForeignActive ? ReasonCode.ForeignLoad
                     : ReasonCode.HeadroomInsufficient;
             }
 
@@ -459,12 +491,21 @@ public sealed class DispatchEngine
         _states = states.ToImmutable();
     }
 
+    /// <summary>
+    /// Why a wanted increase is not made yet. A window open on the device itself is settling; another
+    /// increase in flight on a shared constraint, the spent increase budget (DISP-08) or a running
+    /// self-test is the change limit; a decrease window of another device is still settling; missing
+    /// headroom while a foreign step is active is the foreign load (04 §6 v3).
+    /// </summary>
     private static ReasonCode PendingReason(Plan plan, Guard.GuardEvaluation guard, DeviceState state, DispatchSetup setup) =>
         plan.Excluded ? ReasonCode.DeviceUnresponsive
         : !plan.DataValid ? ReasonCode.GuardStaleSignal
-        : !plan.GuardAllows ? plan.Constraints.Any(k => guard.Envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : ReasonCode.HeadroomInsufficient
-        : !plan.WindowFree || plan.LimitWaiting ? ReasonCode.SettlingWindowOpen
+        : !plan.GuardAllows ? plan.Constraints.Any(k => guard.Envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.HeadroomInsufficient
+        : plan.OwnWindow ? ReasonCode.SettlingWindowOpen
+        : plan.IncreaseInFlight || plan.LimitWaiting || plan.TestWaiting ? ReasonCode.ChangeLimit
+        : !plan.WindowFree ? ReasonCode.SettlingWindowOpen
         : state.ConfirmStreak < setup.Timing.PersistenceUpCycles ? ReasonCode.AwaitingConfirmation
+        : plan.ForeignActive ? ReasonCode.ForeignLoad
         : ReasonCode.HeadroomInsufficient;
 
     /// <summary>
@@ -653,5 +694,17 @@ public sealed class DispatchEngine
 
         /// <summary>An increase that waits for the simultaneous-increase limit (DISP-08).</summary>
         public bool LimitWaiting { get; set; }
+
+        /// <summary>A settling window is open on the device itself.</summary>
+        public bool OwnWindow { get; init; }
+
+        /// <summary>Another device's increase window is open on a shared constraint.</summary>
+        public bool IncreaseInFlight { get; init; }
+
+        /// <summary>A foreign step is active on one of the device's phases (04 §4).</summary>
+        public bool ForeignActive { get; init; }
+
+        /// <summary>The active phase self-test runs on another device: no increase until it ends.</summary>
+        public bool TestWaiting { get; set; }
     }
 }

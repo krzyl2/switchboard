@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
@@ -22,10 +23,12 @@ namespace Switchboard.Infrastructure.Persistence;
 /// atomically: a temporary file is written and flushed, then moved over the old one, so a crash
 /// mid-write leaves the previous state whole.
 /// <para>
-/// Schema 2 (Stage 3) adds the manual overrides and the circuit-group budgets. A schema 1 file
-/// (0.3.x) reads as schema 2 with neither. While the state holds neither, the file is still written
-/// as schema 1, so a rollback to 0.3.x keeps budgets, kill switch and the retraction ledger; 0.3.x
-/// sets a schema 2 file aside as corrupt.
+/// Schema 3 (0.7.0) adds the control switch, the observation record, the commanded restore
+/// baselines and the devices started under start: headroom, and drops the UI mode choice. Schema 2
+/// (0.4.x … 0.6.x: overrides and circuit-group budgets) and schema 1 (0.3.x) files still read, with
+/// control off and their ui_mode ignored. A file that is corrupt, untrusted or unreadable is set
+/// aside, and the run starts with control locked off and the kill switch on until the user confirms
+/// (maintainer survey 2026-10-25). A rollback to 0.6.x sets a schema 3 file aside the same way.
 /// </para>
 /// </summary>
 public sealed class RuntimeStateFile : IRuntimeStateStore
@@ -42,6 +45,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
 
     private static readonly string[] Version1Keys = ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt"];
     private static readonly string[] Version2Keys = [.. Version1Keys, "overrides", "group_budgets"];
+    private static readonly string[] Version3Keys = [.. Version2Keys.Where(k => k != "ui_mode"), "control", "observation", "start_baselines", "self_started"];
 
     private readonly string _directory;
     private readonly int _maxBytes;
@@ -78,7 +82,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            var warning = $"state.json could not be read ({ex.Message}); starting with full budgets, kill switch off and shadow mode.";
+            var warning = $"state.json could not be read ({ex.Message}); Switchboard started with full budgets, control locked off and the kill switch on until the state is confirmed in the UI.";
             _logger.LogWarning("{Warning}", warning);
             return new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.ResetCorrupt, warning);
         }
@@ -125,14 +129,12 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         {
             // Auto is the absence of an override: never written (it would not read back).
             var overrides = state.Overrides.Where(o => o.Value.Mode != OverrideMode.Auto).OrderBy(o => o.Key).ToList();
-            var version = overrides.Count == 0 && state.GroupBudgets.IsEmpty ? RuntimeState.LegacySchemaVersion : RuntimeState.SchemaVersion;
             writer.WriteStartObject();
-            writer.WriteNumber("schema_version", version);
+            writer.WriteNumber("schema_version", RuntimeState.SchemaVersion);
             WriteTime(writer, "saved_at", state.SavedAt);
             writer.WriteBoolean("clean_shutdown", state.CleanShutdown);
             writer.WriteBoolean("kill_switch", state.KillSwitch);
             WriteTime(writer, "kill_switch_changed_at", state.KillSwitchChangedAt);
-            writer.WriteString("ui_mode", state.UiMode == OperatingMode.Active ? "active" : "shadow");
 
             writer.WriteStartObject("phases");
             WriteBudgets(writer, state.Budgets);
@@ -182,7 +184,6 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             writer.WriteEndArray();
             writer.WriteEndObject();
 
-            if (version == RuntimeState.SchemaVersion)
             {
                 writer.WriteStartObject("overrides");
                 foreach (var (device, entry) in overrides)
@@ -214,10 +215,179 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
                 writer.WriteEndObject();
             }
 
+            var control = state.Control;
+            writer.WriteStartObject("control");
+            writer.WriteBoolean("allowed", control.Allowed);
+            WriteTime(writer, "changed_at", control.ChangedAt);
+            writer.WriteString("source", Snake(control.Source));
+            writer.WriteBoolean("locked", control.Locked);
+            if (control.LockReason is { } reason)
+            {
+                writer.WriteString("lock_reason", Snake(reason));
+            }
+            else
+            {
+                writer.WriteNull("lock_reason");
+            }
+
+            writer.WriteEndObject();
+            if (state.Observation is { } observation)
+            {
+                writer.WriteStartObject("observation");
+                WriteTime(writer, "first_started_at", observation.FirstStartedAt);
+                writer.WriteNumber("configuration_errors", observation.ConfigurationErrors);
+                WriteTime(writer, "last_configuration_error_at", observation.LastConfigurationErrorAt);
+                writer.WriteEndObject();
+            }
+            else
+            {
+                writer.WriteNull("observation");
+            }
+
+            writer.WriteStartObject("start_baselines");
+            foreach (var (device, baseline) in state.StartBaselines.OrderBy(b => b.Key))
+            {
+                writer.WriteStartObject(device.Value);
+                WriteLevel(writer, "level", baseline.Level);
+                WriteLevel(writer, "shed", baseline.Shed);
+                WriteTime(writer, "since", baseline.Since);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndObject();
+            writer.WriteStartObject("self_started");
+            foreach (var (device, at) in state.SelfStarted.OrderBy(s => s.Key))
+            {
+                WriteTime(writer, device.Value, at);
+            }
+
+            writer.WriteEndObject();
             writer.WriteEndObject();
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>A device level: relay flags (null for a setpoint device), the setpoint in A (null for relays) and the enabled flag.</summary>
+    private static void WriteLevel(Utf8JsonWriter writer, string name, DeviceLevel level)
+    {
+        writer.WriteStartObject(name);
+        if (level.Setpoint is { } setpoint)
+        {
+            writer.WriteNull("relays");
+            writer.WriteNumber("setpoint_a", setpoint.Value);
+        }
+        else
+        {
+            writer.WriteStartArray("relays");
+            foreach (var relay in level.Relays.IsDefault ? [] : level.Relays)
+            {
+                writer.WriteBooleanValue(relay);
+            }
+
+            writer.WriteEndArray();
+            writer.WriteNull("setpoint_a");
+        }
+
+        writer.WriteBoolean("enabled", level.Enabled);
+        writer.WriteEndObject();
+    }
+
+    private static DeviceLevel Level(JsonElement element, string path)
+    {
+        var entry = Keys(element, path, "relays", "setpoint_a", "enabled");
+        var enabled = Bool(entry["enabled"], $"{path}.enabled");
+        if (entry["setpoint_a"].ValueKind != JsonValueKind.Null)
+        {
+            if (entry["relays"].ValueKind != JsonValueKind.Null)
+            {
+                throw new InvalidStateException($"{path} has both relays and a setpoint");
+            }
+
+            return DeviceLevel.At(new Amperes(Number(entry["setpoint_a"], $"{path}.setpoint_a")), enabled);
+        }
+
+        if (entry["relays"].ValueKind != JsonValueKind.Array || entry["relays"].GetArrayLength() is 0 or > MaxStages || !enabled)
+        {
+            throw new InvalidStateException($"{path}.relays is not a list of 1 to {MaxStages} flags");
+        }
+
+        return DeviceLevel.Relay([.. entry["relays"].EnumerateArray().Select((r, i) => Bool(r, $"{path}.relays[{i}]"))]);
+    }
+
+    private static ControlSwitchStatus Control(JsonElement element)
+    {
+        var entry = Keys(element, "control", "allowed", "changed_at", "source", "locked", "lock_reason");
+        var sourceText = entry["source"].ValueKind == JsonValueKind.String ? entry["source"].GetString() : null;
+        var source = Enum.GetValues<ControlSwitchSource>().Where(v => Snake(v) == sourceText).Select(v => (ControlSwitchSource?)v).SingleOrDefault()
+            ?? throw new InvalidStateException("control.source is not default, api, mqtt or restored");
+        ControlLockReason? reason = null;
+        if (entry["lock_reason"].ValueKind != JsonValueKind.Null)
+        {
+            var text = entry["lock_reason"].ValueKind == JsonValueKind.String ? entry["lock_reason"].GetString() : null;
+            reason = Enum.GetValues<ControlLockReason>().Where(v => Snake(v) == text).Select(v => (ControlLockReason?)v).SingleOrDefault()
+                ?? throw new InvalidStateException("control.lock_reason is not a lock reason");
+        }
+
+        var locked = Bool(entry["locked"], "control.locked");
+        var allowed = Bool(entry["allowed"], "control.allowed");
+        if (locked && (allowed || reason is null))
+        {
+            throw new InvalidStateException("a locked control is not allowed and names its lock reason");
+        }
+
+        return new ControlSwitchStatus(allowed, Time(entry["changed_at"], "control.changed_at", nullable: true), source, locked, reason);
+    }
+
+    private static ObservationRecord? Observation(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        var entry = Keys(element, "observation", "first_started_at", "configuration_errors", "last_configuration_error_at");
+        var errors = entry["configuration_errors"].ValueKind == JsonValueKind.Number && entry["configuration_errors"].TryGetInt32(out var count) && count >= 0
+            ? count
+            : throw new InvalidStateException("observation.configuration_errors is not a non-negative integer");
+        return new ObservationRecord(
+            Time(entry["first_started_at"], "observation.first_started_at")!.Value,
+            errors,
+            Time(entry["last_configuration_error_at"], "observation.last_configuration_error_at", nullable: true));
+    }
+
+    private static ImmutableDictionary<DeviceName, StartBaseline> StartBaselines(JsonElement element)
+    {
+        var baselines = ImmutableDictionary.CreateBuilder<DeviceName, StartBaseline>();
+        foreach (var property in Object(element, "start_baselines", MaxDevices))
+        {
+            if (!DeviceName.TryParse(property.Name, out var device))
+            {
+                throw new InvalidStateException($"start_baselines.{property.Name} is not a device name");
+            }
+
+            var path = $"start_baselines.{property.Name}";
+            var entry = Keys(property.Value, path, "level", "shed", "since");
+            baselines.Add(device.Value, new StartBaseline(Level(entry["level"], $"{path}.level"), Level(entry["shed"], $"{path}.shed"), Time(entry["since"], $"{path}.since")!.Value, Commanded: true));
+        }
+
+        return baselines.ToImmutable();
+    }
+
+    private static ImmutableDictionary<DeviceName, DateTimeOffset> SelfStarted(JsonElement element)
+    {
+        var started = ImmutableDictionary.CreateBuilder<DeviceName, DateTimeOffset>();
+        foreach (var property in Object(element, "self_started", MaxDevices))
+        {
+            if (!DeviceName.TryParse(property.Name, out var device))
+            {
+                throw new InvalidStateException($"self_started.{property.Name} is not a device name");
+            }
+
+            started.Add(device.Value, Time(property.Value, $"self_started.{property.Name}")!.Value);
+        }
+
+        return started.ToImmutable();
     }
 
     private static void WriteBudgets(Utf8JsonWriter writer, ImmutableDictionary<Phase, BudgetMemory> budgets)
@@ -239,14 +409,20 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             && declared.TryGetInt32(out var number)
                 ? number
                 : 0;
-        if (version is not (RuntimeState.SchemaVersion or RuntimeState.LegacySchemaVersion))
+        if (version is not (RuntimeState.SchemaVersion or RuntimeState.PreviousSchemaVersion or RuntimeState.LegacySchemaVersion))
         {
-            throw new InvalidStateException($"schema_version is neither {RuntimeState.LegacySchemaVersion} nor {RuntimeState.SchemaVersion}");
+            throw new InvalidStateException($"schema_version is not {RuntimeState.LegacySchemaVersion}, {RuntimeState.PreviousSchemaVersion} or {RuntimeState.SchemaVersion}");
         }
 
-        var keys = Keys(root, "the document", version == RuntimeState.SchemaVersion ? Version2Keys : Version1Keys);
+        var keys = Keys(root, "the document", version switch
+        {
+            RuntimeState.SchemaVersion => Version3Keys,
+            RuntimeState.PreviousSchemaVersion => Version2Keys,
+            _ => Version1Keys,
+        });
 
-        var uiMode = keys["ui_mode"].ValueKind == JsonValueKind.String ? keys["ui_mode"].GetString() : null;
+        // The UI choice of 0.6.x is read and ignored: the control switch replaced it and reads off after the upgrade.
+        var uiMode = version == RuntimeState.SchemaVersion ? "shadow" : keys["ui_mode"].ValueKind == JsonValueKind.String ? keys["ui_mode"].GetString() : null;
         if (uiMode is not ("shadow" or "active"))
         {
             throw new InvalidStateException("ui_mode is neither shadow nor active");
@@ -295,9 +471,21 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             budgets,
             devices.ToImmutable(),
             discovered.ToImmutable());
-        return version == RuntimeState.SchemaVersion
-            ? state with { Overrides = Overrides(keys["overrides"]), GroupBudgets = GroupBudgets(keys["group_budgets"]) }
-            : state;
+        if (version == RuntimeState.LegacySchemaVersion)
+        {
+            return state;
+        }
+
+        state = state with { Overrides = Overrides(keys["overrides"]), GroupBudgets = GroupBudgets(keys["group_budgets"]) };
+        return version == RuntimeState.PreviousSchemaVersion
+            ? state
+            : state with
+            {
+                Control = Control(keys["control"]),
+                Observation = Observation(keys["observation"]),
+                StartBaselines = StartBaselines(keys["start_baselines"]),
+                SelfStarted = SelfStarted(keys["self_started"]),
+            };
     }
 
     private static ImmutableDictionary<Phase, BudgetMemory> Budgets(JsonElement element, string path)
@@ -485,14 +673,14 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
 
     private RuntimeStateLoad Reset(string reason)
     {
-        var warning = $"state.json was not usable ({reason}); it was kept as {FileName}{CorruptSuffix} and Switchboard started with full budgets, kill switch off and shadow mode.";
+        var warning = $"state.json was not usable ({reason}); it was kept as {FileName}{CorruptSuffix} and Switchboard started with full budgets, control locked off and the kill switch on until the state is confirmed in the UI.";
         try
         {
             File.Move(FilePath, FilePath + CorruptSuffix, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            warning = $"state.json was not usable ({reason}) and could not be renamed ({ex.Message}); Switchboard started with full budgets, kill switch off and shadow mode.";
+            warning = $"state.json was not usable ({reason}) and could not be renamed ({ex.Message}); Switchboard started with full budgets, control locked off and the kill switch on until the state is confirmed in the UI.";
         }
 
         _logger.LogWarning("{Warning}", warning);

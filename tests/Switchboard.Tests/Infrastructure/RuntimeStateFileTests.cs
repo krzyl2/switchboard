@@ -14,10 +14,11 @@ using Switchboard.Tests.Support;
 namespace Switchboard.Tests.Infrastructure;
 
 /// <summary>
-/// /data/state.json carries the kill switch, the overload budgets and the UI mode choice across a
-/// restart (SAFE-07), and never a lockout expiry. A user may edit it and a crash may cut it, so it
-/// is read as untrusted input: anything unexpected starts fresh with a warning, never a crash and
-/// never a half-trusted value.
+/// /data/state.json carries the kill switch, the overload budgets, the control switch, the
+/// observation record and the commanded restore baselines across a restart (SAFE-07), and never a
+/// lockout expiry. A user may edit it and a crash may cut it, so it is read as untrusted input:
+/// anything unexpected is set aside with a warning (GuardService then starts with control locked off
+/// and the kill switch on), never a crash and never a half-trusted value.
 /// </summary>
 public sealed class RuntimeStateFileTests : IDisposable
 {
@@ -38,12 +39,33 @@ public sealed class RuntimeStateFileTests : IDisposable
         Assert.Null(load.Warning);
         var loaded = load.State;
         Assert.Equal(
-            (state.SavedAt, state.CleanShutdown, state.KillSwitch, state.KillSwitchChangedAt, state.UiMode),
-            (loaded.SavedAt, loaded.CleanShutdown, loaded.KillSwitch, loaded.KillSwitchChangedAt, loaded.UiMode));
+            (state.SavedAt, state.CleanShutdown, state.KillSwitch, state.KillSwitchChangedAt),
+            (loaded.SavedAt, loaded.CleanShutdown, loaded.KillSwitch, loaded.KillSwitchChangedAt));
         Assert.Equal(state.Budgets.OrderBy(b => b.Key), loaded.Budgets.OrderBy(b => b.Key));
         Assert.Equal(state.Devices[DeviceName.Parse("heater_l1")], loaded.Devices[DeviceName.Parse("heater_l1")]);
         Assert.Equal(state.Devices[DeviceName.Parse("ev_charger")], loaded.Devices[DeviceName.Parse("ev_charger")]);
         Assert.Equal(state.Discovered, loaded.Discovered);
+        Assert.Equal(state.Control, loaded.Control);
+        Assert.Equal(state.Observation, loaded.Observation);
+        Assert.Equal(state.StartBaselines.OrderBy(b => b.Key), loaded.StartBaselines.OrderBy(b => b.Key));
+        Assert.Equal(state.SelfStarted.OrderBy(b => b.Key), loaded.SelfStarted.OrderBy(b => b.Key));
+    }
+
+    [Fact]
+    public void A_schema_2_file_of_0_6_x_reads_with_control_off_and_its_ui_mode_ignored()
+    {
+        // The upgrade never starts commanding: the Stage 5 UI choice is not the control switch, and
+        // the switch reads off until the user turns it on (maintainer survey 2026-10-25).
+        const string Version2 = """{"schema_version":2,"saved_at":"2026-10-24T11:00:00.0000000Z","clean_shutdown":true,"kill_switch":false,"kill_switch_changed_at":null,"ui_mode":"active","phases":{},"devices":{},"mqtt":{"discovered":[]},"overrides":{},"group_budgets":{}}""";
+        var file = File();
+        System.IO.File.WriteAllText(file.FilePath, Version2);
+
+        var load = file.Load();
+
+        Assert.Equal(StateFileStatus.Loaded, load.Status);
+        Assert.Equal(ControlSwitchStatus.Default, load.State.Control);
+        Assert.Null(load.State.Observation);
+        Assert.Empty(load.State.StartBaselines);
     }
 
     [Fact]
@@ -54,8 +76,10 @@ public sealed class RuntimeStateFileTests : IDisposable
 
         using var json = JsonDocument.Parse(System.IO.File.ReadAllText(Path.Combine(_data.Path, "state.json")));
         Assert.Equal(
-            ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt"],
+            ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "phases", "devices", "mqtt", "overrides", "group_budgets", "control", "observation", "start_baselines", "self_started"],
             json.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(3, json.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(["level", "shed", "since"], json.RootElement.GetProperty("start_baselines").GetProperty("heater_l1").EnumerateObject().Select(p => p.Name));
         Assert.Equal(["budget", "at"], json.RootElement.GetProperty("phases").GetProperty("L1").EnumerateObject().Select(p => p.Name));
         Assert.DoesNotContain(typeof(RuntimeState).GetProperties(), p => p.Name.Contains("Lockout", StringComparison.OrdinalIgnoreCase) || p.PropertyType == typeof(TimeSpan));
     }
@@ -99,8 +123,14 @@ public sealed class RuntimeStateFileTests : IDisposable
     [Theory]
     [InlineData("\"budget\":0.83", "\"budget\":1.5")]
     [InlineData("\"budget\":0.83", "\"budget\":-0.1")]
-    [InlineData("\"schema_version\":1", "\"schema_version\":2")]
-    [InlineData("\"ui_mode\":\"active\"", "\"ui_mode\":\"ACTIVE\"")]
+    [InlineData("\"schema_version\":3", "\"schema_version\":4")]
+    [InlineData("\"allowed\":true", "\"allowed\":\"yes\"")]
+    [InlineData("\"locked\":false", "\"locked\":true")]
+    [InlineData("\"source\":\"api\"", "\"source\":\"browser\"")]
+    [InlineData("\"configuration_errors\":2", "\"configuration_errors\":-1")]
+    [InlineData("\"relays\":[true]", "\"relays\":[]")]
+    [InlineData("\"relays\":[true]", "\"relays\":[true],\"setpoint_b\":1")]
+    [InlineData("\"heater_l2\":\"2026", "\"switch.heater_2\":\"2026")]
     [InlineData("\"L1\":{", "\"L4\":{")]
     [InlineData("\"heater_l1\":{", "\"switch.heater\":{")]
     [InlineData("\"applied\":\"on\"", "\"applied\":\"maybe\"")]
@@ -186,12 +216,12 @@ public sealed class RuntimeStateFileTests : IDisposable
 
     private RuntimeStateFile File() => new(_data.Path, TestDecisions.Options(), NullLogger<RuntimeStateFile>.Instance);
 
-    private static RuntimeState Full() => new(
+    private static RuntimeState Full() => new RuntimeState(
         At,
         true,
         true,
         At.AddMinutes(-5),
-        OperatingMode.Active,
+        OperatingMode.Shadow,
         ImmutableDictionary<Phase, BudgetMemory>.Empty
             .Add(Phase.L1, new BudgetMemory(0.83, At.AddSeconds(-10)))
             .Add(Phase.L2, new BudgetMemory(1, At.AddSeconds(-10))),
@@ -199,5 +229,13 @@ public sealed class RuntimeStateFileTests : IDisposable
             .Add(DeviceName.Parse("heater_l1"), [new StageLastKnown(new RelayApplied(true), At.AddMinutes(-1))])
             .Add(DeviceName.Parse("ev_charger"), [new StageLastKnown(new SetpointApplied(new Amperes(16)), At.AddMinutes(-2))])
             .Add(DeviceName.Parse("boiler"), [null, new StageLastKnown(new RelayApplied(false), At)]),
-        ImmutableSortedSet.Create(StringComparer.Ordinal, "sensor/l1_headroom", "switch/kill_switch"));
+        ImmutableSortedSet.Create(StringComparer.Ordinal, "sensor/l1_headroom", "switch/kill_switch"))
+    {
+        Control = new ControlSwitchStatus(true, At.AddMinutes(-3), ControlSwitchSource.Api, false, null),
+        Observation = new ObservationRecord(At.AddDays(-9), 2, At.AddDays(-1)),
+        StartBaselines = ImmutableDictionary<DeviceName, Switchboard.Application.Effector.StartBaseline>.Empty
+            .Add(DeviceName.Parse("heater_l1"), new(DeviceLevel.Relay(true), DeviceLevel.Relay(false), At.AddMinutes(-4), true))
+            .Add(DeviceName.Parse("ev_charger"), new(DeviceLevel.At(new Amperes(16)), DeviceLevel.At(new Amperes(6)), At.AddMinutes(-4), true)),
+        SelfStarted = ImmutableDictionary<DeviceName, DateTimeOffset>.Empty.Add(DeviceName.Parse("heater_l2"), At.AddMinutes(-20)),
+    };
 }

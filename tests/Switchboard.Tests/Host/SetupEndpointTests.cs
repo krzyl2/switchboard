@@ -39,18 +39,19 @@ public sealed class SetupEndpointTests
     [InlineData("POST", "/api/setup/save", null)]
     [InlineData("POST", "/api/setup/save", "application/x-www-form-urlencoded")]
     [InlineData("POST", "/api/setup/self-test", "text/plain")]
-    [InlineData("POST", "/api/mode", "text/plain")]
-    [InlineData("POST", "/api/mode", "multipart/form-data")]
+    [InlineData("POST", "/api/control", "text/plain")]
+    [InlineData("POST", "/api/control", "multipart/form-data")]
+    [InlineData("POST", "/api/control/confirm", "text/plain")]
     public async Task Setup_posts_and_delete_require_json_or_preflight(string method, string path, string? contentType)
     {
         using var root = new TempWebRoot();
         using var factory = new SwitchboardHostFactory(root.Path);
 
-        var context = await SendAsync(factory, method, path, contentType, """{"draft":{},"uiChoice":"shadow"}""");
+        var context = await SendAsync(factory, method, path, contentType, """{"draft":{},"allowed":true,"confirm":true}""");
 
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
         Assert.False(File.Exists(Path.Combine(root.Path, "no-switchboard.yaml")));
-        Assert.Equal(OperatingMode.Shadow, factory.Services.GetRequiredService<ModeState>().Current.UiChoice);
+        Assert.False(factory.Services.GetRequiredService<IControlSwitchView>().Status.Allowed);
     }
 
     [Fact]
@@ -191,22 +192,6 @@ public sealed class SetupEndpointTests
     }
 
     [Fact]
-    public async Task Post_mode_requires_json_and_never_accepts_active()
-    {
-        using var root = new TempWebRoot();
-        using var factory = new SwitchboardHostFactory(root.Path, new Dictionary<string, string?> { ["SWITCHBOARD_MODE"] = "active" });
-
-        var refused = await SendAsync(factory, "POST", "/api/mode", "application/json", """{"uiChoice":"active"}""");
-        var chosen = await SendAsync(factory, "POST", "/api/mode", "application/json", """{"uiChoice":"shadow"}""");
-        var current = Json(await SendAsync(factory, "GET", "/api/mode"));
-
-        Assert.Equal((StatusCodes.Status409Conflict, "active_not_enabled"), (refused.Response.StatusCode, Json(refused).GetProperty("code").GetString()));
-        Assert.Equal(StatusCodes.Status200OK, chosen.Response.StatusCode);
-        Assert.Equal(("active", "shadow", "shadow", "active_not_enabled"), (current.GetProperty("ceiling").GetString(), current.GetProperty("uiChoice").GetString(), current.GetProperty("effective").GetString(), current.GetProperty("note").GetString()));
-        Assert.False(File.Exists(Path.Combine(root.Path, "data", "state.json")) && File.ReadAllText(Path.Combine(root.Path, "data", "state.json")).Contains("\"active\"", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public async Task Decision_history_pages_the_retained_files()
     {
         using var root = new TempWebRoot();
@@ -329,6 +314,13 @@ public sealed class SetupSpaContractTests
         { RepoPaths.Combine("web", "src", "api", "setup.ts"), "INCONCLUSIVE_REASONS", Snake<InconclusiveReason>() },
         { RepoPaths.Combine("web", "src", "api", "setup.ts"), "SETUP_SEVERITIES", ["error", "warning"] },
         { RepoPaths.Combine("web", "src", "api", "setup.ts"), "OBSERVATION_SOURCES", Snake<ObservationSource>() },
+        { RepoPaths.Combine("web", "src", "api", "setup.ts"), "ACTIVE_TEST_REFUSALS", Snake<ActiveTestRefusalCode>() },
+        { RepoPaths.Combine("web", "src", "api", "setup.ts"), "ACTIVE_TEST_STATES", Snake<ActiveTestState>() },
+        { RepoPaths.Combine("web", "src", "api", "setup.ts"), "ACTIVE_TEST_PHASES", Snake<ActiveTestPhase>() },
+        { RepoPaths.Combine("web", "src", "api", "setup.ts"), "ACTIVE_TEST_ABORT_REASONS", Snake<ActiveTestAbortReason>() },
+        { RepoPaths.Combine("web", "src", "api", "control.ts"), "CONTROL_LOCK_REASONS", Snake<ControlLockReason>() },
+        { RepoPaths.Combine("web", "src", "api", "control.ts"), "COMMAND_OUTCOMES", Snake<Switchboard.Application.Effector.CommandOutcome>() },
+        { RepoPaths.Combine("web", "src", "api", "control.ts"), "COMMAND_NOT_SENT_REASONS", Snake<Switchboard.Application.Effector.CommandNotSentReason>() },
         { RepoPaths.Combine("web", "src", "api", "decisions.ts"), "TIER_REACTIONS", Snake<TierReaction>() },
         { RepoPaths.Combine("web", "src", "api", "decisions.ts"), "MODE_NOTES", Snake<ModeNote>() },
     };
@@ -354,6 +346,10 @@ public sealed class SetupSpaContractTests
         var templates = await Get(factory, "/api/setup/templates");
         var mode = await Get(factory, "/api/mode");
         var history = await Get(factory, "/api/decisions/history?limit=2");
+        var control = await Get(factory, "/api/control");
+        // Shadow (the default): the active self-test is refused, with its reasons.
+        var preconditions = await Get(factory, "/api/setup/active-test/preconditions?device=heater_l1&stage=1");
+        var activeRefused = await Post(factory, "/api/setup/active-test", new { device = "heater_l1", stage = 1 }, StatusCodes.Status409Conflict);
 
         var parsed = SetupDocumentMapper.Read(SetupFixtures.Tree(TestConfigurations.Example)).Draft;
         var withTotal = parsed with { Meter = parsed.Meter with { Total = new MeterTotal { Power = SetupFixtures.Signal("sensor.solaredge_m1_ac_power", "W") } } };
@@ -384,6 +380,10 @@ public sealed class SetupSpaContractTests
         Compare("setup-evidence.sample.json", evidence);
         Compare("mode.sample.json", mode);
         Compare("decision-history.sample.json", history);
+        Compare("control.sample.json", control);
+        Compare("setup-active-test-preconditions.sample.json", preconditions);
+        Compare("setup-active-test-refused.sample.json", activeRefused);
+        Assert.Contains(preconditions.GetProperty("refusals").EnumerateArray(), r => r.GetProperty("code").GetString() == "control_not_active");
     }
 
     private static void Compare(string sample, JsonElement full)

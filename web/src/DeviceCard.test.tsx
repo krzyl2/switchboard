@@ -92,7 +92,8 @@ describe('device card: routing', () => {
     await open('#/devices/boiler');
 
     expect(screen.getByRole('alert').textContent).toBe('No declared device is called boiler.');
-    expect(requested()).toEqual(['api/devices']);
+    // Besides the shell's mode banner (api/mode, on every page: Shell.test).
+    expect(requested().filter((url) => url !== 'api/mode')).toEqual(['api/devices']);
   });
 
   it('says the configuration is not valid instead of claiming no device is declared', async () => {
@@ -133,6 +134,9 @@ describe('device card: connection', () => {
     const connection = card('Connection');
 
     expect(field(connection, 'Actuator entity').querySelector('code.entity')?.textContent).toBe('switch.grzalka_1');
+    // Shown in every mode: since 0.7.0 it must not claim nothing is ever commanded, only when.
+    expect(field(connection, 'Actuator entity').textContent).toContain('it is commanded only while control is in force');
+    expect(field(connection, 'Actuator entity').textContent).not.toContain('commands nothing');
     expect(field(connection, 'Rated draw').textContent).toBe('7.0 A · 1.70 kW');
     expect(field(connection, 'Lockouts').textContent).toBe('minimum on time 6 minminimum off time 90 s');
     expect(field(connection, 'Draw signals').textContent).toBe('none declared: a change is checked against the phase load and the rated power');
@@ -163,7 +167,7 @@ describe('device card: dispatch state', () => {
     await open('#/devices/heater_l2');
     const state = card('Dispatch state');
 
-    expect(state.textContent).toContain('Switchboard switches nothing in this version');
+    expect(state.textContent).toContain('Control is not in force, so Switchboard switches nothing');
     expect(state.querySelector('.updated time')?.textContent).toBe(`Dispatch evaluated at ${clock('2026-10-24T12:01:20.004+00:00')}`);
   });
 

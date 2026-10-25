@@ -67,6 +67,12 @@ public sealed class ForeignLoadTracker
         return step;
     }
 
+    /// <summary>
+    /// A foreign step was detected on the phase and the residual has not fallen back below the re-arm
+    /// level yet: the house is still drawing it (reason foreign_load, 04 §6 v3).
+    /// </summary>
+    public bool IsActive(Phase phase) => _phases.TryGetValue(phase, out var state) && !state.Armed && state.Foreign is not null;
+
     /// <summary>A new configuration: baselines start again.</summary>
     public void Reset() => _phases.Clear();
 

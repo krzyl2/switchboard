@@ -24,8 +24,14 @@ public enum GuardTrigger
     /// <summary>A manual override changed (SAFE-04).</summary>
     Override,
 
-    /// <summary>The UI mode choice changed (MODE-02): the step records the mode; the guard itself does not react to it.</summary>
+    /// <summary>The control switch changed or was confirmed (MODE-02): the step records the mode; the guard itself does not react to it.</summary>
     Mode,
+
+    /// <summary>A command's outcome arrived from the command path: the gate records the decision it belongs to.</summary>
+    Command,
+
+    /// <summary>The active phase self-test moved on (CONN-05): the gate applies what it wants of its device.</summary>
+    SelfTest,
 
     /// <summary>The add-on is stopping: every controlled device goes to safe state (SAFE-01).</summary>
     Shutdown,

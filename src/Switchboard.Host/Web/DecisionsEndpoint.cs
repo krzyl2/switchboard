@@ -59,7 +59,8 @@ public sealed record DispatchInputsDto(
     double MinOnRemainingS,
     double MinOffRemainingS,
     DateTimeOffset? DeferredSince,
-    string Override);
+    string Override,
+    bool Reasserted);
 
 /// <param name="Group">The circuit group of the constraint; null for the main phase.</param>
 public sealed record HeadroomDto(string? Group, string Phase, double? EnvelopeA, double? RemainingA);
@@ -99,7 +100,8 @@ public sealed record DeviceInputsDto(
     double MinOffRemainingS,
     bool CanSwitchOff);
 
-public sealed record ModeInputsDto(string Ceiling, string UiChoice, string Note);
+/// <summary>The mode at a mode decision; the control switch's parts are null on lines written before 0.7.0.</summary>
+public sealed record ModeInputsDto(string Ceiling, string UiChoice, string Note, bool? ControlAllowed, bool? ConfigurationValid, bool? StateConfirmed, IReadOnlyList<string> Missing, string? Source);
 
 internal static class DecisionsEndpoint
 {
@@ -245,7 +247,9 @@ internal static class DecisionsEndpoint
                     d.MinOffRemaining.TotalSeconds,
                     d.CanSwitchOff)
                 : null,
-            decision.Inputs.Mode is { } m ? new ModeInputsDto(ApiText.Snake(m.Ceiling), ApiText.Snake(m.UiChoice), ApiText.Snake(m.Note)) : null,
+            decision.Inputs.Mode is { } m
+                ? new ModeInputsDto(ApiText.Snake(m.Ceiling), ApiText.Snake(m.UiChoice), ApiText.Snake(m.Note), m.ControlAllowed, m.ConfigurationValid, m.StateConfirmed, [.. (m.Missing.IsDefault ? [] : m.Missing).Select(ApiText.Snake)], ApiText.SnakeOrNull(m.Source))
+                : null,
             ApiText.SnakeOrNull(decision.Inputs.KillSwitch),
             ApiText.SnakeOrNull(decision.Inputs.SafeStateCause),
             decision.Inputs.Dispatch is { } dispatch ? Dispatch(dispatch) : null));
@@ -262,7 +266,8 @@ internal static class DecisionsEndpoint
         dispatch.MinOnRemaining.TotalSeconds,
         dispatch.MinOffRemaining.TotalSeconds,
         dispatch.DeferredSince,
-        ApiText.Snake(dispatch.Override));
+        ApiText.Snake(dispatch.Override),
+        dispatch.Reasserted);
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>

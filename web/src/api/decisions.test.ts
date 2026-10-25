@@ -121,10 +121,65 @@ describe('parseDecisionsPage, dispatch decisions', () => {
   // and must still read, or the whole decision list would turn "unavailable" after an update.
   it.each(MODE_NOTES)('accepts the mode note %s, the 0.3.x one included', (note) => {
     const parsed = parseDecisionsPage(
-      payload((p) => (at(p, 'mode_resolved').inputs.mode = { ceiling: 'active', uiChoice: 'active', note })),
+      payload(
+        (p) =>
+          (at(p, 'mode_resolved').inputs.mode = {
+            ceiling: 'active',
+            uiChoice: 'active',
+            note,
+            controlAllowed: null,
+            configurationValid: null,
+            stateConfirmed: null,
+            missing: [],
+            source: null,
+          }),
+      ),
     );
 
     expect(parsed.items.find((d) => d.action === 'mode_resolved')?.inputs.mode?.note).toBe(note);
+  });
+
+  // 0.7.0: a mode decision names the control switch, who set it, and every condition that kept the
+  // mode in shadow; lines of older versions carry nulls and an empty list and still read.
+  it('reads the control switch and the missing conditions of a mode decision', () => {
+    const parsed = parseDecisionsPage(
+      payload(
+        (p) =>
+          (at(p, 'mode_resolved').inputs.mode = {
+            ceiling: 'active',
+            uiChoice: 'shadow',
+            note: 'none',
+            controlAllowed: false,
+            configurationValid: true,
+            stateConfirmed: false,
+            missing: ['control_off', 'state_unconfirmed'],
+            source: 'mqtt',
+          }),
+      ),
+    );
+
+    expect(parsed.items.find((d) => d.action === 'mode_resolved')?.inputs.mode).toMatchObject({
+      controlAllowed: false,
+      stateConfirmed: false,
+      missing: ['control_off', 'state_unconfirmed'],
+      source: 'mqtt',
+    });
+  });
+
+  it.each([
+    ['an unknown missing condition', (m: any) => (m.missing = ['license_expired'])],
+    ['an unknown control source', (m: any) => (m.source = 'browser')],
+    ['a missing control field', (m: any) => delete m.controlAllowed],
+  ])('refuses a mode decision with %s', (_case, change) => {
+    expect(() => parseDecisionsPage(payload((p) => change(at(p, 'mode_resolved').inputs.mode)))).toThrow();
+  });
+
+  it('reads the reason codes of list version 3 and the self-test origin', () => {
+    const parsed = parseDecisionsPage(
+      payload((p) => Object.assign(at(p, 'mode_resolved'), { reason: 'change_limit', refusedBy: 'foreign_load', origin: 'self_test' })),
+    );
+
+    expect(parsed.items.find((d) => d.action === 'mode_resolved')).toMatchObject({ reason: 'change_limit', refusedBy: 'foreign_load', origin: 'self_test' });
   });
 });
 

@@ -55,8 +55,11 @@ public sealed class DispatchEndpointTests
         var device = body.GetProperty("devices")[0];
         Assert.Equal(
             ["id", "type", "phases", "rotationGroup", "circuitGroup", "intended", "reported", "reportedFresh", "matches", "reason", "origin", "startRank", "pending",
-                "lockout", "deferred", "settling", "unresponsive", "mismatches", "override", "draw", "history"],
+                "lockout", "deferred", "settling", "unresponsive", "mismatches", "override", "draw", "history", "start", "baseline", "commandWarning", "selfStarted"],
             Names(device));
+        Assert.Equal(("restore_only", "headroom"), (device.GetProperty("start").GetString(), body.GetProperty("devices")[1].GetProperty("start").GetString()));
+        Assert.Equal(["level", "since", "commanded"], Names(device.GetProperty("baseline")));
+        Assert.Equal(["since"], Names(device.GetProperty("commandWarning")));
         Assert.Equal(["relays", "setpointA", "enabled"], Names(device.GetProperty("intended")));
         Assert.Equal(["minOnRemainingS", "minOffRemainingS"], Names(device.GetProperty("lockout")));
         Assert.Equal(["target", "reason", "refusedBy", "since", "dueAt"], Names(device.GetProperty("deferred")));
@@ -239,7 +242,7 @@ public sealed class DispatchEndpointTests
     /// <summary>A status with every nested object present: a deferred, settling, overridden heater with history, and a charger with a draw.</summary>
     internal static DispatchStatus Full()
     {
-        var mode = ModeState.Resolve(OperatingMode.Active, OperatingMode.Shadow);
+        var mode = ModeState.Resolve(OperatingMode.Active, controlAllowed: false, configurationValid: true, stateConfirmed: true);
         var group = GroupName.Parse("carport");
         return new DispatchStatus(
             At,
@@ -266,7 +269,13 @@ public sealed class DispatchEndpointTests
                             To = DeviceLevel.Relay(true),
                         },
                         new VerificationRecord(At - TimeSpan.FromMinutes(2), HistoryKind.Observed, 1500, 1460, MeasureUnit.Watts, Verdict.Match),
-                    ]),
+                    ])
+                {
+                    Start = StartPolicy.RestoreOnly,
+                    Baseline = new Switchboard.Application.Effector.StartBaseline(DeviceLevel.Relay(true), DeviceLevel.Relay(false), At - TimeSpan.FromMinutes(4), true),
+                    UnconfirmedSince = At - TimeSpan.FromSeconds(40),
+                    SelfStarted = At - TimeSpan.FromMinutes(20),
+                },
                 new DispatchDeviceStatus(
                     DeviceName.Parse("ev_charger"), DeviceType.Modulating, [Phase.L1], null, group,
                     DeviceLevel.At(new Amperes(13)), DeviceLevel.At(new Amperes(13)), true, true,
@@ -278,7 +287,10 @@ public sealed class DispatchEndpointTests
                     0,
                     DeviceOverride.Auto,
                     new DrawStatus(new Amperes(12.4), new Watts(2860), true),
-                    []),
+                    [])
+                {
+                    Start = StartPolicy.Headroom,
+                },
             ]);
     }
 

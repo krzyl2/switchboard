@@ -116,7 +116,8 @@ describe('decision log', () => {
     serve();
     await open();
 
-    const urls = fetchMock.mock.calls.map(([input]) => String(input).split('?')[0]);
+    // Besides the shell's mode banner (api/mode, on every page: Shell.test).
+    const urls = fetchMock.mock.calls.map(([input]) => String(input).split('?')[0]).filter((url) => url !== 'api/mode');
     expect(new Set(urls)).toEqual(new Set(['api/decisions/history', 'api/signals', 'api/statistics']));
     const day = localDay(STATISTICS_AT);
     const ranged = fetchMock.mock.calls.map(([input]) => query(input)).find((q) => q.has('from'))!;

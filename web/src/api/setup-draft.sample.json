@@ -1,5 +1,5 @@
 {
-  "revision": "68E784A43EF64DA12065D99AA464C13279325BA7AB6C4162A1667AE46F44EFC2",
+  "revision": "508420A292730412678CD8C1668D8D562DB232383447CD52940200316BC7B0E6",
   "fileState": "valid",
   "hasComments": true,
   "unreadable": false,
@@ -7,7 +7,7 @@
     "connection": {
       "topology": "three_phase",
       "breakerRatingA": 25,
-      "characteristic": "B",
+      "characteristic": "C",
       "voltageV": 230,
       "reserveW": {
         "L1": 2500,
@@ -129,7 +129,9 @@
         "valuePerKwh": 0.35,
         "circuitGroup": null,
         "rotationGroup": "cwu_heaters",
-        "draw": null
+        "draw": null,
+        "stopActuator": null,
+        "start": null
       },
       {
         "id": "heater_l2",
@@ -153,7 +155,9 @@
         "valuePerKwh": 0.35,
         "circuitGroup": null,
         "rotationGroup": "cwu_heaters",
-        "draw": null
+        "draw": null,
+        "stopActuator": null,
+        "start": null
       },
       {
         "id": "heater_l3",
@@ -177,7 +181,9 @@
         "valuePerKwh": 0.35,
         "circuitGroup": null,
         "rotationGroup": "cwu_heaters",
-        "draw": null
+        "draw": null,
+        "stopActuator": null,
+        "start": null
       },
       {
         "id": "ev_charger",
@@ -207,7 +213,9 @@
           "maxAge": "60s",
           "currentUnit": null,
           "powerUnit": null
-        }
+        },
+        "stopActuator": null,
+        "start": null
       }
     ],
     "acknowledgements": {

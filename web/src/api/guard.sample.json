@@ -18,7 +18,9 @@
   "killSwitch": {
     "engaged": false,
     "changedAt": "2026-10-22T12:10:00.000+00:00",
-    "source": "mqtt"
+    "source": "mqtt",
+    "locked": false,
+    "switchesDevices": false
   },
   "breaker": {
     "ratingA": 25.0,
@@ -696,7 +698,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -764,7 +767,8 @@
           "minOnRemainingS": 0,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "auto"
+          "override": "auto",
+          "reasserted": false
         }
       }
     },
@@ -836,7 +840,8 @@
           "minOnRemainingS": 60,
           "minOffRemainingS": 0,
           "deferredSince": null,
-          "override": "force_off"
+          "override": "force_off",
+          "reasserted": false
         }
       }
     },
@@ -915,7 +920,15 @@
         "mode": {
           "ceiling": "shadow",
           "uiChoice": "shadow",
-          "note": "none"
+          "note": "none",
+          "controlAllowed": false,
+          "configurationValid": true,
+          "stateConfirmed": true,
+          "missing": [
+            "option_shadow",
+            "control_off"
+          ],
+          "source": "default"
         },
         "killSwitch": null,
         "safeStateCause": null,

@@ -1,11 +1,18 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  cancelActiveTest,
   cancelSelfTest,
+  fetchActiveTest,
+  fetchActiveTestPreconditions,
   fetchDiscovery,
   fetchEvidence,
   fetchSelfTest,
+  startActiveTest,
   startSelfTest,
+  type ActiveTest,
+  type ActiveTestPreconditions,
+  type ActiveTestRefusal,
   type DeviceDraft,
   type DeviceEvidence,
   type DiscoveredEntity,
@@ -19,24 +26,27 @@ import {
 } from './api/setup';
 import { PHASES } from './api/signals';
 import { SETUP_REQUEST_TIMEOUT_MS, SETUP_SELF_TEST_REFRESH_INTERVAL_MS, SETUP_SELF_TEST_REQUEST_TIMEOUT_MS } from './config';
-import { EntityPicker, type PickerFilter } from './EntityPicker';
-import { formatInterval, formatNumber, formatQuantity } from './format';
+import { EntityPicker, matchesFilter, type PickerFilter } from './EntityPicker';
+import { formatAge, formatInterval, formatNumber, formatQuantity } from './format';
 import { fill, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
 import { ReadoutLine } from './Readout';
 import { SetupIssues, issueText } from './SetupIssues';
 import { fieldId, newDevice, stepOfField, type StepName } from './setupDraft';
 import { StateBadge, Timestamp, type Tone } from './ui';
+import { usePoll, type PollView } from './usePoll';
 import { useReadouts } from './useReadouts';
 import type { SetupState, StepProps } from './useSetup';
 import './setupLoads.css';
 
 // Step 4 (Loads, UI-02, CONN-02, CONN-05) and the parts step 3 shares with it: the device form,
 // discovery for the pickers, the live readouts and the "check and continue" action. Only the user
-// declares an actuator (CLAUDE.md): template cards prefill type, limits and lockouts from the
-// add-on's templates, pickers offer what fits the field and never preselect. The phase self-test is
-// passive: Switchboard switches nothing, the user switches the device while the wizard watches, and
-// what the running add-on recorded is judged again against this draft by the add-on itself.
+// declares an actuator or a stop actuator (CLAUDE.md): template cards prefill type, limits and
+// lockouts from the add-on's templates, pickers offer what fits the field and never preselect. The
+// phase self-test has two forms: passive (the user switches the device while the wizard watches)
+// and automatic (on demand, Switchboard switches an idle declared relay on and off through the
+// effector gate, only in effective active mode and below protection). What the running add-on
+// recorded, from either, is judged again against this draft by the add-on itself.
 
 // ---------------------------------------------------------------------------------------------
 // Discovery (UI-03): one read per step visit; the add-on caches it and refreshes on request.
@@ -503,13 +513,371 @@ function withTimeout<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): P
   return run(controller.signal).finally(() => clearTimeout(timeout));
 }
 
+// ---------------------------------------------------------------------------------------------
+// The automatic (active) phase self-test of one relay device (CONN-05, maintainer survey
+// 2026-10-25). The add-on decides everything: whether it may start (control active, headroom on
+// every phase, lockouts, nothing else in flight), when to switch, and the verdict. The page asks,
+// shows the reasons, and never retries a start on its own.
+
+/** The relay stage the wizard tests: an editable on/off device has exactly one. */
+const ACTIVE_TEST_STAGE = 1;
+
+type ActiveRun =
+  | { kind: 'idle' }
+  | { kind: 'starting' }
+  | { kind: 'refused'; refusals: ActiveTestRefusal[] }
+  | { kind: 'failed' }
+  | { kind: 'test'; id: string; test: ActiveTest | null; lost: boolean };
+
+const ACTIVE_TEST_STORAGE_PREFIX = 'switchboard.setup.activeTest.';
+
+/** The id of an automatic test of this device started in this browser tab, if any (storage may be unavailable). */
+function storedActiveTest(device: string | null): string | null {
+  try {
+    return device === null ? null : window.sessionStorage.getItem(ACTIVE_TEST_STORAGE_PREFIX + device);
+  } catch {
+    return null;
+  }
+}
+
+function storeActiveTest(device: string | null, id: string | null): void {
+  try {
+    if (device === null) return;
+    if (id === null) window.sessionStorage.removeItem(ACTIVE_TEST_STORAGE_PREFIX + device);
+    else window.sessionStorage.setItem(ACTIVE_TEST_STORAGE_PREFIX + device, id);
+  } catch {
+    // A convenience only: without storage a running test is not shown again after leaving the page.
+  }
+}
+
+const isRunning = (run: ActiveRun) => run.kind === 'test' && (run.test === null || run.test.state === 'running');
+
+/** One reason the add-on gives for not starting, in words (a lockout says how long, headroom names the phase). */
+function refusalText(refusal: ActiveTestRefusal, t: Messages, lang: Lang): string {
+  if (refusal.code === 'lockout_min_off') {
+    return fill(t['setupLoads.active.refusal.lockout_min_off'], { remaining: refusal.remainingS === null ? '—' : formatAge(Math.ceil(refusal.remainingS), lang) });
+  }
+  if (refusal.code === 'headroom_insufficient') return fill(t['setupLoads.active.refusal.headroom_insufficient'], { phase: refusal.phase ?? '—' });
+  return t[`setupLoads.active.refusal.${refusal.code}`];
+}
+
+function Refusals({ refusals, t, lang }: { refusals: readonly ActiveTestRefusal[]; t: Messages; lang: Lang }) {
+  return (
+    <ul class="loads-active-refusals">
+      {refusals.map((refusal, n) => (
+        <li key={n} data-refusal={refusal.code}>
+          {refusalText(refusal, t, lang)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Whether the test may start now, with the add-on's reasons and the expected duration. */
+function ActivePreconditions({ state, t, lang }: { state: PollView<ActiveTestPreconditions | null>; t: Messages; lang: Lang }) {
+  if (state.kind === 'unavailable') return <p class="sub">{t['setupLoads.active.preconditionsUnavailable']}</p>;
+  if (state.kind === 'loading' || state.data === null) return <p class="updated">{t['setupLoads.active.checking']}</p>;
+  const { ok, refusals, expectedDurationS } = state.data;
+  const duration = expectedDurationS === null ? null : formatAge(Math.ceil(expectedDurationS), lang);
+  if (ok) return <p class="loads-active-ready">{fill(t['setupLoads.active.ready'], { duration: duration ?? '—' })}</p>;
+  return (
+    <div class="loads-active-blocked">
+      <p>{t['setupLoads.active.blocked']}</p>
+      <Refusals refusals={refusals} t={t} lang={lang} />
+      {duration !== null && <p class="sub">{fill(t['setupLoads.active.duration'], { duration })}</p>}
+    </div>
+  );
+}
+
+const ACTIVE_STEPS = ['on', 'measureOn', 'off', 'judge'] as const;
+type ActiveStep = (typeof ACTIVE_STEPS)[number];
+type StepState = 'done' | 'current' | 'pending';
+
+/** Where a test stands on each of its four steps, from the add-on's phase and the times it saw the device switch. */
+function stepState(test: ActiveTest, step: ActiveStep): StepState {
+  const running = test.state === 'running';
+  const finished = test.state === 'finished';
+  switch (step) {
+    case 'on':
+      return test.onAt !== null ? 'done' : running && test.phase === 'pending_on' ? 'current' : 'pending';
+    case 'measureOn':
+      return test.offAt !== null || finished || (running && (test.phase === 'pending_off' || test.phase === 'judging')) ? 'done' : running && test.phase === 'on' ? 'current' : 'pending';
+    case 'off':
+      return test.offAt !== null ? 'done' : running && test.phase === 'pending_off' ? 'current' : 'pending';
+    case 'judge':
+      return finished ? 'done' : running && test.phase === 'judging' ? 'current' : 'pending';
+  }
+}
+
 /**
- * CONN-05, passive (binding orchestrator decision): the guided watch asks the user to switch the
- * device themselves and shows which meter phase stepped; the draft's verdict over everything
- * observed (guided watches and switchings the running add-on recorded) comes from the add-on's
- * validation, which judges it again against this draft's phase and meter mapping.
+ * After the test, whether the device is back where it was (off: the test starts only from off, so
+ * its last command is an off). A finished test saw the off itself. After an abort the off may wait
+ * (min_on applies unless protection holds the device), so the add-on's own view comes first: while
+ * it reports the device on, it is not back, whatever an older readout says; otherwise the live
+ * state says whether the off has arrived.
  */
-function PhaseSelfTest({ setup, index, device, evidence, onFinished, t, lang }: { setup: SetupState; index: number; device: DeviceDraft; evidence: EvidenceState; onFinished: () => void; t: Messages; lang: Lang }) {
+function ReturnToPrior({ test, readout, addOnSeesOn, t, lang }: { test: ActiveTest; readout: Readout | undefined; addOnSeesOn: boolean; t: Messages; lang: Lang }) {
+  const live = readout?.status === 'found' ? readout.state : null;
+  const [restored, text] =
+    test.state === 'finished' && test.offAt !== null
+      ? [true, fill(t['setupLoads.active.restored'], { time: localClock(test.offAt, lang) })]
+      : addOnSeesOn || live === 'on'
+        ? [false, t['setupLoads.active.stillOn']]
+        : live === 'off'
+          ? [true, t['setupLoads.active.restoredLive']]
+          : [false, t['setupLoads.active.awaitingOff']];
+  return (
+    <p class={restored ? 'loads-active-return' : 'loads-active-return loads-field-issue'} data-restored={restored ? 'true' : 'false'}>
+      {text}
+    </p>
+  );
+}
+
+/** One test as the add-on reports it: where it stands, the step per phase, the verdict, and the return to the prior state. */
+function ActiveTestProgress({
+  test,
+  draftPhase,
+  readout,
+  addOnSeesOn,
+  t,
+  lang,
+}: {
+  test: ActiveTest;
+  draftPhase: string | null;
+  readout: Readout | undefined;
+  addOnSeesOn: boolean;
+  t: Messages;
+  lang: Lang;
+}) {
+  const running = test.state === 'running';
+  const headline =
+    test.state === 'aborted'
+      ? fill(t['setupLoads.active.state.aborted'], { reason: t[`setupLoads.active.abort.${test.abortReason ?? 'cancelled'}`] })
+      : t[`setupLoads.active.state.${test.state}`];
+  const phaseText =
+    !running || test.phase === 'done'
+      ? null
+      : test.phase === 'on'
+        ? fill(t['setupLoads.active.phase.on'], { time: localClock(test.onAt ?? test.startedAt, lang) })
+        : test.phase === 'judging'
+          ? fill(t['setupLoads.active.phase.judging'], { time: localClock(test.offAt ?? test.startedAt, lang) })
+          : t[`setupLoads.active.phase.${test.phase}`];
+  const times: Partial<Record<ActiveStep, Date | null>> = { on: test.onAt, off: test.offAt };
+  return (
+    <div class="loads-active-test" data-state={test.state}>
+      <p>
+        <strong>{headline}</strong>
+        {phaseText !== null && <> {phaseText}</>}
+      </p>
+      {running && <p class="sub">{fill(t['setupLoads.active.until'], { time: localClock(new Date(test.startedAt.getTime() + test.expectedDurationS * 1000), lang) })}</p>}
+      <p class="sub">
+        <span class="mono">{test.stateEntity}</span> · {fill(t['setupLoads.active.declared'], { phase: test.expectedPhase })}
+      </p>
+      {draftPhase !== null && draftPhase !== test.expectedPhase && <p class="note">{fill(t['setupLoads.active.draftDiffers'], { draft: draftPhase, declared: test.expectedPhase })}</p>}
+      <ol class="loads-active-steps">
+        {ACTIVE_STEPS.map((step) => {
+          const state = stepState(test, step);
+          const at = times[step];
+          return (
+            <li key={step} data-step={step} data-state={state}>
+              {t[`setupLoads.active.step.${step}`]}{' '}
+              <span class="sub-inline">
+                {t[`setupLoads.active.stepState.${state}`]}
+                {state === 'done' && at !== undefined && at !== null && ` · ${localClock(at, lang)}`}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <Observations observations={test.observations} declared={test.expectedPhase} judged={test.verdict !== null} t={t} lang={lang} />
+      {test.verdict !== null && (
+        <p class="loads-active-verdict">
+          <VerdictBadge summary={test.verdict} declared={test.expectedPhase} t={t} />
+          {test.verdict.verdict === 'mismatch' && <span class="loads-field-issue">{fill(t['setupLoads.verdict.mismatchAdvice'], { observed: test.verdict.observedPhase ?? '—' })}</span>}
+        </p>
+      )}
+      {!running && <ReturnToPrior test={test} readout={readout} addOnSeesOn={addOnSeesOn} t={t} lang={lang} />}
+    </div>
+  );
+}
+
+/**
+ * CONN-05, active: on demand only, for a device of the configuration in force (a draft-only device
+ * must be saved first). The button stays disabled until the add-on says the test may start, and a
+ * start asks once more before anything is switched. A running test is followed until it ends; a
+ * finished one asks the add-on to judge the draft again, like a finished watch.
+ */
+function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { setup: SetupState; device: DeviceDraft; readouts: ReadonlyMap<string, Readout>; onFinished: () => void; t: Messages; lang: Lang }) {
+  const deviceId = device.id;
+  // The device must be in the configuration in force. After a save in this visit the loaded view is
+  // older than the file, so the add-on's own answer (not_declared) decides from then on.
+  const queryable = deviceId !== null && (device.existing || setup.outcome?.kind === 'saved');
+  const [run, setRun] = useState<ActiveRun>(() => {
+    const stored = queryable ? storedActiveTest(deviceId) : null;
+    return stored === null ? { kind: 'idle' } : { kind: 'test', id: stored, test: null, lost: false };
+  });
+  const [confirming, setConfirming] = useState(false);
+  const disposed = useRef(false);
+  useEffect(
+    () => () => {
+      disposed.current = true;
+    },
+    [],
+  );
+  const update = (next: ActiveRun) => {
+    storeActiveTest(deviceId, next.kind === 'test' && !next.lost && isRunning(next) ? next.id : null);
+    if (!disposed.current) setRun(next);
+  };
+
+  const running = isRunning(run);
+  const askFor = queryable && !running ? deviceId : null;
+  const preconditions = usePoll<ActiveTestPreconditions | null>(
+    (signal) => (askFor === null ? Promise.resolve(null) : fetchActiveTestPreconditions(askFor, ACTIVE_TEST_STAGE, signal)),
+    SETUP_SELF_TEST_REFRESH_INTERVAL_MS,
+    SETUP_SELF_TEST_REQUEST_TIMEOUT_MS,
+    askFor ?? '',
+  );
+
+  const pollId = run.kind === 'test' && !run.lost && running ? run.id : null;
+  useEffect(() => {
+    if (pollId === null) return;
+    const timer = setTimeout(
+      () => {
+        void withTimeout(SETUP_SELF_TEST_REQUEST_TIMEOUT_MS, (signal) => fetchActiveTest(pollId, signal))
+          .then((test) => {
+            update({ kind: 'test', id: pollId, test, lost: false });
+            if (test.state !== 'running' && !disposed.current) onFinished();
+          })
+          .catch(() => update({ kind: 'test', id: pollId, test: run.kind === 'test' ? run.test : null, lost: true }));
+      },
+      run.kind === 'test' && run.test === null ? 0 : SETUP_SELF_TEST_REFRESH_INTERVAL_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [pollId, run]);
+
+  const start = async () => {
+    setConfirming(false);
+    if (deviceId === null) return;
+    update({ kind: 'starting' });
+    try {
+      const result = await withTimeout(SETUP_REQUEST_TIMEOUT_MS, (signal) => startActiveTest(deviceId, ACTIVE_TEST_STAGE, signal));
+      update(result.kind === 'started' ? { kind: 'test', id: result.id, test: null, lost: false } : { kind: 'refused', refusals: result.refusals });
+    } catch {
+      update({ kind: 'failed' });
+    }
+  };
+  const cancel = async (id: string, test: ActiveTest | null) => {
+    try {
+      await withTimeout(SETUP_REQUEST_TIMEOUT_MS, (signal) => cancelActiveTest(id, signal));
+    } catch {
+      // Reading the test again shows whether it stopped.
+    }
+    update({ kind: 'test', id, test, lost: false });
+  };
+
+  const live = preconditions.kind === 'live' ? preconditions.data : null;
+  const ready = live !== null && live.ok;
+  const duration = live !== null && live.expectedDurationS !== null ? formatAge(Math.ceil(live.expectedDurationS), lang) : '—';
+  const test = run.kind === 'test' ? run.test : null;
+  const actuator = device.actuator;
+  const idle = !running && run.kind !== 'starting';
+  return (
+    <div class="loads-active" data-active-test={run.kind}>
+      <h5>{t['setupLoads.active.title']}</h5>
+      <p class="sub">{t['setupLoads.active.lead']}</p>
+      {!queryable ? (
+        <p class="note loads-active-save">{t['setupLoads.active.saveFirst']}</p>
+      ) : (
+        <>
+          {idle && <ActivePreconditions state={preconditions} t={t} lang={lang} />}
+          {idle && confirming ? (
+            <div class="loads-confirm" role="alertdialog" aria-label={t['setupLoads.active.start']}>
+              <p>{actuator === null ? fill(t['setupLoads.active.confirm'], { entity: deviceLabel(device, t), duration }) : withEntity(t['setupLoads.active.confirm'], actuator, { duration })}</p>
+              <div class="loads-actions">
+                <button type="button" class="log-button loads-primary" disabled={!ready} onClick={() => void start()}>
+                  {t['setupLoads.active.confirmYes']}
+                </button>
+                <button type="button" class="log-button" onClick={() => setConfirming(false)}>
+                  {t['setupLoads.active.confirmNo']}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div class="loads-actions">
+              {idle && (
+                <button type="button" class="log-button" disabled={!ready} onClick={() => setConfirming(true)}>
+                  {test !== null ? t['setupLoads.active.again'] : t['setupLoads.active.start']}
+                </button>
+              )}
+              {run.kind === 'starting' && <span class="updated">{t['setupLoads.active.starting']}</span>}
+              {run.kind === 'test' && running && (
+                <button type="button" class="log-button loads-danger" onClick={() => void cancel(run.id, run.test)}>
+                  {t['setupLoads.active.cancel']}
+                </button>
+              )}
+            </div>
+          )}
+          {run.kind === 'refused' && (
+            <div class="loads-active-blocked" role="alert">
+              <p>{t['setupLoads.active.refused']}</p>
+              <Refusals refusals={run.refusals} t={t} lang={lang} />
+            </div>
+          )}
+          {run.kind === 'failed' && <p class="loads-field-issue">{t['setupLoads.active.failed']}</p>}
+          {run.kind === 'test' && (
+            <div class="loads-active-run" role="status">
+              {test !== null && (
+                <ActiveTestProgress
+                  test={test}
+                  draftPhase={device.phase}
+                  readout={readouts.get(test.stateEntity)}
+                  addOnSeesOn={live !== null && live.refusals.some((r) => r.code === 'device_on')}
+                  t={t}
+                  lang={lang}
+                />
+              )}
+              {run.lost && (
+                <p class="loads-field-issue">
+                  {t['setupLoads.active.lost']}{' '}
+                  <button type="button" class="linkbutton" onClick={() => update({ ...run, lost: false })}>
+                    {t['setupLoads.active.retry']}
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CONN-05: the automatic test above (Switchboard switches, on demand, below protection) and the
+ * guided watch (the user switches the device themselves while the wizard shows which meter phase
+ * stepped). The draft's verdict over everything observed (automatic tests, guided watches and
+ * switchings the running add-on recorded) comes from the add-on's validation, which judges it again
+ * against this draft's phase and meter mapping.
+ */
+function PhaseSelfTest({
+  setup,
+  index,
+  device,
+  evidence,
+  readouts,
+  onFinished,
+  t,
+  lang,
+}: {
+  setup: SetupState;
+  index: number;
+  device: DeviceDraft;
+  evidence: EvidenceState;
+  readouts: ReadonlyMap<string, Readout>;
+  onFinished: () => void;
+  t: Messages;
+  lang: Lang;
+}) {
   const stateEntity = device.stateEntity ?? device.actuator;
   // A watch outlives the page: the user leaves for Home Assistant to switch the device, and on the
   // way back the watch is shown again (the add-on keeps judging it on its own timer).
@@ -578,9 +946,6 @@ function PhaseSelfTest({ setup, index, device, evidence, onFinished, t, lang }: 
   return (
     <section class="loads-selftest" aria-labelledby={`setup-selftest-${index}`} data-device={index}>
       <h4 id={`setup-selftest-${index}`}>{t['setupLoads.selfTest.title']}</h4>
-      <p class="loads-selftest-passive">
-        <strong>{t['setupLoads.selfTest.passive']}</strong>
-      </p>
       <p class="sub">{t['setupLoads.selfTest.why']}</p>
 
       <div class="loads-selftest-verdict" data-field={`devices[${index}].phase`}>
@@ -593,7 +958,18 @@ function PhaseSelfTest({ setup, index, device, evidence, onFinished, t, lang }: 
           </>
         )}
       </div>
+      <div class="loads-actions">
+        <button type="button" class="log-button" disabled={setup.busy !== 'idle'} onClick={() => void setup.validate()}>
+          {t['setupLoads.history.check']}
+        </button>
+      </div>
 
+      <ActivePhaseTest setup={setup} device={device} readouts={readouts} onFinished={onFinished} t={t} lang={lang} />
+
+      <h5>{t['setupLoads.selfTest.passiveTitle']}</h5>
+      <p class="loads-selftest-passive">
+        <strong>{t['setupLoads.selfTest.passive']}</strong>
+      </p>
       <div class="loads-actions">
         {(watch.kind === 'idle' || watch.kind === 'refused' || watch.kind === 'failed' || (watch.kind === 'active' && test !== null && test.status !== 'watching')) && (
           <button type="button" class="log-button" disabled={stateEntity === null} onClick={() => void start()}>
@@ -606,9 +982,6 @@ function PhaseSelfTest({ setup, index, device, evidence, onFinished, t, lang }: 
             {t['setupLoads.selfTest.cancel']}
           </button>
         )}
-        <button type="button" class="log-button" disabled={setup.busy !== 'idle'} onClick={() => void setup.validate()}>
-          {t['setupLoads.history.check']}
-        </button>
       </div>
 
       {watch.kind === 'refused' && <SetupIssues issues={watch.issues} t={t} />}
@@ -657,6 +1030,55 @@ function PhaseSelfTest({ setup, index, device, evidence, onFinished, t, lang }: 
         )}
       </details>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Start policy and stop actuator (control stage, maintainer survey 2026-10-25).
+
+/** The spellings of start: the device parser accepts; the first one is the shipped default (devices.default_start). */
+const START_POLICIES = ['restore_only', 'headroom'] as const;
+const isStartPolicy = (value: string): value is (typeof START_POLICIES)[number] => (START_POLICIES as readonly string[]).includes(value);
+
+/**
+ * A modulating device's stop actuator: the switch that stops it below its minimum (a charger's
+ * charging switch). The parser accepts the relay domains of an on/off device, so the picker offers
+ * those, and the switches of the control entity's own Home Assistant device are listed first and
+ * named as suggestions. Nothing is preselected: only the user declares (CLAUDE.md).
+ */
+function StopActuatorField({ setup, index, device, entities, t }: { setup: SetupState; index: number; device: DeviceDraft; entities: readonly DiscoveredEntity[] | null; t: Messages }) {
+  const field = `devices[${index}].stopActuator`;
+  const filter: PickerFilter = { domains: setup.templates.find((tpl) => tpl.type === 'onoff')?.actuatorDomains ?? [] };
+  const haDevice = device.actuator === null ? null : (entities?.find((e) => e.entityId === device.actuator)?.deviceId ?? null);
+  const sameDevice = entities === null || haDevice === null ? [] : entities.filter((e) => e.deviceId === haDevice && e.derived === null && matchesFilter(e, filter));
+  const ordered = entities === null ? null : [...sameDevice, ...entities.filter((e) => !sameDevice.includes(e))];
+  return (
+    <div class="loads-field loads-stop">
+      <EntityPicker id={fieldId(field)} label={t['setupLoads.field.stopActuator']} value={device.stopActuator} onChange={(v) => setup.set(field, v)} entities={ordered} filter={filter} t={t} />
+      <span class="sub">{t['setupLoads.field.stopActuatorHint']}</span>
+      {entities !== null &&
+        (device.actuator === null ? (
+          <span class="sub">{t['setupLoads.stop.pickActuator']}</span>
+        ) : sameDevice.length === 0 ? (
+          <span class="sub loads-stop-none">{withEntity(t['setupLoads.stop.none'], device.actuator)}</span>
+        ) : (
+          <div class="loads-stop-suggest">
+            <span class="sub">{withEntity(t['setupLoads.stop.suggested'], device.actuator)}</span>
+            <ul>
+              {sameDevice.map((e) => (
+                <li key={e.entityId} data-entity={e.entityId}>
+                  <button type="button" class="linkbutton" aria-pressed={device.stopActuator === e.entityId} onClick={() => setup.set(field, e.entityId)}>
+                    {withEntity(t['setupLoads.stop.use'], e.entityId)}
+                  </button>
+                  {e.name !== null && <span class="sub-inline"> {e.name}</span>}
+                </li>
+              ))}
+            </ul>
+            <span class="sub">{t['setupLoads.stop.check']}</span>
+          </div>
+        ))}
+      <FieldErrors issues={setup.issues} field={field} t={t} />
+    </div>
   );
 }
 
@@ -811,6 +1233,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               <span class="sub">{t['setupLoads.field.stateEntityHint']}</span>
               <FieldErrors issues={setup.issues} field={f('stateEntity')} t={t} />
             </div>
+            {device.type === 'modulating' && <StopActuatorField setup={setup} index={index} device={device} entities={context.entities} t={t} />}
           </div>
           {state !== null && (
             <p class="loads-readout">
@@ -875,6 +1298,19 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
             <Field label={t['setupLoads.field.valuePerKwh']} htmlFor={id('valuePerKwh')} field={f('valuePerKwh')} setup={setup} t={t} hint={t['setupLoads.field.valuePerKwhHint']}>
               <NumberInput id={id('valuePerKwh')} value={device.valuePerKwh} onChange={(v) => set('valuePerKwh', v)} invalid={hasError(setup, f('valuePerKwh'))} t={t} />
             </Field>
+            {device.type !== 'storage' && (
+              <Field label={t['setupLoads.field.start']} htmlFor={id('start')} field={f('start')} setup={setup} t={t} hint={t['setupLoads.field.startHint']}>
+                {/* No choice yet shows the shipped default; the add-on writes start: only when it differs from the file's default or the file had it. */}
+                <select id={id('start')} value={device.start ?? 'restore_only'} aria-invalid={hasError(setup, f('start')) ? true : undefined} onChange={(e) => set('start', (e.currentTarget as HTMLSelectElement).value)}>
+                  {START_POLICIES.map((policy) => (
+                    <option key={policy} value={policy}>
+                      {t[`setupLoads.start.${policy}`]}
+                    </option>
+                  ))}
+                  {device.start !== null && !isStartPolicy(device.start) && <option value={device.start}>{device.start}</option>}
+                </select>
+              </Field>
+            )}
             <Field
               label={t['setupLoads.field.circuitGroup']}
               htmlFor={id('circuitGroup')}
@@ -945,6 +1381,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               index={index}
               device={device}
               evidence={context.evidence ?? { kind: 'unavailable' }}
+              readouts={context.readouts}
               onFinished={context.onFinishedSelfTest}
               t={t}
               lang={lang}
@@ -1027,7 +1464,8 @@ export function deviceEntities(device: DeviceDraft): (string | null)[] {
 /**
  * Step 4 (Loads): template cards, then every device of the draft (existing ones first, as the file
  * lists them, so re-running the wizard shows and keeps them all), each with its pickers, live
- * readouts, phase and groups, and its passive phase self-test. Storage devices are edited in step 3.
+ * readouts, phase, groups and start policy, a charger's stop actuator, and the phase self-test
+ * (automatic and passive) of an on/off device. Storage devices are edited in step 3.
  */
 export function SetupLoads({ setup, t, lang, goTo }: StepProps) {
   const discovery = useDiscovery();

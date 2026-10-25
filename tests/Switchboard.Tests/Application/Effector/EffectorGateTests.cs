@@ -159,13 +159,13 @@ public sealed class EffectorGateTests
     }
 
     [Fact]
-    public void Active_mode_never_commands_in_this_version()
+    public void A_gate_without_a_command_port_never_commands_and_records_shadow()
     {
-        // Even a forced active effective mode records shadow: there is no command path to use.
+        // Active semantics need the port: a gate built without one (shadow-only tests, a host that
+        // failed to compose its command path) records every decision as shadow and commands nothing.
         var s = new GuardScenario(TestDevices.Document());
-        var forced = new ModeStatus(OperatingMode.Active, OperatingMode.Active, OperatingMode.Active, ModeNote.None);
 
-        var decision = Assert.Single(s.Gate.Apply(Evaluation(s, Intent("heater_l1", GuardTarget.Off, ReasonCode.GuardTierExceeded)), forced, s.Now));
+        var decision = Assert.Single(s.Gate.Apply(Evaluation(s, Intent("heater_l1", GuardTarget.Off, ReasonCode.GuardTierExceeded)), DispatchScenario.Active, s.Now));
 
         Assert.Equal((false, OperatingMode.Shadow, ReasonCode.ModeShadow), (decision.Commanded, decision.Mode, decision.RefusedBy));
     }

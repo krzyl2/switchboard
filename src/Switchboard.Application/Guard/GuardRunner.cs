@@ -5,6 +5,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Devices;
 
 namespace Switchboard.Application.Guard;
 
@@ -18,17 +19,27 @@ public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decisi
 
     /// <summary>The control inputs this step read (one store cycle); for read-only consumers such as the presentation.</summary>
     public ControlInputs? Inputs { get; init; }
+
+    /// <summary>The mode this step ran in (option, control switch, configuration, state).</summary>
+    public ModeStatus? Mode { get; init; }
+
+    /// <summary>The commanded restore baselines after the step, for state.json.</summary>
+    public ImmutableDictionary<DeviceName, StartBaseline> Baselines { get; init; } = ImmutableDictionary<DeviceName, StartBaseline>.Empty;
+
+    /// <summary>The devices dispatch started under start: headroom, for state.json.</summary>
+    public ImmutableDictionary<DeviceName, DateTimeOffset> SelfStarted { get; init; } = ImmutableDictionary<DeviceName, DateTimeOffset>.Empty;
 }
 
 /// <summary>
 /// The control loop's only reader. It wakes on every store cycle the signal store publishes, on the
-/// kill switch, on an override change, on a UI mode change, on its own deadline timer (cycle boundaries, band timers,
-/// budget thresholds, settling timeouts, lockout expiries) and at shutdown. Each step reads the
-/// control inputs once (protection and dispatch views of the same cycle), evaluates the guard first,
-/// then dispatch against the guard's envelope, passes both through the effector gate and records
-/// the decisions: protection always comes first in the same step. It runs on the signal clock, so
-/// the budget follows the meter's timeline even in development replay. Nothing here can reach Home
-/// Assistant: the gate built in production holds no command port, and the recorder only queues.
+/// kill switch, on an override change, on a change of the control switch, on a command's outcome, on
+/// the self-test, on its own deadline timer (cycle boundaries, band timers, budget thresholds,
+/// settling timeouts, lockout expiries, confirmations) and at shutdown. Each step reads the control
+/// inputs once (protection and dispatch views of the same cycle), resolves the mode from them,
+/// evaluates the guard first, then dispatch against the guard's envelope, passes both through the
+/// effector gate (which alone holds the command port) and records the decisions: protection always
+/// comes first in the same step. It runs on the signal clock, so the budget follows the meter's
+/// timeline even in development replay; the recorder only queues.
 /// </summary>
 public sealed class GuardRunner : IDisposable
 {
@@ -46,10 +57,13 @@ public sealed class GuardRunner : IDisposable
     private readonly IKillSwitchView _killSwitch;
     private readonly IDeviceOverrideView _overrides;
     private readonly ILogger<GuardRunner> _logger;
+    private readonly IControlSwitchView? _control;
+    private readonly SelfTestSlot? _selfTest;
     private readonly object _sync = new();
     private DateTimeOffset? _lastStep;
     private bool _started;
-    private ModeStatus? _recordedMode;
+    private ModeRecord? _recordedMode;
+    private ModeStatus? _appliedMode;
     private bool _recorderFailing;
 
     public GuardRunner(
@@ -66,7 +80,9 @@ public sealed class GuardRunner : IDisposable
         IModeSource mode,
         IKillSwitchView killSwitch,
         IDeviceOverrideView overrides,
-        ILogger<GuardRunner> logger)
+        ILogger<GuardRunner> logger,
+        IControlSwitchView? control = null,
+        SelfTestSlot? selfTest = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         ArgumentNullException.ThrowIfNull(clock);
@@ -84,6 +100,8 @@ public sealed class GuardRunner : IDisposable
         _killSwitch = killSwitch;
         _overrides = overrides;
         _logger = logger;
+        _control = control;
+        _selfTest = selfTest;
         _inputs.Published += OnPublished;
     }
 
@@ -119,16 +137,26 @@ public sealed class GuardRunner : IDisposable
         lock (_sync)
         {
             var now = _time.GetUtcNow();
-            var mode = _mode.Current;
+            var inputs = _inputs.Current;
+            var mode = _mode.For(inputs.Protection.Setup is not null);
             var decisions = ImmutableArray.CreateBuilder<Decision>();
-            if (!_started || mode != _recordedMode)
+            var record = ModeRecord.Of(mode);
+            if (!_started || record != _recordedMode)
             {
-                // The mode of this start, and every change of it since (MODE-02), as a mode decision.
+                // The mode of this start, and every change of it since (MODE-02), as a mode decision
+                // at once. The configuration's validity counts only where it decides whether
+                // commands leave, so a broken file in shadow mode adds no mode records.
                 _started = true;
-                _recordedMode = mode;
-                decisions.Add(_gate.Start(mode, now));
+                _recordedMode = record;
+                decisions.Add(_gate.ModeDecision(mode, _control?.Status.Source, now));
             }
 
+            if (_appliedMode is null || _appliedMode.Commands != mode.Commands)
+            {
+                _gate.ModeChanged(_appliedMode, mode, now);
+            }
+
+            _appliedMode = mode;
             var trigger = GuardTrigger.Snapshot;
             while (_inbox.Reader.TryRead(out var queued))
             {
@@ -142,20 +170,40 @@ public sealed class GuardRunner : IDisposable
             }
 
             _lastStep = now;
-            var inputs = _inputs.Current;
             var protection = inputs.Protection;
             var overrides = _overrides.Current;
             _lockouts.Observe(protection.Setup ?? _engine.Setup, protection.DeviceStates, now);
             _gate.BeginStep(inputs, now);
             var evaluation = _engine.Evaluate(new GuardInput(trigger, protection, _killSwitch.Status, mode), now);
-            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode), now);
+            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current }, now);
             decisions.AddRange(_gate.Apply(evaluation, dispatch, overrides, mode, inputs, now));
             Record(decisions.ToImmutable());
             _holder.Publish(evaluation.Status);
             var dispatchStatus = DispatchStatusFactory.Build(evaluation, dispatch, _gate.Ledger, overrides, _lockouts, inputs, mode, now);
             _dispatchHolder.Publish(dispatchStatus);
-            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export()) { Dispatch = dispatch, DispatchStatus = dispatchStatus, Inputs = inputs });
+            var (baselines, selfStarted) = _gate.Persisted();
+            Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export())
+            {
+                Dispatch = dispatch,
+                DispatchStatus = dispatchStatus,
+                Inputs = inputs,
+                Mode = mode,
+                Baselines = baselines,
+                SelfStarted = selfStarted,
+            });
             return now;
+        }
+    }
+
+    /// <summary>
+    /// The end of the shutdown path, after the command path had its bounded wait: the decisions
+    /// still waiting for an answer are recorded with what arrived (not answered: not commanded).
+    /// </summary>
+    public void Drain()
+    {
+        lock (_sync)
+        {
+            Record(_gate.Drain(_time.GetUtcNow()));
         }
     }
 
@@ -182,6 +230,12 @@ public sealed class GuardRunner : IDisposable
     public void Dispose() => _inputs.Published -= OnPublished;
 
     private void OnPublished(object? sender, ControlInputs inputs) => _inbox.Post(GuardTrigger.Snapshot);
+
+    /// <summary>What a mode decision is recorded for: the option, the switch, the state, and whether commands leave at all.</summary>
+    private sealed record ModeRecord(OperatingMode Ceiling, bool ControlAllowed, bool StateConfirmed, OperatingMode Effective, bool DecreasesOnly)
+    {
+        public static ModeRecord Of(ModeStatus mode) => new(mode.Ceiling, mode.ControlAllowed, mode.StateConfirmed, mode.Effective, mode.DecreasesOnly);
+    }
 
     private void Arm(ITimer timer, DateTimeOffset now)
     {

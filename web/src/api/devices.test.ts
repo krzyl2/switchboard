@@ -37,3 +37,14 @@ describe('parseDevices', () => {
     expect(() => parseDevices(make())).toThrow();
   });
 });
+
+describe('parseDevices, start policy', () => {
+  // The example declares no start: key, so every device has the shipped default, restore_only.
+  it('reads the start policy of each device', () => {
+    expect(parseDevices(payload()).devices.map((d) => d.start)).toEqual(['restore_only', 'restore_only', 'restore_only', 'restore_only']);
+  });
+
+  it('refuses an unknown start policy', () => {
+    expect(() => parseDevices(payload((p) => (p.devices[0].start = 'eager')))).toThrow();
+  });
+});

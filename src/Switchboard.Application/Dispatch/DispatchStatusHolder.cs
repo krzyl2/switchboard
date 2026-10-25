@@ -69,7 +69,7 @@ public static class DispatchStatusFactory
         ArgumentNullException.ThrowIfNull(mode);
         if (inputs.DispatchSetup is not { } setup || guard.Setup is not { } protection)
         {
-            return new DispatchStatus(now, mode, false, [], []);
+            return new DispatchStatus(now, mode, mode.Commands, [], []);
         }
 
         var envelope = guard.Envelope;
@@ -124,10 +124,16 @@ public static class DispatchStatusFactory
                 entry?.Mismatches ?? 0,
                 overrides.For(spec.Id),
                 draw,
-                entry?.History ?? []);
+                entry?.History ?? [])
+            {
+                Start = spec.Start,
+                Baseline = entry?.Baseline,
+                UnconfirmedSince = entry?.UnconfirmedSince,
+                SelfStarted = entry?.SelfStarted,
+            };
         });
 
-        return new DispatchStatus(now, mode, false, [.. phases], [.. devices]);
+        return new DispatchStatus(now, mode, mode.Commands, [.. phases], [.. devices]);
     }
 
     private static DrawStatus DrawOf(DeviceSpec spec, DispatchDevice device, List<Phase> phases, ControlInputs inputs)

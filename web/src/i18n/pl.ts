@@ -1,3 +1,4 @@
+import { control } from './control';
 import { dashboard } from './dashboard';
 import { device } from './device';
 import type { Messages } from './en';
@@ -23,7 +24,7 @@ export const pl: Messages = {
   modeShadow: 'Obserwacja',
   modeShadowNote: 'Liczy i zapisuje decyzje, niczego nie przełącza.',
   modeActive: 'Sterowanie aktywne',
-  modeActiveNote: 'Ta wersja nie ma ścieżki sterowania i niczego nie przełączy.',
+  modeActiveNote: 'Wysyła komendy do zadeklarowanych encji sterujących.',
   connectionConnected: 'Połączono',
   connectionConnecting: 'Łączenie',
   connectionDisconnected: 'Rozłączono',
@@ -232,6 +233,8 @@ export const pl: Messages = {
   'killSwitchSource.api': 'przez API',
   'killSwitchSource.mqtt': 'z Home Assistant',
   'killSwitchSource.restored': 'przywrócone po restarcie',
+  'killSwitchSource.corrupt_state': 'włączone przy starcie: zapisanemu stanowi nie można było ufać, trzymane do Twojego potwierdzenia',
+  'killSwitchSource.confirmation': 'wyłączone Twoim potwierdzeniem stanu',
   'safeStateCause.shutdown': 'dodatek się zatrzymuje',
   'safeStateCause.starting': 'uruchamianie: konfiguracja jeszcze nie została wczytana',
   'safeStateCause.configuration_invalid': 'błędna konfiguracja',
@@ -368,6 +371,7 @@ export const pl: Messages = {
   'origin.guard': 'decyzja ochrony',
   'origin.dispatch': 'decyzja rozdziału mocy',
   'origin.override': 'ręczne nadpisanie',
+  'origin.self_test': 'przełączone przez aktywny test faz',
   groupDetail: 'grupa obwodu {group}',
   targetDetail: 'cel: {level}',
   headroomDetail: '{constraint}: można dołożyć {envelope}',
@@ -375,7 +379,7 @@ export const pl: Messages = {
   foreignDetail: 'obce obciążenie {measured} przy poziomie bazowym {baseline}',
   overrideDetail: 'nadpisanie: {mode}',
 
-  // Reason codes, list version 2 (04-ALGORITHMS §6): one sentence per code.
+  // Reason codes, list version 3 (04-ALGORITHMS §6): one sentence per code.
   'reason.guard_tier_exceeded': 'Prąd fazy powyżej progu z profilu bezpiecznika.',
   'reason.guard_budget_low': 'Budżet przeciążenia fazy jest niski.',
   'reason.guard_stale_signal': 'Sygnał, od którego zależą limity, jest przeterminowany lub niedostępny.',
@@ -396,6 +400,7 @@ export const pl: Messages = {
   'reason.plan_slot_target': 'Cel bieżącego odcinka planu.',
   'reason.headroom_available': 'Wolna moc znów dostępna.',
   'reason.kill_switch': 'Wstrzymanie sterowania jest włączone.',
+  'reason.change_limit': 'Inne zwiększenie w tym oknie ustalania wciąż trwa; jedna zmiana naraz.',
   'reason.kill_switch.released': 'Wstrzymanie sterowania zostało wyłączone.',
   'reason.safe_state.exited': 'Dane znów są poprawne; stan bezpieczny zakończony.',
   'reason.device_unresponsive.cleared': 'Próba się zgodziła: urządzenie znów reaguje i bierze udział w rozdziale mocy.',
@@ -479,4 +484,5 @@ export const pl: Messages = {
   ...setupSources.pl,
   ...setupLoads.pl,
   ...setupMode.pl,
+  ...control.pl,
 };

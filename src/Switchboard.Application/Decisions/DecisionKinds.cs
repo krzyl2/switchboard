@@ -9,7 +9,7 @@ public enum DecisionKind
     /// <summary>Dispatch's starts, increases, reductions and deferrals.</summary>
     Dispatch,
 
-    /// <summary>A manual override set or cleared, and the changes it caused.</summary>
+    /// <summary>A manual override set or cleared, the changes it caused, and the active phase self-test's switchings.</summary>
     Override,
 
     /// <summary>Effector verification: unresponsive marks and clears, settling timeouts.</summary>
@@ -40,7 +40,7 @@ public static class DecisionKinds
             DecisionAction.MarkedUnresponsive or DecisionAction.UnresponsiveCleared or DecisionAction.SettlingTimedOut => DecisionKind.Verification,
             DecisionAction.ForeignLoadDetected => DecisionKind.ForeignLoad,
             DecisionAction.OverrideSet => DecisionKind.Override,
-            _ when decision.Origin == DecisionOrigin.Override => DecisionKind.Override,
+            _ when decision.Origin is DecisionOrigin.Override or DecisionOrigin.SelfTest => DecisionKind.Override,
             _ when decision.Origin == DecisionOrigin.Dispatch => DecisionKind.Dispatch,
             DecisionAction.Deferred when decision.Origin is null => DecisionKind.Dispatch,
             _ => DecisionKind.Protection,

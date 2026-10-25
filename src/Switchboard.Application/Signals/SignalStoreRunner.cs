@@ -17,6 +17,7 @@ public sealed class SignalStoreRunner
     private readonly SignalSnapshotHolder _holder;
     private readonly TimeProvider _time;
     private readonly ILogger<SignalStoreRunner> _logger;
+    private readonly ActuatorDirectoryHolder? _actuators;
     private ImmutableHashSet<string> _loggedWarnings = [];
     private DateTimeOffset? _lastStep;
     private (SwitchboardConfiguration? Configuration, ImmutableDictionary<Domain.Signals.SignalName, EntityId> Entities) _entities =
@@ -28,9 +29,11 @@ public sealed class SignalStoreRunner
         ISignalSource source,
         SignalSnapshotHolder holder,
         SignalClock clock,
-        ILogger<SignalStoreRunner> logger)
+        ILogger<SignalStoreRunner> logger,
+        ActuatorDirectoryHolder? actuators = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
+        _actuators = actuators;
         _inbox = inbox;
         _store = store;
         _source = source;
@@ -112,6 +115,10 @@ public sealed class SignalStoreRunner
     private void Publish(DateTimeOffset now)
     {
         var configuration = _store.ConfigurationResult?.Configuration;
+
+        // The command path's actuators follow the same reload as the protection setup, published
+        // before the snapshot so a command decided on the new setup is resolved against it.
+        _actuators?.Observe(configuration);
         if (!ReferenceEquals(configuration, _entities.Configuration))
         {
             _entities = (configuration, configuration is null

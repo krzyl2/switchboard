@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
+using Switchboard.Application.Setup;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
@@ -19,7 +20,12 @@ public sealed record SignalsResponse(
     ConnectionDto? Connection,
     IReadOnlyList<PhaseDto> Phases,
     IReadOnlyList<SignalDto> Signals,
-    RejectionsDto Rejections);
+    RejectionsDto Rejections,
+    IReadOnlyList<ConfigurationWarningDto> ConfigurationWarnings);
+
+/// <summary>A warning of the derived-sensor check of the configuration in force (never a safe state, never a refusal).</summary>
+/// <param name="Code">derived_measurement_input, measurement_not_in_registry or derived_check_unavailable.</param>
+public sealed record ConfigurationWarningDto(string Code, string? Signal, string? Entity, string? Platform, DateTimeOffset CheckedAt);
 
 public sealed record SignalSourceDto(string Kind, string Status);
 
@@ -88,13 +94,14 @@ internal static class SignalsEndpoint
                 [FromServices] ISignalDiagnosticsSource diagnostics,
                 [FromServices] SignalClock clock,
                 [FromServices] SignalSourceSelection selection,
-                [FromServices] RuntimeEnvironment environment) =>
-            TypedResults.Json(Build(diagnostics.Current, clock.Time.GetUtcNow(), selection, environment.ConfigPath)));
+                [FromServices] RuntimeEnvironment environment,
+                [FromServices] ConfigurationWarningsHolder warnings) =>
+            TypedResults.Json(Build(diagnostics.Current, clock.Time.GetUtcNow(), selection, environment.ConfigPath, warnings.Current)));
         return endpoints;
     }
 
     /// <summary>Ages are computed at request time from each signal's last report; states come from the snapshot.</summary>
-    internal static SignalsResponse Build(SignalDiagnostics diagnostics, DateTimeOffset now, SignalSourceSelection selection, string configPath)
+    internal static SignalsResponse Build(SignalDiagnostics diagnostics, DateTimeOffset now, SignalSourceSelection selection, string configPath, IReadOnlyList<ConfigurationWarning>? warnings = null)
     {
         var snapshot = diagnostics.Snapshot;
         var configuration = diagnostics.Configuration;
@@ -114,7 +121,8 @@ internal static class SignalsEndpoint
                 : null,
             [.. snapshot.Protection.Phases.Select(p => Phase(snapshot, p))],
             [.. snapshot.Signals.Select(s => Signal(s, diagnostics, now))],
-            new RejectionsDto(snapshot.Rejections.Total, snapshot.Rejections.BalanceResidual, snapshot.Rejections.InvalidSample));
+            new RejectionsDto(snapshot.Rejections.Total, snapshot.Rejections.BalanceResidual, snapshot.Rejections.InvalidSample),
+            [.. (warnings ?? []).Select(w => new ConfigurationWarningDto(w.Code, w.Signal?.Value, w.Entity?.Value, w.Platform, w.CheckedAt))]);
     }
 
     private static PhaseDto Phase(SignalSnapshot snapshot, PhaseProtection protection)

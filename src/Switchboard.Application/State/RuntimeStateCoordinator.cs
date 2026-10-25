@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
@@ -14,10 +15,10 @@ using Switchboard.Domain.Signals;
 namespace Switchboard.Application.State;
 
 /// <summary>
-/// Keeps the runtime state in memory and decides when it is written: at once on a kill switch
-/// change, a budget threshold crossing, a budget drop of at least StateBudgetSaveStep, the clean
-/// shutdown flag or a changed discovery ledger; otherwise at most every StateSaveInterval, and only
-/// when something changed. Writes go through a one-slot queue (a newer state supersedes an older
+/// Keeps the runtime state in memory and decides when it is written: at once on a kill switch or
+/// control switch change, a budget threshold crossing, a budget drop of at least
+/// StateBudgetSaveStep, the clean shutdown flag, a changed restore baseline or a changed discovery
+/// ledger; otherwise at most every StateSaveInterval, and only when something changed. Writes go through a one-slot queue (a newer state supersedes an older
 /// one) drained by <see cref="RunAsync"/>: the guard thread and the kill switch only ever touch
 /// memory, so a slow or full disk can delay neither. A failed write is reported in
 /// <see cref="Report"/> and retried after WriteRetryInterval; control continues.
@@ -108,18 +109,28 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         var at = step.Evaluation.At;
         lock (_gate)
         {
+            var errors = step.Decisions.Where(d => d is { Scope: DecisionScope.System, Action: DecisionAction.SafeStateEntered }
+                && d.Inputs.SafeStateCause is SafeStateCause.ConfigurationInvalid or SafeStateCause.ConfigurationMissing).ToList();
+            var observation = _current.Observation is { } observed && errors.Count > 0
+                ? observed with { ConfigurationErrors = observed.ConfigurationErrors + errors.Count, LastConfigurationErrorAt = errors[^1].At }
+                : _current.Observation;
             var next = _current with
             {
                 Budgets = step.Memory.Budgets,
                 GroupBudgets = step.Memory.GroupBudgets,
                 CleanShutdown = step.Memory.CleanShutdown,
                 Devices = MergeLastKnown(_current.Devices, step.Evaluation.Status, at),
+                StartBaselines = SameBaselines(_current.StartBaselines, step.Baselines) ? _current.StartBaselines : step.Baselines,
+                SelfStarted = _current.SelfStarted.Count == step.SelfStarted.Count && _current.SelfStarted.All(s => step.SelfStarted.TryGetValue(s.Key, out var t) && t == s.Value) ? _current.SelfStarted : step.SelfStarted,
+                Observation = observation,
             };
             _current = next;
 
             var baseline = _lastQueued;
             var immediate = baseline is null
                 || baseline.CleanShutdown != next.CleanShutdown
+                || !ReferenceEquals(baseline.StartBaselines, next.StartBaselines) && !SameBaselines(baseline.StartBaselines, next.StartBaselines)
+                || !ReferenceEquals(baseline.SelfStarted, next.SelfStarted) && baseline.SelfStarted.Count != next.SelfStarted.Count
                 || ThresholdCrossed(baseline.Budgets, next.Budgets)
                 || BudgetDropped(baseline.Budgets, next.Budgets)
                 || GroupBudgetAlarm(baseline.GroupBudgets, next.GroupBudgets);
@@ -133,25 +144,43 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         }
     }
 
-    /// <summary>Follows the UI mode choice (MODE-02): written at once, like the kill switch. Call once, before the first step.</summary>
-    public void Attach(ModeState mode)
+    /// <summary>Follows the control switch (MODE-02): written at once, like the kill switch, so a crash after turning control off cannot restart with it on. Call once, before the first step.</summary>
+    public void Attach(ControlSwitchState control)
     {
-        ArgumentNullException.ThrowIfNull(mode);
-        mode.Changed += (_, status) => OnModeChanged(status);
+        ArgumentNullException.ThrowIfNull(control);
+        control.Changed += (_, status) => OnControlChanged(status);
     }
 
-    /// <summary>Called after the mode changed in memory; the write is best effort.</summary>
-    public void OnModeChanged(ModeStatus status)
+    /// <summary>Called after the control switch changed in memory; the write is best effort.</summary>
+    public void OnControlChanged(ControlSwitchStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
         lock (_gate)
         {
-            if (_current.UiMode == status.UiChoice)
+            if (_current.Control == status)
             {
                 return;
             }
 
-            _current = _current with { UiMode = status.UiChoice };
+            _current = _current with { Control = status };
+            Enqueue(_current, status.ChangedAt ?? _lastQueuedAt);
+        }
+    }
+
+    /// <summary>
+    /// The first start of observing (a fresh install, or a state.json written before 0.7.0): when it
+    /// began. Written with the next save; a value already known is kept.
+    /// </summary>
+    public void BeginObservation(DateTimeOffset firstStartedAt)
+    {
+        lock (_gate)
+        {
+            if (_current.Observation is not null)
+            {
+                return;
+            }
+
+            _current = _current with { Observation = new ObservationRecord(firstStartedAt, 0, null) };
             Enqueue(_current, _lastQueuedAt);
         }
     }
@@ -350,8 +379,12 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
             return ThresholdCrossed(saved, g.Value) || BudgetDropped(saved, g.Value);
         });
 
+    private static bool SameBaselines(ImmutableDictionary<DeviceName, Effector.StartBaseline> a, ImmutableDictionary<DeviceName, Effector.StartBaseline> b) =>
+        a.Count == b.Count && a.All(x => b.TryGetValue(x.Key, out var y) && y == x.Value);
+
     private static bool Changed(RuntimeState before, RuntimeState after) =>
         before.KillSwitch != after.KillSwitch
+        || before.Observation != after.Observation
         || before.Budgets.Count != after.Budgets.Count
         || after.Budgets.Any(p => !before.Budgets.TryGetValue(p.Key, out var saved) || saved.Budget != p.Value.Budget)
         || GroupBudgetsChanged(before, after)

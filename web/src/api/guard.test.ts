@@ -129,3 +129,21 @@ describe('parseGuard, Stage 4 breaker fields', () => {
     expect(() => parseGuard(payload(change))).toThrow();
   });
 });
+
+// Stage C: the kill switch says whether it switches anything now, and whether it is held after an
+// untrusted state.json; a page that hides either would misstate what the add-on does.
+describe('parseGuard, kill switch of the control stage', () => {
+  it('reads the lock and whether the kill switch switches devices', () => {
+    const parsed = parseGuard(payload((p) => Object.assign(p.killSwitch, { engaged: true, source: 'corrupt_state', locked: true, switchesDevices: true })));
+
+    expect(parsed.killSwitch).toMatchObject({ engaged: true, source: 'corrupt_state', locked: true, switchesDevices: true });
+  });
+
+  it.each([
+    ['without its lock flag', (p: any) => delete p.killSwitch.locked],
+    ['without saying whether it switches devices', (p: any) => delete p.killSwitch.switchesDevices],
+    ['with an unknown source', (p: any) => (p.killSwitch.source = 'browser')],
+  ])('refuses a kill switch %s', (_case, change) => {
+    expect(() => parseGuard(payload(change))).toThrow();
+  });
+});

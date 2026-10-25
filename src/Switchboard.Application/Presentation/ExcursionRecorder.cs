@@ -72,7 +72,7 @@ public sealed class ExcursionRecorder
         [DecisionAction.SwitchOff, DecisionAction.ReduceToMinimum, DecisionAction.SetSetpoint, DecisionAction.Deferred];
 
     private static readonly ImmutableHashSet<ReasonCode> ShedReasons =
-        [ReasonCode.GuardTierExceeded, ReasonCode.GuardBudgetLow, ReasonCode.ReserveThreshold];
+        [ReasonCode.GuardTierExceeded, ReasonCode.GuardBudgetLow, ReasonCode.ReserveThreshold, ReasonCode.ForeignLoad];
 
     private static readonly ImmutableHashSet<DecisionAction> PhaseActions =
         [DecisionAction.RequestReduction, DecisionAction.StopIncreases, DecisionAction.CannotReduceExporting, DecisionAction.SafeStateEntered, DecisionAction.ForeignLoadDetected];

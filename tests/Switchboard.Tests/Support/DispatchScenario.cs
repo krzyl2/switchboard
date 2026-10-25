@@ -104,8 +104,8 @@ internal static class DispatchScenario
 {
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
 
-    /// <summary>Active semantics for tests only: option and UI active, and a command path (the recording port).</summary>
-    public static ModeStatus Active => ModeState.Resolve(OperatingMode.Active, OperatingMode.Active, commandPathEnabled: true);
+    /// <summary>Active semantics: option active, control allowed, configuration valid, state confirmed (commands go to the recording port).</summary>
+    public static ModeStatus Active => ModeState.Resolve(OperatingMode.Active, controlAllowed: true, configurationValid: true, stateConfirmed: true);
 
     /// <param name="off">Devices reported off (relays off, setpoints at their floor); the rest start on.</param>
     public static GuardScenario Create(string devices, string[] off, string control = "", ModeStatus? mode = null, IDeviceCommandPort? port = null, bool settledLockouts = true, DateTimeOffset? start = null, string extra = "")
@@ -151,6 +151,29 @@ internal static class DispatchScenario
         }
 
         s.RunUntil(end);
+    }
+
+    /// <summary>
+    /// The scenario's devices report every commanded level at once, as a relay or charger whose
+    /// entity follows its commands does (an on_change state then confirms each acknowledged command).
+    /// </summary>
+    public static void Follow(this GuardScenario s, RecordingDeviceCommandPort port)
+    {
+        port.OnSubmit = command =>
+        {
+            switch (command.Kind)
+            {
+                case DeviceCommandKind.Relay:
+                    s.SetState(command.Device, command.Stage, new RelayApplied(command.On));
+                    break;
+                case DeviceCommandKind.Setpoint:
+                    s.SetState(command.Device, command.Stage, new SetpointApplied(command.Setpoint!.Value));
+                    break;
+                default:
+                    s.SetState(command.Device, DeviceStateSample.StopStage, new RelayApplied(command.On));
+                    break;
+            }
+        };
     }
 
     /// <summary>A charger's setpoint and draw as the signal layer would report them now.</summary>

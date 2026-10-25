@@ -17,7 +17,9 @@ namespace Switchboard.Tests.Support;
 /// </summary>
 internal sealed class GuardRunnerHarness
 {
-    public GuardRunnerHarness(string yaml, OperatingMode ceiling = OperatingMode.Shadow, OperatingMode uiChoice = OperatingMode.Shadow)
+    /// <param name="port">A recording command port: with it the loop runs with the real control switch and mode state (control starts off), as GuardService composes them.</param>
+    /// <param name="selfTest">The self-test slot the gate and the runner share (active self-test scenarios).</param>
+    public GuardRunnerHarness(string yaml, OperatingMode ceiling = OperatingMode.Shadow, OperatingMode uiChoice = OperatingMode.Shadow, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null)
     {
         Time = new SteppableTime(GuardScenario.Start);
         var clock = new SignalClock(Time);
@@ -26,8 +28,13 @@ internal sealed class GuardRunnerHarness
         Store.ApplyConfiguration(Configuration, Now);
         Store.ApplySourceStatus(SignalSourceStatus.Connected);
         Holder = new SignalSnapshotHolder(new SignalDiagnostics(Store.Snapshot(Now), null, [], []));
-        Loop = new ControlLoop(Holder, clock, new ModeState(ceiling, uiChoice), "boot1");
+        Loop = port is null && selfTest is null
+            ? new ControlLoop(Holder, clock, TestModes.State(ceiling, uiChoice == OperatingMode.Active), "boot1")
+            : ControlLoop.WithControl(Holder, clock, ceiling, "boot1", port, selfTest);
     }
+
+    /// <summary>The real control switch (only with a port).</summary>
+    public ControlSwitchState Control => Loop.Control ?? throw new InvalidOperationException("The harness was built without a command port.");
 
     public ControlLoop Loop { get; }
 

@@ -35,9 +35,10 @@ public sealed record DeviceConfigDto(
     double? ShedPriority,
     bool NoShed,
     string? RotationGroup,
-    string? CircuitGroup);
+    string? CircuitGroup,
+    string Start);
 
-/// <param name="Actuator">The only entity that may ever be commanded for this stage (SAFE-05); nothing commands it in this version.</param>
+/// <param name="Actuator">The only entity that may ever be commanded for this stage (SAFE-05), and only while control is active.</param>
 public sealed record StageConfigDto(int Stage, string Actuator, string StateEntity, IReadOnlyList<string> Phases, double RatedCurrentA, double? RatedPowerW);
 
 /// <param name="Unit">The unit the actuator is written in (A or mA); the bounds are in A.</param>
@@ -86,7 +87,8 @@ internal static class DevicesEndpoint
         device.ShedPriority,
         device.NoShed,
         device.RotationGroup?.Value,
-        device.CircuitGroup?.Value);
+        device.CircuitGroup?.Value,
+        ApiText.Snake(device.Start));
 
     private static List<DrawEntityDto> Entities(IReadOnlyDictionary<Phase, SignalName> signals, SignalDiagnostics diagnostics) =>
         [.. signals.OrderBy(s => s.Key)

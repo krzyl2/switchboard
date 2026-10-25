@@ -114,15 +114,15 @@
         ],
         "decisions": [
           {
-            "id": "replay-000000039",
+            "id": "replay-000000028",
             "at": "2026-10-22T09:20:00.015+00:00",
             "action": "foreign_load_detected",
-            "reason": "reserve_threshold",
+            "reason": "foreign_load",
             "device": null,
             "commanded": false
           },
           {
-            "id": "replay-000000040",
+            "id": "replay-000000029",
             "at": "2026-10-22T09:21:00+00:00",
             "action": "request_reduction",
             "reason": "reserve_threshold",
@@ -130,10 +130,10 @@
             "commanded": false
           },
           {
-            "id": "replay-000000041",
+            "id": "replay-000000030",
             "at": "2026-10-22T09:21:00+00:00",
             "action": "set_setpoint",
-            "reason": "reserve_threshold",
+            "reason": "foreign_load",
             "device": "ev_charger",
             "commanded": false
           }
@@ -245,15 +245,15 @@
         ],
         "decisions": [
           {
-            "id": "replay-000000039",
+            "id": "replay-000000028",
             "at": "2026-10-22T09:20:00.015+00:00",
             "action": "foreign_load_detected",
-            "reason": "reserve_threshold",
+            "reason": "foreign_load",
             "device": null,
             "commanded": false
           },
           {
-            "id": "replay-000000040",
+            "id": "replay-000000029",
             "at": "2026-10-22T09:21:00+00:00",
             "action": "request_reduction",
             "reason": "reserve_threshold",
@@ -261,10 +261,10 @@
             "commanded": false
           },
           {
-            "id": "replay-000000041",
+            "id": "replay-000000030",
             "at": "2026-10-22T09:21:00+00:00",
             "action": "set_setpoint",
-            "reason": "reserve_threshold",
+            "reason": "foreign_load",
             "device": "ev_charger",
             "commanded": false
           }

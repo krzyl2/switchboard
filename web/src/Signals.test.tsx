@@ -95,8 +95,9 @@ describe('signals page', () => {
     serve(() => respond(payload()));
     await openSignals();
 
-    // Relative, so the request stays under the ingress prefix; the status page is not polled.
-    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual(['api/signals']);
+    // Relative, so the request stays under the ingress prefix; the status page is not polled (the
+    // shell's mode banner polls api/mode on every page: Shell.test).
+    expect(fetchMock.mock.calls.map(([input]) => input).filter((input) => input !== 'api/mode')).toEqual(['api/signals']);
   });
 
   // Every state must be readable without colour: a text label, with the tone as a second channel.

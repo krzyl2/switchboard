@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Configuration;
+using Switchboard.Application.Setup;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
@@ -44,6 +45,12 @@ public sealed partial class SignalsSpaContractTests
         // The endpoint writes these two in their configuration spelling, not snake_case.
         { "PHASES", Enum.GetNames<Phase>() },
         { "CHARACTERISTICS", [.. Enum.GetValues<BreakerCharacteristic>().Select(c => c == BreakerCharacteristic.Unknown ? "unknown" : c.ToString())] },
+        {
+            "CONFIGURATION_WARNING_CODES",
+            [.. typeof(ConfigurationWarningCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+                .Where(f => f.IsLiteral)
+                .Select(f => (string)f.GetRawConstantValue()!)]
+        },
         {
             "ISSUE_CODES",
             [.. typeof(ConfigurationIssueCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -86,7 +93,9 @@ public sealed partial class SignalsSpaContractTests
             harness.Configuration,
             configuration.Signals.ToDictionary(s => s.Name, s => s.Entity).ToImmutableDictionary(),
             [new ConfigurationIssue(ConfigurationIssueCodes.MaxAgeShortForProbe, "signals.grid_current_l1.max_age", null, null, "Too short.")]);
-        yield return SignalsEndpoint.Build(running, harness.Now, Live, TestConfigurations.Path);
+        // With a warning of the runtime derived-sensor check (Stage C), so its object appears too.
+        ConfigurationWarning[] warnings = [new(ConfigurationWarningCodes.DerivedMeasurementInput, SignalName.Parse("grid_current_l1"), EntityId.Parse("sensor.meter_current_a"), "template", harness.Now, "Derived.")];
+        yield return SignalsEndpoint.Build(running, harness.Now, Live, TestConfigurations.Path, warnings);
 
         // A broken document: errors with line and column.
         var store = new SignalStore(new SignalStoreSettings(TimeSpan.FromSeconds(5)));

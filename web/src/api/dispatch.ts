@@ -18,6 +18,8 @@ import type {
   ReasonCode,
   Verdict,
 } from './decisions';
+import { START_POLICIES } from './devices';
+import type { StartPolicy } from './devices';
 import { DEVICE_TYPES } from './guard';
 import type { DeviceType } from './guard';
 import { PHASES } from './signals';
@@ -128,12 +130,22 @@ export interface DispatchDevice {
   draw: { currentA: number | null; powerW: number | null; fresh: boolean } | null;
   /** Verifications and observations, newest first. */
   history: HistoryEntry[];
+  start: StartPolicy;
+  /**
+   * What restore_only brings the device back to, and since when Switchboard holds it lower;
+   * commanded is false for a shadow ("would") baseline. Kept while control is off: "left reduced".
+   */
+  baseline: { level: Level; since: Date; commanded: boolean } | null;
+  /** Home Assistant acknowledged a command the reported state has not shown since then. */
+  commandWarning: { since: Date } | null;
+  /** When Switchboard started the device from off (restore_only); it switches it off again when it leaves the configuration. */
+  selfStarted: Date | null;
 }
 
 export interface DispatchStatus {
   at: Date;
   mode: { ceiling: OperatingMode; uiChoice: OperatingMode; effective: OperatingMode; note: ModeNote };
-  /** False in this version: decisions are computed and logged, nothing is switched. */
+  /** True only while commands are sent: effective active mode (option active, control allowed, configuration valid, state confirmed). */
   commandPath: boolean;
   phases: DispatchPhase[];
   devices: DispatchDevice[];
@@ -262,6 +274,19 @@ function device(raw: unknown, path: string): DispatchDevice {
     override: override(field(r, 'override', path), `${path}.override`),
     draw,
     history: list(field(r, 'history', path), `${path}.history`, historyEntry),
+    start: oneOf(START_POLICIES, field(r, 'start', path), `${path}.start`),
+    baseline: nullable(field(r, 'baseline', path), `${path}.baseline`, (v, p) => {
+      const b = object(v, p);
+      return {
+        level: parseLevel(field(b, 'level', p), `${p}.level`),
+        since: instant(field(b, 'since', p), `${p}.since`),
+        commanded: bool(field(b, 'commanded', p), `${p}.commanded`),
+      };
+    }),
+    commandWarning: nullable(field(r, 'commandWarning', path), `${path}.commandWarning`, (v, p) => ({
+      since: instant(field(object(v, p), 'since', p), `${p}.since`),
+    })),
+    selfStarted: nullable(field(r, 'selfStarted', path), `${path}.selfStarted`, instant),
   };
 }
 

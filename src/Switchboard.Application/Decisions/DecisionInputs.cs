@@ -60,7 +60,40 @@ public sealed record DeviceDecisionInputs(
     TimeSpan MinOffRemaining,
     bool CanSwitchOff);
 
-public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiChoice, ModeNote Note);
+/// <summary>
+/// The mode at a mode decision (MODE-02). <see cref="UiChoice"/> is the control switch in the Stage 5
+/// vocabulary (active while control is allowed); the remaining parts arrived with 0.7.0 and are null
+/// on lines written before it.
+/// </summary>
+public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiChoice, ModeNote Note)
+{
+    /// <summary>The global "control allowed" switch.</summary>
+    public bool? ControlAllowed { get; init; }
+
+    public bool? ConfigurationValid { get; init; }
+
+    /// <summary>False while a corrupt state.json waits for the user's confirmation.</summary>
+    public bool? StateConfirmed { get; init; }
+
+    /// <summary>Every condition that keeps the effective mode from being active; empty when it is active.</summary>
+    public ImmutableArray<ModeCondition> Missing { get; init; } = [];
+
+    /// <summary>Who changed the control switch last.</summary>
+    public ControlSwitchSource? Source { get; init; }
+
+    public bool Equals(ModeDecisionInputs? other) =>
+        other is not null
+        && Ceiling == other.Ceiling
+        && UiChoice == other.UiChoice
+        && Note == other.Note
+        && ControlAllowed == other.ControlAllowed
+        && ConfigurationValid == other.ConfigurationValid
+        && StateConfirmed == other.StateConfirmed
+        && Source == other.Source
+        && (Missing.IsDefault ? [] : Missing).SequenceEqual(other.Missing.IsDefault ? [] : other.Missing);
+
+    public override int GetHashCode() => HashCode.Combine(Ceiling, UiChoice, Note, ControlAllowed, ConfigurationValid, StateConfirmed, Source);
+}
 
 /// <summary>The headroom on one constraint at a dispatch decision.</summary>
 /// <param name="Envelope">E from the guard (null without valid data).</param>
@@ -98,4 +131,11 @@ public sealed record DispatchDecisionInputs(
     TimeSpan MinOnRemaining,
     TimeSpan MinOffRemaining,
     DateTimeOffset? DeferredSince,
-    OverrideMode Override);
+    OverrideMode Override)
+{
+    /// <summary>
+    /// The change repeats a protective target already decided: re-sent after Home Assistant came
+    /// back, or after its last command failed. It is a command of an earlier decision, not a new one.
+    /// </summary>
+    public bool Reasserted { get; init; }
+}

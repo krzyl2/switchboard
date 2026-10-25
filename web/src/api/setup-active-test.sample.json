@@ -1,0 +1,58 @@
+{
+  "id": "02ff1a9be30b41cab23fbf9c7862dad7",
+  "device": "heater_l1",
+  "stage": 1,
+  "stateEntity": "switch.grzalka_2",
+  "expectedPhase": "L1",
+  "state": "finished",
+  "phase": "done",
+  "startedAt": "2026-10-22T06:25:00+00:00",
+  "onAt": "2026-10-22T06:25:00.003+00:00",
+  "offAt": "2026-10-22T06:31:00.004+00:00",
+  "expectedDurationS": 422,
+  "verdict": {
+    "verdict": "confirmed",
+    "observedPhase": null,
+    "reason": null,
+    "confirmed": 2,
+    "mismatched": 0,
+    "inconclusive": 0
+  },
+  "observations": [
+    {
+      "at": "2026-10-22T06:25:00.003+00:00",
+      "transition": "on",
+      "deltas": {
+        "L1": 1694.1,
+        "L2": -9,
+        "L3": 4.099999999999966
+      },
+      "unit": "W",
+      "verdict": "confirmed",
+      "observedPhase": "L1",
+      "reason": null,
+      "ratingRatio": 0.9965294117647058,
+      "source": "active",
+      "houseLoad": true,
+      "note": null
+    },
+    {
+      "at": "2026-10-22T06:31:00.004+00:00",
+      "transition": "off",
+      "deltas": {
+        "L1": -1711.6666666666665,
+        "L2": 2.3333333333333144,
+        "L3": 32.633333333333326
+      },
+      "unit": "W",
+      "verdict": "confirmed",
+      "observedPhase": "L1",
+      "reason": null,
+      "ratingRatio": 1.0068627450980392,
+      "source": "active",
+      "houseLoad": true,
+      "note": null
+    }
+  ],
+  "abortReason": null
+}

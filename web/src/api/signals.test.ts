@@ -96,3 +96,25 @@ describe('parseSignals', () => {
     expect(() => parseSignals(make())).toThrow();
   });
 });
+
+// Stage C: the runtime derived-sensor check of a hand-written file warns, it never refuses.
+describe('parseSignals, configuration warnings', () => {
+  it('reads a derived measurement input with its entity and platform', () => {
+    const parsed = parseSignals(payload());
+
+    expect(parsed.configurationWarnings[0]).toMatchObject({ code: 'derived_measurement_input', signal: 'grid_current_l1', entity: 'sensor.meter_current_a', platform: 'template' });
+  });
+
+  it('reads an unavailable registry check without a signal', () => {
+    const parsed = parseSignals(payload((p) => (p.configurationWarnings = [{ code: 'derived_check_unavailable', signal: null, entity: null, platform: null, checkedAt: p.generatedAt }])));
+
+    expect(parsed.configurationWarnings[0]?.code).toBe('derived_check_unavailable');
+  });
+
+  it.each([
+    ['an unknown warning code', (p: any) => (p.configurationWarnings[0].code = 'looks_odd')],
+    ['a missing warning list', (p: any) => delete p.configurationWarnings],
+  ])('refuses %s', (_case, change) => {
+    expect(() => parseSignals(payload(change))).toThrow();
+  });
+});

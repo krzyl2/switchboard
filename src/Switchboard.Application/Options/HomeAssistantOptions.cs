@@ -25,6 +25,15 @@ public sealed class HomeAssistantOptions
 
     /// <summary>A freshness probe (one entity state read) not answered within this time is abandoned.</summary>
     public required TimeSpan StateReadTimeout { get; init; }
+
+    /// <summary>A service call not answered within this time counts as timed out (it may or may not have run; confirmation decides).</summary>
+    public required TimeSpan CommandTimeout { get; init; }
+
+    /// <summary>At shutdown in active mode, how long the shutdown safe state's commands may take to leave before the link closes.</summary>
+    public required TimeSpan ShutdownCommandWait { get; init; }
+
+    /// <summary>The clean close of the Home Assistant connection at shutdown is abandoned after this long (the container's stop grace is short).</summary>
+    public required TimeSpan CloseTimeout { get; init; }
 }
 
 public sealed class HomeAssistantOptionsValidator : IValidateOptions<HomeAssistantOptions>
@@ -62,6 +71,16 @@ public sealed class HomeAssistantOptionsValidator : IValidateOptions<HomeAssista
         {
             failures.Add($"{section}:StateReadTimeout must be shorter than PingInterval.");
         }
+
+        // A command slower than a keepalive period means the link itself is in trouble.
+        OptionsValidation.RequirePositive(failures, $"{section}:CommandTimeout", options.CommandTimeout);
+        if (options.CommandTimeout >= options.PingInterval)
+        {
+            failures.Add($"{section}:CommandTimeout must be shorter than PingInterval.");
+        }
+
+        OptionsValidation.RequirePositive(failures, $"{section}:ShutdownCommandWait", options.ShutdownCommandWait);
+        OptionsValidation.RequirePositive(failures, $"{section}:CloseTimeout", options.CloseTimeout);
 
         return OptionsValidation.Result(failures);
     }

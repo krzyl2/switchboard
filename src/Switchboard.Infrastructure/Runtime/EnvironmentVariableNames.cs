@@ -31,4 +31,7 @@ public static class EnvironmentVariableNames
 
     /// <summary>Standalone development with replay only: a folder of Home Assistant discovery answers (states, entity and device registry) for the setup wizard.</summary>
     public const string DevDiscovery = "SWITCHBOARD_DEV_DISCOVERY";
+
+    /// <summary>Standalone development with replay only: a JSON file of simulated loads that answer the development command sink's calls.</summary>
+    public const string DevPlant = "SWITCHBOARD_DEV_PLANT";
 }

@@ -3,11 +3,11 @@ import type { FlowDirection, PhaseName, ProtectionInvalidReason } from './signal
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
 
 // Contract of a decision as GET api/decisions and GET api/guard write it
-// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2. Every closed list mirrors a backend enum;
+// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason codes 2 or 3). Every closed list mirrors a backend enum;
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
-/** The closed reason-code list, version 2 (04-ALGORITHMS §6). */
+/** The closed reason-code list, version 3 (04-ALGORITHMS §6); version 3 only appended foreign_load and change_limit. */
 export const REASON_CODES = [
   'guard_tier_exceeded',
   'guard_budget_low',
@@ -28,6 +28,8 @@ export const REASON_CODES = [
   'plan_slot_target',
   'headroom_available',
   'kill_switch',
+  'foreign_load',
+  'change_limit',
 ] as const;
 /** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
 export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;
@@ -59,7 +61,12 @@ export const DECISION_KINDS = ['protection', 'dispatch', 'override', 'verificati
 export const OPERATING_MODES = ['shadow', 'active'] as const;
 /** active_unavailable_before_stage3 is written by 0.3.x only; its lines stay readable for the log's retention. */
 export const MODE_NOTES = ['none', 'active_unavailable_before_stage3', 'active_not_enabled'] as const;
-export const KILL_SWITCH_SOURCES = ['api', 'mqtt', 'restored'] as const;
+/** corrupt_state: engaged at start by an untrusted state.json, held until confirmed; confirmation: released by that confirmation. */
+export const KILL_SWITCH_SOURCES = ['api', 'mqtt', 'restored', 'corrupt_state', 'confirmation'] as const;
+/** What keeps the effective mode in shadow (MODE-02), in the backend's order. */
+export const MODE_CONDITIONS = ['option_shadow', 'control_off', 'configuration_invalid', 'state_unconfirmed'] as const;
+/** Who set the global control switch last; default: never set (fresh install or upgraded from 0.6.x). */
+export const CONTROL_SWITCH_SOURCES = ['default', 'api', 'mqtt', 'restored'] as const;
 /** What put the whole installation in safe state (system-wide records and the holds they made). */
 export const SAFE_STATE_CAUSES = [
   'shutdown',
@@ -88,8 +95,8 @@ export const DEVICE_STATE_INVALID_REASONS = [
 ] as const;
 /** A relay stage's applied state; a modulating device reports a setpoint in A instead. */
 export const RELAY_STATES = ['on', 'off'] as const;
-/** Who decided a device change: protection, dispatch or a manual override (SAFE-04). */
-export const DECISION_ORIGINS = ['guard', 'dispatch', 'override'] as const;
+/** Who decided a device change: protection, dispatch, a manual override (SAFE-04) or the active phase self-test (CONN-05). */
+export const DECISION_ORIGINS = ['guard', 'dispatch', 'override', 'self_test'] as const;
 /** A device's settling window at a dispatch decision (DISP-05). */
 export const SETTLING_STATES = ['open', 'closed', 'timed_out'] as const;
 /** The outcome of an effector verification (DISP-07). */
@@ -104,6 +111,8 @@ export type DecisionKind = (typeof DECISION_KINDS)[number];
 export type OperatingMode = (typeof OPERATING_MODES)[number];
 export type ModeNote = (typeof MODE_NOTES)[number];
 export type KillSwitchSource = (typeof KILL_SWITCH_SOURCES)[number];
+export type ModeCondition = (typeof MODE_CONDITIONS)[number];
+export type ControlSwitchSource = (typeof CONTROL_SWITCH_SOURCES)[number];
 export type SafeStateCause = (typeof SAFE_STATE_CAUSES)[number];
 export type TierReaction = (typeof TIER_REACTIONS)[number];
 export type DeviceStateInvalidReason = (typeof DEVICE_STATE_INVALID_REASONS)[number];
@@ -192,12 +201,23 @@ export interface DispatchInputs {
   minOffRemainingS: number;
   deferredSince: Date | null;
   override: OverrideMode;
+  /** The command re-asserts a level after a reconnect or a state that did not follow (Stage C). */
+  reasserted: boolean;
 }
 
+/**
+ * The mode at a mode decision. The control fields are null on lines written before 0.7.0, which
+ * knew only the add-on option and the UI choice.
+ */
 export interface ModeInputs {
   ceiling: OperatingMode;
   uiChoice: OperatingMode;
   note: ModeNote;
+  controlAllowed: boolean | null;
+  configurationValid: boolean | null;
+  stateConfirmed: boolean | null;
+  missing: ModeCondition[];
+  source: ControlSwitchSource | null;
 }
 
 export interface Decision {
@@ -298,6 +318,7 @@ function dispatchInputs(raw: unknown, path: string): DispatchInputs {
     minOffRemainingS: n('minOffRemainingS'),
     deferredSince: nullable(field(r, 'deferredSince', path), `${path}.deferredSince`, instant),
     override: oneOf(OVERRIDE_MODES, field(r, 'override', path), `${path}.override`),
+    reasserted: bool(field(r, 'reasserted', path), `${path}.reasserted`),
   };
 }
 
@@ -356,6 +377,11 @@ function modeInputs(raw: unknown, path: string): ModeInputs {
     ceiling: oneOf(OPERATING_MODES, field(r, 'ceiling', path), `${path}.ceiling`),
     uiChoice: oneOf(OPERATING_MODES, field(r, 'uiChoice', path), `${path}.uiChoice`),
     note: oneOf(MODE_NOTES, field(r, 'note', path), `${path}.note`),
+    controlAllowed: nullable(field(r, 'controlAllowed', path), `${path}.controlAllowed`, bool),
+    configurationValid: nullable(field(r, 'configurationValid', path), `${path}.configurationValid`, bool),
+    stateConfirmed: nullable(field(r, 'stateConfirmed', path), `${path}.stateConfirmed`, bool),
+    missing: list(field(r, 'missing', path), `${path}.missing`, (v, p) => oneOf(MODE_CONDITIONS, v, p)),
+    source: nullable(field(r, 'source', path), `${path}.source`, (v, p) => oneOf(CONTROL_SWITCH_SOURCES, v, p)),
   };
 }
 

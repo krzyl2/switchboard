@@ -24,7 +24,43 @@ public sealed class ReplayData
         Rows = rows;
     }
 
+    private ImmutableDictionary<EntityId, ImmutableArray<ReplayRow>>? _byEntity;
+
     public ImmutableArray<ReplayRow> Rows { get; }
+
+    /// <summary>The entity's last recorded row at or before <paramref name="time"/>, or null.</summary>
+    public ReplayRow? LatestAtOrBefore(EntityId entity, DateTimeOffset time)
+    {
+        var index = Volatile.Read(ref _byEntity);
+        if (index is null)
+        {
+            index = Rows.GroupBy(r => r.Entity).ToImmutableDictionary(g => g.Key, g => g.ToImmutableArray());
+            Volatile.Write(ref _byEntity, index);
+        }
+
+        if (!index.TryGetValue(entity, out var rows))
+        {
+            return null;
+        }
+
+        int low = 0, high = rows.Length - 1;
+        ReplayRow? found = null;
+        while (low <= high)
+        {
+            var middle = low + ((high - low) / 2);
+            if (rows[middle].Timestamp <= time)
+            {
+                found = rows[middle];
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        return found;
+    }
 
     public DateTimeOffset Start => Rows[0].Timestamp;
 

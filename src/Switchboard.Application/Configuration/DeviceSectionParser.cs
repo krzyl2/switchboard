@@ -37,7 +37,7 @@ internal static class DeviceSectionParser
     // Display bound for a device's name: it labels a row on a phone screen, not a description.
     private const int MaxNameLength = 40;
 
-    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group"];
+    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start"];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
     private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
     private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator"];
@@ -327,6 +327,9 @@ internal static class DeviceSectionParser
             ?? (setpoint ? control?.Devices.ModulatingMinOn : control?.Dispatch.RelayMinOn);
         var minOff = OptionalDuration(mapping, "min_off", path, issues, positive: false)
             ?? (setpoint ? control?.Devices.ModulatingMinOff : control?.Dispatch.RelayMinOff);
+        var start = ConfigRead.Optional(mapping, "start") is { } startNode
+            ? ConfigRead.Choice(startNode, ConfigRead.Join(path, "start"), issues, ControlParametersBinder.StartPolicies)
+            : control?.Devices.DefaultStart;
         var stateReports = ReadStateReports(mapping, path, issues);
         var stateMaxAge = ReadStateMaxAge(mapping, path, control, stateReports, issues);
         var name = ReadName(mapping, path, issues);
@@ -356,7 +359,7 @@ internal static class DeviceSectionParser
 
         var valid = issues.Errors.Count == errorsBefore
             && id is not null && valuePerKwh is not null && reactionTime is not null && noShed is not null
-            && minOn is not null && minOff is not null && stateMaxAge is not null && stateReports is not null
+            && minOn is not null && minOff is not null && stateMaxAge is not null && stateReports is not null && start is not null
             && stages.Count > 0 && stages.All(s => s.Valid) && (!setpoint || range is not null);
         return new DeviceDraft(
             index,
@@ -384,6 +387,7 @@ internal static class DeviceSectionParser
             CircuitGroup = circuit,
             ShedPriorityDeclared = shedPriority is not null,
             Name = name,
+            Start = start ?? StartPolicy.RestoreOnly,
         };
     }
 
@@ -1085,6 +1089,8 @@ internal static class DeviceSectionParser
 
         public string? Name { get; init; }
 
+        public StartPolicy Start { get; init; }
+
         public DeviceDefinition Build()
         {
             var name = id!.Value;
@@ -1120,6 +1126,7 @@ internal static class DeviceSectionParser
                 RotationGroup = RotationGroup,
                 CircuitGroup = CircuitGroup,
                 Name = Name,
+                Start = Start,
             };
         }
 

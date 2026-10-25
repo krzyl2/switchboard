@@ -62,6 +62,23 @@ public sealed record DeviceSpec(
     /// <summary>The downstream breaker group this device sits behind (CONN-03); null when none.</summary>
     public GroupName? CircuitGroup { get; init; }
 
+    /// <summary>What dispatch may do beyond restoring what protection shed (<c>start:</c>); it changes no level, so it is not part of the device's identity.</summary>
+    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+
+    /// <summary>
+    /// An opaque fingerprint of the entities that command and report this device (actuators, stop
+    /// actuator, state entities), computed by the configuration layer: re-pointing a device at
+    /// another entity changes it, while no entity ID ever reaches protection.
+    /// </summary>
+    public long ActuatorRevision { get; init; }
+
+    /// <summary>
+    /// The applied state reports only on change (state_reports: on_change): it shows a commanded
+    /// level within the reaction time, so an acknowledged command it does not show is unconfirmed.
+    /// An age-judged state may take up to its max_age and is never held to that.
+    /// </summary>
+    public bool StateReportsOnChange { get; init; }
+
     /// <summary>What the shed order sorts by: the priority override, else the value per kWh (DISP-02).</summary>
     public double ShedKey => ShedPriority ?? ValuePerKwh;
 

@@ -10,7 +10,8 @@ namespace Switchboard.Application.Configuration;
 /// <summary>
 /// One declared device as the configuration layer holds it: the only place where a device meets
 /// entity IDs. <see cref="StageDefinition.Actuator"/> (and <see cref="StopActuator"/>) are the only
-/// entities that may ever be commanded for it (SAFE-05); nothing in this version commands them.
+/// entities that may ever be commanded for it (SAFE-05), through the command port's check of the
+/// configuration loaded at send time.
 /// Protection receives the <see cref="DeviceSpec"/> built from this, without entity IDs or watts.
 /// </summary>
 /// <param name="Index">The position under <c>devices:</c>, for issue paths (<c>devices[0]</c>).</param>
@@ -55,6 +56,43 @@ public sealed record DeviceDefinition(
     /// <summary>An optional display name (<c>name:</c>), shown in the UI next to the id; never used for a decision.</summary>
     public string? Name { get; init; }
 
+    /// <summary>What dispatch may do beyond restoring what was shed (<c>start:</c>, default from devices.default_start).</summary>
+    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+
+    /// <summary>
+    /// An opaque fingerprint of every entity that commands or reports this device (FNV-1a over the
+    /// stage actuators, state entities and stop actuator): protection and the ledger compare it
+    /// without ever seeing an entity ID, so a device re-pointed at another entity starts afresh.
+    /// </summary>
+    public long ActuatorRevision
+    {
+        get
+        {
+            const ulong offset = 14695981039346656037;
+            const ulong prime = 1099511628211;
+            var hash = offset;
+            void Add(string text)
+            {
+                foreach (var b in System.Text.Encoding.UTF8.GetBytes(text))
+                {
+                    hash = (hash ^ b) * prime;
+                }
+
+                // A separator byte that no entity ID contains, so "ab"+"c" and "a"+"bc" differ.
+                hash = (hash ^ 0x0A) * prime;
+            }
+
+            foreach (var stage in Stages)
+            {
+                Add(stage.Actuator.Value);
+                Add(stage.StateEntity.Value);
+            }
+
+            Add(StopActuator?.Value ?? string.Empty);
+            return unchecked((long)hash);
+        }
+    }
+
     public DeviceSpec ToSpec() => new(
         Id,
         Type,
@@ -70,6 +108,9 @@ public sealed record DeviceDefinition(
         HasStopActuator = StopActuator is not null,
         CurrentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Order()],
         CircuitGroup = CircuitGroup,
+        Start = Start,
+        ActuatorRevision = ActuatorRevision,
+        StateReportsOnChange = StateReports == StateFreshness.OnChange,
     };
 }
 

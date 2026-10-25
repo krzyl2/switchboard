@@ -62,7 +62,7 @@ internal sealed class GuardScenario
         Gate = port is null
             ? new EffectorGate(Lockouts, Targets, _ids, settings, NullLogger<EffectorGate>.Instance)
             : new EffectorGate(Lockouts, Targets, _ids, settings, NullLogger<EffectorGate>.Instance, port);
-        Mode = mode ?? ModeState.Resolve(OperatingMode.Shadow, OperatingMode.Shadow);
+        Mode = mode ?? TestModes.Shadow;
         _dispatch = dispatch;
 
         // Every device on (the charger at its maximum) and every phase at a quiet 5 A, so a test
@@ -118,6 +118,21 @@ internal sealed class GuardScenario
     public EffectorGate Gate { get; }
 
     public ModeStatus Mode { get; set; }
+
+    /// <summary>
+    /// A change of the mode as the runner applies it before the next step: the gate hears of a change
+    /// of posture (commands leave or not) first; a null <paramref name="previous"/> is the first step
+    /// of a start.
+    /// </summary>
+    public void ChangeMode(ModeStatus next, bool start = false)
+    {
+        if (start || Mode.Commands != next.Commands)
+        {
+            Gate.ModeChanged(start ? null : Mode, next, Now);
+        }
+
+        Mode = next;
+    }
 
     public KillSwitchStatus KillSwitch { get; set; } = KillSwitchStatus.Off;
 
@@ -436,19 +451,102 @@ internal static class TestDevices
     /// <summary>The reference devices with the charger's own draw current on L1 (what relief may never exceed).</summary>
     public static string ReferenceWithChargerDraw => Reference.ReplaceLineEndings("\n") + "\n    draw: { current: sensor.charger_draw_current, power: sensor.charger_draw_power, max_age: 60s }";
 
-    /// <summary>A three-phase document with <paramref name="devices"/> (list items, indent 2) under devices:.</summary>
-    public static string Document(string devices = Reference, string control = "", string characteristic = "B", string extra = "") =>
-        TestConfigurations.ThreePhase(control: control, characteristic: characteristic).TrimEnd('\n') + "\ndevices:\n" + devices.ReplaceLineEndings("\n").TrimEnd('\n') + "\n" + extra.ReplaceLineEndings("\n");
+    /// <summary>
+    /// A three-phase document with <paramref name="devices"/> (list items, indent 2) under devices:.
+    /// Devices default to <paramref name="defaultStart"/>: headroom, the Stage 3 dispatch these
+    /// scenarios are about; a test of start: restore_only passes "restore_only", or null for the
+    /// shipped default.
+    /// </summary>
+    public static string Document(string devices = Reference, string control = "", string characteristic = "B", string extra = "", string? defaultStart = "headroom") =>
+        TestConfigurations.ThreePhase(control: WithDefaultStart(control, defaultStart), characteristic: characteristic).TrimEnd('\n') + "\ndevices:\n" + devices.ReplaceLineEndings("\n").TrimEnd('\n') + "\n" + extra.ReplaceLineEndings("\n");
+
+    /// <summary>The control block with devices.default_start merged in (a devices: section the test wrote keeps its keys).</summary>
+    public static string WithDefaultStart(string control, string? defaultStart)
+    {
+        if (defaultStart is null)
+        {
+            return control;
+        }
+
+        var text = control.ReplaceLineEndings("\n");
+        if (text.Length > 0 && !text.EndsWith('\n'))
+        {
+            text += "\n";
+        }
+
+        var line = $"    default_start: {defaultStart}\n";
+        return text.StartsWith("  devices:\n", StringComparison.Ordinal) || text.Contains("\n  devices:\n", StringComparison.Ordinal)
+            ? text.Replace("  devices:\n", "  devices:\n" + line, StringComparison.Ordinal)
+            : text + "  devices:\n" + line;
+    }
 }
 
-/// <summary>The only implementation of the command port anywhere (SAFE-05): it records what the gate asked for.</summary>
+/// <summary>
+/// A command port for tests: it records what the gate asked for and answers at once (acknowledged
+/// unless <see cref="Answer"/> says otherwise), or holds its answers until <see cref="Release"/>, so
+/// a test can drive failures, timeouts, unsent commands and late answers on the virtual clock.
+/// </summary>
 internal sealed class RecordingDeviceCommandPort : IDeviceCommandPort
 {
+    private readonly Queue<CommandResult> _results = new();
+    private readonly List<CommandResult> _held = [];
+    private long _sequence;
+
     public List<string> Commands { get; } = [];
 
-    public void SetRelay(DeviceName device, int stage, bool on) => Commands.Add($"{device} relay {stage} {(on ? "on" : "off")}");
+    public List<DeviceCommand> Submitted { get; } = [];
 
-    public void SetSetpoint(DeviceName device, Amperes setpoint) => Commands.Add($"{device} setpoint {setpoint.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+    /// <summary>How each command is answered; acknowledged by default.</summary>
+    public Func<DeviceCommand, (CommandOutcome Outcome, CommandNotSentReason? NotSent)> Answer { get; set; } = _ => (CommandOutcome.Acknowledged, null);
 
-    public void SetEnabled(DeviceName device, bool enabled) => Commands.Add($"{device} enabled {(enabled ? "on" : "off")}");
+    /// <summary>Answers are kept back until <see cref="Release"/> (a slow link).</summary>
+    public bool Hold { get; set; }
+
+    /// <summary>Called for every submitted command: a test makes the device report the commanded level (a relay that follows).</summary>
+    public Action<DeviceCommand>? OnSubmit { get; set; }
+
+    public long LinkGeneration { get; set; } = 1;
+
+    /// <summary>Flushes seen: the end of each step's submissions.</summary>
+    public int Flushes { get; private set; }
+
+    public CommandTicket Submit(DeviceCommand command)
+    {
+        var ticket = new CommandTicket(++_sequence);
+        Submitted.Add(command);
+        Commands.Add(command.Kind switch
+        {
+            DeviceCommandKind.Relay => $"{command.Device} relay {command.Stage} {(command.On ? "on" : "off")}",
+            DeviceCommandKind.Setpoint => $"{command.Device} setpoint {command.Setpoint!.Value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            _ => $"{command.Device} enabled {(command.On ? "on" : "off")}",
+        });
+        OnSubmit?.Invoke(command);
+        var (outcome, notSent) = Answer(command);
+        var result = new CommandResult(ticket, command.Device, outcome, notSent, DateTimeOffset.UnixEpoch, outcome == CommandOutcome.Acknowledged ? null : "test");
+        if (Hold)
+        {
+            _held.Add(result);
+        }
+        else
+        {
+            _results.Enqueue(result);
+        }
+
+        return ticket;
+    }
+
+    public void Flush() => Flushes++;
+
+    public bool TryTakeResult(out CommandResult result) => _results.TryDequeue(out result!);
+
+    /// <summary>Lets the held answers through (the next step takes them).</summary>
+    public void Release()
+    {
+        foreach (var result in _held)
+        {
+            _results.Enqueue(result);
+        }
+
+        _held.Clear();
+    }
 }

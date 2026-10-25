@@ -36,11 +36,15 @@ public sealed class OptionsValidationTests
         Assert.Equal("switchboard", mqtt.ClientId);
         Assert.Equal("http://supervisor/services/mqtt", mqtt.SupervisorServiceUrl);
         Assert.Equal(TimeSpan.FromSeconds(15), mqtt.KeepAlivePeriod);
-        // 3 s since Stage 2: the guard's stop (Persistence:ShutdownTimeout) runs first in the same s6 grace.
-        Assert.Equal(TimeSpan.FromSeconds(3), mqtt.ShutdownTimeout);
+        // 2 s since Stage C (3 s since Stage 2): the guard's stop, the last commands' wait and the
+        // Home Assistant close share the same s6 grace (AddonPackagingTests holds the sum).
+        Assert.Equal(TimeSpan.FromSeconds(2), mqtt.ShutdownTimeout);
         Assert.Equal("ws://supervisor/core/websocket", homeAssistant.SupervisorWebSocketUrl);
         Assert.Equal("http://supervisor/core/api/", homeAssistant.SupervisorRestUrl);
         Assert.Equal(TimeSpan.FromSeconds(5), homeAssistant.StateReadTimeout);
+        Assert.Equal(
+            (TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500)),
+            (homeAssistant.CommandTimeout, homeAssistant.ShutdownCommandWait, homeAssistant.CloseTimeout));
         var configuration = provider.GetRequiredService<IOptions<ConfigurationOptions>>().Value;
         Assert.Equal((TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5), 262144), (configuration.ReloadDebounce, configuration.PollInterval, configuration.MaxFileBytes));
         var persistence = provider.GetRequiredService<IOptions<PersistenceOptions>>().Value;

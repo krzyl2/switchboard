@@ -127,7 +127,12 @@ export interface GuardStatus {
   at: Date;
   mode: { ceiling: OperatingMode; uiChoice: OperatingMode; effective: OperatingMode; note: ModeNote };
   safeState: { active: boolean; scope: SafeStateScope; reason: ReasonCode | null; phases: PhaseName[]; since: Date | null };
-  killSwitch: { engaged: boolean; changedAt: Date | null; source: KillSwitchSource | null };
+  /**
+   * locked: engaged by an untrusted state.json at start and held until the user confirms (api/control/confirm).
+   * switchesDevices: whether an engaged kill switch switches anything now (effective active mode); in
+   * shadow nothing is switched and the decision log says what would be.
+   */
+  killSwitch: { engaged: boolean; changedAt: Date | null; source: KillSwitchSource | null; locked: boolean; switchesDevices: boolean };
   breaker: Breaker | null;
   phases: GuardPhase[];
   devices: GuardDevice[];
@@ -304,6 +309,8 @@ export function parseGuard(raw: unknown): GuardStatus {
       source: nullable(field(kill, 'source', 'killSwitch'), 'killSwitch.source', (v, p) =>
         oneOf(KILL_SWITCH_SOURCES, v, p),
       ),
+      locked: bool(field(kill, 'locked', 'killSwitch'), 'killSwitch.locked'),
+      switchesDevices: bool(field(kill, 'switchesDevices', 'killSwitch'), 'killSwitch.switchesDevices'),
     },
     breaker: profile,
     phases: list(field(r, 'phases', 'payload'), 'phases', (p, path) => phase(p, path, bands)),

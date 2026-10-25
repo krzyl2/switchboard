@@ -38,6 +38,11 @@ internal static class ControlParametersBinder
     // Schema bound, not a control parameter: more mismatches than this before acting is a typo.
     private const int MaxMismatchLimit = 100;
 
+    // The validity range of effector.confirm_timeout (design bounds, not its value): shorter than a
+    // second confirms nothing a relay can report, longer than ten minutes hides a dead actuator.
+    private static readonly TimeSpan MinConfirmTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxConfirmTimeout = TimeSpan.FromMinutes(10);
+
     private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics =
         new Dictionary<string, BreakerCharacteristic>
         {
@@ -55,6 +60,14 @@ internal static class ControlParametersBinder
             ["reduce_next_cycle"] = TierReaction.ReduceNextCycle,
             ["shed_one_immediately"] = TierReaction.ShedOneImmediately,
             ["shed_all_on_phase"] = TierReaction.ShedAllOnPhase,
+        }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    /// <summary>The spellings of <c>start:</c> (a device key) and <c>devices.default_start</c>.</summary>
+    public static readonly ImmutableDictionary<string, StartPolicy> StartPolicies =
+        new Dictionary<string, StartPolicy>
+        {
+            ["restore_only"] = StartPolicy.RestoreOnly,
+            ["headroom"] = StartPolicy.Headroom,
         }.ToImmutableDictionary(StringComparer.Ordinal);
 
     private static readonly ImmutableDictionary<string, SignalKind> SigmaKinds =
@@ -221,7 +234,8 @@ internal static class ControlParametersBinder
                 .ToImmutableDictionary(t => t.Value, t => t.Time!.Value),
             modulatingLockout.NonNegativeDuration("min_on") ?? TimeSpan.Zero,
             modulatingLockout.NonNegativeDuration("min_off") ?? TimeSpan.Zero,
-            devices.PositiveDuration("draw_max_age") ?? TimeSpan.Zero);
+            devices.PositiveDuration("draw_max_age") ?? TimeSpan.Zero,
+            devices.Choice("default_start", StartPolicies) ?? StartPolicy.RestoreOnly);
         if (maxAgeLimit > TimeSpan.Zero && deviceDefaults.StateMaxAge > maxAgeLimit)
         {
             issues.Error(
@@ -241,6 +255,17 @@ internal static class ControlParametersBinder
         }
 
         var decisionLog = new DecisionLogParameters(root.Child("decision_log").Integer("retention_days", 1, MaxRetentionDays) ?? 0);
+
+        var effectorSection = root.Child("effector");
+        var effector = new EffectorParameters(effectorSection.PositiveDuration("confirm_timeout") ?? TimeSpan.Zero);
+        if (effector.ConfirmTimeout != TimeSpan.Zero && (effector.ConfirmTimeout < MinConfirmTimeout || effector.ConfirmTimeout > MaxConfirmTimeout))
+        {
+            issues.Error(
+                ConfigurationIssueCodes.OutOfRange,
+                ConfigRead.Join(effectorSection.Path, "confirm_timeout"),
+                effectorSection.Node("confirm_timeout"),
+                string.Create(CultureInfo.InvariantCulture, $"confirm_timeout must be between {MinConfirmTimeout.TotalSeconds:0} s and {MaxConfirmTimeout.TotalMinutes:0} min."));
+        }
 
         var limits = root.Child(LimitsKey);
         var envelope = new SafetyEnvelope(
@@ -289,7 +314,8 @@ internal static class ControlParametersBinder
             decisionLog,
             envelope,
             foreignLoad,
-            circuitGroups);
+            circuitGroups,
+            effector);
     }
 
     private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)
@@ -560,5 +586,9 @@ internal static class ControlParametersBinder
 
         public TimeSpan? NonNegativeDuration(string key) =>
             Node(key) is { } node ? ConfigRead.NonNegativeDuration(node, ConfigRead.Join(Path, key), _issues) : null;
+
+        public T? Choice<T>(string key, ImmutableDictionary<string, T> choices)
+            where T : struct =>
+            Node(key) is { } node ? ConfigRead.Choice(node, ConfigRead.Join(Path, key), _issues, choices) : null;
     }
 }

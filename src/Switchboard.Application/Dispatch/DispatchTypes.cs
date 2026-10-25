@@ -24,7 +24,11 @@ public sealed record DispatchInput(
     IDispatchLedgerView Ledger,
     OverrideSnapshot Overrides,
     IReadOnlyLockouts Lockouts,
-    ModeStatus Mode);
+    ModeStatus Mode)
+{
+    /// <summary>The active phase self-test running now, if any: its device is left alone and every other increase waits (change_limit).</summary>
+    public SelfTestTarget? SelfTest { get; init; }
+}
 
 public enum DispatchChange
 {
@@ -142,7 +146,20 @@ public sealed record DispatchDeviceStatus(
     int Mismatches,
     DeviceOverride Override,
     DrawStatus? Draw,
-    ImmutableArray<VerificationRecord> History);
+    ImmutableArray<VerificationRecord> History)
+{
+    /// <summary>What dispatch may do beyond restoring (<c>start:</c>).</summary>
+    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+
+    /// <summary>What Switchboard reduced the device from (restore_only restores up to it); null when nothing is to be restored.</summary>
+    public StartBaseline? Baseline { get; init; }
+
+    /// <summary>Since when an acknowledged command was not confirmed by the device's reported state (a visible warning).</summary>
+    public DateTimeOffset? UnconfirmedSince { get; init; }
+
+    /// <summary>When dispatch switched the device on under start: headroom.</summary>
+    public DateTimeOffset? SelfStarted { get; init; }
+}
 
 public sealed record DispatchGroupEnvelope(GroupName Group, Amperes? Envelope, Amperes InFlight, bool IncreasesAllowed);
 
@@ -159,8 +176,9 @@ public sealed record DispatchPhaseStatus(
     ImmutableArray<DispatchGroupEnvelope> Groups);
 
 /// <summary>
-/// Dispatch at one moment. <see cref="CommandPath"/> is false in this version: decisions are
-/// computed and logged, nothing is switched.
+/// Dispatch at one moment. <see cref="CommandPath"/> is true while commands leave (effective mode
+/// active, or the safe state's offs during an invalid configuration); otherwise decisions are
+/// computed and logged and nothing is switched.
 /// </summary>
 public sealed record DispatchStatus(
     DateTimeOffset At,

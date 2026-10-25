@@ -22,7 +22,7 @@ public sealed class Pkg03EvidenceTests
     [Fact]
     public void Runtime_entities_cover_headroom_budget_mode_health_device_state()
     {
-        var (loop, _, entities) = Build();
+        var (loop, entities) = Build();
         loop.Runner.Step();
 
         var ids = entities.Current().Entities.Select(e => e.Key).ToHashSet(StringComparer.Ordinal);
@@ -44,18 +44,18 @@ public sealed class Pkg03EvidenceTests
     }
 
     [Fact]
-    public void Mode_entity_follows_ui_choice_without_restart()
+    public void Mode_entity_follows_the_control_switch_without_restart()
     {
-        var (loop, mode, entities) = Build();
+        var (loop, entities) = Build();
         loop.Runner.Step();
-        Assert.Equal("active", Attribute(entities, "ui_choice"));
+        Assert.Equal(("shadow", "shadow"), (entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId).State, Attribute(entities, "ui_choice")));
 
-        mode.Choose(OperatingMode.Shadow);
+        loop.Control!.Set(true, ControlSwitchSource.Api);
         loop.Runner.Step();
 
         var entity = entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId);
-        Assert.Equal("shadow", entity.State);
-        Assert.Equal("shadow", Attribute(entities, "ui_choice"));
+        Assert.Equal("active", entity.State);
+        Assert.Equal("active", Attribute(entities, "ui_choice"));
         Assert.Equal("active", Attribute(entities, "ceiling"));
     }
 
@@ -66,15 +66,13 @@ public sealed class Pkg03EvidenceTests
         return json.RootElement.GetProperty(key).GetString();
     }
 
-    private static (ControlLoop Loop, ModeState Mode, GuardEntities Entities) Build()
+    private static (ControlLoop Loop, GuardEntities Entities) Build()
     {
         var time = new SteppableTime(GuardScenario.Start);
         var store = new SignalStore(new SignalStoreSettings(TimeSpan.FromSeconds(5)));
         store.ApplyConfiguration(TestConfigurations.Parse(TestDevices.Document()), time.GetUtcNow());
         var holder = new SignalSnapshotHolder(new SignalDiagnostics(store.Snapshot(time.GetUtcNow()), null, [], []));
-        var inbox = new GuardInbox();
-        var mode = new ModeState(OperatingMode.Active, OperatingMode.Active, inbox);
-        var loop = new ControlLoop(holder, new SignalClock(time), mode, "pkg03", inbox: inbox);
+        var loop = ControlLoop.WithControl(holder, new SignalClock(time), OperatingMode.Active, "pkg03");
         var entities = new GuardEntities(
             loop.Status,
             loop.Recorder,
@@ -83,7 +81,8 @@ public sealed class Pkg03EvidenceTests
             () => new Volts(230),
             MsOptions.Create(TestOptions.Mqtt()),
             new AppVersion("0.6.0"),
-            NullLogger<GuardEntities>.Instance);
-        return (loop, mode, entities);
+            NullLogger<GuardEntities>.Instance,
+            loop.Control);
+        return (loop, entities);
     }
 }

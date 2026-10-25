@@ -34,7 +34,7 @@ public sealed class EnergyAccumulator
         [DecisionAction.SwitchOff, DecisionAction.ReduceToMinimum, DecisionAction.SetSetpoint];
 
     private static readonly ImmutableHashSet<ReasonCode> ShedReasons =
-        [ReasonCode.GuardTierExceeded, ReasonCode.GuardBudgetLow, ReasonCode.ReserveThreshold];
+        [ReasonCode.GuardTierExceeded, ReasonCode.GuardBudgetLow, ReasonCode.ReserveThreshold, ReasonCode.ForeignLoad];
 
     private readonly StatisticsOptions _options;
     private ImmutableSortedDictionary<DateTimeOffset, EnergyBucket> _buckets = ImmutableSortedDictionary<DateTimeOffset, EnergyBucket>.Empty;

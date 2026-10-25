@@ -20,7 +20,15 @@ import {
   startSelfTest,
   validateDraft,
   DiscoveryUnavailable,
+  cancelActiveTest,
+  fetchActiveTestPreconditions,
+  parseActiveTest,
+  parseActiveTestPreconditions,
+  startActiveTest,
 } from './setup';
+import activePreconditionsSample from './setup-active-test-preconditions.sample.json';
+import activeRefusedSample from './setup-active-test-refused.sample.json';
+import activeTestSample from './setup-active-test.sample.json';
 import discoverySample from './setup-discovery.sample.json';
 import draftSample from './setup-draft.sample.json';
 import evidenceSample from './setup-evidence.sample.json';
@@ -123,6 +131,15 @@ describe('draft (UI-06)', () => {
     ['an unknown file state', (p: any) => (p.fileState = 'broken')],
   ])('refuses %s', (_case, change) => {
     expect(() => parseDraftView(copy(draftSample, change))).toThrow();
+  });
+
+  it('reads the stop actuator of a modulating device and the start policy, null when not written', () => {
+    const view = parseDraftView(
+      copy(draftSample, (p) => Object.assign(p.draft.devices[3], { stopActuator: 'switch.goe_allow_charging', start: 'headroom' })),
+    );
+
+    expect(view.draft.devices[3]).toMatchObject({ stopActuator: 'switch.goe_allow_charging', start: 'headroom' });
+    expect(view.draft.devices[0]).toMatchObject({ stopActuator: null, start: null });
   });
 
   it('an empty draft round-trips through the parser', () => {
@@ -235,5 +252,85 @@ describe('self-test (CONN-05)', () => {
     fetchMock.mockReturnValueOnce(respond(copy(startedSample), 202));
     expect((await startSelfTest(emptyDraft(), { device: { index: 0 } })).kind).toBe('started');
     expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toEqual({ draft: emptyDraft(), device: { index: 0 } });
+  });
+});
+
+// CONN-05, Stage C: the active phase self-test. Switchboard switches a declared, idle relay stage on
+// and off itself, only in effective active mode; the page must never show a test as startable when
+// the add-on names a reason, nor an aborted test without its reason.
+describe('active self-test (CONN-05)', () => {
+  /** A finished test as the add-on writes it (ActivePhaseTestTests generates the sample): on and off, both judged. */
+  function finished(change?: (p: any) => void): unknown {
+    return copy(activeTestSample, change);
+  }
+
+  it('reads the preconditions the add-on refuses with', () => {
+    const preconditions = parseActiveTestPreconditions(copy(activePreconditionsSample));
+
+    expect(preconditions.ok).toBe(false);
+    expect(preconditions.refusals.map((r) => r.code)).toContain('control_not_active');
+  });
+
+  it('reads startable preconditions with the expected duration', () => {
+    expect(parseActiveTestPreconditions({ ok: true, refusals: [], expectedDurationS: 250 })).toEqual({ ok: true, refusals: [], expectedDurationS: 250 });
+  });
+
+  it.each([
+    ['ok next to a refusal', (p: any) => (p.ok = true)],
+    ['not ok without a refusal', (p: any) => (p.refusals = [])],
+    ['an unknown refusal code', (p: any) => (p.refusals[0].code = 'too_cold')],
+  ])('refuses preconditions with %s', (_case, change) => {
+    expect(() => parseActiveTestPreconditions(copy(activePreconditionsSample, change))).toThrow();
+  });
+
+  it('reads a finished test with its own observations and verdict', () => {
+    const test = parseActiveTest(finished());
+
+    expect(test).toMatchObject({ device: 'heater_l1', state: 'finished', phase: 'done', expectedPhase: 'L1', abortReason: null });
+    expect(test.verdict?.verdict).toBe('confirmed');
+    expect(test.observations.map((o) => o.source)).toEqual(['active', 'active']);
+  });
+
+  it('reads an aborted test with its reason', () => {
+    const test = parseActiveTest(finished((p) => Object.assign(p, { state: 'aborted', abortReason: 'guard_acted', verdict: null, observations: [], offAt: null })));
+
+    expect(test).toMatchObject({ state: 'aborted', abortReason: 'guard_acted', verdict: null });
+  });
+
+  it.each([
+    ['an aborted test without its reason', (p: any) => (p.state = 'aborted')],
+    ['a reason next to a finished test', (p: any) => (p.abortReason = 'cancelled')],
+    ['an unknown phase', (p: any) => (p.phase = 'cooling')],
+    ['an unknown abort reason', (p: any) => Object.assign(p, { state: 'aborted', abortReason: 'bored' })],
+    ['stage 0', (p: any) => (p.stage = 0)],
+  ])('refuses %s', (_case, change) => {
+    expect(() => parseActiveTest(finished(change))).toThrow();
+  });
+
+  it('asks for the preconditions of one device stage', async () => {
+    fetchMock.mockReturnValue(respond(copy(activePreconditionsSample)));
+
+    await fetchActiveTestPreconditions('heater_l1', 1);
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('api/setup/active-test/preconditions?device=heater_l1&stage=1');
+  });
+
+  it('starts with a JSON post and reads a refusal with its reasons', async () => {
+    fetchMock.mockReturnValueOnce(respond({ id: 'abc', expectedDurationS: 250 }, 202)).mockReturnValueOnce(respond(copy(activeRefusedSample), 409));
+
+    expect(await startActiveTest('heater_l1', 1)).toEqual({ kind: 'started', id: 'abc', expectedDurationS: 250 });
+    const refused = await startActiveTest('heater_l1', 1);
+    expect(refused.kind).toBe('refused');
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(String(init?.body))).toEqual({ device: 'heater_l1', stage: 1 });
+  });
+
+  it('cancels a test, and says when there is none', async () => {
+    fetchMock.mockReturnValueOnce(respond(null, 204)).mockReturnValueOnce(respond(null, 404));
+
+    expect(await cancelActiveTest('abc')).toBe(true);
+    expect(await cancelActiveTest('abc')).toBe(false);
+    expect(fetchMock.mock.calls[0]![1]?.method).toBe('DELETE');
   });
 });

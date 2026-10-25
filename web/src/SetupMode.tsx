@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'preact/hooks';
-import type { OperatingMode } from './api/decisions';
-import { chooseMode, fetchMode, type Mode, type ModeChoice } from './api/mode';
+import { useState } from 'preact/hooks';
+import type { Control } from './api/control';
 import type { DeviceDraft, SaveOutcome, SetupDraft, SetupIssue, SignalDraft } from './api/setup';
-import { SETUP_REQUEST_TIMEOUT_MS } from './config';
+import { ControlBlock, modeKind } from './ControlBlock';
 import { formatNumber } from './format';
 import { fill, type Lang, type Messages } from './i18n';
 import { issueText, SetupIssues } from './SetupIssues';
 import { fieldId, stepOfField, type StepName } from './setupDraft';
 import { StateBadge, StateLabel, type Tone } from './ui';
+import { useControl } from './useControl';
 import type { SetupState, StepProps } from './useSetup';
 import './setupMode.css';
 
-// Step 5 (Mode) and the finish flow (SAFE-06, UI-05, UI-06, MODE-02). Shadow is the only mode that
-// can be chosen: active is shown, disabled, with the reason (no command path exists in this
-// version). Finishing needs the not-a-protective-device acknowledgement, saves through the add-on
-// (which validates with the runtime parser and refuses with the fields to fix), and only after a
-// save records the mode choice. Nothing here decides validity: the add-on is the only judge.
+// Step 5 (Mode) and the finish flow (SAFE-06, UI-05, UI-06, MODE-02). The mode is shown as it is,
+// in the control block: the add-on option, the "control allowed" switch, the mode in force and what
+// keeps it in shadow, and the observation advice. The wizard records no mode and saving never turns
+// control on; the switch is the user's own act, with its confirmation. Finishing needs the
+// not-a-protective-device acknowledgement, saves through the add-on (which validates with the
+// runtime parser and refuses with the fields to fix), and after a save reads the control state
+// again, since a valid configuration may change the mode in force. Nothing here decides validity:
+// the add-on is the only judge.
 
 type Acknowledgement = keyof SetupDraft['acknowledgements'];
 
@@ -29,14 +32,11 @@ const DEVICE_TYPE_LABEL = {
   storage: 'deviceType.storage',
 } as const;
 
-function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SETUP_REQUEST_TIMEOUT_MS);
-  return run(controller.signal).finally(() => clearTimeout(timeout));
-}
-
-function modeLabel(t: Messages, mode: OperatingMode): string {
-  return mode === 'shadow' ? t.modeShadow : t.modeActive;
+/** The mode in force after a save, as the add-on reports it. */
+function savedModeLine(t: Messages, control: Control): string {
+  const kind = modeKind(control.mode);
+  const effective = kind === 'active' ? t.modeActive : kind === 'offs_only' ? t['control.effective.offsOnly'] : t.modeShadow;
+  return fill(t['setupMode.saved.mode'], { effective });
 }
 
 /** Focuses the input a field names, or the nearest enclosing one that has an input (devices[1].phase → devices[1]). */
@@ -67,25 +67,11 @@ function openField(field: string, goTo: (step: StepName) => void): void {
 }
 
 export function SetupMode({ setup, t, lang, goTo }: StepProps) {
-  const [mode, setMode] = useState<Mode | 'unavailable' | null>(null);
+  // MODE-02: the add-on option (ceiling), the control switch and the mode in force, as they are.
+  const control = useControl();
   const [running, setRunning] = useState(false);
   const [noAnswer, setNoAnswer] = useState(false);
-  const [modeResult, setModeResult] = useState<ModeChoice | 'failed' | null>(null);
-
-  // MODE-02: the add-on option (ceiling), the persisted UI choice and the mode in force, as they are.
-  useEffect(() => {
-    let disposed = false;
-    withTimeout(fetchMode)
-      .then((current) => {
-        if (!disposed) setMode(current);
-      })
-      .catch(() => {
-        if (!disposed) setMode('unavailable');
-      });
-    return () => {
-      disposed = true;
-    };
-  }, []);
+  const [modeResult, setModeResult] = useState<Control | 'failed' | null>(null);
 
   const view = setup.view;
   const acks = setup.draft.acknowledgements;
@@ -113,14 +99,8 @@ export function SetupMode({ setup, t, lang, goTo }: StepProps) {
         return;
       }
       if (result.kind !== 'saved') return;
-      // The mode choice is recorded only for a saved configuration, and it is always shadow here.
-      try {
-        const choice = await withTimeout((signal) => chooseMode('shadow', signal));
-        setModeResult(choice);
-        if (choice.kind === 'chosen') setMode(choice.mode);
-      } catch {
-        setModeResult('failed');
-      }
+      // The saved configuration may change the mode in force (a valid one counts): read it again.
+      setModeResult((await control.refresh()) ?? 'failed');
     } finally {
       setRunning(false);
     }
@@ -134,33 +114,7 @@ export function SetupMode({ setup, t, lang, goTo }: StepProps) {
       </header>
       <p>{t['setupMode.lead']}</p>
 
-      <fieldset class="smode-modes">
-        <legend>{t['setupMode.modes.legend']}</legend>
-        <label class="smode-choice" data-selected="">
-          <input type="radio" name="setup-mode" value="shadow" checked />
-          <span>
-            <span class="t">{t['setupMode.shadow.title']}</span>
-            <span class="d">{t['setupMode.shadow.text']}</span>
-          </span>
-        </label>
-        <label class="smode-choice" aria-disabled="true">
-          <input type="radio" name="setup-mode" value="active" disabled aria-describedby="smode-active-reason" />
-          <span>
-            <span class="t">{t['setupMode.active.title']}</span>
-            <span class="d">{t['setupMode.active.text']}</span>
-            <span class="d" id="smode-active-reason">
-              {t['setupMode.active.unavailable']}
-            </span>
-          </span>
-        </label>
-        {mode !== null && (
-          <p class="sub" data-mode={mode === 'unavailable' ? 'unavailable' : mode.effective}>
-            {mode === 'unavailable'
-              ? t['setupMode.current.unavailable']
-              : fill(t['setupMode.current'], { effective: modeLabel(t, mode.effective), ceiling: modeLabel(t, mode.ceiling), choice: modeLabel(t, mode.uiChoice) })}
-          </p>
-        )}
-      </fieldset>
+      <ControlBlock state={control} t={t} lang={lang} place="setup" />
 
       <div class="smode-statement" role="note">
         <p>
@@ -302,7 +256,7 @@ function Saved({
 }: {
   saved: Extract<SaveOutcome, { kind: 'saved' }>;
   previousRevision: string | null;
-  modeResult: ModeChoice | 'failed' | null;
+  modeResult: Control | 'failed' | null;
   running: boolean;
   setup: SetupState;
   t: Messages;
@@ -338,13 +292,12 @@ function Saved({
           </p>
         </>
       )}
-      {modeResult !== null && modeResult !== 'failed' && modeResult.kind === 'chosen' && (
-        <p>
-          {fill(t['setupMode.saved.mode'], { choice: modeLabel(t, modeResult.mode.uiChoice), effective: modeLabel(t, modeResult.mode.effective) })}
-          {modeResult.mode.effective === 'shadow' && <span class="sub">{t.modeShadowNote}</span>}
+      {modeResult !== null && modeResult !== 'failed' && (
+        <p data-saved-mode={modeKind(modeResult.mode)}>
+          {savedModeLine(t, modeResult)}
+          {modeResult.mode.missing.length > 0 && <span class="sub">{t['setupMode.saved.modeMissing']}</span>}
         </p>
       )}
-      {modeResult !== null && modeResult !== 'failed' && modeResult.kind === 'refused' && <p>{fill(t['setupMode.saved.modeRefused'], { code: modeResult.code })}</p>}
       {modeResult === 'failed' && <p>{t['setupMode.saved.modeFailed']}</p>}
       <p class="sub">{t['setupMode.saved.next']}</p>
       <div class="smode-links">

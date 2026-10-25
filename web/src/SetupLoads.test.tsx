@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
 import { SetupLoads } from './SetupLoads';
-import { cleanDraft, posted, renderStep, samples, serve, type Payload } from './SetupLoads.test-support';
+import { cleanDraft, posted, readoutsFor, renderStep, samples, serve, type Payload } from './SetupLoads.test-support';
 import { emptyDraft, type SetupIssue } from './api/setup';
 import { messages } from './i18n';
 import { advance, respond } from './screens.test-support';
@@ -489,5 +489,383 @@ describe('phase self-test', () => {
     expect(recorded).toHaveLength(2);
     expect(recorded[0]!.textContent).toContain('house load (PV taken out)');
     expect(card('heater_l3').querySelector('.loads-selftest-history')!.textContent).toContain('The add-on has not recorded a switching of switch.grzalka_3 since it started.');
+  });
+});
+
+// Control stage (maintainer survey 2026-10-25): a modulating device may declare a stop actuator, the
+// switch that stops it below its minimum. Only the user declares it (CLAUDE.md): discovery suggests
+// the switches of the control entity's own Home Assistant device, and nothing is ever preselected.
+describe('stop actuator', () => {
+  /** The go-e device gains its charging switch (and a select, which is not a stop this version can send). */
+  function discoveryWithGoeSwitch(): Payload {
+    const discovery = structuredClone(samples.discoverySample) as unknown as { entities: Payload[] };
+    const amp = discovery.entities.find((e) => e.entityId === 'number.goe_422752_amp')!;
+    discovery.entities.push(
+      { ...amp, entityId: 'switch.goe_422752_charging', domain: 'switch', name: 'go-e charging allowed', deviceClass: 'switch', unit: null, state: 'on' },
+      { ...amp, entityId: 'select.goe_422752_frc', domain: 'select', name: 'go-e force state', deviceClass: null, unit: null, state: 'neutral' },
+    );
+    return discovery as unknown as Payload;
+  }
+
+  it('suggests the switches of the charger’s own Home Assistant device first and never preselects one', async () => {
+    serve(fetchMock, { discovery: discoveryWithGoeSwitch() });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    const picker = byField<HTMLSelectElement>('devices[3].stopActuator');
+    expect(picker.value).toBe('');
+    expect(setup().draft.devices[3]!.stopActuator).toBeNull();
+    // The same-device switch leads the list; every relay entity stays pickable, a select never is.
+    expect(optionValues(picker)[0]).toBe('switch.goe_422752_charging');
+    expect(optionValues(picker)).toEqual(expect.arrayContaining(['switch.grzalka_1', 'switch.grzalka_2', 'switch.grzalka_3']));
+    expect(optionValues(picker)).not.toContain('select.goe_422752_frc');
+    const suggestions = card('ev_charger').querySelector('.loads-stop-suggest')!;
+    expect(suggestions.textContent).toContain('Switches of the same Home Assistant device as number.goe_422752_amp:');
+    expect([...suggestions.querySelectorAll('li')].map((li) => li.getAttribute('data-entity'))).toEqual(['switch.goe_422752_charging']);
+    // An on/off device has no stop actuator (the add-on writes it for modulating devices only).
+    expect(byField('devices[0].stopActuator')).toBeNull();
+
+    fireEvent.click(within(suggestions as HTMLElement).getByRole('button', { name: 'Use switch.goe_422752_charging' }));
+    expect(setup().draft.devices[3]!.stopActuator).toBe('switch.goe_422752_charging');
+    await act(async () => {
+      await setup().save();
+    });
+    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: { stopActuator: string | null }[] };
+    expect(sent.devices[3]!.stopActuator).toBe('switch.goe_422752_charging');
+  });
+
+  it('says plainly when the charger’s device has no switch, instead of suggesting an unrelated one', async () => {
+    serve(fetchMock);
+    await renderStep(SetupLoads, vi.fn());
+
+    expect(card('ev_charger').querySelector('.loads-stop-suggest')).toBeNull();
+    expect(card('ev_charger').querySelector('.loads-stop-none')?.textContent).toBe(
+      'No switch of the same Home Assistant device as number.goe_422752_amp was found. A stop that is not a switch (a select, for example) cannot be declared in this version.',
+    );
+    expect(byField<HTMLSelectElement>('devices[3].stopActuator').value).toBe('');
+  });
+
+  it('asks for the control entity first on a new charger: suggestions come from its device', async () => {
+    serve(fetchMock, { draft: cleanDraft(), discovery: discoveryWithGoeSwitch() });
+    const setup = await renderStep(SetupLoads, vi.fn());
+    fireEvent.click(screen.getByRole('button', { name: /^EV charger/ }));
+    await advance();
+
+    expect(card('ev_charger').textContent).toContain('Pick the control entity first: suggestions come from its Home Assistant device.');
+    fireEvent.change(byField('devices[0].actuator'), { target: { value: 'number.goe_422752_amp' } });
+    expect(card('ev_charger').querySelector('.loads-stop-suggest li')?.getAttribute('data-entity')).toBe('switch.goe_422752_charging');
+    expect(setup().draft.devices[0]!.stopActuator).toBeNull();
+  });
+});
+
+// Start policy (maintainer survey 2026-10-25): restore_only is the default, so dispatch never starts
+// a device the user had off; headroom keeps the earlier behaviour. A device without start: shows the
+// default and its draft stays untouched (the add-on writes the key only when it differs).
+describe('start policy', () => {
+  it('shows only restore as the default and writes a choice only when the user makes one', async () => {
+    serve(fetchMock);
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    const select = byField<HTMLSelectElement>('devices[0].start');
+    expect(select.value).toBe('restore_only');
+    expect(optionValues(select)).toEqual(['restore_only', 'headroom']);
+    expect(select.options[0]!.textContent).toBe('Only restore (default)');
+    expect(setup().draft.devices.every((d) => d.start === null)).toBe(true);
+    // Every device of this step has one, the charger too.
+    expect(byField<HTMLSelectElement>('devices[3].start').value).toBe('restore_only');
+
+    fireEvent.change(byField('devices[3].start'), { target: { value: 'headroom' } });
+    expect(setup().draft.devices[3]!.start).toBe('headroom');
+    await act(async () => {
+      await setup().save();
+    });
+    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: { start: string | null }[] };
+    expect(sent.devices.map((d) => d.start)).toEqual([null, null, null, 'headroom']);
+  });
+
+  it('keeps a value it does not know, so a hand-written file is never silently changed', async () => {
+    const view = structuredClone(samples.draftSample) as Payload & { draft: { devices: Payload[] } };
+    view.draft.devices[1]!.start = 'surplus';
+    serve(fetchMock, { draft: view });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    expect(byField<HTMLSelectElement>('devices[1].start').value).toBe('surplus');
+    expect(setup().draft.devices[1]!.start).toBe('surplus');
+  });
+
+  it('uses the Polish vocabulary of the survey', async () => {
+    serve(fetchMock);
+    await renderStep(SetupLoads, vi.fn(), 'pl');
+
+    const labels = [...byField<HTMLSelectElement>('devices[0].start').options].map((o) => o.textContent);
+    expect(labels).toEqual(['Tylko przywracanie (domyślnie)', 'Uruchamiaj przy zapasie mocy']);
+  });
+});
+
+// CONN-05, automatic (maintainer survey 2026-10-25: "if we have headroom, Switchboard may switch the
+// device on and off to identify phases"). The add-on decides whether the test may start; the page
+// shows its reasons and enables the button only when it may, asks once more before anything is
+// switched, follows the test through on, the measured step per phase, off and the verdict, and
+// confirms the device is back off as it was. It coexists with the passive watch.
+describe('automatic phase self-test', () => {
+  const ready = () => ({ ok: true, refusals: [], expectedDurationS: 422 });
+  const active = () => card('heater_l1').querySelector('.loads-active') as HTMLElement;
+  const startButton = (name = 'Test automatically') => within(active()).getByRole('button', { name }) as HTMLButtonElement;
+  const steps = () => Object.fromEntries([...active().querySelectorAll('.loads-active-steps li')].map((li) => [li.getAttribute('data-step'), li.getAttribute('data-state')]));
+
+  /** The sample's finished test, walked back to an earlier phase. */
+  function phase(name: 'pending_on' | 'on' | 'pending_off' | 'judging'): Payload {
+    const done = structuredClone(samples.activeTestSample) as unknown as Payload & { observations: Payload[] };
+    const at = { onAt: name === 'pending_on' ? null : done.onAt, offAt: name === 'judging' ? done.offAt : null };
+    const observations = name === 'pending_off' || name === 'judging' ? [done.observations[0]] : [];
+    return { ...done, state: 'running', phase: name, ...at, verdict: null, observations };
+  }
+
+  function swapped(): Payload {
+    const test = structuredClone(samples.activeTestSample) as unknown as Payload & { observations: Payload[] };
+    test.observations = test.observations.map((o) => ({ ...o, verdict: 'mismatch', observedPhase: 'L2' }));
+    test.verdict = { verdict: 'mismatch', observedPhase: 'L2', reason: null, confirmed: 0, mismatched: 2, inconclusive: 0 };
+    return test;
+  }
+
+  it('is refused with the add-on’s reasons, and nothing can be switched while it is', async () => {
+    serve(fetchMock);
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    const reasons = [...active().querySelectorAll('.loads-active-refusals li')].map((li) => li.getAttribute('data-refusal'));
+    expect(reasons).toEqual(['control_not_active', 'not_declared']);
+    expect(active().textContent).toContain('Control is not active: it needs the add-on option active, Control allowed switched on and a valid configuration (step 5).');
+    expect(startButton().disabled).toBe(true);
+    expect(posted(fetchMock, 'api/setup/active-test')).toEqual([]);
+    // The charger modulates: it cannot be switched on and off for a phase test.
+    expect(card('ev_charger').querySelector('.loads-active')).toBeNull();
+  });
+
+  it('names the phase without headroom and how long the minimum off time still runs', async () => {
+    const refused = {
+      ok: false,
+      refusals: [
+        { code: 'headroom_insufficient', phase: 'L2', remainingS: null },
+        { code: 'lockout_min_off', phase: null, remainingS: 74.2 },
+      ],
+      expectedDurationS: 497,
+    };
+    serve(fetchMock, { activePreconditions: () => refused });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    expect(active().textContent).toContain('Not enough headroom on L2 for the device’s rated current with the reserve kept free.');
+    expect(active().textContent).toContain('Its minimum off time still runs for 75 s.');
+    expect(active().textContent).toContain('Once it can start, the test takes about 8 min.');
+    expect(startButton().disabled).toBe(true);
+  });
+
+  it('a device only in the draft must be saved first, and the add-on is not asked about it', async () => {
+    serve(fetchMock, { activePreconditions: ready });
+    await renderStep(SetupLoads, vi.fn());
+    fireEvent.click(screen.getByRole('button', { name: /^Water-heater element/ }));
+    await advance(2_000);
+
+    const added = card('water_heater_element');
+    fireEvent.change(within(added).getByLabelText('Phase'), { target: { value: 'L2' } });
+    await advance(2_000);
+    expect(added.querySelector('.loads-active-save')?.textContent).toBe('Save the configuration first (step 5): the automatic test switches only a device of the configuration in force.');
+    expect(within(added.querySelector('.loads-active') as HTMLElement).queryByRole('button', { name: 'Test automatically' })).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('active-test/preconditions?device=water_heater_element'))).toBe(false);
+  });
+
+  it('asks once more, then follows the test through on, the step per phase, off and the verdict, and the device is back off', async () => {
+    serve(fetchMock, {
+      activePreconditions: ready,
+      activeStart: () => respond({ id: samples.activeTestSample.id, expectedDurationS: 422 }, 202),
+      activeTests: [phase('pending_on'), phase('on'), phase('pending_off'), phase('judging'), samples.activeTestSample],
+    });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    expect(active().textContent).toContain('Ready: the test takes about 7 min.');
+    fireEvent.click(startButton());
+    // Nothing is switched before the user confirms what will be switched and for how long.
+    const confirm = within(active()).getByRole('alertdialog');
+    expect(confirm.textContent).toContain('Switchboard will switch switch.grzalka_2 on and off again; the test takes about 7 min. Start it?');
+    expect(confirm.querySelector('.mono')?.textContent).toBe('switch.grzalka_2');
+    expect(posted(fetchMock, 'api/setup/active-test')).toEqual([]);
+
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Start the test' }));
+    await advance();
+    await advance();
+    expect(posted(fetchMock, 'api/setup/active-test')).toEqual([{ device: 'heater_l1', stage: 1 }]);
+    expect(active().textContent).toContain('The test is running. Switching on and waiting for the device to report on…');
+    expect(steps()).toEqual({ on: 'current', measureOn: 'pending', off: 'pending', judge: 'pending' });
+    expect(within(active()).getByRole('button', { name: 'Stop the test' })).toBeTruthy();
+    expect(within(active()).queryByRole('button', { name: 'Test automatically' })).toBeNull();
+
+    await advance(2_000);
+    expect(steps()).toEqual({ on: 'done', measureOn: 'current', off: 'pending', judge: 'pending' });
+    await advance(2_000);
+    expect(steps()).toEqual({ on: 'done', measureOn: 'done', off: 'current', judge: 'pending' });
+    // The step measured at the on, per phase, before the verdict.
+    expect(active().querySelector('.loads-observations tbody tr')?.textContent).toContain('L1 +1,694 W');
+    await advance(2_000);
+    expect(steps()).toEqual({ on: 'done', measureOn: 'done', off: 'done', judge: 'current' });
+
+    await advance(2_000);
+    await advance();
+    expect(active().textContent).toContain('The test is finished.');
+    expect(steps()).toEqual({ on: 'done', measureOn: 'done', off: 'done', judge: 'done' });
+    const rows = [...active().querySelectorAll('.loads-observations tbody tr')];
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.textContent!.includes('switched by the active self-test'))).toBe(true);
+    expect(rows[1]!.textContent).toContain('L1 -1,712 W');
+    expect(active().querySelector('.loads-active-verdict [data-verdict="confirmed"]')?.textContent).toBe('phase confirmed: L1');
+    expect(active().querySelector('.loads-active-return')?.getAttribute('data-restored')).toBe('true');
+    expect(active().querySelector('.loads-active-return')?.textContent).toContain('Back to its prior state: off, as before the test');
+    // A finished test asks the add-on to judge the draft again, so the verdict and history include it.
+    expect(posted(fetchMock, 'api/setup/validate').length).toBeGreaterThan(0);
+    expect(startButton('Test automatically again')).toBeTruthy();
+  });
+
+  it('a deliberately swapped phase is caught: the step was on L2 while the configuration declares L1', async () => {
+    serve(fetchMock, {
+      activePreconditions: ready,
+      activeStart: () => respond({ id: samples.activeTestSample.id, expectedDurationS: 422 }, 202),
+      activeTests: [swapped()],
+    });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    fireEvent.click(startButton());
+    fireEvent.click(within(active()).getByRole('button', { name: 'Start the test' }));
+    await advance();
+    await advance();
+
+    expect(active().querySelector('.loads-active-verdict [data-verdict="mismatch"]')?.textContent).toBe('mismatch: the step was on L2, declared L1');
+    expect(active().textContent).toContain('Either the device is on L2, or the meter’s phase entities are swapped (step 1).');
+    expect(active().textContent).not.toContain('phase confirmed');
+  });
+
+  it('an aborted test says why, and confirms the device is off again only when it reports off', async () => {
+    const aborted = { ...phase('on'), state: 'aborted', phase: 'done', abortReason: 'guard_acted' };
+    let heater: 'unavailable' | 'on' | 'off' = 'unavailable';
+    const readouts = (url: string) => {
+      const answer = readoutsFor(url) as { items: Payload[] };
+      for (const item of answer.items) {
+        if (item.entityId !== 'switch.grzalka_2') continue;
+        if (heater === 'unavailable') Object.assign(item, { status: 'unavailable', state: null });
+        else item.state = heater;
+      }
+      return answer;
+    };
+    // A test started earlier in this tab is shown again when the user comes back to the step.
+    window.sessionStorage.setItem(`switchboard.setup.activeTest.heater_l1`, samples.activeTestSample.id);
+    serve(fetchMock, { readouts, activeTests: [aborted] });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+    await advance();
+
+    expect(active().textContent).toContain('The test was stopped: the guard reduced a load, and protection comes first.');
+    const back = () => active().querySelector('.loads-active-return')!;
+    // An unknown state is never reported as "back off".
+    expect(back().getAttribute('data-restored')).toBe('false');
+    expect(back().textContent).toBe('Waiting for the device to report off, as it was before the test.');
+
+    heater = 'on';
+    await advance(2_000);
+    expect(back().getAttribute('data-restored')).toBe('false');
+    expect(back().textContent).toBe('The device still reports on: Switchboard asks for the off until it reports it. If it stays on, switch it off in Home Assistant.');
+
+    heater = 'off';
+    await advance(2_000);
+    expect(back().getAttribute('data-restored')).toBe('true');
+    expect(back().textContent).toBe('Back to its prior state: the device reports off, as before the test.');
+  });
+
+  it('after an abort the device is not called back off while the add-on still sees it on, whatever the readout says', async () => {
+    // The off after an abort waits for min_on unless protection holds the device: the add-on's own
+    // view (device_on) outranks a readout that may lag behind it.
+    const aborted = { ...phase('on'), state: 'aborted', phase: 'done', abortReason: 'increases_stopped' };
+    let addOnSeesOn = true;
+    window.sessionStorage.setItem('switchboard.setup.activeTest.heater_l1', samples.activeTestSample.id);
+    serve(fetchMock, {
+      activeTests: [aborted],
+      activePreconditions: () => ({ ok: false, refusals: addOnSeesOn ? [{ code: 'device_on', phase: null, remainingS: null }] : [{ code: 'lockout_min_off', phase: null, remainingS: 80 }], expectedDurationS: 502 }),
+    });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+    await advance();
+
+    const back = () => active().querySelector('.loads-active-return')!;
+    expect(active().textContent).toContain('The test was stopped: the guard stopped adding load.');
+    expect(back().getAttribute('data-restored')).toBe('false');
+    expect(back().textContent).toContain('The device still reports on');
+
+    addOnSeesOn = false;
+    await advance(2_000);
+    expect(back().getAttribute('data-restored')).toBe('true');
+  });
+
+  it('the user can stop a running test: the add-on is asked to stop it and switch the device off', async () => {
+    const cancelled = { ...phase('on'), state: 'aborted', phase: 'done', abortReason: 'cancelled' };
+    serve(fetchMock, {
+      activePreconditions: ready,
+      activeStart: () => respond({ id: samples.activeTestSample.id, expectedDurationS: 422 }, 202),
+      activeTests: [phase('on'), phase('on'), cancelled],
+    });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+    fireEvent.click(startButton());
+    fireEvent.click(within(active()).getByRole('button', { name: 'Start the test' }));
+    await advance();
+    await advance();
+
+    // A running test is kept for this tab: leaving the step (to look at Home Assistant) loses nothing.
+    expect(window.sessionStorage.getItem('switchboard.setup.activeTest.heater_l1')).toBe(samples.activeTestSample.id);
+    fireEvent.click(within(active()).getByRole('button', { name: 'Stop the test' }));
+    await advance();
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url) === `api/setup/active-test/${samples.activeTestSample.id}` && init?.method === 'DELETE')).toBe(true);
+    await advance(2_000);
+    await advance(2_000);
+    expect(active().textContent).toContain('The test was stopped: you stopped it.');
+    expect(window.sessionStorage.getItem('switchboard.setup.activeTest.heater_l1')).toBeNull();
+  });
+
+  it('a confirmation open while the conditions change can no longer start the test', async () => {
+    let headroom = true;
+    serve(fetchMock, { activePreconditions: () => (headroom ? ready() : { ok: false, refusals: [{ code: 'headroom_insufficient', phase: 'L3', remainingS: null }], expectedDurationS: 422 }) });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    fireEvent.click(startButton());
+    const confirmStart = () => within(active()).getByRole('button', { name: 'Start the test' }) as HTMLButtonElement;
+    expect(confirmStart().disabled).toBe(false);
+    headroom = false;
+    await advance(2_000);
+    expect(confirmStart().disabled).toBe(true);
+    expect(active().textContent).toContain('Not enough headroom on L3');
+  });
+
+  it('shows the add-on’s reasons when it refuses a start the page thought possible', async () => {
+    serve(fetchMock, { activePreconditions: ready });
+    await renderStep(SetupLoads, vi.fn());
+    await advance();
+
+    fireEvent.click(startButton());
+    fireEvent.click(within(active()).getByRole('button', { name: 'Start the test' }));
+    await advance();
+
+    const refused = active().querySelector('[role="alert"]')!;
+    expect(refused.textContent).toContain('The add-on refused to start the test:');
+    expect([...refused.querySelectorAll('li')].map((li) => li.getAttribute('data-refusal'))).toEqual(['control_not_active', 'not_declared']);
+  });
+
+  it('coexists with the passive watch, which still switches nothing', async () => {
+    serve(fetchMock);
+    await renderStep(SetupLoads, vi.fn(), 'pl');
+    await advance();
+
+    const heater = card('heater_l1');
+    expect(within(heater).getByRole('button', { name: 'Testuj automatycznie' })).toBeTruthy();
+    expect(within(heater).getByRole('button', { name: 'Obserwuj, gdy przełączam' })).toBeTruthy();
+    expect(heater.querySelector('.loads-selftest-passive')?.textContent).toContain('Switchboard nie przełącza urządzenia podczas tego testu.');
   });
 });

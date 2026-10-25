@@ -335,6 +335,16 @@ describe('dashboard: reserve banner', () => {
     expect(document.querySelectorAll('[data-banner-phase]')).toHaveLength(1);
   });
 
+  // MODE-02: "nothing is switched" is said only while dispatch reports no command path; with control
+  // in force the same banner must not claim it.
+  it('does not say nothing is switched while commands go out', async () => {
+    await show('en', { 'api/dispatch': variant(dispatchSample, (d) => (d.commandPath = true)) });
+    const banner = document.querySelector<HTMLElement>('[data-banner-phase="L1"]')!;
+
+    expect(banner.textContent).not.toContain('nothing is switched');
+    expect(within(banner).getByText('Ładowarka go-e would be reduced from 20 A to 10 A.')).toBeTruthy();
+  });
+
   // In shadow mode a decided reduction relieves the guard's estimate while the meter still reads the
   // same (nothing is switched): the banner stays on the measured current and says what the decided
   // changes would leave.

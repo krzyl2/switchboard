@@ -122,7 +122,23 @@
             "enabled": true
           }
         }
-      ]
+      ],
+      "start": "restore_only",
+      "baseline": {
+        "level": {
+          "relays": [
+            true
+          ],
+          "setpointA": null,
+          "enabled": true
+        },
+        "since": "2026-10-22T07:36:00+00:00",
+        "commanded": true
+      },
+      "commandWarning": {
+        "since": "2026-10-22T07:39:20+00:00"
+      },
+      "selfStarted": "2026-10-22T07:20:00+00:00"
     },
     {
       "id": "heater_l2",
@@ -166,7 +182,11 @@
         "source": null
       },
       "draw": null,
-      "history": []
+      "history": [],
+      "start": "restore_only",
+      "baseline": null,
+      "commandWarning": null,
+      "selfStarted": null
     },
     {
       "id": "heater_l3",
@@ -254,7 +274,11 @@
             "enabled": true
           }
         }
-      ]
+      ],
+      "start": "restore_only",
+      "baseline": null,
+      "commandWarning": null,
+      "selfStarted": null
     },
     {
       "id": "ev_charger",
@@ -318,7 +342,11 @@
             "enabled": true
           }
         }
-      ]
+      ],
+      "start": "headroom",
+      "baseline": null,
+      "commandWarning": null,
+      "selfStarted": null
     },
     {
       "id": "battery",
@@ -358,7 +386,11 @@
         "powerW": null,
         "fresh": false
       },
-      "history": []
+      "history": [],
+      "start": "headroom",
+      "baseline": null,
+      "commandWarning": null,
+      "selfStarted": null
     }
   ]
 }

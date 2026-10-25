@@ -18,7 +18,7 @@ import './DeviceCard.css';
 // Screen 04 — Device card (UI-12, docs/mockups "Karta urządzenia"), route #/devices/<id> (#/devices
 // opens the first device). Two columns, connection and energy value, then dispatch's state of the
 // device with the manual override, then the command verification history (DISP-07). Everything is
-// read-only except the override, and in this version nothing is switched.
+// read-only except the override; devices are switched only while control is in force.
 
 interface Props {
   t: Messages;

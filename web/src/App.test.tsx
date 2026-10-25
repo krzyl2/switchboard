@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/preact';
 import { App } from './App';
+import controlSample from './api/control.sample.json';
 import type { Status } from './api/status';
 import { STATUS_REFRESH_INTERVAL_MS, STATUS_REQUEST_TIMEOUT_MS } from './config';
 
@@ -23,6 +24,25 @@ function respond(body: unknown, status = 200): Promise<Response> {
     json: () => Promise.resolve(body),
   } as Response);
 }
+
+/**
+ * The status page polls api/status (answered by `status`, call by call) and the control block's
+ * api/control; the shell's banner polls api/mode. Control and mode always answer here, so the only
+ * failure on screen is the status request's own.
+ */
+function serve(...status: (() => Promise<Response>)[]) {
+  let call = 0;
+  fetchMock.mockImplementation((input) => {
+    if (input === 'api/control') return respond(structuredClone(controlSample));
+    if (input === 'api/mode') return respond(structuredClone(controlSample.mode));
+    if (input !== 'api/status') return respond({}, 404);
+    const answer = status[Math.min(call, status.length - 1)]!;
+    call += 1;
+    return answer();
+  });
+}
+
+const statusRequests = () => fetchMock.mock.calls.filter(([input]) => input === 'api/status').length;
 
 /** Advances the virtual clock and lets every resulting fetch, state update and render settle. */
 async function advance(ms = 0): Promise<void> {
@@ -59,18 +79,19 @@ afterEach(() => {
 });
 
 describe('status page', () => {
-  it('requests the relative URL api/status, so the request stays under the ingress prefix', async () => {
-    fetchMock.mockImplementation(() => respond(healthyShadow));
+  it('requests the relative URLs api/status and api/control, so the requests stay under the ingress prefix', async () => {
+    serve(() => respond(healthyShadow));
     render(<App lang="en" />);
     await advance();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    // A leading slash would address Home Assistant itself instead of this add-on.
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('api/status');
+    // A leading slash would address Home Assistant itself instead of this add-on. api/mode is the
+    // shell's banner, on every page.
+    expect(new Set(fetchMock.mock.calls.map(([input]) => input))).toEqual(new Set(['api/status', 'api/control', 'api/mode']));
+    expect(statusRequests()).toBe(1);
   });
 
   it('shows every row for a connected, healthy add-on in shadow mode', async () => {
-    fetchMock.mockImplementation(() => respond(healthyShadow));
+    serve(() => respond(healthyShadow));
     render(<App lang="en" />);
     await advance();
 
@@ -89,9 +110,7 @@ describe('status page', () => {
   });
 
   it('never shows a lost connection or an unhealthy add-on as fine', async () => {
-    fetchMock.mockImplementation(() =>
-      respond({ ...healthyShadow, homeAssistant: 'disconnected', mqtt: 'connecting', healthy: false }),
-    );
+    serve(() => respond({ ...healthyShadow, homeAssistant: 'disconnected', mqtt: 'connecting', healthy: false }));
     render(<App lang="en" />);
     await advance();
 
@@ -103,37 +122,42 @@ describe('status page', () => {
     expect(toneOf(rowValue('Health'))).toBe('crit');
   });
 
-  it('does not let active mode suggest that this build switches anything', async () => {
-    fetchMock.mockImplementation(() => respond({ ...healthyShadow, mode: 'active' }));
+  // Since 0.7.0 the mode row reads active only when the add-on reports the mode in force as active,
+  // and then says what that means: commands go to the declared actuators.
+  it('says what active means when the add-on reports the mode in force as active', async () => {
+    serve(() => respond({ ...healthyShadow, mode: 'active' }));
     render(<App lang="en" />);
     await advance();
 
     expect(rowValue('Mode').textContent).toContain('Active');
-    expect(rowValue('Mode').textContent).toContain('cannot switch anything');
+    expect(rowValue('Mode').textContent).toContain('Sends commands to the declared actuators.');
+    expect(rowValue('Mode').textContent).not.toContain('never switches');
   });
 
   it('refreshes on the configured interval', async () => {
-    fetchMock
-      .mockImplementationOnce(() => respond({ ...healthyShadow, homeAssistant: 'connecting' }))
-      .mockImplementation(() => respond(healthyShadow));
+    serve(
+      () => respond({ ...healthyShadow, homeAssistant: 'connecting' }),
+      () => respond(healthyShadow),
+    );
     render(<App lang="en" />);
     await advance();
     expect(rowValue('Home Assistant').textContent).toBe('Connecting');
 
     await advance(STATUS_REFRESH_INTERVAL_MS - 1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(statusRequests()).toBe(1);
 
     await advance(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(statusRequests()).toBe(2);
     expect(rowValue('Home Assistant').textContent).toBe('Connected');
   });
 
   // A frozen page must be distinguishable from a calm system: on failure the last known values are
   // withdrawn and the time of the last successful update is shown instead.
   it('shows "status unavailable" with the time of the last successful update when a refresh fails', async () => {
-    fetchMock
-      .mockImplementationOnce(() => respond(healthyShadow))
-      .mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')));
+    serve(
+      () => respond(healthyShadow),
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    );
     render(<App lang="en" />);
     await advance();
     await advance(STATUS_REFRESH_INTERVAL_MS);
@@ -148,7 +172,7 @@ describe('status page', () => {
   });
 
   it('says "never" when no request has succeeded yet', async () => {
-    fetchMock.mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')));
+    serve(() => Promise.reject(new TypeError('Failed to fetch')));
     render(<App lang="en" />);
     await advance();
 
@@ -159,9 +183,10 @@ describe('status page', () => {
   });
 
   it('treats a request that never answers as unavailable once the timeout elapses', async () => {
-    fetchMock.mockImplementation(
-      (_input, init) =>
+    serve(
+      () =>
         new Promise<Response>((_resolve, reject) => {
+          const init = fetchMock.mock.calls.at(-1)?.[1];
           init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
         }),
     );
@@ -174,7 +199,7 @@ describe('status page', () => {
   });
 
   it('treats an HTTP error as unavailable', async () => {
-    fetchMock.mockImplementation(() => respond({ title: 'Service Unavailable' }, 503));
+    serve(() => respond({ title: 'Service Unavailable' }, 503));
     render(<App lang="en" />);
     await advance();
 
@@ -182,7 +207,7 @@ describe('status page', () => {
   });
 
   it('treats a payload it does not understand as unavailable instead of guessing', async () => {
-    fetchMock.mockImplementation(() => respond({ ...healthyShadow, mode: 'Active' }));
+    serve(() => respond({ ...healthyShadow, mode: 'Active' }));
     render(<App lang="en" />);
     await advance();
 
@@ -191,9 +216,10 @@ describe('status page', () => {
   });
 
   it('recovers when the add-on answers again', async () => {
-    fetchMock
-      .mockImplementationOnce(() => Promise.reject(new TypeError('Failed to fetch')))
-      .mockImplementation(() => respond(healthyShadow));
+    serve(
+      () => Promise.reject(new TypeError('Failed to fetch')),
+      () => respond(healthyShadow),
+    );
     render(<App lang="en" />);
     await advance();
     expect(screen.getByRole('alert')).toBeTruthy();
@@ -204,13 +230,14 @@ describe('status page', () => {
   });
 
   it('stops polling once the page is gone', async () => {
-    fetchMock.mockImplementation(() => respond(healthyShadow));
+    serve(() => respond(healthyShadow));
     const { unmount } = render(<App lang="en" />);
     await advance();
+    const before = fetchMock.mock.calls.length;
     unmount();
 
     await advance(STATUS_REFRESH_INTERVAL_MS * 3);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.length).toBe(before);
   });
 });
 
@@ -238,7 +265,7 @@ describe('not-a-protective-device statement', () => {
 
 describe('Polish chrome', () => {
   it('renders labels, states and the statement in Polish', async () => {
-    fetchMock.mockImplementation(() => respond(healthyShadow));
+    serve(() => respond(healthyShadow));
     render(<App lang="pl" />);
     await advance();
 

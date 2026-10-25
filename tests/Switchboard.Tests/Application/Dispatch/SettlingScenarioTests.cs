@@ -319,7 +319,8 @@ public sealed class SettlingScenarioTests
     public void Foreign_step_records_one_event_per_step()
     {
         // 04 §4: a kettle is one event however long it boils; once the residual is back below
-        // rearm_fraction of the threshold the next kettle is the next event.
+        // rearm_fraction of the threshold the next kettle is the next event. Each carries the v3
+        // code foreign_load: the log tells "the house did this" from "the reserve is too small".
         var s = DispatchScenario.Create(DispatchDevices.Heaters, [], "  dispatch:\n    persistence_up_cycles: 100\n");
         s.PollUntil(T0 + TimeSpan.FromMinutes(1), 9.6, 9.6, 9.6);
         s.PollUntil(T0 + TimeSpan.FromMinutes(3), 9.6 + (2000 / GuardScenario.Volts), 9.6, 9.6);
@@ -330,7 +331,7 @@ public sealed class SettlingScenarioTests
 
         var events = s.Decisions.Where(d => d.Action == DecisionAction.ForeignLoadDetected).ToList();
         Assert.Equal(2, events.Count);
-        Assert.All(events, e => Assert.Equal((DecisionScope.Phase, Phase.L1, ReasonCode.ReserveThreshold), (e.Scope, e.Phase!.Value, e.Reason)));
+        Assert.All(events, e => Assert.Equal((DecisionScope.Phase, Phase.L1, ReasonCode.ForeignLoad), (e.Scope, e.Phase!.Value, e.Reason)));
     }
 
     private static GuardScenario Active(RecordingDeviceCommandPort port, string[] off, string? devices = null) =>

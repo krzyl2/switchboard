@@ -14,14 +14,14 @@ This version:
 - connects to Home Assistant over the Supervisor WebSocket,
 - has a **setup wizard** that writes `switchboard.yaml` for you (see [Setup wizard](#setup-wizard)); the file can still be written by hand (see [Configuration file](#configuration-file)),
 - reads the meter signals you map in `switchboard.yaml` and shows each one on the **Signals** page with its value, age and state,
-- reads the devices you declare there and runs the **guard** on them: per phase (and per circuit group) it compares the measured current with your breaker's limits and works out, every time a new meter sample arrives, which device it *would* reduce or switch off, and why (see [Devices and the guard](#devices-and-the-guard-shadow-only)),
-- runs **dispatch** on the same devices: it works out which device it *would* start, raise, lower or stop to use the headroom the guard leaves, worth the most per kWh first, and keeps for every device what it would have it at next to what Home Assistant reports (see [Dispatch](#dispatch-computed-and-logged-nothing-switched)),
+- reads the devices you declare there and runs the **guard** on them: per phase (and per circuit group) it compares the measured current with your breaker's limits and works out, every time a new meter sample arrives, which device it would reduce or switch off, and why, and with control in force does it (see [Devices and the guard](#devices-and-the-guard)),
+- runs **dispatch** on the same devices: it works out which device it *would* start, raise, lower or stop to use the headroom the guard leaves, worth the most per kWh first, and keeps for every device what it would have it at next to what Home Assistant reports (see [Dispatch](#dispatch)),
 - takes a **manual override** per device (force on, force off, automatic) from the web UI or a Home Assistant select entity; protection still outranks it,
 - writes every decision, with its reason, to a decision log,
 - publishes over MQTT discovery the health entity `binary_sensor.switchboard_healthy`, the guard's entities (headroom, overload budget, recovery time, guard state per phase; mode, last decision, kill switch; one state entity per device) and per device a dispatch state and an override select,
 - serves a status page through ingress (sidebar or **Open Web UI**): mode, Home Assistant and MQTT connection, health, version.
 
-It **controls nothing**. Dispatch decisions are computed and logged; **Switchboard still switches nothing**. It sends no commands to any Home Assistant entity, in either mode: this version contains no way to. Everything the guard and dispatch decide is recorded as "would switch off", "would start", "would set 10 A", never carried out, and every decision says `"commanded": false`. Switching arrives in a later version, and only after the decision log has been reviewed in shadow mode.
+Since 0.7.0 it **can switch** the devices you declared, but only when you allow it twice: the add-on option `mode: active` **and** the **Control allowed** switch, which is off after install and after the update to 0.7.0 (see [Control](#control-active-mode)). Until then everything the guard and dispatch decide is recorded as "would switch off", "would start", "would set 10 A", never carried out, and every decision says `"commanded": false`. Review the decision log in shadow mode before you allow control.
 
 ## Requirements
 
@@ -41,16 +41,16 @@ Home Assistant now calls add-ons *apps*; Switchboard is one.
 
 | Option | Values | Default | Meaning |
 |---|---|---|---|
-| `mode` | `shadow`, `active` | `shadow` | `shadow` computes and logs decisions without switching anything. `active` is reserved for a later version: commanding is not enabled in this one, so it runs in shadow mode even with `active` (the status page and `sensor.switchboard_mode` say `shadow`, and the Limits page and the decision log note that commanding is not enabled). |
+| `mode` | `shadow`, `active` | `shadow` | `shadow` computes and logs decisions without switching anything. `active` allows commands, which still need the **Control allowed** switch on, a valid configuration and a confirmed state (see [Control](#control-active-mode)); until all of them hold it runs in shadow mode, and `GET api/mode` and `sensor.switchboard_mode` say which condition is missing. |
 | `log_level` | `debug`, `info`, `warning` | `info` | How much detail goes into the add-on log. |
 
 ### Shadow mode is the default
 
-Software that switches 5 kW loads must prove itself before it acts. A fresh install runs in `shadow`: it computes and logs what it would do and switches nothing. Anything other than exactly `active` — a missing, empty or unknown value — is treated as `shadow`. In this version there is nothing that could switch, and the log says so if you select `active`.
+Software that switches 5 kW loads must prove itself before it acts. A fresh install runs in `shadow`: it computes and logs what it would do and switches nothing. Anything other than exactly `active` — a missing, empty or unknown value — is treated as `shadow`. Even with `active`, nothing is switched until you turn **Control allowed** on.
 
 ## Setup wizard
 
-**Setup** in the add-on panel configures Switchboard in five steps, in this order: the main meter, the connection (breaker and reserve), sources and storage (PV inverter, battery), the loads, and the mode. It edits `switchboard.yaml` for you, so a new installation needs no file editing. It switches nothing, ever.
+**Setup** in the add-on panel configures Switchboard in five steps, in this order: the main meter, the connection (breaker and reserve), sources and storage (PV inverter, battery), the loads, and the mode. It edits `switchboard.yaml` for you, so a new installation needs no file editing. It switches nothing by itself; the only exception is the automatic phase test of the loads step, which switches the one device you start it on, on and off, and only while control is in force (see [Control](#control-active-mode)).
 
 - **Entity pickers** list what Home Assistant offers, filtered by domain and device class. Switchboard reads the list with read-only queries over a second connection that it closes again when the wizard is idle. A sensor computed from other sensors (template, statistics, powercalc and similar) is listed but cannot be picked as an input, with the reason shown; a measurement that is not in Home Assistant's entity registry (a sensor defined in YAML without a `unique_id`, which is how template sensors are often written) is refused as well, because its source cannot be checked: give it a `unique_id` so Home Assistant registers it, or pick the primary measurement. A device's state entity outside the registry is only flagged.
 - **Live readouts** beside every picked entity show its value, the age of its last report and its detected refresh, so a wrong pick is visible at once.
@@ -58,9 +58,32 @@ Software that switches 5 kW loads must prove itself before it acts. A fresh inst
 - **The reserve** is explained with your own numbers (where a kettle on a fully allocated phase would land on the breaker curve), next to the minimum safe reserve derived from your meter's refresh. It is shown, never enforced.
 - **Phase assignment test** (passive): Switchboard does not switch the device for this test. You switch one declared on/off device yourself, on and then off, in Home Assistant or by hand, while the wizard watches which meter phase steps. Switchings the running add-on sees (Node-RED switching a heater, for example) count too. A verdict needs a switch on and a switch off that agree; a single switching, another device switching at the same moment, no step at all or a step too small for the meter's noise are reported as *inconclusive*, never as a pass. A swapped phase confirmed both ways blocks saving until the phase (or the meter mapping) is fixed.
 - **Loads** start from template cards (EV charger, water-heater element, heat pump or AC, generic on/off) that prefill type, limits and lockouts from the shipped defaults. Only you declare an actuator: discovery suggests, you pick.
-- **Mode**: *shadow* is the only mode offered in this version; *active* is shown but cannot be chosen while commanding is not enabled. Before finishing you confirm that Switchboard is not a protective device.
+- **Mode**: the wizard records no mode and never switches control on; after saving it shows the mode in force. Control is the separate **Control allowed** switch (see [Control](#control-active-mode)). Before finishing you confirm that Switchboard is not a protective device.
 
 **Saving** writes `switchboard.yaml` in one step after the same parser the add-on runs has accepted it, keeps the previous file next to it as `switchboard.yaml.<UTC time>.bak` (the newest 10 are kept), and the running add-on loads the new file without a restart. A file you wrote by hand keeps every device, signal, circuit group and `control:` override when you re-run the wizard, and keys the wizard does not edit are kept as written; its comments cannot be kept by a structured save, so the wizard asks first and the backup keeps them. Unsaved changes survive leaving the panel (to switch a device in Home Assistant, for example) in the same browser tab.
+
+## Control (active mode)
+
+Switchboard sends a command only while **all** of these hold, and says which one is missing when one does not (`GET api/mode`, the Limits page, the attributes of `switch.switchboard_control_allowed`):
+
+1. the add-on option `mode` is `active`,
+2. the **Control allowed** switch is on: in the panel, or `switch.switchboard_control_allowed` in Home Assistant. It is off after install and after the update to 0.7.0, kept in `/data/state.json`, and every change is a decision in the log with who made it,
+3. the configuration is valid,
+4. the state is confirmed: if `/data/state.json` was corrupt or unreadable at start, control stays off and the kill switch on until you confirm the state in the panel (confirming does not allow control: that is its own step).
+
+**What is sent.** Only service calls on the entities you declared as a device's `actuator` or `stop_actuator`: `turn_on` and `turn_off` for a `switch` or `input_boolean`, `set_value` for a `number` or `input_number` (in the actuator's own unit, on its step grid, within its declared range; a battery is never set below zero). Every call is checked again against the configuration loaded at that moment; a device you re-pointed at another entity is never sent the old command. Nothing else that changes anything in Home Assistant can be sent.
+
+**Commanded means acknowledged.** A decision says `"commanded": true` only after Home Assistant accepted the call. An error, no answer within 5 s or a lost connection is logged as not commanded (reason `device_unresponsive`). A device whose reported state does not show an accepted command within its reaction time plus 30 s gets a warning on its card and counts as one mismatch. After Home Assistant comes back, a switch-off a device does not show is sent again; a switch-off that keeps failing is sent again at every cycle boundary.
+
+**Switching control off** sends nothing: every device stays exactly where it is, and Switchboard keeps computing and logging. Devices it left reduced (a heater it switched off, a charger it lowered) are listed in the panel so you can decide. The one exception is an automatic phase test that has switched its device on: that test's own off is sent once, so the test leaves nothing on.
+
+**Safe state with control on.** Before the first reading after a start, on stale data, when Home Assistant is disconnected and when the add-on stops, every controlled device is switched off (a modulating device without a stop actuator to its minimum). While the configuration is invalid, only these offs (and minimum setpoints) are sent, to the devices of the last valid file, and nothing is ever raised. The kill switch sends every off once.
+
+**Start policy.** Per device `start:` (or for all devices `control.devices.default_start`): `restore_only`, the default, gives back only what Switchboard took away: a device you left off is never started, and a device that was shed comes back to the level it had, never higher. `headroom` lets dispatch start the device whenever there is free capacity. A device Switchboard started and you then remove from the file is switched off once more; any other removed device is left alone.
+
+**Active phase test.** With control in force and enough headroom on every phase, the wizard's phase test can switch one idle on/off device on and off itself (instead of waiting for you to do it) and judge which meter phase stepped. Protection outranks it: if the guard acts on any phase, the kill switch or a safe state comes, or control is switched off, the test stops and the device is switched off again. The evidence of both tests is kept in `/data/phase-evidence.json` across restarts.
+
+Switchboard is still not a protective device: control or not, your breakers remain the protection.
 
 ## Configuration file
 
@@ -121,9 +144,9 @@ Open Switchboard's web UI and choose **Signals** at the top of the page. It refr
 
 If the page cannot reach the app it says **Signals unavailable** and hides every value, so a frozen page never looks like a calm meter.
 
-## Devices and the guard (shadow only)
+## Devices and the guard
 
-The guard is Switchboard's protection loop. In this version it **only observes**: it decides what it would do and records it, and it commands nothing. Use it to see, in your own house and before anything is ever switched, whether its decisions are the ones you would make.
+The guard is Switchboard's protection loop. In shadow mode it **only observes**: it decides what it would do and records it, and it commands nothing. With control in force (see [Control](#control-active-mode)) it carries the same decisions out. Use shadow mode to see, in your own house and before anything is switched, whether its decisions are the ones you would make.
 
 ### Declaring devices
 
@@ -196,11 +219,11 @@ Each member names the group with `circuit_group: carport`, and its phases must b
 
 For every phase it compares the measured current with your breaker (`breaker_rating_a`, `characteristic`) using the tier table in `control-defaults.yaml`: up to 0.90 × In (In = the rated current) load may be added, up to 1.00 × In nothing is added, up to 1.13 × In (the current a breaker of characteristic B or C carries indefinitely) it reduces in the ordinary cycle, and above that it reduces faster and faster, down to switching off everything controlled on the phase at once above 1.45 × In. The durations are deliberately shorter than the breaker standard allows. An overload budget per phase remembers recent excursions: it is spent while the current is above the continuous limit and refills slowly below it, so three short overloads in a row count more than one. Only devices on the overloaded phase are candidates: energy cannot move between phases.
 
-It also holds every controlled device off (records "would switch off", reason `safe_state` or `guard_stale_signal`) when it has no valid data: a stale or missing meter current (that phase only, or everywhere when the whole meter is stale), Home Assistant disconnected, a missing or invalid `switchboard.yaml`, and when the add-on stops. When the data is good again, devices are released only after several calm cycles in a row.
+It also holds every controlled device off (reason `safe_state` or `guard_stale_signal`; in shadow mode recorded as "would switch off", with control in force switched off) when it has no valid data: a stale or missing meter current (that phase only, or everywhere when the whole meter is stale), Home Assistant disconnected, a missing or invalid `switchboard.yaml`, and when the add-on stops. When the data is good again, devices are released only after several calm cycles in a row.
 
-### Dispatch (computed and logged, nothing switched)
+### Dispatch
 
-Dispatch decides what Switchboard *would* start or raise with the headroom the guard leaves, and what it would lower or stop when the headroom shrinks. It never goes past what the guard allows, and the guard's decisions come first in every evaluation.
+Dispatch decides what Switchboard would start or raise with the headroom the guard leaves, and what it would lower or stop when the headroom shrinks. It never goes past what the guard allows, and the guard's decisions come first in every evaluation. In shadow mode this is computed and logged only; with control in force it is carried out, within each device's start policy (see [Control](#control-active-mode)).
 
 - **Headroom.** Per phase (and circuit group), dispatch may fill the phase up to the reserve threshold (rated current minus the reserve), counted from the measured current plus every change it would already have made. A device it would start counts in full from that moment, so the shadow log never plans two devices into the same headroom.
 - **Order.** Devices worth more per kWh get headroom first: exactly the reverse of the shed order. A device's setpoint is budgeted at its ceiling, not at what it happens to draw: a charger set to 20 A needs room for 20 A, so dispatch would lower its setpoint to what fits.
@@ -232,7 +255,7 @@ If the page cannot reach the app it says **Limits unavailable** and hides every 
 
 ### Kill switch
 
-`switch.switchboard_kill_switch` holds every controlled device off while it is on, within one evaluation, whatever else is going on, manual overrides included; it survives a restart. In this version it, too, only records what it would hold off. It is a control switch for Switchboard, not an emergency stop and not a protective device.
+`switch.switchboard_kill_switch` holds every controlled device off while it is on, within one evaluation, whatever else is going on, manual overrides included; it survives a restart. With control in force it switches every device off (each command once); otherwise it only records what it would hold off, and its `switches_devices` attribute says which. It is a control switch for Switchboard, not an emergency stop and not a protective device.
 
 ### Decision log and runtime state
 
@@ -254,11 +277,11 @@ Going back to 0.3.x: as long as no override is set and no circuit group is decla
 | `sensor.switchboard_l1_overload_budget` | The overload budget, % (100 = no recent overload). |
 | `sensor.switchboard_l1_recovery_remaining` | Seconds until the budget is full again. |
 | `sensor.switchboard_l1_guard_state` | `normal`, `hold`, `reducing`, `shedding`, `safe_state` or `unknown`. |
-| `sensor.switchboard_mode` | `shadow` (in this version always). |
+| `sensor.switchboard_mode` | The effective mode, `shadow` or `active`; attributes: the add-on option, `control_allowed` and the conditions still `missing`. |
 | `sensor.switchboard_last_decision` | The reason code of the latest decision; device, phase and action as attributes. When a kill switch or a safe state ends, the action itself (`kill_switch_disengaged`, `safe_state_exited`), so the end of a condition cannot be mistaken for it. |
 | `switch.switchboard_kill_switch` | See [Kill switch](#kill-switch). |
 | `sensor.switchboard_device_<id>_state` | `allowed`, `reduced`, `shed` or `unsafe`, with the reason as an attribute. |
-| `sensor.switchboard_device_<id>_dispatch` | What Switchboard would have the device at: `on`, `off`, `partial` (some stages of a stepped device) or `unknown`. Attributes: the reported state, setpoints, reason, deferral, settling window, not responding, override, and `commanded: false`. |
+| `sensor.switchboard_device_<id>_dispatch` | What Switchboard would have the device at: `on`, `off`, `partial` (some stages of a stepped device) or `unknown`. Attributes: the reported state, setpoints, reason, deferral, settling window, not responding, override, and `commanded` (whether commands leave now). |
 | `select.switchboard_device_<id>_override` | `auto`, `force_on` or `force_off`; see [Manual override](#manual-override). |
 
 L2 and L3 entities exist for three-phase connections. A value Switchboard does not know is `unknown`, never a stale number. When you remove a device from `switchboard.yaml`, its entities are removed from Home Assistant; while the file is invalid, no entity is removed and no override is accepted.

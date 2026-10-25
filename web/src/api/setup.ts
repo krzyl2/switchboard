@@ -1,6 +1,6 @@
 import { PHASES, type PhaseName } from './signals';
 import { TIER_REACTIONS, type TierReaction } from './decisions';
-import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, text, type Json } from './strict';
+import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text, type Json } from './strict';
 
 // Contract of the setup wizard's API (src/Switchboard.Host/Web/SetupEndpoint.cs, Stage 5). Every
 // answer is parsed strictly: a key that is missing or an enum value the page does not know makes the
@@ -59,7 +59,39 @@ export const INCONCLUSIVE_REASONS = [
   'unconfirmed',
 ] as const;
 /** Who observed a switching: the guided watch, or the running add-on (someone else switched it). */
-export const OBSERVATION_SOURCES = ['watch', 'recorded'] as const;
+/** watch: the passive self-test; recorded: a switching seen at run time; active: the active self-test switched it (CONN-05). */
+export const OBSERVATION_SOURCES = ['watch', 'recorded', 'active'] as const;
+/** Why the active phase self-test cannot start now (ActivePhaseTestService). */
+export const ACTIVE_TEST_REFUSALS = [
+  'control_not_active',
+  'kill_switch',
+  'safe_state',
+  'not_declared',
+  'type_not_supported',
+  'multi_phase_stage',
+  'device_on',
+  'state_unknown',
+  'lockout_min_off',
+  'headroom_insufficient',
+  'increases_stopped',
+  'override_set',
+  'unresponsive',
+  'test_running',
+  'change_limit',
+  'refresh_unknown',
+] as const;
+export const ACTIVE_TEST_STATES = ['running', 'finished', 'aborted'] as const;
+export const ACTIVE_TEST_PHASES = ['pending_on', 'on', 'pending_off', 'judging', 'done'] as const;
+export const ACTIVE_TEST_ABORT_REASONS = [
+  'guard_acted',
+  'safe_state',
+  'kill_switch',
+  'increases_stopped',
+  'not_confirmed',
+  'cancelled',
+  'control_left_active',
+  'configuration_changed',
+] as const;
 export const FILE_STATES = ['missing', 'valid', 'invalid'] as const;
 export const PHASE_SUM_STATES = ['passed', 'failed', 'skipped'] as const;
 /** above_refresh: a meter row trusted far longer than it reports (a frozen value would stay trusted). */
@@ -74,6 +106,10 @@ export type SelfTestStatus = (typeof SELF_TEST_STATUSES)[number];
 export type PhaseStepVerdict = (typeof PHASE_STEP_VERDICTS)[number];
 export type InconclusiveReason = (typeof INCONCLUSIVE_REASONS)[number];
 export type ObservationSource = (typeof OBSERVATION_SOURCES)[number];
+export type ActiveTestRefusalCode = (typeof ACTIVE_TEST_REFUSALS)[number];
+export type ActiveTestState = (typeof ACTIVE_TEST_STATES)[number];
+export type ActiveTestPhase = (typeof ACTIVE_TEST_PHASES)[number];
+export type ActiveTestAbortReason = (typeof ACTIVE_TEST_ABORT_REASONS)[number];
 export type FileState = (typeof FILE_STATES)[number];
 
 // ---------------------------------------------------------------------------------------------
@@ -152,6 +188,10 @@ export interface DeviceDraft {
   valuePerKwh: number | null;
   circuitGroup: string | null;
   rotationGroup: string | null;
+  /** A modulating device's stop actuator (switch or input_boolean); null for none or another type. */
+  stopActuator: string | null;
+  /** start: restore_only or headroom; null leaves the device on the file's default (devices.default_start). */
+  start: string | null;
   /** currentUnit / powerUnit: the unit the picked draw entity reports in; null for the default A / W. */
   draw: { current: string | null; power: string | null; maxAge: string | null; currentUnit: string | null; powerUnit: string | null } | null;
 }
@@ -200,6 +240,8 @@ export function parseDeviceDraft(raw: unknown, path: string): DeviceDraft {
     valuePerKwh: optNumber(r, 'valuePerKwh', path),
     circuitGroup: optText(r, 'circuitGroup', path),
     rotationGroup: optText(r, 'rotationGroup', path),
+    stopActuator: optText(r, 'stopActuator', path),
+    start: optText(r, 'start', path),
     draw: nullable(field(r, 'draw', path), `${path}.draw`, (v, p) => {
       const d = object(v, p);
       return {
@@ -843,4 +885,135 @@ export function emptyDraft(): SetupDraft {
     acknowledgements: { notProtective: false, commentsDropped: false, replaceUnreadable: false },
     dropPreserved: [],
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The active phase self-test (CONN-05): Switchboard switches one declared, idle relay stage on and
+// off through the effector gate, below protection, only in effective active mode. Refused with the
+// reasons otherwise; aborted the moment protection acts anywhere.
+
+export interface ActiveTestRefusal {
+  code: ActiveTestRefusalCode;
+  /** The phase concerned (headroom_insufficient). */
+  phase: PhaseName | null;
+  /** Seconds until it ends (lockout_min_off). */
+  remainingS: number | null;
+}
+
+export interface ActiveTestPreconditions {
+  ok: boolean;
+  refusals: ActiveTestRefusal[];
+  expectedDurationS: number | null;
+}
+
+export interface ActiveTest {
+  id: string;
+  device: string;
+  stage: number;
+  stateEntity: string;
+  expectedPhase: PhaseName;
+  state: ActiveTestState;
+  phase: ActiveTestPhase;
+  startedAt: Date;
+  onAt: Date | null;
+  offAt: Date | null;
+  expectedDurationS: number;
+  /** The classifier's verdict over the test's own on and off; null until judged. */
+  verdict: StepSummary | null;
+  observations: Observation[];
+  abortReason: ActiveTestAbortReason | null;
+}
+
+export type ActiveTestStart = { kind: 'started'; id: string; expectedDurationS: number } | { kind: 'refused'; refusals: ActiveTestRefusal[] };
+
+function activeTestRefusal(raw: unknown, path: string): ActiveTestRefusal {
+  const r = object(raw, path);
+  return {
+    code: oneOf(ACTIVE_TEST_REFUSALS, field(r, 'code', path), `${path}.code`),
+    phase: nullable(field(r, 'phase', path), `${path}.phase`, phaseName),
+    remainingS: optNumber(r, 'remainingS', path),
+  };
+}
+
+export function parseActiveTestPreconditions(raw: unknown): ActiveTestPreconditions {
+  const r = object(raw, 'payload');
+  const preconditions = {
+    ok: bool(field(r, 'ok', 'payload'), 'ok'),
+    refusals: list(field(r, 'refusals', 'payload'), 'refusals', activeTestRefusal),
+    expectedDurationS: optNumber(r, 'expectedDurationS', 'payload'),
+  };
+  // A test that may start has no refusal, and one that may not names at least one.
+  if (preconditions.ok !== (preconditions.refusals.length === 0)) fail('refusals', 'empty exactly when ok');
+  return preconditions;
+}
+
+export function parseActiveTestStarted(raw: unknown): { id: string; expectedDurationS: number } {
+  const r = object(raw, 'payload');
+  return { id: text(field(r, 'id', 'payload'), 'id'), expectedDurationS: number(field(r, 'expectedDurationS', 'payload'), 'expectedDurationS') };
+}
+
+export function parseActiveTestRefused(raw: unknown): ActiveTestRefusal[] {
+  const r = object(raw, 'payload');
+  oneOf(['refused'] as const, field(r, 'code', 'payload'), 'code');
+  const refusals = list(field(r, 'refusals', 'payload'), 'refusals', activeTestRefusal);
+  if (refusals.length === 0) fail('refusals', 'at least one refusal');
+  return refusals;
+}
+
+export function parseActiveTest(raw: unknown): ActiveTest {
+  const r = object(raw, 'payload');
+  const test: ActiveTest = {
+    id: text(field(r, 'id', 'payload'), 'id'),
+    device: text(field(r, 'device', 'payload'), 'device'),
+    stage: positive(field(r, 'stage', 'payload'), 'stage'),
+    stateEntity: text(field(r, 'stateEntity', 'payload'), 'stateEntity'),
+    expectedPhase: phaseName(field(r, 'expectedPhase', 'payload'), 'expectedPhase'),
+    state: oneOf(ACTIVE_TEST_STATES, field(r, 'state', 'payload'), 'state'),
+    phase: oneOf(ACTIVE_TEST_PHASES, field(r, 'phase', 'payload'), 'phase'),
+    startedAt: instant(field(r, 'startedAt', 'payload'), 'startedAt'),
+    onAt: nullable(field(r, 'onAt', 'payload'), 'onAt', instant),
+    offAt: nullable(field(r, 'offAt', 'payload'), 'offAt', instant),
+    expectedDurationS: number(field(r, 'expectedDurationS', 'payload'), 'expectedDurationS'),
+    verdict: nullable(field(r, 'verdict', 'payload'), 'verdict', parseSummary),
+    observations: list(field(r, 'observations', 'payload'), 'observations', parseObservation),
+    abortReason: nullable(field(r, 'abortReason', 'payload'), 'abortReason', (v, p) => oneOf(ACTIVE_TEST_ABORT_REASONS, v, p)),
+  };
+  // An aborted test always says why, and nothing else carries a reason.
+  if ((test.state === 'aborted') !== (test.abortReason !== null)) fail('abortReason', 'present exactly for an aborted test');
+  return test;
+}
+
+export async function fetchActiveTestPreconditions(device: string, stage: number, signal?: AbortSignal): Promise<ActiveTestPreconditions> {
+  const query = new URLSearchParams({ device, stage: String(stage) });
+  const response = await fetch(`api/setup/active-test/preconditions?${query.toString()}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Active self-test preconditions failed with HTTP ${response.status}.`);
+  return parseActiveTestPreconditions(await response.json());
+}
+
+/** POST api/setup/active-test as JSON (a cross-site form cannot send it without a preflight). */
+export async function startActiveTest(device: string, stage: number, signal?: AbortSignal): Promise<ActiveTestStart> {
+  const response = await fetch('api/setup/active-test', {
+    method: 'POST',
+    signal,
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device, stage }),
+  });
+  if (response.status === 202) return { kind: 'started', ...parseActiveTestStarted(await response.json()) };
+  if (response.status === 409) return { kind: 'refused', refusals: parseActiveTestRefused(await response.json()) };
+  throw new Error(`Starting the active self-test failed with HTTP ${response.status}.`);
+}
+
+export async function fetchActiveTest(id: string, signal?: AbortSignal): Promise<ActiveTest> {
+  const response = await fetch(`api/setup/active-test/${encodeURIComponent(id)}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Active self-test request failed with HTTP ${response.status}.`);
+  return parseActiveTest(await response.json());
+}
+
+/** DELETE api/setup/active-test/{id}: the test switches its stage off again and ends as cancelled. */
+export async function cancelActiveTest(id: string, signal?: AbortSignal): Promise<boolean> {
+  const response = await fetch(`api/setup/active-test/${encodeURIComponent(id)}`, { method: 'DELETE', signal, cache: 'no-store' });
+  if (response.status === 204) return true;
+  if (response.status === 404) return false;
+  throw new Error(`Cancelling the active self-test failed with HTTP ${response.status}.`);
 }

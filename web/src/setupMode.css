@@ -1,57 +1,6 @@
 /* Screen 03, step 5 (Mode and finish). Layout only; colours come from the tokens in styles.css.
-   The choice cards and the note follow the mockup (.choice, .note); nothing here may make the page
-   scroll sideways at 400 px, so entity IDs and file names wrap anywhere. */
-
-.smode-modes {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  margin: 0 0 14px;
-  padding: 0;
-  border: none;
-}
-
-.smode-modes legend {
-  padding: 0;
-  margin-bottom: 6px;
-  font-weight: 600;
-}
-
-.smode-choice {
-  display: flex;
-  gap: 11px;
-  align-items: flex-start;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface);
-}
-
-.smode-choice[data-selected] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.smode-choice[aria-disabled='true'] {
-  color: var(--fg-dim);
-}
-
-.smode-choice input {
-  flex: none;
-  margin-top: 3px;
-}
-
-.smode-choice .t {
-  display: block;
-  font-weight: 600;
-}
-
-.smode-choice .d {
-  display: block;
-  margin-top: 2px;
-  font-size: 0.85rem;
-  color: var(--fg-dim);
-}
+   The mode is the control block's (control.css); the note follows the mockup (.note); nothing here
+   may make the page scroll sideways at 400 px, so entity IDs and file names wrap anywhere. */
 
 .smode-statement,
 .smode-saved {

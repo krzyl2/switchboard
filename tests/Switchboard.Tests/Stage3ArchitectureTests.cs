@@ -36,22 +36,21 @@ public sealed partial class Stage3ArchitectureTests
     ];
 
     [Fact]
-    public void Command_port_has_no_implementation_outside_tests()
+    public void Command_port_has_exactly_one_production_implementation()
     {
+        // Stage C: one gated production path (SAFE-05). Tests have the recording double only.
         var implementations = Production.SelectMany(a => a.GetTypes()).Where(t => typeof(IDeviceCommandPort).IsAssignableFrom(t) && t != typeof(IDeviceCommandPort)).ToList();
         var inTests = typeof(Stage3ArchitectureTests).Assembly.GetTypes().Where(t => typeof(IDeviceCommandPort).IsAssignableFrom(t) && !t.IsInterface).ToList();
 
-        Assert.Empty(implementations);
+        Assert.Equal([typeof(Switchboard.Infrastructure.HomeAssistant.HomeAssistantDeviceCommandPort)], implementations);
         Assert.Equal([typeof(RecordingDeviceCommandPort)], inTests);
     }
 
     [Fact]
-    public void Only_tests_can_hand_the_gate_a_port()
+    public void Only_the_gate_and_the_one_implementation_name_the_port()
     {
-        // The public constructors take no port; the internal one is visible to the test assembly
-        // only (InternalsVisibleTo), and no production source names the port type at all beyond
-        // its own declaration and the gate.
-        Assert.All(typeof(EffectorGate).GetConstructors(), c => Assert.DoesNotContain(c.GetParameters(), p => p.ParameterType == typeof(IDeviceCommandPort)));
+        // No production source names the port type beyond its declaration, the gate that holds it
+        // and its one implementation; the composition hands the gate the concrete port.
         var visibleTo = typeof(AppVersion).Assembly.GetCustomAttributes<System.Runtime.CompilerServices.InternalsVisibleToAttribute>().Select(a => a.AssemblyName).ToList();
         Assert.Equal(["Switchboard.Tests"], visibleTo);
 
@@ -60,18 +59,23 @@ public sealed partial class Stage3ArchitectureTests
             .Select(Path.GetFileName)
             .Order(StringComparer.Ordinal)
             .ToList();
-        Assert.Equal(["EffectorGate.cs", "IDeviceCommandPort.cs"], mentions);
+        Assert.Equal(["EffectorGate.cs", "HomeAssistantDeviceCommandPort.cs", "IDeviceCommandPort.cs"], mentions);
     }
 
     [Fact]
     public void Port_signatures_carry_no_entity_id()
     {
         // Logical names and levels only: a device name has no '.', so it can never be an entity ID.
+        // The entity is looked up at send time, in the configuration layer (ActuatorDirectory).
         var parameters = typeof(IDeviceCommandPort).GetMethods().SelectMany(m => m.GetParameters()).Select(p => p.ParameterType).Distinct().ToList();
+        Assert.True(parameters.ToHashSet().SetEquals([typeof(DeviceCommand), typeof(CommandResult).MakeByRefType()]), string.Join(", ", parameters.Select(t => t.Name)));
 
-        Assert.True(parameters.ToHashSet().SetEquals([typeof(DeviceName), typeof(int), typeof(bool), typeof(Amperes)]), string.Join(", ", parameters.Select(t => t.Name)));
-        Assert.DoesNotContain(typeof(string), parameters);
-        Assert.DoesNotContain(typeof(EntityId), parameters);
+        var command = typeof(DeviceCommand).GetProperties().Select(p => Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType).Distinct().ToList();
+        Assert.True(
+            command.ToHashSet().SetEquals([typeof(DeviceName), typeof(DeviceCommandKind), typeof(int), typeof(bool), typeof(Amperes), typeof(CommandPriority), typeof(long)]),
+            string.Join(", ", command.Select(t => t.Name)));
+        Assert.DoesNotContain(typeof(string), command);
+        Assert.DoesNotContain(typeof(EntityId), command);
     }
 
     [Fact]
@@ -145,7 +149,7 @@ public sealed partial class Stage3ArchitectureTests
     {
         // ModeStateTests: an active option stays shadow (active_not_enabled). The production gate
         // has no port: even a forced active mode commands nothing and records shadow.
-        Assert.Equal(OperatingMode.Shadow, new ModeState(OperatingMode.Active, OperatingMode.Active).Current.Effective);
+        Assert.Equal(OperatingMode.Shadow, TestModes.State(OperatingMode.Active, controlAllowed: false).Current.Effective);
         var s = DispatchScenario.Create(DispatchDevices.Heaters, ["heater_l1"], "  dispatch:\n    persistence_up_cycles: 1\n", mode: DispatchScenario.Active);
         s.PollUntil(GuardScenario.Start + TimeSpan.FromSeconds(30), 3, 3, 3);
 
@@ -190,10 +194,9 @@ public sealed partial class Stage3ArchitectureTests
     [Fact]
     public void Allow_list_and_sources_stay_free_of_service_calls()
     {
-        // The command port changed nothing outward: the Home Assistant allow-list grew only by the
-        // read-only discovery queries of Stage 5, and no literal anywhere names a state-changing
-        // service (Stage2ArchitectureTests pins both).
-        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        // The allow-list grew by the read-only discovery queries of Stage 5 and the one service call of
+        // Stage C; Application never names a service (the allow-list maps ActuatorService to wire names).
+        Assert.Equal(["call_service", "config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
         foreach (var file in SourceFiles("src/Switchboard.Application"))
         {
             Assert.DoesNotMatch(ServiceLiteral(), File.ReadAllText(file));

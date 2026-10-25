@@ -309,7 +309,8 @@ public sealed class SetupService
     private async Task<Prepared> PrepareAsync(SetupDraft draft, DocumentRead current, CancellationToken cancellationToken)
     {
         var baseTree = current.Text is { } text ? _codec.ReadTree(text).Root : null;
-        var mapped = SetupDocumentMapper.Apply(baseTree, draft);
+        var defaultStart = (_codec.Control(baseTree) ?? _shippedControl).Devices.DefaultStart;
+        var mapped = SetupDocumentMapper.Apply(baseTree, draft, ControlParametersBinder.StartPolicies.First(p => p.Value == defaultStart).Key);
         var written = _codec.Write(mapped.Root);
         var now = _signalTime.GetUtcNow();
         var parsed = _codec.Parse(Utf8.GetBytes(written), now);

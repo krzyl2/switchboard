@@ -2,7 +2,10 @@
   "generatedAt": "2026-10-21T10:21:21.019+00:00",
   "snapshotAt": "2026-10-21T10:21:07.468+00:00",
   "sequence": 42,
-  "source": { "kind": "replay", "status": "connected" },
+  "source": {
+    "kind": "replay",
+    "status": "connected"
+  },
   "configuration": {
     "state": "valid",
     "path": "/config/switchboard.yaml",
@@ -18,7 +21,12 @@
       }
     ]
   },
-  "connection": { "topology": "three_phase", "breakerRatingA": 25, "characteristic": "B", "voltageV": 230 },
+  "connection": {
+    "topology": "three_phase",
+    "breakerRatingA": 25,
+    "characteristic": "B",
+    "voltageV": 230
+  },
   "phases": [
     {
       "phase": "L1",
@@ -98,13 +106,20 @@
       "detail": "none",
       "value": -1085.5,
       "unit": "W",
-      "raw": { "state": "1085.5", "unit": "W" },
+      "raw": {
+        "state": "1085.5",
+        "unit": "W"
+      },
       "lastReported": "2026-10-21T10:21:07.464+00:00",
       "ageS": 13.555,
       "maxAgeS": 90,
       "refreshS": 30,
       "refreshIntervals": 12,
-      "direction": { "source": "signed_signal", "direction": "export", "from": null },
+      "direction": {
+        "source": "signed_signal",
+        "direction": "export",
+        "from": null
+      },
       "rejectedCount": 0,
       "dependentDevices": []
     },
@@ -118,15 +133,25 @@
       "detail": "none",
       "value": -5.466,
       "unit": "A",
-      "raw": { "state": "5.466", "unit": "A" },
+      "raw": {
+        "state": "5.466",
+        "unit": "A"
+      },
       "lastReported": "2026-10-21T10:21:07.456+00:00",
       "ageS": 13.563,
       "maxAgeS": 90,
       "refreshS": 30,
       "refreshIntervals": 12,
-      "direction": { "source": "signed_signal", "direction": "export", "from": "grid_power_l1" },
+      "direction": {
+        "source": "signed_signal",
+        "direction": "export",
+        "from": "grid_power_l1"
+      },
       "rejectedCount": 0,
-      "dependentDevices": ["ev_charger", "heater_l1"]
+      "dependentDevices": [
+        "ev_charger",
+        "heater_l1"
+      ]
     },
     {
       "name": "grid_current_l2",
@@ -138,15 +163,24 @@
       "detail": "max_age_exceeded",
       "value": 5.767,
       "unit": "A",
-      "raw": { "state": "5.767", "unit": "A" },
+      "raw": {
+        "state": "5.767",
+        "unit": "A"
+      },
       "lastReported": "2026-10-21T10:18:01.002+00:00",
       "ageS": 200.017,
       "maxAgeS": 90,
       "refreshS": null,
       "refreshIntervals": 3,
-      "direction": { "source": "unavailable", "direction": "unknown", "from": "grid_power_l2" },
+      "direction": {
+        "source": "unavailable",
+        "direction": "unknown",
+        "from": "grid_power_l2"
+      },
       "rejectedCount": 0,
-      "dependentDevices": ["heater_l2"]
+      "dependentDevices": [
+        "heater_l2"
+      ]
     },
     {
       "name": "grid_current_l3",
@@ -158,15 +192,24 @@
       "detail": "none",
       "value": 9.179,
       "unit": "A",
-      "raw": { "state": "9.179", "unit": "A" },
+      "raw": {
+        "state": "9.179",
+        "unit": "A"
+      },
       "lastReported": "2026-10-21T10:21:20.219+00:00",
       "ageS": 0.8,
       "maxAgeS": 90,
       "refreshS": 30,
       "refreshIntervals": 12,
-      "direction": { "source": "pending", "direction": "unknown", "from": "grid_power_l3" },
+      "direction": {
+        "source": "pending",
+        "direction": "unknown",
+        "from": "grid_power_l3"
+      },
       "rejectedCount": 0,
-      "dependentDevices": ["heater_l3"]
+      "dependentDevices": [
+        "heater_l3"
+      ]
     },
     {
       "name": "grid_power_l3",
@@ -178,13 +221,20 @@
       "detail": "balance_residual",
       "value": -2240.6,
       "unit": "W",
-      "raw": { "state": "2240.6", "unit": "W" },
+      "raw": {
+        "state": "2240.6",
+        "unit": "W"
+      },
       "lastReported": "2026-10-21T10:20:54.020+00:00",
       "ageS": 27,
       "maxAgeS": 90,
       "refreshS": 30,
       "refreshIntervals": 12,
-      "direction": { "source": "signed_signal", "direction": "export", "from": null },
+      "direction": {
+        "source": "signed_signal",
+        "direction": "export",
+        "from": null
+      },
       "rejectedCount": 2,
       "dependentDevices": []
     },
@@ -218,7 +268,10 @@
       "detail": "state_unavailable",
       "value": null,
       "unit": null,
-      "raw": { "state": "unavailable", "unit": "V" },
+      "raw": {
+        "state": "unavailable",
+        "unit": "V"
+      },
       "lastReported": "2026-10-21T10:21:07.457+00:00",
       "ageS": 13.562,
       "maxAgeS": 90,
@@ -238,7 +291,10 @@
       "detail": "none",
       "value": "on",
       "unit": null,
-      "raw": { "state": "on", "unit": null },
+      "raw": {
+        "state": "on",
+        "unit": null
+      },
       "lastReported": "2026-10-21T10:21:19.500+00:00",
       "ageS": 1.519,
       "maxAgeS": 3600,
@@ -258,7 +314,10 @@
       "detail": "unit_mismatch",
       "value": 231.4,
       "unit": "V",
-      "raw": { "state": "0.2318", "unit": "kV" },
+      "raw": {
+        "state": "0.2318",
+        "unit": "kV"
+      },
       "lastReported": "2026-10-21T10:20:58.457+00:00",
       "ageS": 22.562,
       "maxAgeS": 90,
@@ -278,7 +337,10 @@
       "detail": "max_age_exceeded",
       "value": "on",
       "unit": null,
-      "raw": { "state": "on", "unit": null },
+      "raw": {
+        "state": "on",
+        "unit": null
+      },
       "lastReported": "2026-10-21T10:09:00.000+00:00",
       "ageS": 741.019,
       "maxAgeS": 600,
@@ -286,8 +348,23 @@
       "refreshIntervals": 0,
       "direction": null,
       "rejectedCount": 0,
-      "dependentDevices": ["heater_l2"]
+      "dependentDevices": [
+        "heater_l2"
+      ]
     }
   ],
-  "rejections": { "total": 3, "balanceResidual": 2, "invalidSample": 1 }
+  "rejections": {
+    "total": 3,
+    "balanceResidual": 2,
+    "invalidSample": 1
+  },
+  "configurationWarnings": [
+    {
+      "code": "derived_measurement_input",
+      "signal": "grid_current_l1",
+      "entity": "sensor.meter_current_a",
+      "platform": "template",
+      "checkedAt": "2026-10-21T10:21:21.019+00:00"
+    }
+  ]
 }

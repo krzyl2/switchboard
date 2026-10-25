@@ -219,7 +219,7 @@ public sealed class ExcursionRecorderTests
     /// <summary>A step with L1 at <paramref name="current"/> A (signed), reported at <paramref name="reportedAt"/> (default: the step time).</summary>
     internal static GuardStep PhaseStep(DateTimeOffset at, double current, DateTimeOffset? reportedAt = null, ImmutableArray<Decision> decisions = default)
     {
-        var mode = ModeState.Resolve(OperatingMode.Shadow, OperatingMode.Shadow);
+        var mode = TestModes.Shadow;
         var phase = new PhaseGuardStatus(
             Phase.L1, true, null, new Amperes(current), new Amperes(current), Math.Abs(current) / 25, null, null,
             new Amperes(28.25), Threshold, Threshold - new Amperes(current), null, null, null,

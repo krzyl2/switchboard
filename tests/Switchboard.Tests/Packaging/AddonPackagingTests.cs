@@ -103,8 +103,10 @@ public sealed class AddonPackagingTests
     public void Guard_and_mqtt_shutdown_fit_well_inside_the_container_stop_grace()
     {
         // s6 kills the process when S6_SERVICES_GRACETIME runs out. The guard's stop (shutdown safe
-        // state, decision log, state.json) runs first, then the MQTT step, and the MQTT step must
-        // give up early enough that the Home Assistant close after it still runs: guard + 2 × MQTT.
+        // state and its last commands, decision log, state.json) runs first, then the presentation
+        // save, then the MQTT step, which must give up early enough that the Home Assistant close
+        // after it still runs. Since Stage C the stop sends real offs, so the sum keeps a full second
+        // of margin: a cut-off stop would leave devices on without the decision that says why.
         var grace = Regex.Match(Dockerfile(), @"ENV S6_SERVICES_GRACETIME=(\d+)");
         Assert.True(grace.Success, "switchboard/Dockerfile does not set S6_SERVICES_GRACETIME.");
         var graceTime = TimeSpan.FromMilliseconds(int.Parse(grace.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
@@ -113,8 +115,14 @@ public sealed class AddonPackagingTests
         var switchboard = settings.RootElement.GetProperty("Switchboard");
         var mqtt = TimeSpan.Parse(switchboard.GetProperty("Mqtt").GetProperty("ShutdownTimeout").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
         var guard = TimeSpan.Parse(switchboard.GetProperty("Persistence").GetProperty("ShutdownTimeout").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        var homeAssistant = switchboard.GetProperty("HomeAssistant");
+        var commands = TimeSpan.Parse(homeAssistant.GetProperty("ShutdownCommandWait").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        var close = TimeSpan.Parse(homeAssistant.GetProperty("CloseTimeout").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
 
-        Assert.True(guard + (mqtt * 2) <= graceTime, $"Persistence:ShutdownTimeout {guard} + 2 × Mqtt:ShutdownTimeout {mqtt} exceeds the s6 grace {graceTime}.");
+        var total = guard + guard + commands + (mqtt * 2) + close;
+        Assert.True(
+            total <= graceTime - TimeSpan.FromSeconds(1),
+            $"2 × Persistence:ShutdownTimeout {guard} + HomeAssistant:ShutdownCommandWait {commands} + 2 × Mqtt:ShutdownTimeout {mqtt} + HomeAssistant:CloseTimeout {close} = {total} leaves less than 1 s of the s6 grace {graceTime}.");
     }
 
     [Theory]

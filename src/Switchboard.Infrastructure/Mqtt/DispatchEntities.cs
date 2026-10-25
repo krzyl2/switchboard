@@ -17,8 +17,8 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// Dispatch's entities, following the frozen identity scheme of <see cref="MqttIdentity"/>: per
 /// declared device its dispatch state (<c>sensor.switchboard_device_&lt;id&gt;_dispatch</c>: the
 /// intended state, with the reported state, the reason, a deferral, the settling window, the
-/// unresponsive flag and the override as attributes, and <c>commanded: false</c> because this
-/// version switches nothing) and its manual override (<c>select.switchboard_device_&lt;id&gt;_override</c>:
+/// unresponsive flag, the override, the start policy and an unconfirmed command as attributes, and
+/// <c>commanded</c>: whether commands leave now) and its manual override (<c>select.switchboard_device_&lt;id&gt;_override</c>:
 /// auto, force_on, force_off; SAFE-04). An override command must be exactly one of the options on
 /// the device's own command topic, and only a device of the current valid configuration is
 /// addressed (SAFE-05); protection outranks it either way.
@@ -140,7 +140,9 @@ public sealed partial class DispatchEntities : IMqttEntitySource
                 ["unresponsive"] = status is null ? null : status.Unresponsive is not null,
                 ["retry_at"] = status?.Unresponsive?.RetryAt?.ToString("O", CultureInfo.InvariantCulture),
                 ["override"] = status is null ? null : Snake(status.Override.Mode),
-                ["commanded"] = false,
+                ["commanded"] = _status.Current.CommandPath,
+                ["start"] = status is null ? null : Snake(status.Start),
+                ["command_warning"] = status?.UnconfirmedSince?.ToString("O", CultureInfo.InvariantCulture),
             }));
     }
 

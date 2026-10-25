@@ -252,3 +252,85 @@
   font-family: var(--font-body);
   font-size: 0.75rem;
 }
+
+/* Control stage: a charger's stop actuator suggestions, and the automatic phase self-test inside the
+   self-test block (steps as a list, the add-on's reasons as a list; both wrap at 400 px). */
+
+.loads-stop-suggest {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.loads-stop-suggest ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loads-stop-suggest button[aria-pressed='true'] {
+  font-weight: 600;
+}
+
+.loads-selftest h5 {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+}
+
+.loads-active {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.loads-active-run,
+.loads-active-test,
+.loads-active-blocked {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.loads-active-refusals,
+.loads-active-steps {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.loads-active-refusals li,
+.loads-active-steps li {
+  margin: 2px 0;
+}
+
+.loads-active-steps li[data-state='done'] {
+  color: var(--ok);
+}
+
+.loads-active-steps li[data-state='current'] {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.loads-active-steps li[data-state='pending'] {
+  color: var(--fg-dim);
+}
+
+.loads-active-steps .sub-inline {
+  font-weight: 400;
+}
+
+.loads-active-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.loads-active-return[data-restored='true'] {
+  color: var(--ok);
+}

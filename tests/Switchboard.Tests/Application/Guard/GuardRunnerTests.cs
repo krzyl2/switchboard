@@ -22,8 +22,9 @@ public sealed class GuardRunnerTests
     [Fact]
     public void First_step_records_the_mode_of_this_start()
     {
-        // MODE-01: every start says what was asked for and what runs; in this version always shadow.
-        var h = new GuardRunnerHarness(TestDevices.Document(), ceiling: OperatingMode.Active, uiChoice: OperatingMode.Active);
+        // MODE-01: every start says what was asked for and what runs: here the option is active but
+        // control is off, so shadow, and the record names the missing switch.
+        var h = new GuardRunnerHarness(TestDevices.Document(), ceiling: OperatingMode.Active, uiChoice: OperatingMode.Shadow);
         h.PushReference();
 
         h.Runner.Step();
@@ -31,7 +32,8 @@ public sealed class GuardRunnerTests
 
         var mode = Assert.Single(h.Recorder.Decisions, d => d.Action == DecisionAction.ModeResolved);
         Assert.Equal((DecisionScope.System, ReasonCode.ModeShadow, OperatingMode.Shadow), (mode.Scope, mode.Reason, mode.Mode));
-        Assert.Equal(new ModeDecisionInputs(OperatingMode.Active, OperatingMode.Active, ModeNote.ActiveNotEnabled), mode.Inputs.Mode);
+        Assert.Equal((OperatingMode.Active, false, ModeNote.None), (mode.Inputs.Mode!.Ceiling, mode.Inputs.Mode.ControlAllowed, mode.Inputs.Mode.Note));
+        Assert.Equal([ModeCondition.ControlOff], mode.Inputs.Mode.Missing);
         Assert.Equal(OperatingMode.Shadow, h.Status.Current.Mode.Effective);
     }
 
@@ -137,7 +139,7 @@ public sealed class GuardRunnerTests
         var holder = new SignalSnapshotHolder(new SignalDiagnostics(store.Snapshot(now), store.ConfigurationResult, [], []));
         var lockouts = new LockoutClocks();
         lockouts.Observe(Switchboard.Application.Configuration.ProtectionSetupFactory.Build(store.ConfigurationResult!.Configuration!), [], now - TimeSpan.FromHours(1));
-        var loop = new ControlLoop(holder, clock, new ModeState(OperatingMode.Shadow, OperatingMode.Shadow), "boot2", lockouts: lockouts);
+        var loop = new ControlLoop(holder, clock, TestModes.State(OperatingMode.Shadow, false), "boot2", lockouts: lockouts);
         var status = loop.Status;
         var runner = loop.Runner;
         var shed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
