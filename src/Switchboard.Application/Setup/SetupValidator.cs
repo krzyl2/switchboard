@@ -384,7 +384,16 @@ public static class SetupValidator
                     ("entity", name),
                     ("platform", platform!)));
                 return;
-            case DerivedCheck.NotInRegistry when input.Kind != InputKind.DeviceActuator:
+            case DerivedCheck.NotInRegistry when input.Kind is not (InputKind.DeviceActuator or InputKind.DeviceState):
+                // A measurement whose platform is unknown may be a template sensor (the house-load sensor on the
+                // maintainer's installation is one): refused, with the fix that makes it checkable.
+                issues.Add(SetupIssue.Error(
+                    SetupIssueCodes.SourceNotInRegistry,
+                    field,
+                    $"{name} is not in Home Assistant's entity registry (defined in YAML without a unique_id), so it may be a template or statistics sensor; a derived sensor is never a control input. Give it a unique_id so Home Assistant registers its integration, or map the primary measurement.",
+                    ("entity", name)));
+                return;
+            case DerivedCheck.NotInRegistry when input.Kind == InputKind.DeviceState:
                 issues.Add(SetupIssue.Warning(
                     SetupIssueCodes.DerivedCheckUnavailable,
                     field,

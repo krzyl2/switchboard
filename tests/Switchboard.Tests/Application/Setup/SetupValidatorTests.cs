@@ -269,14 +269,16 @@ public sealed class SetupValidatorTests
     }
 
     [Fact]
-    public void Entity_missing_from_registry_is_flagged_not_passed()
+    public void Measurement_missing_from_registry_is_refused()
     {
-        // A YAML template sensor without a unique_id is in no registry: its source cannot be verified.
+        // A YAML template sensor without a unique_id is in no registry, so its platform is unknown.
+        // Live 0.6.0: sensor.usage, the derived sensor 07-PITFALLS is about, is exactly such an
+        // entity; a warning would let it become a control input.
         var draft = WithTotal(SetupFixtures.MaintainerDraft(), "sensor.house_load_yaml");
 
         var validation = Validate(draft);
 
-        Assert.Contains(validation.Issues, i => i.Code == SetupIssueCodes.DerivedCheckUnavailable && i.Field == "meter.total.power.entity" && i.Severity == IssueSeverity.Warning);
+        Assert.Contains(Errors(validation), i => i.Code == SetupIssueCodes.SourceNotInRegistry && i.Field == "meter.total.power.entity");
     }
 
     [Fact]

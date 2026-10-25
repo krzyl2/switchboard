@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.1
+
+Still shadow only; switches nothing.
+
+### Changed
+
+- The setup wizard refuses a measurement (meter, inverter, device draw) that is not in Home Assistant's entity registry instead of only warning about it. Such a sensor is defined in YAML without a `unique_id`, so the wizard cannot tell whether it is a template sensor; on the maintainer's installation the derived house-load sensor was exactly such an entity. Give the sensor a `unique_id` or pick the primary measurement. A device's state entity outside the registry is still only flagged. A hand-written `switchboard.yaml` is not affected.
+
 ## 0.6.0
 
 The setup wizard. Still shadow only: Switchboard **controls nothing** and switches nothing in this version, whatever the `mode` option says, and the wizard never switches anything either. Not a protective device; your breakers remain the protection.

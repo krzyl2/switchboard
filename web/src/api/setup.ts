@@ -37,6 +37,7 @@ export const SETUP_ISSUE_CODES = [
   'required_field',
   'preserved_path_unknown',
   'document_invalid',
+  'source_not_in_registry',
 ] as const;
 export const SETUP_SEVERITIES = ['error', 'warning'] as const;
 /** A candidate entity's live readout (UI-04). */

@@ -48,6 +48,9 @@ public static class SetupIssueCodes
     public const string RefreshNotDetected = "refresh_not_detected";
     public const string DerivedSensorRefused = "derived_sensor_refused";
     public const string DerivedCheckUnavailable = "derived_check_unavailable";
+
+    /// <summary>A measurement input is in no entity registry (YAML without a unique_id), so it may be a template sensor.</summary>
+    public const string SourceNotInRegistry = "source_not_in_registry";
     public const string ActuatorDerived = "actuator_derived";
     public const string ReserveBelowMinimum = "reserve_below_minimum";
     public const string PhaseSelfTestMismatch = "phase_self_test_mismatch";
@@ -75,6 +78,6 @@ public static class SetupIssueCodes
         PhaseSumMismatch, PhaseSumSkipped, MaxAgeBelowRefresh, RefreshNotDetected, DerivedSensorRefused, DerivedCheckUnavailable,
         ActuatorDerived, ReserveBelowMinimum, PhaseSelfTestMismatch, PhaseSelfTestMissing, AcknowledgementRequired,
         CommentsAcknowledgementRequired, ReplaceUnreadableRequired, RevisionConflict, ExistingDeviceImmutable, DeviceIdTaken,
-        MaxAgeAboveRefresh, RequiredField, PreservedPathUnknown, DocumentInvalid,
+        MaxAgeAboveRefresh, RequiredField, PreservedPathUnknown, DocumentInvalid, SourceNotInRegistry,
     ];
 }
