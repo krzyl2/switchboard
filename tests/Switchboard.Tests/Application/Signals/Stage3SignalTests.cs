@@ -99,6 +99,43 @@ public sealed class Stage3SignalTests
     }
 
     [Fact]
+    public void Draw_silent_at_zero_is_an_idle_device()
+    {
+        // Live 0.5.0: the go-e reports its draw only on change, so at rest it says 0 once and then
+        // nothing. A silence after exactly 0 is an idle device: trusted as 0, which relieves nothing
+        // and lets the house load be computed instead of staying unknown all day.
+        var store = new StoreHarness(TestDevices.Document(DrawnCharger));
+        store.Push("sensor.charger_draw_current", "0");
+        store.Push("sensor.charger_draw_power", "0");
+
+        store.Advance(TimeSpan.FromHours(5));
+
+        var draw = Assert.Single(store.Snapshot().Protection.DeviceDraws);
+        Assert.Equal((true, 0.0), (draw.Fresh, draw.Current!.Value.Value));
+        var power = Assert.Single(store.Snapshot().Dispatch.DevicePowers);
+        Assert.Equal((true, 0.0), (power.Fresh, power.Power!.Value.Value));
+        Assert.Equal(SignalState.Stale, store.Reading("device_ev_charger_current").State);
+
+        store.Store.ApplySourceStatus(SignalSourceStatus.Disconnected);
+        Assert.False(Assert.Single(store.Snapshot().Protection.DeviceDraws).Fresh);
+    }
+
+    [Fact]
+    public void Draw_silent_after_a_load_stays_untrusted()
+    {
+        // A draw frozen at a load would claim relief the device may no longer give (the 0.3.0
+        // finding): only an exact zero means idle.
+        var store = new StoreHarness(TestDevices.Document(DrawnCharger));
+        store.Push("sensor.charger_draw_current", "0.76");
+        store.Push("sensor.charger_draw_power", "0.05");
+
+        store.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.Equal((false, (Amperes?)null), (Assert.Single(store.Snapshot().Protection.DeviceDraws).Fresh, Assert.Single(store.Snapshot().Protection.DeviceDraws).Current));
+        Assert.Null(Assert.Single(store.Snapshot().Dispatch.DevicePowers).Power);
+    }
+
+    [Fact]
     public void Balance_subtracts_measured_controlled_loads()
     {
         // SIG-09 device terms: 500 W of house load on L1 cannot hold a charger measured at 1 kW, so

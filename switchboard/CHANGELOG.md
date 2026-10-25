@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.1
+
+Still shadow only; switches nothing.
+
+### Fixed
+
+- With the car not charging, the go-e's draw sensors fall silent after reporting 0, so the charger's draw was not trusted, the house load showed as unknown on the Dashboard and Flows, and dispatch could not raise the charger. A draw that falls silent after exactly 0 now counts as an idle device at 0 W. A draw that falls silent at any other value is still not trusted.
+- A damaged `statistics.json` with absurdly large energy values is now set aside like any other corrupt file instead of breaking the statistics page.
+
 ## 0.5.0
 
 The runtime screens. Still shadow only: Switchboard **switches nothing** in this version, whatever the `mode` option says, and every screen says so. Not a protective device; your breakers remain the protection.

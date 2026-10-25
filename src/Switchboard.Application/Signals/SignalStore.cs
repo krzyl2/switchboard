@@ -673,27 +673,43 @@ public sealed class SignalStore
         };
     }
 
-    /// <summary>The declared power draws (W), for dispatch; a draw that is not fresh carries no value.</summary>
+    /// <summary>The declared power draws (W), for dispatch; a draw that is not trusted carries no value.</summary>
     private ImmutableArray<DevicePowerSample> DevicePowers(DateTimeOffset now) =>
     [
         .. _powerDraws.Select(d =>
         {
             var signal = _byName[d.Signal];
-            var fresh = Source == SignalSourceStatus.Connected && Classify(signal, now).State == SignalState.Fresh;
-            return new DevicePowerSample(d.Device, d.Phase, fresh, fresh ? new Watts(Value(signal)) : null, signal.Accepted?.Effective);
+            var trusted = DrawTrusted(signal, now);
+            return new DevicePowerSample(d.Device, d.Phase, trusted, trusted ? new Watts(Value(signal)) : null, signal.Accepted?.Effective);
         }),
     ];
 
-    /// <summary>The declared current draws (A), for protection; a draw that is not fresh carries no value and is never relief.</summary>
+    /// <summary>The declared current draws (A), for protection; a draw that is not trusted carries no value and is never relief.</summary>
     private ImmutableArray<DeviceDrawSample> DeviceDraws(DateTimeOffset now) =>
     [
         .. _currentDraws.Select(d =>
         {
             var signal = _byName[d.Signal];
-            var fresh = Source == SignalSourceStatus.Connected && Classify(signal, now).State == SignalState.Fresh;
-            return new DeviceDrawSample(d.Device, d.Phase, fresh, fresh ? new Amperes(Value(signal)) : null, signal.Accepted?.Effective);
+            var trusted = DrawTrusted(signal, now);
+            return new DeviceDrawSample(d.Device, d.Phase, trusted, trusted ? new Amperes(Value(signal)) : null, signal.Accepted?.Effective);
         }),
     ];
+
+    /// <summary>
+    /// A draw is trusted while fresh, or while it is silent after reporting exactly 0: a device that
+    /// reports only on change (the go-e) says 0 once at rest and then nothing. An idle device relieves
+    /// nothing, so trusting its 0 can never hide load; a draw frozen at a load stays untrusted.
+    /// </summary>
+    private bool DrawTrusted(SignalRuntime signal, DateTimeOffset now)
+    {
+        if (Source != SignalSourceStatus.Connected)
+        {
+            return false;
+        }
+
+        var state = Classify(signal, now).State;
+        return state == SignalState.Fresh || (state == SignalState.Stale && signal.Accepted is not null && Value(signal) == 0);
+    }
 
     /// <summary>
     /// Circuit group phases: a sub-meter is read like a phase current (stale, unavailable or missing
