@@ -448,7 +448,7 @@ describe('dashboard: allocation queue (UI-09, UI-10)', () => {
 
     expect(queueRow('heater_l2').getAttribute('data-state')).toBe('held');
     expect(queueRow('heater_l2').querySelector('.badge')!.textContent).toBe('would be held (limits)');
-    expect(queueRow('heater_l2').querySelector('.dash-reason')!.textContent).toBe('Phase current above the reserve threshold.');
+    expect(queueRow('heater_l2').querySelector('.dash-reason')!.textContent).toBe('The phase is, or with this setpoint would be, above the reserve threshold.');
   });
 
   it('shows each power with its source: measured with its age, rated, or unknown with the reason', async () => {

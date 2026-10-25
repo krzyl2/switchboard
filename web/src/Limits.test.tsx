@@ -308,7 +308,7 @@ describe('recorded excursion', () => {
     expect(items[0]?.textContent).toContain('Foreign load detected');
     expect(items[0]?.textContent).toContain('Load appeared on the phase without a command of ours.');
     expect(items[2]?.textContent).toContain('would lower the current of Ładowarka go-e');
-    expect(items[2]?.textContent).toContain('Phase current above the reserve threshold.');
+    expect(items[2]?.textContent).toContain('The phase is, or with this setpoint would be, above the reserve threshold.');
     expect(items[2]?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-10-22T09:21:00.000Z');
     expect(chart.textContent).toContain('Switchboard switched nothing (shadow mode)');
     expect(chart.textContent).toContain(`Peak 19.1 A at ${localClock(new Date('2026-10-22T09:20:10.01Z'), 'en')}; above the reserve threshold for 3 min.`);

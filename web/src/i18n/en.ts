@@ -372,7 +372,7 @@ export const en = {
   'reason.guard_tier_exceeded': 'Phase current above a tier of the breaker profile.',
   'reason.guard_budget_low': 'The overload budget of the phase is low.',
   'reason.guard_stale_signal': 'A signal the limits depend on is stale or unavailable.',
-  'reason.reserve_threshold': 'Phase current above the reserve threshold.',
+  'reason.reserve_threshold': 'The phase is, or with this setpoint would be, above the reserve threshold.',
   'reason.headroom_insufficient': 'Not enough headroom on the phase.',
   'reason.lockout_min_on': 'Minimum on time not yet elapsed (lockout).',
   'reason.lockout_min_off': 'Minimum off time not yet elapsed (lockout).',

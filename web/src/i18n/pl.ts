@@ -373,7 +373,7 @@ export const pl: Messages = {
   'reason.guard_tier_exceeded': 'Prąd fazy powyżej progu z profilu bezpiecznika.',
   'reason.guard_budget_low': 'Budżet przeciążenia fazy jest niski.',
   'reason.guard_stale_signal': 'Sygnał, od którego zależą limity, jest przeterminowany lub niedostępny.',
-  'reason.reserve_threshold': 'Prąd fazy powyżej progu zapasu.',
+  'reason.reserve_threshold': 'Faza jest, albo przy tej nastawie byłaby, powyżej progu zapasu.',
   'reason.headroom_insufficient': 'Za mało wolnej mocy na fazie.',
   'reason.lockout_min_on': 'Nie minął minimalny czas pracy (blokada).',
   'reason.lockout_min_off': 'Nie minął minimalny czas postoju (blokada).',
