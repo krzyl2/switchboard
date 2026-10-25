@@ -1,5 +1,5 @@
 # Switchboard configuration (signals, devices and dispatch; display names from 0.5.0): the maintainer's installation.
-# 3 × 25 A, characteristic B (assumed), 230 V, PV on a SolarEdge inverter with an M1 meter.
+# 3 × 25 A, characteristic C (one 3-pole main breaker), 230 V, PV on a SolarEdge inverter with an M1 meter.
 #
 # Copy to /addon_configs/<id>_switchboard/switchboard.yaml on the Home Assistant host (the add-on
 # sees it as /config/switchboard.yaml). Changes are picked up within seconds, without a restart.
@@ -12,7 +12,7 @@ schema_version: 1
 connection:
   topology: three_phase
   breaker_rating_a: 25
-  characteristic: B          # assumed; confirm on the main breaker's label
+  characteristic: C          # confirmed by the maintainer 2026-10-25 (B and C share the thermal table)
   voltage_v: 230
   reserve_w: { L1: 2500, L2: 2500, L3: 2500 }
 

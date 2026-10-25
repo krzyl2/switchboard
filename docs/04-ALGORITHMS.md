@@ -24,7 +24,8 @@ Worked example for the reference installation (3 × 25 A, 230 V):
 In              = 25 A        → 5.75 kW per phase
 continuous safe = 28.25 A     → 6.50 kW per phase
 reserve 2.5 kW  → the system allocates at most 3.25 kW per phase to its own loads
-kettle 2 kW on a fully allocated phase → 27.8 A = 1.11 × In → inside the non-tripping band
+kettle 2 kW on a fully allocated phase → 22.8 A = 0.91 × In → below the rating
+reserve 1.35 kW → 4.40 kW allocated; the same kettle → 27.8 A = 1.11 × In → inside the non-tripping band
 ```
 
 The consequence is counter-intuitive and worth stating in the UI: **the reserve may be smaller than the largest uncontrolled load**, because the load does not have to fit under the limit — it has to fit under the curve.

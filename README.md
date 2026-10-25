@@ -37,3 +37,7 @@ The maintainer's own system, used for live verification: 3 × 25 A connection, 7
 ## Not a protective device
 
 This software reduces load on a best-effort basis using data from Home Assistant. It does not replace circuit breakers, EVSE protection or any other electrical safety equipment.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

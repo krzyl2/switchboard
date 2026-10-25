@@ -585,12 +585,12 @@ svg{display:block;max-width:100%}
         <div class="field">
           <label for="ob-res">Zapas mocy na fazę</label>
           <input id="ob-res" type="number" value="2,5" inputmode="decimal">
-          <span class="hint">Ile mocy zostawić wolnej na odbiorniki, których system nie kontroluje. Ustaw co najmniej tyle, ile bierze największe urządzenie włączane ręcznie — zwykle czajnik, piekarnik albo kuchenka indukcyjna.</span>
+          <span class="hint">Ile mocy zostawić wolnej na odbiorniki, których system nie kontroluje. Czajnik, piekarnik, kuchenka indukcyjna. Nie musi to być moc największego z nich: odbiornik musi zmieścić się pod krzywą bezpiecznika, a nie pod jego limitem.</span>
         </div>
         <div class="note">
           <strong>25 A na fazie to 5,75 kW.</strong> Z zapasem 2,5 kW system rozdzieli między swoje odbiorniki
-          maksymalnie 3,25 kW na fazę. Czajnik włączony w najgorszym momencie podniesie prąd do około 27,8 A,
-          czyli 1,11 raza powyżej limitu — bezpiecznik to zniesie przez kilkanaście minut, a system zdąży zdjąć obciążenie w ciągu jednego cyklu.
+          maksymalnie 3,25 kW na fazę. Czajnik (2 kW) włączony w najgorszym momencie podniesie prąd do około 22,8 A,
+          czyli 0,91 × prąd bezpiecznika — wciąż poniżej limitu. Przy zapasie 1,35 kW byłoby to 27,8 A = 1,11 × limitu: poniżej 1,13 × bezpiecznik nie zadziała przez co najmniej godzinę.
         </div>
         <div class="btnrow"><button class="btn">Dalej</button><button class="btn ghost">Wstecz</button></div>
       </div>
