@@ -1,0 +1,222 @@
+{
+  "revision": "68E784A43EF64DA12065D99AA464C13279325BA7AB6C4162A1667AE46F44EFC2",
+  "fileState": "valid",
+  "hasComments": true,
+  "unreadable": false,
+  "draft": {
+    "connection": {
+      "topology": "three_phase",
+      "breakerRatingA": 25,
+      "characteristic": "B",
+      "voltageV": 230,
+      "reserveW": {
+        "L1": 2500,
+        "L2": 2500,
+        "L3": 2500
+      }
+    },
+    "meter": {
+      "currentSign": "unsigned",
+      "currentDirection": "phase_power",
+      "powerSign": "positive_export",
+      "phases": {
+        "L1": {
+          "current": {
+            "entity": "sensor.solaredge_m1_ac_current_a",
+            "unit": "A",
+            "maxAge": "90s"
+          },
+          "power": {
+            "entity": "sensor.solaredge_m1_ac_power_a",
+            "unit": "W",
+            "maxAge": "90s"
+          },
+          "voltage": {
+            "entity": "sensor.solaredge_m1_ac_voltage_an",
+            "unit": "V",
+            "maxAge": "90s"
+          }
+        },
+        "L2": {
+          "current": {
+            "entity": "sensor.solaredge_m1_ac_current_b",
+            "unit": "A",
+            "maxAge": "90s"
+          },
+          "power": {
+            "entity": "sensor.solaredge_m1_ac_power_b",
+            "unit": "W",
+            "maxAge": "90s"
+          },
+          "voltage": {
+            "entity": "sensor.solaredge_m1_ac_voltage_bn",
+            "unit": "V",
+            "maxAge": "90s"
+          }
+        },
+        "L3": {
+          "current": {
+            "entity": "sensor.solaredge_m1_ac_current_c",
+            "unit": "A",
+            "maxAge": "90s"
+          },
+          "power": {
+            "entity": "sensor.solaredge_m1_ac_power_c",
+            "unit": "W",
+            "maxAge": "90s"
+          },
+          "voltage": {
+            "entity": "sensor.solaredge_m1_ac_voltage_cn",
+            "unit": "V",
+            "maxAge": "90s"
+          }
+        }
+      },
+      "total": {
+        "power": null,
+        "current": null
+      }
+    },
+    "sources": {
+      "inverter": {
+        "power": {
+          "entity": "sensor.solaredge_ac_power",
+          "unit": "W",
+          "maxAge": "90s"
+        },
+        "sign": "positive_import",
+        "unavailableAsZero": true,
+        "phase": null,
+        "phaseCurrents": {
+          "L1": {
+            "entity": "sensor.solaredge_ac_current_a",
+            "unit": "A",
+            "maxAge": "90s"
+          },
+          "L2": {
+            "entity": "sensor.solaredge_ac_current_b",
+            "unit": "A",
+            "maxAge": "90s"
+          },
+          "L3": {
+            "entity": "sensor.solaredge_ac_current_c",
+            "unit": "A",
+            "maxAge": "90s"
+          }
+        }
+      }
+    },
+    "devices": [
+      {
+        "id": "heater_l1",
+        "existing": true,
+        "editable": true,
+        "template": null,
+        "name": "Grzałka CWU L1",
+        "type": "onoff",
+        "actuator": "switch.grzalka_2",
+        "stateEntity": null,
+        "stateReports": "on_change",
+        "phase": "L1",
+        "ratedCurrentA": 7,
+        "ratedPowerW": 1700,
+        "min": null,
+        "max": null,
+        "step": null,
+        "reactionTime": null,
+        "minOn": null,
+        "minOff": null,
+        "valuePerKwh": 0.35,
+        "circuitGroup": null,
+        "rotationGroup": "cwu_heaters",
+        "draw": null
+      },
+      {
+        "id": "heater_l2",
+        "existing": true,
+        "editable": true,
+        "template": null,
+        "name": "Grzałka CWU L2",
+        "type": "onoff",
+        "actuator": "switch.grzalka_1",
+        "stateEntity": null,
+        "stateReports": "on_change",
+        "phase": "L2",
+        "ratedCurrentA": 7,
+        "ratedPowerW": 1700,
+        "min": null,
+        "max": null,
+        "step": null,
+        "reactionTime": null,
+        "minOn": null,
+        "minOff": null,
+        "valuePerKwh": 0.35,
+        "circuitGroup": null,
+        "rotationGroup": "cwu_heaters",
+        "draw": null
+      },
+      {
+        "id": "heater_l3",
+        "existing": true,
+        "editable": true,
+        "template": null,
+        "name": "Grzałka CWU L3",
+        "type": "onoff",
+        "actuator": "switch.grzalka_3",
+        "stateEntity": null,
+        "stateReports": "on_change",
+        "phase": "L3",
+        "ratedCurrentA": 7,
+        "ratedPowerW": 1700,
+        "min": null,
+        "max": null,
+        "step": null,
+        "reactionTime": null,
+        "minOn": null,
+        "minOff": null,
+        "valuePerKwh": 0.35,
+        "circuitGroup": null,
+        "rotationGroup": "cwu_heaters",
+        "draw": null
+      },
+      {
+        "id": "ev_charger",
+        "existing": true,
+        "editable": true,
+        "template": null,
+        "name": "Ładowarka go-e",
+        "type": "modulating",
+        "actuator": "number.goe_422752_amp",
+        "stateEntity": null,
+        "stateReports": "on_change",
+        "phase": "L1",
+        "ratedCurrentA": null,
+        "ratedPowerW": null,
+        "min": 6,
+        "max": 20,
+        "step": 1,
+        "reactionTime": null,
+        "minOn": null,
+        "minOff": null,
+        "valuePerKwh": 2.03,
+        "circuitGroup": null,
+        "rotationGroup": null,
+        "draw": {
+          "current": "sensor.goe_422752_nrg_4",
+          "power": "sensor.goe_422752_nrg_7",
+          "maxAge": "60s",
+          "currentUnit": null,
+          "powerUnit": null
+        }
+      }
+    ],
+    "acknowledgements": {
+      "notProtective": false,
+      "commentsDropped": false,
+      "replaceUnreadable": false
+    },
+    "dropPreserved": []
+  },
+  "preserved": [],
+  "fileIssues": []
+}

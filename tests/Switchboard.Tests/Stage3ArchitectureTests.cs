@@ -190,9 +190,10 @@ public sealed partial class Stage3ArchitectureTests
     [Fact]
     public void Allow_list_and_sources_stay_free_of_service_calls()
     {
-        // The command port changed nothing outward: the Home Assistant allow-list is unchanged and
-        // no literal anywhere names a state-changing service (Stage2ArchitectureTests pins both).
-        Assert.Equal(["ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        // The command port changed nothing outward: the Home Assistant allow-list grew only by the
+        // read-only discovery queries of Stage 5, and no literal anywhere names a state-changing
+        // service (Stage2ArchitectureTests pins both).
+        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
         foreach (var file in SourceFiles("src/Switchboard.Application"))
         {
             Assert.DoesNotMatch(ServiceLiteral(), File.ReadAllText(file));

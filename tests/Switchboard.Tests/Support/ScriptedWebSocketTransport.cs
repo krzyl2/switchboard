@@ -36,6 +36,9 @@ internal sealed class ScriptedWebSocketTransport : IWebSocketTransport
 
     public bool IsDisposed { get; private set; }
 
+    /// <summary>When set, every send fails like a socket Home Assistant just reset, while receiving still looks open.</summary>
+    public bool FailSends { get; set; }
+
     public Task Connected => _connected.Task.Soon();
 
     public IReadOnlyList<string> Sent
@@ -64,6 +67,11 @@ internal sealed class ScriptedWebSocketTransport : IWebSocketTransport
         if (IsAborted)
         {
             throw new WebSocketException(WebSocketError.InvalidState, "aborted");
+        }
+
+        if (FailSends)
+        {
+            throw new WebSocketException(WebSocketError.ConnectionClosedPrematurely, "scripted reset");
         }
 
         var text = Encoding.UTF8.GetString(utf8Json.Span);

@@ -2,6 +2,28 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.0
+
+The setup wizard. Still shadow only: Switchboard **controls nothing** and switches nothing in this version, whatever the `mode` option says, and the wizard never switches anything either. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- **Setup** (screen 03) in the add-on panel: five steps (meter, connection, sources and storage, loads, mode) that edit `/config/switchboard.yaml` for you. A clean install can be configured without touching the file; re-running the wizard opens the existing file with every device, signal, circuit group and `control:` override, and keeps what it does not edit.
+- Entity pickers fed by Home Assistant (states, entity registry and device registry, read with read-only queries over a second, on-demand connection that closes when the wizard is idle). Derived sensors (template, statistics, powercalc and similar) are listed but refused as inputs, also when the entity list is too long to show in full; an entity that is not in the entity registry, or that cannot be checked because Home Assistant's list cannot be read, is flagged as unverifiable.
+- Live readouts beside each picked entity: its value, the age of its last report and its detected refresh.
+- Validation before saving: entities exist and report in the declared unit and device class, values are plausible for the connection, the phases sum to the total (when a total is mapped), and each `max_age` fits the detected refresh (a meter `max_age` far longer than its refresh is flagged too). Every refusal names the field to fix.
+- The reserve explained with your own numbers: where a kettle on a fully allocated phase lands on the breaker curve, and the minimum safe reserve derived from the meter's refresh (shown, never enforced).
+- Passive phase self-test: switch one declared device yourself, on and then off (in Home Assistant or by hand), while the wizard watches which meter phase steps; switchings the running add-on sees (Node-RED switching a heater, for example) count as evidence too. A verdict needs a switch on and a switch off that agree, and another declared device switching at the same moment makes a switching inconclusive. A swapped phase confirmed both ways blocks the save; a single switching, or a test that proves nothing, is reported as inconclusive, never as a pass and never as a refusal.
+- Device templates (EV charger, water-heater element, heat pump or AC, generic on/off) that prefill type, limits and lockouts from the shipped defaults. A device's draw sensor in kW or mA is read in its own unit.
+- Saving writes the file atomically after the same parser the add-on uses has accepted it, keeps a timestamped backup next to it (at most 10), and the running add-on reloads it without a restart. A hand-written file's comments cannot be kept by a structured save: the wizard asks first, and the backup keeps them. Unsaved changes survive leaving the panel in the same browser tab.
+- The decision log screen pages through the whole retained history in `/data/decisions`, not only the decisions in memory (`GET api/decisions/history`); while `/data` cannot be written, its first page still shows the newest decisions held in memory.
+- `GET` and `POST api/mode`: the UI mode choice, persisted in `state.json` and in force without a restart. Only shadow can be chosen in this version; active is refused because commanding is not enabled.
+
+### Compatibility
+
+- `switchboard.yaml` keeps schema version 1: a file the wizard writes is read by 0.5.x too.
+- No new add-on option and no new file in `/data`; backups of `switchboard.yaml` are written next to it in the add-on configuration folder.
+
 ## 0.5.1
 
 Still shadow only; switches nothing.

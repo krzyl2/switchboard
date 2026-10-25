@@ -1,0 +1,155 @@
+/* Setup step 1 — Meter. Layout only; colours come from the tokens in styles.css, so the step follows
+   the light and dark themes. Class names start with sm- so no other screen's rules apply here. Every
+   row is a grid that folds to two columns below 760 px: the page never scrolls sideways. */
+
+.sm-scope input[type='text'],
+.sm-scope input[type='number'] {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.sm-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.sm-section > h3 {
+  margin-bottom: 2px;
+}
+
+.sm-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.sm-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.sm-choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.sm-choice-t {
+  display: block;
+  font-weight: 600;
+}
+
+.sm-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 12px 16px;
+  margin-top: 10px;
+  align-items: start;
+}
+
+.sm-rows {
+  display: grid;
+  margin-top: 6px;
+}
+
+.sm-row {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 2.2fr) minmax(0, 0.7fr) minmax(0, 1.6fr) minmax(0, 1.3fr);
+  gap: 8px 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sm-row:last-child {
+  border-bottom: 0;
+}
+
+.sm-row[data-invalid='true'] {
+  border-left: 3px solid var(--crit);
+  padding-left: 8px;
+}
+
+.sm-tag {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  font-weight: 600;
+}
+
+.sm-tag .sub {
+  font-weight: 400;
+}
+
+.sm-readout {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sm-outside {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.sm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.sm-selftest {
+  border-left: 3px solid var(--accent);
+}
+
+.sm-observations {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.sm-observations li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.sm-deltas {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .sm-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sm-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sm-tag,
+  .sm-entity,
+  .sm-readout {
+    grid-column: 1 / -1;
+  }
+}

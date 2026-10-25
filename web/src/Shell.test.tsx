@@ -26,7 +26,7 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-theme');
 });
 
-const ROUTES = ['#/', '#/flows', '#/devices', '#/devices/heater_l1', '#/guard', '#/log', '#/signals', '#/status'];
+const ROUTES = ['#/', '#/flows', '#/setup', '#/setup/5', '#/devices', '#/devices/heater_l1', '#/guard', '#/log', '#/signals', '#/status'];
 
 // The runtime shell: the mockup's navigation, the statement that nothing is switched and that this
 // is not a protective device on every page, and the theme toggle (UI-13).
@@ -39,20 +39,21 @@ describe('shell', () => {
     expect(screen.getByRole('note').textContent).toContain('Not a protective device.');
   });
 
-  it('lists the mockup screens in order, setup and the day plan disabled, diagnostics after them', () => {
+  it('lists the mockup screens in order, the day plan disabled, diagnostics after them', () => {
     render(<App lang="pl" />);
     const nav = within(screen.getByRole('navigation'));
 
     expect(nav.getAllByRole('link').map((a) => a.textContent)).toEqual([
       '01Pulpit',
       '02Przepływy',
+      '03Konfiguracja wstępna',
       '04Karta urządzenia',
       '05Limity i przeciążenia',
       '07Dziennik decyzji',
       'Sygnały',
       'Stan',
     ]);
-    for (const disabled of ['Konfiguracja wstępna', 'Plan doby']) {
+    for (const disabled of ['Plan doby']) {
       const item = nav.getByText(disabled);
       expect(item.closest('a')).toBeNull();
       expect(item.getAttribute('aria-disabled')).toBe('true');

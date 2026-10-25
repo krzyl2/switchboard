@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
+using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
@@ -129,6 +130,29 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
             {
                 Enqueue(next, at);
             }
+        }
+    }
+
+    /// <summary>Follows the UI mode choice (MODE-02): written at once, like the kill switch. Call once, before the first step.</summary>
+    public void Attach(ModeState mode)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+        mode.Changed += (_, status) => OnModeChanged(status);
+    }
+
+    /// <summary>Called after the mode changed in memory; the write is best effort.</summary>
+    public void OnModeChanged(ModeStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        lock (_gate)
+        {
+            if (_current.UiMode == status.UiChoice)
+            {
+                return;
+            }
+
+            _current = _current with { UiMode = status.UiChoice };
+            Enqueue(_current, _lastQueuedAt);
         }
     }
 

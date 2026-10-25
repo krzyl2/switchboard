@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\control-defaults.yaml" LogicalName="Switchboard.Infrastructure.Configuration.control-defaults.yaml" />
+    <EmbeddedResource Include="Configuration\setup-defaults.yaml" LogicalName="Switchboard.Infrastructure.Configuration.setup-defaults.yaml" />
   </ItemGroup>
 
   <ItemGroup>

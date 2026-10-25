@@ -29,8 +29,13 @@ function query(input: unknown): URLSearchParams {
  * Statistics the way the add-on answers them: a range with its sums only when from/to were asked,
  * echoing them; signals aligned with the decisions' day, so "today" is 2026-10-24 on the add-on clock.
  */
+/** A history page (GET api/decisions/history) made of the decisions sample. */
+function history(page: typeof decisionsSample, extra: Record<string, unknown> = {}) {
+  return { ...page, retainedFrom: '2026-10-22', retentionDays: 30, partial: false, ...extra };
+}
+
 function serve({
-  decisions = () => respond(copy(decisionsSample)),
+  decisions = () => respond(history(copy(decisionsSample))),
   signals = () => respond(copy(signalsSample, (p) => Object.assign(p, { generatedAt: '2026-10-24T10:00:05.000+00:00', snapshotAt: '2026-10-24T09:59:51.449+00:00' }))),
   statistics = (asked: URLSearchParams) =>
     respond(
@@ -42,7 +47,7 @@ function serve({
 }: { decisions?: (asked: URLSearchParams) => Promise<Response>; signals?: () => Promise<Response>; statistics?: (asked: URLSearchParams) => Promise<Response> } = {}) {
   fetchMock.mockImplementation((input) => {
     const url = String(input).split('?')[0];
-    if (url === 'api/decisions') return decisions(query(input));
+    if (url === 'api/decisions/history') return decisions(query(input));
     if (url === 'api/signals') return signals();
     if (url === 'api/statistics') return statistics(query(input));
     return respond({}, 404);
@@ -112,7 +117,7 @@ describe('decision log', () => {
     await open();
 
     const urls = fetchMock.mock.calls.map(([input]) => String(input).split('?')[0]);
-    expect(new Set(urls)).toEqual(new Set(['api/decisions', 'api/signals', 'api/statistics']));
+    expect(new Set(urls)).toEqual(new Set(['api/decisions/history', 'api/signals', 'api/statistics']));
     const day = localDay(STATISTICS_AT);
     const ranged = fetchMock.mock.calls.map(([input]) => query(input)).find((q) => q.has('from'))!;
     expect([ranged.get('from'), ranged.get('to')]).toEqual([day.from.toISOString(), day.to.toISOString()]);
@@ -159,17 +164,17 @@ describe('decision log', () => {
     expect([...kind.options].map((o) => o.value)).toEqual(['', 'protection', 'dispatch', 'override', 'verification', 'foreign_load', 'system']);
 
     await choose(device, 'ev_charger');
-    expect(decisionRequests().at(-1)).toBe('api/decisions?device=ev_charger');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?device=ev_charger');
     await choose(kind, 'verification');
-    expect(decisionRequests().at(-1)).toBe('api/decisions?device=ev_charger&kind=verification');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?device=ev_charger&kind=verification');
     await choose(device, '');
-    expect(decisionRequests().at(-1)).toBe('api/decisions?kind=verification');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?kind=verification');
   });
 
-  // MODE-04 within this version: older pages through the add-on's cursor over its memory window, and
-  // an honest end of that window instead of an empty page that looks like "nothing happened".
-  it('pages to older decisions with the cursor and says where the memory window ends', async () => {
-    serve({ decisions: (asked) => respond(copy(decisionsSample, (p) => asked.has('before') && (p.next = null))) });
+  // MODE-04: older pages through the add-on's cursor over the retained files, and an honest end of
+  // the retention instead of an empty page that looks like "nothing happened".
+  it('pages to older decisions with the cursor and says where the retained history ends', async () => {
+    serve({ decisions: (asked) => respond(history(copy(decisionsSample, (p) => asked.has('cursor') && (p.next = null)))) });
     await open();
 
     const decisions = card('Decision log');
@@ -177,30 +182,30 @@ describe('decision log', () => {
     expect((within(decisions).getByRole('button', { name: 'Newer' }) as HTMLButtonElement).disabled).toBe(true);
     await click(older);
 
-    expect(decisionRequests().at(-1)).toBe('api/decisions?before=MjAyNi0xMC0yNHwy');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?cursor=MjAyNi0xMC0yNHwy');
     expect(decisions.textContent).toContain('page 2');
     expect((within(decisions).getByRole('button', { name: 'Older' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(decisions.textContent).toContain('No older decisions in memory.');
+    expect(decisions.textContent).toContain('No older decisions: the decision log keeps 30 days, and the oldest kept day is 2026-10-22 (UTC).');
 
     // A new filter starts again at the newest page.
     await choose(within(decisions).getByRole('combobox', { name: 'Kind' }), 'dispatch');
-    expect(decisionRequests().at(-1)).toBe('api/decisions?kind=dispatch');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?kind=dispatch');
     expect(decisions.textContent).toContain('page 1');
 
     await click(within(decisions).getByRole('button', { name: 'Older' }));
     await click(within(decisions).getByRole('button', { name: 'Newest' }));
-    expect(decisionRequests().at(-1)).toBe('api/decisions?kind=dispatch');
+    expect(decisionRequests().at(-1)).toBe('api/decisions/history?kind=dispatch');
   });
 
   it('warns when the decision log cannot be written', async () => {
-    serve({ decisions: () => respond(copy(decisionsSample, (p) => (p.logWritable = false))) });
+    serve({ decisions: () => respond(history(copy(decisionsSample, (p) => (p.logWritable = false)))) });
     await open();
 
     expect(within(card('Decision log')).getByRole('status').textContent).toContain('The decision log cannot be written.');
   });
 
   it('says so when no decision matches a filter', async () => {
-    serve({ decisions: (asked) => respond(copy(decisionsSample, (p) => asked.has('kind') && Object.assign(p, { items: [], next: null }))) });
+    serve({ decisions: (asked) => respond(history(copy(decisionsSample, (p) => asked.has('kind') && Object.assign(p, { items: [], next: null })))) });
     await open();
 
     await choose(within(card('Decision log')).getByRole('combobox', { name: 'Kind' }), 'override');

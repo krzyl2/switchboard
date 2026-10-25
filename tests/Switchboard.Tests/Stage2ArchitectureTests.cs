@@ -11,16 +11,18 @@ namespace Switchboard.Tests;
 /// <summary>
 /// Stage 2 is shadow only, and that is structural: no code path can produce a Home Assistant
 /// service call, over the WebSocket or over REST. The only outbound HA types are ping,
-/// subscribe_entities and unsubscribe_events (pinned in HomeAssistantCommandAllowListTests), and
-/// nothing that persists or publishes the guard's results can reach the HA client at all.
+/// subscribe_entities, unsubscribe_events and, since Stage 5, three read-only discovery queries
+/// (pinned in HomeAssistantCommandAllowListTests), and nothing that persists or publishes the
+/// guard's results can reach the HA client at all.
 /// </summary>
 public sealed partial class Stage2ArchitectureTests
 {
     [Fact]
-    public void Allow_list_is_exactly_ping_subscribe_unsubscribe()
+    public void Allow_list_is_exactly_the_live_types_and_the_read_only_queries()
     {
+        // Stage 5 adds read-only queries only (setup discovery); nothing that changes state.
         Assert.Equal(
-            ["ping", "subscribe_entities", "unsubscribe_events"],
+            ["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"],
             HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
     }
 

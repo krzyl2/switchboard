@@ -1,0 +1,54 @@
+{
+  "code": "invalid",
+  "issues": [
+    {
+      "code": "phase_sum_skipped",
+      "severity": "warning",
+      "field": "meter.total",
+      "documentPath": null,
+      "message": "No total is mapped, so the phases cannot be checked against it (skipped, not passed).",
+      "args": {
+        "reason": "no_total"
+      }
+    },
+    {
+      "code": "phase_self_test_missing",
+      "severity": "warning",
+      "field": "devices[0].phase",
+      "documentPath": null,
+      "message": "The phase of Grzałka CWU L1 is not confirmed yet: run the phase self-test (switch the device on and off yourself while the wizard watches).",
+      "args": {
+        "device": "Grzałka CWU L1",
+        "reason": "timed_out"
+      }
+    },
+    {
+      "code": "phase_self_test_missing",
+      "severity": "warning",
+      "field": "devices[2].phase",
+      "documentPath": null,
+      "message": "The phase of Grzałka CWU L3 is not confirmed yet: run the phase self-test (switch the device on and off yourself while the wizard watches).",
+      "args": {
+        "device": "Grzałka CWU L3",
+        "reason": "timed_out"
+      }
+    },
+    {
+      "code": "acknowledgement_required",
+      "severity": "error",
+      "field": "acknowledgements.notProtective",
+      "documentPath": null,
+      "message": "Confirm that you read the statement: Switchboard is not a protective device and does not replace breakers or EVSE protection.",
+      "args": {}
+    },
+    {
+      "code": "comments_acknowledgement_required",
+      "severity": "error",
+      "field": "acknowledgements.commentsDropped",
+      "documentPath": null,
+      "message": "The file has comments, which a save from the wizard cannot keep; confirm (the original, with its comments, is kept as a backup).",
+      "args": {}
+    }
+  ],
+  "currentRevision": null
+}

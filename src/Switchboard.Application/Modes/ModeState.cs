@@ -1,3 +1,5 @@
+using Switchboard.Application.Guard;
+
 namespace Switchboard.Application.Modes;
 
 /// <summary>Why the effective mode differs from what was asked for.</summary>
@@ -36,16 +38,35 @@ public interface IModeSource
 /// Holds the mode for the process. In this version the effective mode is always shadow: no
 /// production command path exists (the maintainer's rule: nothing may command a Home Assistant
 /// entity outside a test double), so an active ceiling only produces the note that commanding is
-/// not enabled.
+/// not enabled. The UI choice can change at run time (MODE-02): the change wakes the guard, which
+/// records it as a mode decision in its next evaluation, and listeners persist it in state.json.
 /// </summary>
 public sealed class ModeState : IModeSource
 {
-    public ModeState(OperatingMode ceiling, OperatingMode uiChoice)
+    private readonly object _gate = new();
+    private readonly GuardInbox? _inbox;
+    private ModeStatus _current;
+
+    /// <param name="inbox">The guard's inbox, woken on a change of the UI choice; null where nothing evaluates (tests of the rule alone).</param>
+    public ModeState(OperatingMode ceiling, OperatingMode uiChoice, GuardInbox? inbox = null)
     {
-        Current = Resolve(ceiling, uiChoice);
+        _current = Resolve(ceiling, uiChoice);
+        _inbox = inbox;
     }
 
-    public ModeStatus Current { get; }
+    /// <summary>Raised after the guard has been woken; for persistence. Handlers must not block.</summary>
+    public event EventHandler<ModeStatus>? Changed;
+
+    public ModeStatus Current
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _current;
+            }
+        }
+    }
 
     public static ModeStatus Resolve(OperatingMode ceiling, OperatingMode uiChoice) => Resolve(ceiling, uiChoice, commandPathEnabled: false);
 
@@ -61,5 +82,34 @@ public sealed class ModeState : IModeSource
             uiChoice,
             active ? OperatingMode.Active : OperatingMode.Shadow,
             ceiling == OperatingMode.Active && !commandPathEnabled ? ModeNote.ActiveNotEnabled : ModeNote.None);
+    }
+
+    /// <summary>
+    /// The UI choice (MODE-02). While commanding is not enabled only shadow can be chosen: active is
+    /// refused (null) and nothing changes, so no version that later enables a command path can start
+    /// active on an upgrade without a new deliberate act.
+    /// </summary>
+    public ModeStatus? Choose(OperatingMode uiChoice) => uiChoice == OperatingMode.Active ? null : Apply(uiChoice);
+
+    /// <summary>The mechanism without the refusal of active; for tests of persistence and evaluation only.</summary>
+    internal ModeStatus ChooseUnchecked(OperatingMode uiChoice) => Apply(uiChoice);
+
+    private ModeStatus Apply(OperatingMode uiChoice)
+    {
+        ModeStatus next;
+        lock (_gate)
+        {
+            next = Resolve(_current.Ceiling, uiChoice);
+            if (next == _current)
+            {
+                return next;
+            }
+
+            _current = next;
+        }
+
+        _inbox?.Post(GuardTrigger.Mode);
+        Changed?.Invoke(this, next);
+        return next;
     }
 }

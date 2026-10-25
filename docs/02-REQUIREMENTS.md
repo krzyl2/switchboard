@@ -14,18 +14,18 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **SIG-04**: Optional per-phase active power; when present, power is used for dispatch and current for protection — never the reverse
 - [x] **SIG-05**: Every signal carries `max_age`; a signal past `max_age` is `stale` and marks dependent devices unsafe
 - [x] **SIG-06**: Freshness is computed from the HA `last_reported` timestamp, not `last_changed`
-- [ ] **SIG-07**: Refresh interval auto-detected and surfaced; the minimum safe reserve is derived from it and shown during onboarding
+- [x] **SIG-07**: Refresh interval auto-detected and surfaced; the minimum safe reserve is derived from it and shown during onboarding
 - [x] **SIG-08**: Inverter production signal, where present, used to distinguish an idle phase from a phase whose load is covered by local generation
 - [x] **SIG-09**: Balance consistency check: residual of `generation + import − measured loads − controlled loads` beyond a configurable threshold rejects the sample, never the decision
 
 ## Connection model
 
-- [ ] **CONN-01**: Three-phase installations supported with an independent limit per phase; single-phase and summed-only are configurable alternatives
-- [ ] **CONN-02**: Each device is assigned to a phase (or to all three); the assignment drives every protection decision
+- [x] **CONN-01**: Three-phase installations supported with an independent limit per phase; single-phase and summed-only are configurable alternatives
+- [x] **CONN-02**: Each device is assigned to a phase (or to all three); the assignment drives every protection decision
 - [x] **CONN-03**: Sub-breaker groups: a set of devices sharing a downstream breaker with its own per-phase limit, enforced alongside the main limit
-- [ ] **CONN-04**: Configurable power reserve per phase, reserved for loads the system does not control
+- [x] **CONN-04**: Configurable power reserve per phase, reserved for loads the system does not control
 - [ ] **CONN-05**: Phase-assignment self-test — energize one known device, observe which phase rose, report a mismatch
-- [ ] **CONN-06**: Mapping validation before the wizard completes: entities exist, values are plausible, phases sum to the total, refresh matches the declaration
+- [x] **CONN-06**: Mapping validation before the wizard completes: entities exist, values are plausible, phases sum to the total, refresh matches the declaration
 
 ## Breaker thermal model
 
@@ -55,7 +55,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **SAFE-03**: Global kill switch respected within one cycle
 - [x] **SAFE-04**: Manual override per device (force on / force off) that outranks dispatch but never outranks protection
 - [x] **SAFE-05**: Add-on never commands an entity the user has not explicitly declared as a device actuator
-- [ ] **SAFE-06**: Onboarding states plainly that this is not a protective device
+- [x] **SAFE-06**: Onboarding states plainly that this is not a protective device
 - [x] **SAFE-07**: State restored after restart; all lockout timers restart from the restart instant, never from persisted expiry
 
 ## Modes and operation
@@ -63,16 +63,16 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **MODE-01**: `shadow` and `active` modes; `shadow` computes and logs decisions without commanding anything, and is the default after install
 - [ ] **MODE-02**: Mode switch takes effect without a restart
 - [x] **MODE-03**: Every decision records a machine-readable reason code and the inputs that produced it
-- [ ] **MODE-04**: Decision log queryable in the UI and retained for a configurable period
+- [x] **MODE-04**: Decision log queryable in the UI and retained for a configurable period
 
 ## Onboarding UI
 
-- [ ] **UI-01**: Five-step wizard: meter → connection → sources and storage → loads → mode
-- [ ] **UI-02**: Device templates (EV charger, water-heater element, heat pump / AC, generic on-off) prefilling type, limits and lockouts
-- [ ] **UI-03**: Entity pickers fed by HA entity discovery, filtered by domain and device class
-- [ ] **UI-04**: Live readout beside each mapped entity (value + age) so a wrong pick is visible immediately
-- [ ] **UI-05**: Wizard refuses to complete on failed validation and says what to fix
-- [ ] **UI-06**: Configuration persists and is editable later; re-running the wizard never loses existing devices
+- [x] **UI-01**: Five-step wizard: meter → connection → sources and storage → loads → mode
+- [x] **UI-02**: Device templates (EV charger, water-heater element, heat pump / AC, generic on-off) prefilling type, limits and lockouts
+- [x] **UI-03**: Entity pickers fed by HA entity discovery, filtered by domain and device class
+- [x] **UI-04**: Live readout beside each mapped entity (value + age) so a wrong pick is visible immediately
+- [x] **UI-05**: Wizard refuses to complete on failed validation and says what to fix
+- [x] **UI-06**: Configuration persists and is editable later; re-running the wizard never loses existing devices
 
 ## Runtime UI
 
@@ -89,7 +89,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 - [x] **PKG-01**: HA add-on: `repository.yaml` + add-on folder with `config.yaml`, options schema, ingress enabled, `homeassistant_api: true`
 - [x] **PKG-02**: Multi-arch image (amd64, aarch64) published to GHCR
-- [ ] **PKG-03**: MQTT discovery publishes runtime entities (per-phase headroom, overload budget, mode, health, per-device state)
+- [x] **PKG-03**: MQTT discovery publishes runtime entities (per-phase headroom, overload budget, mode, health, per-device state)
 - [x] **PKG-04**: Supervisor-provided MQTT credentials; no manual broker configuration in the common case
 - [x] **PKG-05**: No exposed network port beyond ingress; no outbound telemetry
 - [ ] **PKG-06**: Add-on survives HA restarts and MQTT broker restarts without manual intervention

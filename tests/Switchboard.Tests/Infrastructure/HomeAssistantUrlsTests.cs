@@ -97,17 +97,22 @@ public sealed class HomeAssistantUrlsTests
 public sealed class HomeAssistantCommandAllowListTests
 {
     [Fact]
-    public void Allow_list_is_exactly_ping_subscribe_and_unsubscribe()
+    public void Allow_list_is_the_live_types_plus_three_read_only_queries()
     {
-        // Stage 2 adds unsubscribe_events (own superseded subscriptions only); nothing that changes state.
-        Assert.Equal(["ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        // Stage 2 adds unsubscribe_events (own superseded subscriptions only), Stage 5 three read-only
+        // discovery queries; nothing that changes state.
+        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states"], HomeAssistantCommandAllowList.ReadOnlyQueries.Order(StringComparer.Ordinal));
     }
 
     [Theory]
     [InlineData("call_service")]
     [InlineData("fire_event")]
     [InlineData("execute_script")]
-    [InlineData("get_states")]
+    [InlineData("subscribe_events")]
+    [InlineData("subscribe_trigger")]
+    [InlineData("config/entity_registry/update")]
+    [InlineData("config/device_registry/update")]
     [InlineData("unknown_type")]
     public void Commanding_types_are_refused(string type)
     {
@@ -117,6 +122,9 @@ public sealed class HomeAssistantCommandAllowListTests
     [Theory]
     [InlineData("""{"id":1,"type":"ping"}""")]
     [InlineData("""{"id":2,"type":"subscribe_entities","entity_ids":["sensor.a","sensor.b"]}""")]
+    [InlineData("""{"id":3,"type":"get_states"}""")]
+    [InlineData("""{"id":4,"type":"config/entity_registry/list"}""")]
+    [InlineData("""{"id":5,"type":"config/device_registry/list"}""")]
     public void Allowed_shapes_pass(string payload)
     {
         HomeAssistantCommandAllowList.EnsurePayloadAllowed(System.Text.Encoding.UTF8.GetBytes(payload));
@@ -135,6 +143,10 @@ public sealed class HomeAssistantCommandAllowListTests
     [InlineData("""{"id":3,"type":"call_service","domain":"switch","service":"turn_on"}""")]
     [InlineData("""[{"id":3,"type":"ping"}]""")]
     [InlineData("""{"id":3,"type":"ping"} {"id":4,"type":"call_service"}""")]
+    [InlineData("""{"id":3,"type":"get_states","entity_id":"switch.x"}""")]
+    [InlineData("""{"id":3,"type":"config/entity_registry/list","entity_id":"switch.x","disabled_by":null}""")]
+    [InlineData("""{"id":3,"type":"config/device_registry/list","type":"config/device_registry/update"}""")]
+    [InlineData("""{"id":3,"type":"get_states","type":"call_service"}""")]
     public void A_command_with_any_key_beyond_its_shape_is_refused(string payload)
     {
         // Home Assistant keeps the last duplicate key, so {"type":"subscribe_entities","type":"call_service"}

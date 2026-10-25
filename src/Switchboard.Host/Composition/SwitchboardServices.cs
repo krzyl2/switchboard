@@ -80,6 +80,7 @@ public static class SwitchboardServices
         services.AddSignalPipeline();
         services.AddGuard();
         services.AddPresentation();
+        services.AddSetup();
 
         services.AddSingleton(sp => new IngressAccessPolicy(
             sp.GetRequiredService<IOptions<IngressOptions>>().Value,
@@ -99,6 +100,9 @@ public static class SwitchboardServices
         // Before the guard: it loads the statistics before the first step, and it stops right after
         // the guard, so the shutdown step is counted before the final save.
         services.AddHostedService<PresentationService>();
+
+        // Stops right after the guard: a self-test session ends and the read-only discovery link closes.
+        services.AddHostedService<SetupLinkService>();
         services.AddHostedService<GuardService>();
         return services;
     }
@@ -114,6 +118,7 @@ public static class SwitchboardServices
         services.AddValidatedOptions<PersistenceOptions, PersistenceOptionsValidator>(PersistenceOptions.SectionName);
         services.AddValidatedOptions<GuardOptions, GuardOptionsValidator>(GuardOptions.SectionName);
         services.AddValidatedOptions<StatisticsOptions, StatisticsOptionsValidator>(StatisticsOptions.SectionName);
+        services.AddValidatedOptions<SetupOptions, SetupOptionsValidator>(SetupOptions.SectionName);
         return services;
     }
 
@@ -162,9 +167,11 @@ public static class SwitchboardServices
         services.AddSingleton<ILastKnownStates>(sp => sp.GetRequiredService<RuntimeStateCoordinator>());
 
         // The add-on option is the ceiling; the UI choice persisted in state.json counts only under it.
+        // A change of the UI choice wakes the guard, which records it (MODE-02).
         services.AddSingleton(sp => new ModeState(
             sp.GetRequiredService<ResolvedAddonOptions>().Mode,
-            sp.GetRequiredService<RuntimeStateLoad>().State.UiMode));
+            sp.GetRequiredService<RuntimeStateLoad>().State.UiMode,
+            sp.GetRequiredService<GuardInbox>()));
         services.AddSingleton<IModeSource>(sp => sp.GetRequiredService<ModeState>());
         services.AddSingleton(sp => new GuardStatusHolder(
             GuardStatus.Initial(sp.GetRequiredService<SignalClock>().Time.GetUtcNow(), sp.GetRequiredService<IModeSource>().Current),

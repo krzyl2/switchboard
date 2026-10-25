@@ -1,0 +1,564 @@
+[
+  {
+    "entity_id": "sensor.solaredge_m1_ac_current_a",
+    "state": "2.61",
+    "attributes": {
+      "friendly_name": "M1 AC current A",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_current_b",
+    "state": "1.74",
+    "attributes": {
+      "friendly_name": "M1 AC current B",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_current_c",
+    "state": "2.17",
+    "attributes": {
+      "friendly_name": "M1 AC current C",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_power_a",
+    "state": "-600.0",
+    "attributes": {
+      "friendly_name": "M1 AC power A",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_power_b",
+    "state": "-400.0",
+    "attributes": {
+      "friendly_name": "M1 AC power B",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_power_c",
+    "state": "-500.0",
+    "attributes": {
+      "friendly_name": "M1 AC power C",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_power",
+    "state": "-1500.0",
+    "attributes": {
+      "friendly_name": "M1 AC power",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_voltage_an",
+    "state": "230.0",
+    "attributes": {
+      "friendly_name": "M1 AC voltage AN",
+      "unit_of_measurement": "V",
+      "device_class": "voltage",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_voltage_bn",
+    "state": "230.0",
+    "attributes": {
+      "friendly_name": "M1 AC voltage BN",
+      "unit_of_measurement": "V",
+      "device_class": "voltage",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_m1_ac_voltage_cn",
+    "state": "230.0",
+    "attributes": {
+      "friendly_name": "M1 AC voltage CN",
+      "unit_of_measurement": "V",
+      "device_class": "voltage",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_ac_power",
+    "state": "unavailable",
+    "attributes": {
+      "friendly_name": "Inverter AC power",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_ac_current_a",
+    "state": "unavailable",
+    "attributes": {
+      "friendly_name": "Inverter AC current A",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_ac_current_b",
+    "state": "unavailable",
+    "attributes": {
+      "friendly_name": "Inverter AC current B",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.solaredge_ac_current_c",
+    "state": "unavailable",
+    "attributes": {
+      "friendly_name": "Inverter AC current C",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "switch.grzalka_1",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "Grzałka 1",
+      "device_class": "switch"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "switch.grzalka_2",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "Grzałka 2",
+      "device_class": "switch"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "switch.grzalka_3",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "Grzałka 3",
+      "device_class": "switch"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "number.goe_422752_amp",
+    "state": "20",
+    "attributes": {
+      "friendly_name": "go-e charging current",
+      "unit_of_measurement": "A",
+      "device_class": "current"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.goe_422752_nrg_4",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "go-e current L1",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.goe_422752_nrg_5",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "go-e current L2",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.goe_422752_nrg_6",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "go-e current L3",
+      "unit_of_measurement": "A",
+      "device_class": "current",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.goe_422752_nrg_7",
+    "state": "0",
+    "attributes": {
+      "friendly_name": "go-e power L1",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "binary_sensor.goe_422752_car_0",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "go-e car connected",
+      "device_class": "plug"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.usage",
+    "state": "1500.0",
+    "attributes": {
+      "friendly_name": "Usage",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.moc_grzalek_cwu",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "Moc grzałek CWU",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.zuzycie_srednie_5m",
+    "state": "1480.0",
+    "attributes": {
+      "friendly_name": "Zużycie średnie 5 min",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.grzalki_srednie_5m",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "Grzałki średnie 5 min",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.kettle_power",
+    "state": "0.0",
+    "attributes": {
+      "friendly_name": "Kettle power (estimated)",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.house_load_yaml",
+    "state": "1500.0",
+    "attributes": {
+      "friendly_name": "House load (YAML)",
+      "unit_of_measurement": "W",
+      "device_class": "power",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "light.kitchen",
+    "state": "on",
+    "attributes": {
+      "friendly_name": "Kitchen"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "binary_sensor.front_door",
+    "state": "off",
+    "attributes": {
+      "friendly_name": "Front door",
+      "device_class": "door"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "sensor.outdoor_temperature",
+    "state": "7.5",
+    "attributes": {
+      "friendly_name": "Outdoor temperature",
+      "unit_of_measurement": "°C",
+      "device_class": "temperature",
+      "state_class": "measurement"
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  }
+]

@@ -24,6 +24,9 @@ public enum GuardTrigger
     /// <summary>A manual override changed (SAFE-04).</summary>
     Override,
 
+    /// <summary>The UI mode choice changed (MODE-02): the step records the mode; the guard itself does not react to it.</summary>
+    Mode,
+
     /// <summary>The add-on is stopping: every controlled device goes to safe state (SAFE-01).</summary>
     Shutdown,
 }

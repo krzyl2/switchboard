@@ -62,3 +62,20 @@ export const STATISTICS_REQUEST_TIMEOUT_MS = 10_000;
 /** The decision log page. */
 export const DECISION_LOG_REFRESH_INTERVAL_MS = 5_000;
 export const DECISION_LOG_REQUEST_TIMEOUT_MS = 4_000;
+
+// Setup wizard (Stage 5).
+
+/** Live readouts beside each picked entity (UI-04): as often as the signals page, so ages visibly tick. */
+export const SETUP_READOUTS_REFRESH_INTERVAL_MS = 2_000;
+export const SETUP_READOUTS_REQUEST_TIMEOUT_MS = 1_800;
+
+/**
+ * Draft, templates, validation and saving: one request each. Validation may first wait for the
+ * add-on's discovery link to reach Home Assistant (Setup:DiscoveryRequestTimeout, 15 s), and a save
+ * for the running add-on to reload the file (Setup:ReloadConfirmTimeout, 10 s); longer than both.
+ */
+export const SETUP_REQUEST_TIMEOUT_MS = 30_000;
+
+/** A watching self-test: as often as the readouts. */
+export const SETUP_SELF_TEST_REFRESH_INTERVAL_MS = 2_000;
+export const SETUP_SELF_TEST_REQUEST_TIMEOUT_MS = 1_800;

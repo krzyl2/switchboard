@@ -3,6 +3,12 @@ import { device } from './device';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
+import { setup } from './setup';
+import { setupConnection } from './setupConnection';
+import { setupLoads } from './setupLoads';
+import { setupMeter } from './setupMeter';
+import { setupMode } from './setupMode';
+import { setupSources } from './setupSources';
 import { shell } from './shell';
 
 // The chrome of Stages 0-3 lives here; the runtime screens (Stage 4) keep their texts in one file
@@ -467,6 +473,12 @@ export const en = {
   ...device.en,
   ...limits.en,
   ...log.en,
+  ...setup.en,
+  ...setupMeter.en,
+  ...setupConnection.en,
+  ...setupSources.en,
+  ...setupLoads.en,
+  ...setupMode.en,
 };
 
 export type Messages = { [K in keyof typeof en]: string };

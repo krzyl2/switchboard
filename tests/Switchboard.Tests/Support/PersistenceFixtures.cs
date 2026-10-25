@@ -55,8 +55,10 @@ internal static class TestDecisions
             null,
             DecisionInputs.None with { Mode = new ModeDecisionInputs(OperatingMode.Active, OperatingMode.Shadow, ModeNote.ActiveUnavailableBeforeStage3) });
 
-    public static PersistenceOptions Options(int memory = 1000, int pending = 10000, int maxPage = 500) => new()
+    public static PersistenceOptions Options(int memory = 1000, int pending = 10000, int maxPage = 500, int historyScanLines = 100_000, long historyFileBytes = 16 * 1024 * 1024) => new()
     {
+        HistoryMaxScanLines = historyScanLines,
+        HistoryMaxFileBytes = historyFileBytes,
         StateSaveInterval = TimeSpan.FromMinutes(1),
         StateBudgetSaveStep = 0.05,
         StateMaxFileBytes = 65536,
@@ -107,6 +109,8 @@ internal sealed class FlakyFileSystem : IDecisionFileSystem
     public IEnumerable<string> ReadLines(string path) => _real.ReadLines(path);
 
     public bool EndsWithNewline(string path) => _real.EndsWithNewline(path);
+
+    public long Length(string path) => _real.Length(path);
 
     public void Delete(string path)
     {

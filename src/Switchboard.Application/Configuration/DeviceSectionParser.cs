@@ -24,8 +24,11 @@ internal static class DeviceSectionParser
 
     private const string Key = "devices";
     private const string ThreePhase = "three_phase";
-    private const string DefaultUnit = "A";
-    private const string DefaultPowerUnit = "W";
+    /// <summary>The unit of a draw current without current_unit.</summary>
+    public const string DefaultUnit = "A";
+
+    /// <summary>The unit of a draw power without power_unit.</summary>
+    public const string DefaultPowerUnit = "W";
     private const string SensorDomain = "sensor";
 
     // Schema bound, not a control parameter: a house with more is a typo or a generated file.
@@ -161,6 +164,29 @@ internal static class DeviceSectionParser
     /// <summary>The draw signal of a device phase: <c>device_&lt;id&gt;_current</c> (or <c>_power</c>), with <c>_l&lt;n&gt;</c> for a device on several phases.</summary>
     public static SignalName DrawSignalName(DeviceName device, string kind, Phase phase, bool perPhase) =>
         SignalName.Parse(perPhase ? $"{SignalPrefix}{device.Value}_{kind}_{phase.ToString().ToLowerInvariant()}" : $"{SignalPrefix}{device.Value}_{kind}");
+
+    /// <summary>The keys a device of <paramref name="type"/> may carry; the wizard's templates are checked against them.</summary>
+    public static ImmutableArray<string> KeysFor(DeviceType type) => [.. CommonKeys, .. type switch
+    {
+        DeviceType.OnOff => OnOffKeys,
+        DeviceType.Modulating => ModulatingKeys,
+        DeviceType.Storage => StorageKeys,
+        _ => SteppedKeys,
+    }];
+
+    /// <summary>The domains an actuator of <paramref name="type"/> may have (SAFE-05: only these can ever be declared).</summary>
+    public static ImmutableArray<string> ActuatorDomainsFor(DeviceType type) =>
+        type is DeviceType.OnOff or DeviceType.Stepped ? RelayActuatorDomains : ModulatingActuatorDomains;
+
+    /// <summary>The domains a state entity of <paramref name="type"/> may have.</summary>
+    public static ImmutableArray<string> StateDomainsFor(DeviceType type) =>
+        type is DeviceType.OnOff or DeviceType.Stepped ? RelayStateDomains : ModulatingStateDomains;
+
+    /// <summary>The spelling of a device type in the document.</summary>
+    public static string TypeName(DeviceType type) => Types.First(t => t.Value == type).Key;
+
+    /// <summary>The device type a document spelling names, if any.</summary>
+    public static DeviceType? TypeOf(string? name) => name is not null && Types.TryGetValue(name, out var type) ? type : null;
 
     /// <summary>Every id declared under <c>circuit_groups:</c> that is a valid group name.</summary>
     public static IReadOnlySet<GroupName> DeclaredGroupIds(ConfigMapping root)

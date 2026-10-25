@@ -1,0 +1,56 @@
+{
+  "id": "11049891db034afb88205573df709f54",
+  "status": "finished",
+  "startedAt": "2026-10-22T07:39:00+00:00",
+  "expiresAt": "2026-10-22T07:54:00+00:00",
+  "expected": {
+    "phase": "L2",
+    "rating": 1700,
+    "unit": "W",
+    "stateEntity": "switch.grzalka_1"
+  },
+  "observations": [
+    {
+      "at": "2026-10-22T07:40:05+00:00",
+      "transition": "on",
+      "deltas": {
+        "L1": -11.599999999999994,
+        "L2": 1701.1999999999998,
+        "L3": -19.399999999999977
+      },
+      "unit": "W",
+      "verdict": "confirmed",
+      "observedPhase": "L2",
+      "reason": null,
+      "ratingRatio": 1.0007058823529411,
+      "source": "watch",
+      "houseLoad": false,
+      "note": null
+    },
+    {
+      "at": "2026-10-22T07:46:05+00:00",
+      "transition": "off",
+      "deltas": {
+        "L1": 20.400000000000006,
+        "L2": -1707.7,
+        "L3": -11.300000000000011
+      },
+      "unit": "W",
+      "verdict": "confirmed",
+      "observedPhase": "L2",
+      "reason": null,
+      "ratingRatio": 1.004529411764706,
+      "source": "watch",
+      "houseLoad": false,
+      "note": null
+    }
+  ],
+  "verdict": {
+    "verdict": "confirmed",
+    "observedPhase": null,
+    "reason": null,
+    "confirmed": 2,
+    "mismatched": 0,
+    "inconclusive": 0
+  }
+}

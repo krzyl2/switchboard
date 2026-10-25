@@ -43,6 +43,9 @@ internal static class WebPipeline
         app.MapStatisticsApi();
         app.MapExcursionsApi();
         app.MapDevicesApi();
+        app.MapSetupApi();
+        app.MapModeApi();
+        app.MapDecisionHistoryApi();
 
         // Unknown API routes are 404s, not the SPA shell.
         app.Map("/api/{**rest}", () => Results.NotFound());

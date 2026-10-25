@@ -16,9 +16,11 @@ namespace Switchboard.Tests.Support;
 /// </summary>
 internal sealed class ControlLoop
 {
-    public ControlLoop(IControlInputSource inputs, SignalClock clock, IModeSource mode, string boot, IDeviceCommandPort? port = null, LockoutClocks? lockouts = null)
+    /// <param name="inbox">The guard's inbox, when the test built it first (a mode state that wakes the guard needs it).</param>
+    public ControlLoop(IControlInputSource inputs, SignalClock clock, IModeSource mode, string boot, IDeviceCommandPort? port = null, LockoutClocks? lockouts = null, GuardInbox? inbox = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
+        Inbox = inbox ?? new GuardInbox();
         Lockouts = lockouts ?? new LockoutClocks();
         Mode = mode;
         Engine = new GuardEngine(Lockouts, Targets, NullLogger<GuardEngine>.Instance);
@@ -35,7 +37,7 @@ internal sealed class ControlLoop
         Runner = new GuardRunner(Inbox, inputs, clock, Engine, Dispatch, Gate, Lockouts, Recorder, Status, DispatchStatus, mode, KillSwitch, Overrides, NullLogger<GuardRunner>.Instance);
     }
 
-    public GuardInbox Inbox { get; } = new();
+    public GuardInbox Inbox { get; }
 
     public IModeSource Mode { get; }
 

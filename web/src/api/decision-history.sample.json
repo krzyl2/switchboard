@@ -1,0 +1,113 @@
+{
+  "items": [
+    {
+      "id": "test-000000003",
+      "at": "2026-10-22T07:42:00+00:00",
+      "scope": "device",
+      "device": "heater_l1",
+      "stage": null,
+      "phase": "L1",
+      "action": "switch_off",
+      "kind": "protection",
+      "reason": "guard_tier_exceeded",
+      "overridden": "lockout_min_on",
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "origin": null,
+      "group": null,
+      "target": null,
+      "inputs": {
+        "phase": {
+          "phase": "L1",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 33,
+          "effectiveCurrentA": 26.4,
+          "multiple": 1.32,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.97,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": -18.87,
+          "direction": "import",
+          "reportedAt": "2026-10-22T07:41:59+00:00"
+        },
+        "device": {
+          "applied": "on",
+          "setpointA": null,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 1,
+          "valuePerKwh": 0.35,
+          "shedPriority": null,
+          "minOnRemainingS": 42,
+          "minOffRemainingS": 0,
+          "canSwitchOff": true
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null,
+        "dispatch": null
+      }
+    },
+    {
+      "id": "test-000000002",
+      "at": "2026-10-22T07:41:00+00:00",
+      "scope": "device",
+      "device": "heater_l1",
+      "stage": null,
+      "phase": "L1",
+      "action": "switch_off",
+      "kind": "protection",
+      "reason": "guard_tier_exceeded",
+      "overridden": "lockout_min_on",
+      "mode": "shadow",
+      "commanded": false,
+      "refusedBy": "mode_shadow",
+      "origin": null,
+      "group": null,
+      "target": null,
+      "inputs": {
+        "phase": {
+          "phase": "L1",
+          "dataValid": true,
+          "invalidReason": null,
+          "currentA": 33,
+          "effectiveCurrentA": 26.4,
+          "multiple": 1.32,
+          "band": 4,
+          "reaction": "shed_one_immediately",
+          "budget": 0.97,
+          "continuousA": 28.25,
+          "reserveThresholdA": 14.13,
+          "headroomA": -18.87,
+          "direction": "import",
+          "reportedAt": "2026-10-22T07:40:59+00:00"
+        },
+        "device": {
+          "applied": "on",
+          "setpointA": null,
+          "stateFresh": true,
+          "stateInvalidReason": null,
+          "shedRank": 1,
+          "valuePerKwh": 0.35,
+          "shedPriority": null,
+          "minOnRemainingS": 42,
+          "minOffRemainingS": 0,
+          "canSwitchOff": true
+        },
+        "mode": null,
+        "killSwitch": null,
+        "safeStateCause": null,
+        "dispatch": null
+      }
+    }
+  ],
+  "next": "20261022:1",
+  "retainedFrom": "2026-10-22",
+  "retentionDays": 30,
+  "partial": false,
+  "logWritable": true
+}

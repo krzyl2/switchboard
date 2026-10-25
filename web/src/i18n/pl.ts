@@ -4,6 +4,12 @@ import type { Messages } from './en';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
+import { setup } from './setup';
+import { setupConnection } from './setupConnection';
+import { setupLoads } from './setupLoads';
+import { setupMeter } from './setupMeter';
+import { setupMode } from './setupMode';
+import { setupSources } from './setupSources';
 import { shell } from './shell';
 
 // Vocabulary follows docs/mockups ("Obserwacja", "Sterowanie aktywne", the protective-device note).
@@ -467,4 +473,10 @@ export const pl: Messages = {
   ...device.pl,
   ...limits.pl,
   ...log.pl,
+  ...setup.pl,
+  ...setupMeter.pl,
+  ...setupConnection.pl,
+  ...setupSources.pl,
+  ...setupLoads.pl,
+  ...setupMode.pl,
 };

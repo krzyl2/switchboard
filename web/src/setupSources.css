@@ -1,0 +1,54 @@
+/* Screen 03, step 3 (Sources and storage). Layout only; colours come from the tokens in styles.css.
+   Classes start with sources-; the device form and field layout come from setupLoads.css. */
+
+.sources-pv {
+  margin-top: 12px;
+}
+
+.sources-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.sources-choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.sources-choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.sources-inverter {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sources-signal {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sources-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.sources-check input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.sources-storage .note {
+  margin-top: 0;
+}

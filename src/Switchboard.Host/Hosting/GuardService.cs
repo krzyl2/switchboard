@@ -3,6 +3,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
+using Switchboard.Application.Setup.SelfTest;
 using Switchboard.Application.State;
 using Switchboard.Infrastructure.Persistence;
 
@@ -24,7 +25,8 @@ internal sealed class GuardService(
     KillSwitchState killSwitch,
     DeviceOverrides overrides,
     GuardStatusHolder status,
-    IModeSource mode,
+    ModeState mode,
+    PhaseEvidenceRecorder evidence,
     IOptions<PersistenceOptions> options,
     IHostApplicationLifetime lifetime,
     TimeProvider time,
@@ -45,6 +47,8 @@ internal sealed class GuardService(
         var loaded = state.Loaded;
         state.Attach(runner, killSwitch);
         state.Attach(overrides);
+        state.Attach(mode);
+        evidence.Attach(runner);
         runner.Restore(loaded.State.GuardMemory);
         killSwitch.Restore(loaded.State.KillSwitch, loaded.State.KillSwitchChangedAt);
         overrides.Restore(loaded.State.Overrides);

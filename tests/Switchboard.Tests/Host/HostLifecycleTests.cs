@@ -119,7 +119,7 @@ public sealed class HostLifecycleTests
             services.RemoveAll<IWebSocketTransportFactory>();
             services.AddSingleton<IWebSocketTransportFactory>(new ScriptedTransportFactory());
             services.RemoveAll<IControlInputSource>();
-            services.AddSingleton<IControlInputSource>(new BrokenControlSource());
+            services.AddSingleton<IControlInputSource>(new BrokenControlSource(transport));
         });
 
         _ = factory.Server;
@@ -127,9 +127,9 @@ public sealed class HostLifecycleTests
         factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(() => stopping.TrySetResult());
         await stopping.Task.Soon();
 
-        // The broker session is up (the fake connects inside the link's start, before the guard
-        // starts); whether it got as far as its subscriptions before the stop is a race the stop
-        // path must not depend on, so the test does not wait for them either.
+        // The broker session is up (the broken input fails only once it is); whether it got as far
+        // as its subscriptions before the stop is a race the stop path must not depend on, so the
+        // test does not wait for them either.
         await transport.UntilAsync(o => o.Kind == "connect");
         await factory.DisposeAsync();
 
@@ -138,10 +138,22 @@ public sealed class HostLifecycleTests
             transport.Log.Select(o => o.ToString()).TakeLast(3));
     }
 
-    /// <summary>A defect in the guard's input path: every read throws.</summary>
-    private sealed class BrokenControlSource : IControlInputSource
+    /// <summary>
+    /// A defect in the guard's input path: every read throws, once the broker session is up. Since
+    /// .NET 10 a BackgroundService's ExecuteAsync runs off the start path, so the MQTT link no longer
+    /// connects before the guard starts; a guard that died first would leave no ON entity to turn
+    /// OFF, which is not the case this test is about.
+    /// </summary>
+    private sealed class BrokenControlSource(FakeMqttTransport transport) : IControlInputSource
     {
-        public ControlInputs Current => throw new InvalidOperationException("A defect in the guard's input path.");
+        public ControlInputs Current
+        {
+            get
+            {
+                SpinWait.SpinUntil(() => transport.IsConnected, TimeSpan.FromSeconds(10));
+                throw new InvalidOperationException("A defect in the guard's input path.");
+            }
+        }
 
         public event EventHandler<ControlInputs>? Published
         {

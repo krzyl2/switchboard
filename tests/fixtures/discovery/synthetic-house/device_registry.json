@@ -1,0 +1,30 @@
+[
+  {
+    "id": "dev_m1",
+    "name": "SolarEdge Modbus Meter M1",
+    "name_by_user": null,
+    "manufacturer": "SolarEdge",
+    "model": "WND-3Y-400-MB"
+  },
+  {
+    "id": "dev_inverter",
+    "name": "SolarEdge SE7K",
+    "name_by_user": null,
+    "manufacturer": "SolarEdge",
+    "model": "SE7K-RWS"
+  },
+  {
+    "id": "dev_relays",
+    "name": "Modbus relays",
+    "name_by_user": "Przekaźniki CWU",
+    "manufacturer": null,
+    "model": null
+  },
+  {
+    "id": "dev_goe",
+    "name": "go-e Charger 422752",
+    "name_by_user": null,
+    "manufacturer": "go-e",
+    "model": "Gemini flex"
+  }
+]

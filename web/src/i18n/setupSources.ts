@@ -1,0 +1,81 @@
+// Setup wizard, step 3 (Sources): its own texts, so the steps can be built in parallel
+// without editing one file. Keys start with 'setupSources.'; both languages here (mockup vocabulary).
+
+const en = {
+  'setupSources.title': 'Sources and storage',
+  'setupSources.stepLine': 'Step 3 of 5',
+  'setupSources.lead': 'The PV inverter, so dispatch can tell an idle phase from one whose load is covered by local production.',
+  'setupSources.pv.title': 'PV inverter',
+  'setupSources.pv.choice.none': 'No PV',
+  'setupSources.pv.choice.inverter': 'A PV inverter',
+  'setupSources.pv.why':
+    'The main meter sees the net flow, and that is exactly the current through the breaker: protection needs nothing more. Dispatch also needs the production, or it cannot tell an idle phase from one whose load is covered by local production.',
+  'setupSources.pv.power': 'Inverter AC power',
+  'setupSources.unit': 'Unit',
+  'setupSources.unit.choose': 'choose',
+  'setupSources.maxAge': 'Max age',
+  'setupSources.maxAgeHint': 'A value older than this counts as unknown, e.g. 90s.',
+  'setupSources.pv.sign': 'Sign of the production',
+  'setupSources.pv.sign.choose': 'choose the sign',
+  'setupSources.pv.sign.positive_import': 'Production is a positive number (most inverters)',
+  'setupSources.pv.sign.positive_export': 'Production is a negative number',
+  'setupSources.pv.asleep': 'Count an inverter asleep at night as 0 W',
+  'setupSources.pv.asleepHint':
+    'When the inverter reports unavailable, or falls silent after reporting 0 W (asleep at night), its production counts as 0 W instead of unknown. Silence after a production stays unknown. Protection never reads the production.',
+  'setupSources.pv.phase': 'Inverter phases',
+  'setupSources.pv.phase.three': 'Three-phase',
+  'setupSources.pv.phase.single': 'Single-phase on {phase}',
+  'setupSources.pv.currents': 'Output current per phase (optional)',
+  'setupSources.pv.currentsHint': 'Splits the production across the phases; without it the production is split equally. Map all three or none.',
+  'setupSources.pv.currents.add': 'Add the per-phase currents',
+  'setupSources.pv.currents.remove': 'Remove the per-phase currents',
+  'setupSources.pv.current': '{phase} current',
+  'setupSources.storage.title': 'Energy storage',
+  'setupSources.storage.lead':
+    'A battery is a device whose charging current Switchboard may reduce: protection takes charging down to 0, never into discharge, and dispatch never discharges in this version.',
+  'setupSources.storage.notUsed': 'Capacity, charge power and SoC limits are not used in this version.',
+  'setupSources.storage.none': 'No energy storage.',
+  'setupSources.storage.add': 'Add a battery by hand',
+  'setupSources.check': 'Check the sources and continue',
+};
+
+export const setupSources: { en: typeof en; pl: Record<keyof typeof en, string> } = {
+  en,
+  pl: {
+    'setupSources.title': 'Źródła i magazyny',
+    'setupSources.stepLine': 'Krok 3 z 5',
+    'setupSources.lead': 'Falownik PV, aby rozdział mocy odróżnił fazę bez obciążenia od fazy, której obciążenie pokrywa własna produkcja.',
+    'setupSources.pv.title': 'Falownik PV',
+    'setupSources.pv.choice.none': 'Brak PV',
+    'setupSources.pv.choice.inverter': 'Falownik PV',
+    'setupSources.pv.why':
+      'Licznik główny widzi przepływ netto i to dokładnie ten prąd płynie przez bezpiecznik: do ochrony przyłącza wystarczy sam licznik. Do rozdziału mocy system potrzebuje dodatkowo wiedzieć, ile wytwarza falownik, inaczej nie odróżni fazy bez obciążenia od fazy, której obciążenie pokrywa własna produkcja.',
+    'setupSources.pv.power': 'Moc AC falownika',
+    'setupSources.unit': 'Jednostka',
+    'setupSources.unit.choose': 'wybierz',
+    'setupSources.maxAge': 'Maksymalny wiek',
+    'setupSources.maxAgeHint': 'Starsza wartość jest traktowana jako nieznana, np. 90s.',
+    'setupSources.pv.sign': 'Znak produkcji',
+    'setupSources.pv.sign.choose': 'wybierz znak',
+    'setupSources.pv.sign.positive_import': 'Produkcja jako liczba dodatnia (większość falowników)',
+    'setupSources.pv.sign.positive_export': 'Produkcja jako liczba ujemna',
+    'setupSources.pv.asleep': 'Falownik uśpiony w nocy licz jako 0 W',
+    'setupSources.pv.asleepHint':
+      'Gdy falownik zgłasza unavailable albo milknie po zgłoszeniu 0 W (uśpiony w nocy), jego produkcja liczy się jako 0 W, a nie jako nieznana. Cisza po produkcji pozostaje nieznana. Ochrona bezpiecznika nigdy nie korzysta z produkcji.',
+    'setupSources.pv.phase': 'Fazy falownika',
+    'setupSources.pv.phase.three': 'Trójfazowy',
+    'setupSources.pv.phase.single': 'Jednofazowy na {phase}',
+    'setupSources.pv.currents': 'Prąd wyjściowy na fazę — opcjonalnie',
+    'setupSources.pv.currentsHint': 'Dzieli produkcję między fazy; bez tego produkcja dzielona jest po równo. Przypisz wszystkie trzy albo żadnej.',
+    'setupSources.pv.currents.add': 'Dodaj prądy faz',
+    'setupSources.pv.currents.remove': 'Usuń prądy faz',
+    'setupSources.pv.current': 'Prąd {phase}',
+    'setupSources.storage.title': 'Magazyn energii',
+    'setupSources.storage.lead':
+      'Magazyn to urządzenie, któremu Switchboard może ograniczać prąd ładowania: ochrona obniża ładowanie do 0, nigdy do rozładowania, a rozdział mocy w tej wersji nigdy nie rozładowuje.',
+    'setupSources.storage.notUsed': 'Pojemność, moc ładowania i limity SoC nie są używane w tej wersji.',
+    'setupSources.storage.none': 'Brak magazynu energii.',
+    'setupSources.storage.add': 'Dodaj magazyn ręcznie',
+    'setupSources.check': 'Sprawdź źródła i przejdź dalej',
+  },
+};

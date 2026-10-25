@@ -22,7 +22,7 @@ public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decisi
 
 /// <summary>
 /// The control loop's only reader. It wakes on every store cycle the signal store publishes, on the
-/// kill switch, on an override change, on its own deadline timer (cycle boundaries, band timers,
+/// kill switch, on an override change, on a UI mode change, on its own deadline timer (cycle boundaries, band timers,
 /// budget thresholds, settling timeouts, lockout expiries) and at shutdown. Each step reads the
 /// control inputs once (protection and dispatch views of the same cycle), evaluates the guard first,
 /// then dispatch against the guard's envelope, passes both through the effector gate and records
@@ -49,6 +49,7 @@ public sealed class GuardRunner : IDisposable
     private readonly object _sync = new();
     private DateTimeOffset? _lastStep;
     private bool _started;
+    private ModeStatus? _recordedMode;
     private bool _recorderFailing;
 
     public GuardRunner(
@@ -120,9 +121,11 @@ public sealed class GuardRunner : IDisposable
             var now = _time.GetUtcNow();
             var mode = _mode.Current;
             var decisions = ImmutableArray.CreateBuilder<Decision>();
-            if (!_started)
+            if (!_started || mode != _recordedMode)
             {
+                // The mode of this start, and every change of it since (MODE-02), as a mode decision.
                 _started = true;
+                _recordedMode = mode;
                 decisions.Add(_gate.Start(mode, now));
             }
 

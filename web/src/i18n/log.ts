@@ -20,8 +20,8 @@ const en = {
   'log.page.newer': 'Newer',
   'log.page.older': 'Older',
   'log.page.position': 'page {page}',
-  'log.page.end':
-    'No older decisions in memory. The decision log files in /data keep the full history for the configured retention; searching them here comes with a later version.',
+  'log.page.end': 'No older decisions: the decision log keeps {days} days, and the oldest kept day is {from} (UTC).',
+  'log.page.partial': 'This page stopped after searching part of the history; Older continues the search.',
   'log.signals.title': 'Signal health',
   'log.signals.lead': 'A signal older than its max_age is stale; devices that depend on it are held as unsafe.',
   'log.summary.title': 'Daily summary',
@@ -73,8 +73,8 @@ export const log: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'log.page.newer': 'Nowsze',
     'log.page.older': 'Starsze',
     'log.page.position': 'strona {page}',
-    'log.page.end':
-      'W pamięci nie ma starszych decyzji. Pliki dziennika w /data przechowują pełną historię przez skonfigurowany okres; ich przeszukiwanie tutaj pojawi się w kolejnej wersji.',
+    'log.page.end': 'Brak starszych decyzji: dziennik przechowuje {days} dni, a najstarszy zachowany dzień to {from} (UTC).',
+    'log.page.partial': 'Ta strona zakończyła się po przeszukaniu części historii; przycisk Starsze kontynuuje wyszukiwanie.',
     'log.signals.title': 'Stan sygnałów',
     'log.signals.lead': 'Sygnał starszy niż jego max_age jest przeterminowany; zależne od niego urządzenia są traktowane jako niepewne.',
     'log.summary.title': 'Podsumowanie dnia',

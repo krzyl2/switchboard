@@ -19,6 +19,9 @@ public interface IDecisionFileSystem
     bool EndsWithNewline(string path);
 
     void Delete(string path);
+
+    /// <summary>The file's size in bytes; 0 when it does not exist.</summary>
+    long Length(string path);
 }
 
 public sealed class DecisionFileSystem : IDecisionFileSystem
@@ -51,4 +54,10 @@ public sealed class DecisionFileSystem : IDecisionFileSystem
     }
 
     public void Delete(string path) => File.Delete(path);
+
+    public long Length(string path)
+    {
+        var info = new FileInfo(path);
+        return info.Exists ? info.Length : 0;
+    }
 }

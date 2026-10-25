@@ -9,6 +9,10 @@ public sealed class ClientWebSocketTransportFactory : IWebSocketTransportFactory
     public IWebSocketTransport Create() => new ClientWebSocketTransport();
 }
 
+/// <summary>A message above the transport's size limit: the session ends, and a discovery query says so distinctly.</summary>
+public sealed class WebSocketMessageTooLargeException(int limit)
+    : IOException($"Home Assistant message exceeds the size limit of {limit} bytes.");
+
 /// <summary><see cref="IWebSocketTransport"/> over <see cref="ClientWebSocket"/>.</summary>
 public sealed class ClientWebSocketTransport : IWebSocketTransport
 {
@@ -47,7 +51,7 @@ public sealed class ClientWebSocketTransport : IWebSocketTransport
 
                 if (message.Length + result.Count > MaxMessageBytes)
                 {
-                    throw new WebSocketException(WebSocketError.Faulted, "Home Assistant message exceeds the size limit.");
+                    throw new WebSocketMessageTooLargeException(MaxMessageBytes);
                 }
 
                 message.Write(buffer, 0, result.Count);

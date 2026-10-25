@@ -386,9 +386,8 @@ public sealed class JsonlDecisionLog : IDecisionRecorder
         try
         {
             var days = DayFiles();
-            var keep = days.TakeLast(retention).Select(d => d.Name).ToHashSet(StringComparer.Ordinal);
-            var oldest = today.AddDays(-retention);
-            foreach (var day in days.Where(d => d.Date < oldest && !keep.Contains(d.Name)))
+            var keep = DecisionRetention.Kept(days.Select(d => (d.Name, d.Date)), today, retention);
+            foreach (var day in days.Where(d => !keep.Contains(d.Name)))
             {
                 _files.Delete(Path.Combine(_directory, day.Name));
                 _logger.LogInformation("Deleted decision log {File} (older than {Days} days)", day.Name, retention);

@@ -7,6 +7,8 @@ import { DeviceCard } from './DeviceCard';
 import { Flows } from './Flows';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { Limits } from './Limits';
+import { parseSetupStep, Setup } from './Setup';
+import type { StepName } from './setupDraft';
 import { SignalsPage } from './Signals';
 import { applyTheme, nextTheme, readTheme, saveTheme, type ThemeChoice } from './theme';
 import { StateLabel, Timestamp, type Tone } from './ui';
@@ -92,6 +94,7 @@ export type Route =
   | { page: 'flows' }
   | { page: 'device'; id: string | null }
   | { page: 'limits' }
+  | { page: 'setup'; step: StepName }
   | { page: 'log' }
   | { page: 'signals' }
   | { page: 'status' };
@@ -103,6 +106,7 @@ const HREF: Record<Route['page'], string> = {
   flows: '#/flows',
   device: '#/devices',
   limits: '#/guard',
+  setup: '#/setup',
   log: '#/log',
   signals: '#/signals',
   status: '#/status',
@@ -114,6 +118,7 @@ export function parseRoute(hash: string): Route {
   if (hash === HREF.log) return { page: 'log' };
   if (hash === HREF.signals) return { page: 'signals' };
   if (hash === HREF.status) return { page: 'status' };
+  if (hash === HREF.setup || hash.startsWith(`${HREF.setup}/`)) return { page: 'setup', step: parseSetupStep(hash) };
   if (hash === HREF.device) return { page: 'device', id: null };
   if (hash.startsWith(`${HREF.device}/`)) {
     try {
@@ -138,12 +143,12 @@ function useRoute(): Route {
 
 type NavItem = { index: string; page: Route['page'] | null; label: keyof Messages };
 
-// The mockup's rail (docs/mockups/index.html): seven numbered screens. Setup (03, Stage 5) and the
-// day plan (06, v3.0) are not built: listed, clearly disabled, never a link.
+// The mockup's rail (docs/mockups/index.html): seven numbered screens. The day plan (06, v3.0) is
+// not built: listed, clearly disabled, never a link.
 const SCREENS: readonly NavItem[] = [
   { index: '01', page: 'dashboard', label: 'nav.dashboard' },
   { index: '02', page: 'flows', label: 'nav.flows' },
-  { index: '03', page: null, label: 'nav.setup' },
+  { index: '03', page: 'setup', label: 'nav.setup' },
   { index: '04', page: 'device', label: 'nav.device' },
   { index: '05', page: 'limits', label: 'nav.limits' },
   { index: '06', page: null, label: 'nav.plan' },
@@ -234,6 +239,7 @@ export function App({ lang }: { lang: Lang }) {
           {route.page === 'flows' && <Flows lang={lang} />}
           {route.page === 'device' && <DeviceCard lang={lang} id={route.id} />}
           {route.page === 'limits' && <Limits lang={lang} />}
+          {route.page === 'setup' && <Setup lang={lang} step={route.step} />}
           {route.page === 'log' && <DecisionLog lang={lang} />}
           {route.page === 'signals' && <SignalsPage lang={lang} />}
           {route.page === 'status' && <StatusPage lang={lang} />}

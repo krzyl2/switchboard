@@ -7,9 +7,10 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// Every WebSocket command the client may send, besides the auth handshake, and the exact shape of
 /// each. This is the hard boundary behind "never command an entity the user has not declared": a
 /// type that is not listed here cannot leave the process, and neither can a listed type with any
-/// key it does not need (a second "type" key would otherwise win in Home Assistant's parser). Types
-/// that change state in Home Assistant (call_service, fire_event, execute_script, ...) are added
-/// only together with the declared-actuator gate that is allowed to use them.
+/// key it does not need (a second "type" key would otherwise win in Home Assistant's parser). The
+/// list grows only by read-only messages: nothing that changes state in Home Assistant
+/// (call_service, fire_event, execute_script, registry updates, ...) is on it, and an architecture
+/// test keeps it that way while no command path is enabled (the maintainer's kickoff rule).
 /// </summary>
 public static class HomeAssistantCommandAllowList
 {
@@ -24,6 +25,15 @@ public static class HomeAssistantCommandAllowList
     /// </summary>
     public const string UnsubscribeEvents = "unsubscribe_events";
 
+    /// <summary>Read-only query (setup discovery): the current state of every entity.</summary>
+    public const string GetStates = "get_states";
+
+    /// <summary>Read-only query (setup discovery): the entity registry, whose platform tells a derived sensor from a primary one.</summary>
+    public const string EntityRegistryList = "config/entity_registry/list";
+
+    /// <summary>Read-only query (setup discovery): the device registry, to group entities by device.</summary>
+    public const string DeviceRegistryList = "config/device_registry/list";
+
     private const string IdKey = "id";
     private const string TypeKey = "type";
     private const string EntityIdsKey = "entity_ids";
@@ -34,9 +44,15 @@ public static class HomeAssistantCommandAllowList
         [Ping] = new[] { IdKey, TypeKey }.ToFrozenSet(StringComparer.Ordinal),
         [SubscribeEntities] = new[] { IdKey, TypeKey, EntityIdsKey }.ToFrozenSet(StringComparer.Ordinal),
         [UnsubscribeEvents] = new[] { IdKey, TypeKey, SubscriptionKey }.ToFrozenSet(StringComparer.Ordinal),
+        [GetStates] = new[] { IdKey, TypeKey }.ToFrozenSet(StringComparer.Ordinal),
+        [EntityRegistryList] = new[] { IdKey, TypeKey }.ToFrozenSet(StringComparer.Ordinal),
+        [DeviceRegistryList] = new[] { IdKey, TypeKey }.ToFrozenSet(StringComparer.Ordinal),
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     public static FrozenSet<string> Allowed { get; } = Shapes.Keys.ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>The queries that answer with a result and change nothing; the only types the client's query path sends.</summary>
+    public static FrozenSet<string> ReadOnlyQueries { get; } = new[] { GetStates, EntityRegistryList, DeviceRegistryList }.ToFrozenSet(StringComparer.Ordinal);
 
     public static void EnsureAllowed(string type)
     {

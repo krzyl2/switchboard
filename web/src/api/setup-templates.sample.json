@@ -1,0 +1,98 @@
+{
+  "templates": [
+    {
+      "id": "ev_charger",
+      "type": "modulating",
+      "prefill": {
+        "type": "modulating",
+        "min": 6,
+        "max": 16,
+        "step": 1
+      },
+      "inherited": {
+        "reactionTime": "20s",
+        "minOn": "1m",
+        "minOff": "1m"
+      },
+      "actuatorDomains": [
+        "number",
+        "input_number"
+      ],
+      "stateDomains": [
+        "number",
+        "input_number",
+        "sensor"
+      ],
+      "drawRecommended": true
+    },
+    {
+      "id": "water_heater_element",
+      "type": "onoff",
+      "prefill": {
+        "type": "onoff"
+      },
+      "inherited": {
+        "reactionTime": "1s",
+        "minOn": "6m",
+        "minOff": "90s"
+      },
+      "actuatorDomains": [
+        "switch",
+        "input_boolean"
+      ],
+      "stateDomains": [
+        "switch",
+        "input_boolean",
+        "binary_sensor"
+      ],
+      "drawRecommended": false
+    },
+    {
+      "id": "heat_pump",
+      "type": "onoff",
+      "prefill": {
+        "type": "onoff",
+        "minOn": "10m",
+        "minOff": "10m"
+      },
+      "inherited": {
+        "reactionTime": "1s",
+        "minOn": "6m",
+        "minOff": "90s"
+      },
+      "actuatorDomains": [
+        "switch",
+        "input_boolean"
+      ],
+      "stateDomains": [
+        "switch",
+        "input_boolean",
+        "binary_sensor"
+      ],
+      "drawRecommended": false
+    },
+    {
+      "id": "generic_onoff",
+      "type": "onoff",
+      "prefill": {
+        "type": "onoff"
+      },
+      "inherited": {
+        "reactionTime": "1s",
+        "minOn": "6m",
+        "minOff": "90s"
+      },
+      "actuatorDomains": [
+        "switch",
+        "input_boolean"
+      ],
+      "stateDomains": [
+        "switch",
+        "input_boolean",
+        "binary_sensor"
+      ],
+      "drawRecommended": false
+    }
+  ],
+  "prefillVoltageV": 230
+}

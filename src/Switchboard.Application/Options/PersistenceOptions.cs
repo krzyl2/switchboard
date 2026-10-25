@@ -36,6 +36,12 @@ public sealed class PersistenceOptions
     /// saved. It runs before the MQTT and Home Assistant links close, inside the container's stop grace.
     /// </summary>
     public required TimeSpan ShutdownTimeout { get; init; }
+
+    /// <summary>GET api/decisions/history reads at most this many log lines per request; a longer search answers a partial page with a cursor (MODE-04).</summary>
+    public required int HistoryMaxScanLines { get; init; }
+
+    /// <summary>A daily decision file larger than this is not read by the history search (it reports the file as skipped).</summary>
+    public required long HistoryMaxFileBytes { get; init; }
 }
 
 public sealed class PersistenceOptionsValidator : IValidateOptions<PersistenceOptions>
@@ -43,6 +49,8 @@ public sealed class PersistenceOptionsValidator : IValidateOptions<PersistenceOp
     private const int MinStateBytes = 4096;
     private const int MaxStateBytes = 1024 * 1024;
     private const int MaxDecisionCapacity = 100_000;
+    private const int MaxHistoryScanLines = 10_000_000;
+    private const long MaxHistoryFileBytes = 1024L * 1024 * 1024;
 
     public ValidateOptionsResult Validate(string? name, PersistenceOptions options)
     {
@@ -70,6 +78,16 @@ public sealed class PersistenceOptionsValidator : IValidateOptions<PersistenceOp
 
         OptionsValidation.RequirePositive(failures, $"{section}:WriteRetryInterval", options.WriteRetryInterval);
         OptionsValidation.RequirePositive(failures, $"{section}:ShutdownTimeout", options.ShutdownTimeout);
+        if (options.HistoryMaxScanLines < options.DecisionMaxPageSize || options.HistoryMaxScanLines > MaxHistoryScanLines)
+        {
+            failures.Add($"{section}:HistoryMaxScanLines must be at least DecisionMaxPageSize and at most {MaxHistoryScanLines}.");
+        }
+
+        if (options.HistoryMaxFileBytes < MinStateBytes || options.HistoryMaxFileBytes > MaxHistoryFileBytes)
+        {
+            failures.Add($"{section}:HistoryMaxFileBytes must be between {MinStateBytes} and {MaxHistoryFileBytes}.");
+        }
+
         return OptionsValidation.Result(failures);
     }
 

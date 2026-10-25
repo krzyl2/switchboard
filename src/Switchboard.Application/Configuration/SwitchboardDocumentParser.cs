@@ -116,6 +116,21 @@ public static class SwitchboardDocumentParser
         return Finish(configuration, issues, path, loadedAt);
     }
 
+    /// <summary>
+    /// The control parameters of a document alone: the defaults merged with its <c>control:</c>,
+    /// whatever else in it is wrong (the wizard explains the reserve from them while other fields
+    /// still need fixing). Null when that section itself is invalid.
+    /// </summary>
+    public static ControlParameters? BindControl(ConfigNode? document, ConfigNode defaults)
+    {
+        ArgumentNullException.ThrowIfNull(defaults);
+        var issues = new ConfigIssues();
+        var control = document is ConfigMapping root ? root.Find(ControlKey)?.Value : null;
+        var merged = ConfigNodeMerge.Merge(defaults, WithoutLimits(control, issues), ControlKey, issues);
+        var bound = ControlParametersBinder.Bind(merged, ControlKey, issues);
+        return issues.HasErrors ? null : bound;
+    }
+
     /// <summary>The safety envelope is never merged: <c>control.limits</c> is refused and left out of the merge.</summary>
     private static ConfigNode? WithoutLimits(ConfigNode? control, ConfigIssues issues)
     {

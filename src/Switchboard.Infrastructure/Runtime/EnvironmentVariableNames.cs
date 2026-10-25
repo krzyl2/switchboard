@@ -28,4 +28,7 @@ public static class EnvironmentVariableNames
 
     /// <summary>Replay speed factor (default 1).</summary>
     public const string DevReplaySpeed = "SWITCHBOARD_DEV_REPLAY_SPEED";
+
+    /// <summary>Standalone development with replay only: a folder of Home Assistant discovery answers (states, entity and device registry) for the setup wizard.</summary>
+    public const string DevDiscovery = "SWITCHBOARD_DEV_DISCOVERY";
 }

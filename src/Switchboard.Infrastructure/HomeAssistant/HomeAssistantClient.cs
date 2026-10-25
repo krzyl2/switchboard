@@ -14,9 +14,10 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// <summary>
 /// In-house client for the Home Assistant WebSocket API: auth handshake, keepalive, reconnect with
 /// backoff, and a <c>subscribe_entities</c> subscription filtered to the mapped entities, replaced
-/// (and the old one ended with <c>unsubscribe_events</c>) when that set changes. It can only send
-/// what <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it
-/// has no public send method at all.
+/// (and the old one ended with <c>unsubscribe_events</c>) when that set changes. The setup
+/// wizard's discovery link adds read-only queries (<see cref="QueryAsync"/>). It can only send what
+/// <see cref="HomeAssistantCommandAllowList"/> permits, in exactly the allowed shape, and it has no
+/// public send method at all.
 /// </summary>
 public sealed class HomeAssistantClient
 {
@@ -35,6 +36,7 @@ public sealed class HomeAssistantClient
     private readonly ILogger<HomeAssistantClient> _logger;
     private readonly IEntitySubscriptionSink _subscriptions;
     private readonly ConcurrentDictionary<int, TaskCompletionSource> _pendingPongs = new();
+    private readonly ConcurrentDictionary<int, PendingQuery> _pendingQueries = new();
     private readonly ConcurrentDictionary<int, byte> _subscribeIds = new();
 
     // unsubscribe_events request id -> the subscription it ends.
@@ -49,8 +51,11 @@ public sealed class HomeAssistantClient
 
     private IWebSocketTransport? _transport;
     private ActiveSubscription? _active;
+    private Exception? _sessionFailure;
     private int _lastId;
     private volatile bool _stopping;
+
+    private readonly EventHandler _onTrackedChanged;
 
     // Set once the session delivered what it is for (the subscription's initial state, or nothing to
     // subscribe); only then does the reconnect backoff start over.
@@ -72,8 +77,16 @@ public sealed class HomeAssistantClient
         _time = timeProvider;
         _logger = logger;
         _subscriptions = subscriptions;
-        _subscriptions.TrackedChanged += (_, _) => _trackedChanged.Writer.TryWrite(true);
+        _onTrackedChanged = (_, _) => _trackedChanged.Writer.TryWrite(true);
+        _subscriptions.TrackedChanged += _onTrackedChanged;
     }
+
+    /// <summary>
+    /// Stops following the sink's tracked set. A client whose sink outlives it (the discovery link
+    /// opens a new client per session) calls this when it is closed, so the closed client is not kept
+    /// alive by the sink's event.
+    /// </summary>
+    internal void Detach() => _subscriptions.TrackedChanged -= _onTrackedChanged;
 
     private enum SessionEnd
     {
@@ -163,6 +176,44 @@ public sealed class HomeAssistantClient
         await SendCommandAsync(transport, type, NextId(), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends one read-only query and returns its result. Refused before the socket is touched unless
+    /// the type is one of <see cref="HomeAssistantCommandAllowList.ReadOnlyQueries"/>; the answer is
+    /// matched by id and timed out on the injected clock; <c>success: false</c> throws
+    /// <see cref="HomeAssistantQueryFailedException"/>, and a session that ends fails the query.
+    /// </summary>
+    internal async Task<JsonElement> QueryAsync(string type, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        if (type is null || !HomeAssistantCommandAllowList.ReadOnlyQueries.Contains(type))
+        {
+            throw new HomeAssistantCommandRefusedException(type);
+        }
+
+        var transport = Volatile.Read(ref _transport);
+        if (transport is null || _state.Current != ConnectionState.Connected)
+        {
+            throw new InvalidOperationException("Home Assistant is not connected.");
+        }
+
+        var id = NextId();
+        var result = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingQueries[id] = new PendingQuery(type, result);
+        try
+        {
+            // Armed before the query leaves, like a ping's timeout.
+            var answered = result.Task.WaitAsync(timeout, _time, cancellationToken);
+            await SendCommandAsync(transport, type, id, cancellationToken).ConfigureAwait(false);
+            return await answered.ConfigureAwait(false);
+        }
+        finally
+        {
+            _pendingQueries.TryRemove(id, out _);
+        }
+    }
+
+    /// <summary>A read-only query waiting for its result.</summary>
+    private sealed record PendingQuery(string Type, TaskCompletionSource<JsonElement> Result);
+
     /// <summary>The subscription currently routed to the sink; events of superseded ones are ignored.</summary>
     private sealed record ActiveSubscription(int Id, SubscribeEntitiesParser Parser);
 
@@ -202,7 +253,16 @@ public sealed class HomeAssistantClient
                     throw new HomeAssistantProtocolException($"unexpected auth reply '{TypeOf(reply)}'");
             }
 
-            await ServeAsync(transport, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ServeAsync(transport, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _sessionFailure = ex;
+                throw;
+            }
+
             if (_stopping)
             {
                 _logger.LogInformation("Home Assistant connection closed");
@@ -229,6 +289,17 @@ public sealed class HomeAssistantClient
             }
 
             _pendingPongs.Clear();
+
+            // A query must never wait for an answer that cannot come any more.
+            foreach (var query in _pendingQueries.Values)
+            {
+                query.Result.TrySetException(_sessionFailure is WebSocketMessageTooLargeException tooLarge
+                    ? tooLarge
+                    : new HomeAssistantQueryFailedException(query.Type, "the connection ended before the answer arrived"));
+            }
+
+            _pendingQueries.Clear();
+            _sessionFailure = null;
             _subscribeIds.Clear();
             _unsubscribes.Clear();
             Volatile.Write(ref _active, null);
@@ -446,6 +517,17 @@ public sealed class HomeAssistantClient
         {
             pending.TrySetResult();
         }
+        else if (type.ValueEquals(Result) && _pendingQueries.TryRemove(messageId, out var query))
+        {
+            if (message.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.True && message.TryGetProperty("result", out var answer))
+            {
+                query.Result.TrySetResult(answer.Clone());
+            }
+            else
+            {
+                query.Result.TrySetException(new HomeAssistantQueryFailedException(query.Type, ErrorMessageOf(message) ?? "no reason given"));
+            }
+        }
         else if (type.ValueEquals(Result) && _unsubscribes.TryRemove(messageId, out var ended))
         {
             if (message.TryGetProperty("success", out var done) && done.ValueKind == JsonValueKind.True)
@@ -572,3 +654,9 @@ public sealed class HomeAssistantClient
 }
 
 public sealed class HomeAssistantProtocolException(string message) : Exception(message);
+
+/// <summary>Home Assistant answered a read-only query with <c>success: false</c>, or the connection ended first.</summary>
+public sealed class HomeAssistantQueryFailedException(string type, string reason) : Exception($"Home Assistant query {type} failed: {reason}.")
+{
+    public string QueryType { get; } = type;
+}

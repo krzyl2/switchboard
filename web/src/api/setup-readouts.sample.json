@@ -1,0 +1,44 @@
+{
+  "at": "2026-10-22T07:39:00+00:00",
+  "items": [
+    {
+      "entityId": "sensor.solaredge_m1_ac_current_a",
+      "status": "found",
+      "state": "0.80",
+      "unit": "A",
+      "lastReported": "2026-10-22T07:39:00+00:00",
+      "ageS": 0,
+      "refresh": {
+        "intervalS": 10,
+        "samples": 64,
+        "needed": 8
+      }
+    },
+    {
+      "entityId": "switch.grzalka_1",
+      "status": "found",
+      "state": "off",
+      "unit": null,
+      "lastReported": "2026-10-22T07:39:00+00:00",
+      "ageS": 0,
+      "refresh": {
+        "intervalS": null,
+        "samples": 0,
+        "needed": 8
+      }
+    },
+    {
+      "entityId": "sensor.not_there",
+      "status": "not_found",
+      "state": null,
+      "unit": null,
+      "lastReported": null,
+      "ageS": null,
+      "refresh": {
+        "intervalS": null,
+        "samples": 0,
+        "needed": 8
+      }
+    }
+  ]
+}

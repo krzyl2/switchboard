@@ -1,0 +1,86 @@
+# Rules of the setup wizard (Stage 5) shipped with Switchboard. These are not control parameters:
+# they decide what the wizard accepts and suggests, never what the guard or dispatch do, and
+# switchboard.yaml cannot override them. Durations: <n>ms, <n>s, <n>m or <n>h.
+
+# Integration platforms whose sensors are computed from other sensors (docs/07-PITFALLS.md: a
+# derived sensor is never a control input). Read from Home Assistant's entity registry.
+derived_platforms:
+  - template
+  - derivative
+  - statistics
+  - utility_meter
+  - integration
+  - min_max
+  - filter
+  - group
+  - powercalc
+  - history_stats
+  - trend
+  - threshold
+  - compensation
+
+validation:
+  # A current above this multiple of breaker_rating_a cannot be this connection's (CONN-06).
+  plausible_current_max_multiple: 2.0
+  # A power above this multiple of breaker_rating_a × voltage_v is not plausible either.
+  plausible_power_max_multiple: 2.0
+  # A phase voltage outside ±this fraction of voltage_v is not plausible.
+  plausible_voltage_band: 0.15
+  # The phases sum to the total within this fraction of the total, plus k·σ of every term
+  # (signals.default_sigma, reserve_derivation.sigma_multiplier); the median residual of aligned
+  # samples (signals.balance.max_skew) is judged, so one lagging poll cannot fail it.
+  phase_sum_tolerance_fraction: 0.05
+  phase_sum_min_samples: 3
+  # A suggested max_age is this many detected refresh intervals.
+  suggested_max_age_intervals: 6
+  # A meter max_age longer than this many detected refresh intervals is flagged (a warning, never
+  # refused): a meter whose poll froze would be trusted that long before its signal goes stale.
+  max_age_above_refresh_intervals: 20
+
+self_test:
+  # The passive phase self-test (CONN-05): Switchboard switches nothing; it watches someone else
+  # switch one declared device and judges which meter phase stepped.
+  # A phase moved when its change reaches step_min_fraction of the rating (and sigma_multiplier · σ);
+  # it is quiet while its change stays within quiet_max_fraction of the rating (or sigma_multiplier · σ).
+  step_min_fraction: 0.5
+  quiet_max_fraction: 0.25
+  # A single step farther than this fraction from the rating is not the device.
+  rating_tolerance: 0.25
+  sigma_multiplier: 3
+  # Confirmations and mismatches of one device together: the side with at least this many times
+  # the other's count decides (a coincident kettle makes one false observation now and then);
+  # anything closer is conflicting, which is inconclusive.
+  dominance: 3
+  # The deciding side needs at least this many agreeing switchings (a mismatch: on the same phase),
+  # among them a switch on and a switch off, before it confirms or refuses anything: one step can be a
+  # coincident load (a kettle) or a heater whose thermostat is open while another load starts.
+  min_concordant: 2
+  # The window around a switching: the longer of this and (2 + signals.current_lag_polls)
+  # detected refresh intervals of the meter; another switching or a draw change inside it makes the
+  # observation not isolated.
+  isolation: 60s
+  # A guided watch ends after this long without a verdict (a switching inside it is still judged
+  # once its window has passed).
+  watch_timeout: 15m
+
+prefill:
+  # Shown as the starting value of the connection's voltage; the user confirms it.
+  voltage_v: 230
+
+# Device templates of step 4. `prefill` holds keys of a device in switchboard.yaml only (a test
+# checks each against the device parser); `hints` is what the wizard shows. A template writes its
+# own prefill keys; everything else a device inherits (reaction time per type, relay or modulating
+# lockouts) comes from control-defaults.yaml and is not written, so a later default still applies.
+templates:
+  ev_charger:
+    prefill: { type: modulating, min: 6, max: 16, step: 1 }
+    hints: { draw_recommended: true }
+  water_heater_element:
+    prefill: { type: onoff }
+    hints: { draw_recommended: false }
+  heat_pump:
+    prefill: { type: onoff, min_on: 10m, min_off: 10m }
+    hints: { draw_recommended: false }
+  generic_onoff:
+    prefill: { type: onoff }
+    hints: { draw_recommended: false }

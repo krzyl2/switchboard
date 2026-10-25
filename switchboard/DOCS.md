@@ -12,7 +12,8 @@ This version:
 
 - installs and starts as an add-on,
 - connects to Home Assistant over the Supervisor WebSocket,
-- reads the meter signals you map in `switchboard.yaml` (see [Configuration file](#configuration-file-until-the-setup-wizard-exists)) and shows each one on the **Signals** page with its value, age and state,
+- has a **setup wizard** that writes `switchboard.yaml` for you (see [Setup wizard](#setup-wizard)); the file can still be written by hand (see [Configuration file](#configuration-file)),
+- reads the meter signals you map in `switchboard.yaml` and shows each one on the **Signals** page with its value, age and state,
 - reads the devices you declare there and runs the **guard** on them: per phase (and per circuit group) it compares the measured current with your breaker's limits and works out, every time a new meter sample arrives, which device it *would* reduce or switch off, and why (see [Devices and the guard](#devices-and-the-guard-shadow-only)),
 - runs **dispatch** on the same devices: it works out which device it *would* start, raise, lower or stop to use the headroom the guard leaves, worth the most per kWh first, and keeps for every device what it would have it at next to what Home Assistant reports (see [Dispatch](#dispatch-computed-and-logged-nothing-switched)),
 - takes a **manual override** per device (force on, force off, automatic) from the web UI or a Home Assistant select entity; protection still outranks it,
@@ -47,9 +48,23 @@ Home Assistant now calls add-ons *apps*; Switchboard is one.
 
 Software that switches 5 kW loads must prove itself before it acts. A fresh install runs in `shadow`: it computes and logs what it would do and switches nothing. Anything other than exactly `active` — a missing, empty or unknown value — is treated as `shadow`. In this version there is nothing that could switch, and the log says so if you select `active`.
 
-## Configuration file (until the setup wizard exists)
+## Setup wizard
 
-The meter mapping and the connection live in one YAML file, `switchboard.yaml`, in the app's own configuration folder. There is no setup wizard yet, so you write this file by hand: create or edit it with the **Studio Code Server** or **Samba share** app. It is included in Home Assistant backups.
+**Setup** in the add-on panel configures Switchboard in five steps, in this order: the main meter, the connection (breaker and reserve), sources and storage (PV inverter, battery), the loads, and the mode. It edits `switchboard.yaml` for you, so a new installation needs no file editing. It switches nothing, ever.
+
+- **Entity pickers** list what Home Assistant offers, filtered by domain and device class. Switchboard reads the list with read-only queries over a second connection that it closes again when the wizard is idle. A sensor computed from other sensors (template, statistics, powercalc and similar) is listed but cannot be picked as an input, with the reason shown; an entity that is not in Home Assistant's entity registry is flagged as unverifiable.
+- **Live readouts** beside every picked entity show its value, the age of its last report and its detected refresh, so a wrong pick is visible at once.
+- **Checks** before you continue: the entities exist and report in the declared unit and device class, the values are plausible for your breaker, the phases sum to the total (when you map a total; otherwise the check says *skipped*, never *passed*), and each `max_age` fits the detected refresh. Every refusal names the field to fix and the wizard takes you to it.
+- **The reserve** is explained with your own numbers (where a kettle on a fully allocated phase would land on the breaker curve), next to the minimum safe reserve derived from your meter's refresh. It is shown, never enforced.
+- **Phase assignment test** (passive): Switchboard does not switch the device for this test. You switch one declared on/off device yourself, on and then off, in Home Assistant or by hand, while the wizard watches which meter phase steps. Switchings the running add-on sees (Node-RED switching a heater, for example) count too. A verdict needs a switch on and a switch off that agree; a single switching, another device switching at the same moment, no step at all or a step too small for the meter's noise are reported as *inconclusive*, never as a pass. A swapped phase confirmed both ways blocks saving until the phase (or the meter mapping) is fixed.
+- **Loads** start from template cards (EV charger, water-heater element, heat pump or AC, generic on/off) that prefill type, limits and lockouts from the shipped defaults. Only you declare an actuator: discovery suggests, you pick.
+- **Mode**: *shadow* is the only mode offered in this version; *active* is shown but cannot be chosen while commanding is not enabled. Before finishing you confirm that Switchboard is not a protective device.
+
+**Saving** writes `switchboard.yaml` in one step after the same parser the add-on runs has accepted it, keeps the previous file next to it as `switchboard.yaml.<UTC time>.bak` (the newest 10 are kept), and the running add-on loads the new file without a restart. A file you wrote by hand keeps every device, signal, circuit group and `control:` override when you re-run the wizard, and keys the wizard does not edit are kept as written; its comments cannot be kept by a structured save, so the wizard asks first and the backup keeps them. Unsaved changes survive leaving the panel (to switch a device in Home Assistant, for example) in the same browser tab.
+
+## Configuration file
+
+The meter mapping and the connection live in one YAML file, `switchboard.yaml`, in the app's own configuration folder. The [setup wizard](#setup-wizard) writes it for you; you can also create or edit it by hand with the **Studio Code Server** or **Samba share** app. It is included in Home Assistant backups.
 
 - On the Home Assistant host it is `/addon_configs/<id>_switchboard/switchboard.yaml`. `<id>` depends on the repository you installed from: in Studio Code Server or the Samba share, open the `addon_configs` folder and use the one whose name ends in `_switchboard`.
 - Changes are picked up within a few seconds; no restart is needed.
@@ -222,6 +237,8 @@ If the page cannot reach the app it says **Limits unavailable** and hides every 
 ### Decision log and runtime state
 
 Every decision is one line in `/data/decisions/YYYY-MM-DD.jsonl` (one file per UTC day; kept `decision_log.retention_days`, 30 days by default): time, device, phase or circuit group, action, reason code, mode, who decided (`guard`, `dispatch` or `override`), the level the device is intended at, and the inputs that produced it (current, band, budget, device state; for dispatch the headroom, hysteresis, settling window and verification). Only changes are recorded, not every unchanged cycle. Every line says `"commanded": false`. Lines written by 0.3.x stay readable.
+
+The **Decision log** page pages through every file the retention keeps, newest first, filtered by device and kind. While `/data` cannot be written, its first page also shows the newest decisions held in memory.
 
 The kill switch, the overload budgets (per phase and circuit group), the manual overrides and the last known device states are kept in `/data/state.json` across restarts; dispatch's intentions, deferrals and settling windows are not, and every lockout restarts with the add-on. If that file is damaged it is set aside as `state.json.corrupt` and Switchboard starts with full budgets, no override and the kill switch off. If `/data` cannot be written (a full disk), the guard keeps running from memory and the API reports it.
 

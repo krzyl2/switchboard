@@ -1,0 +1,221 @@
+{
+  "valid": true,
+  "issues": [
+    {
+      "code": "refresh_not_detected",
+      "severity": "warning",
+      "field": "meter.total.power.maxAge",
+      "documentPath": null,
+      "message": "The refresh of sensor.solaredge_m1_ac_power is not detected yet (it needs 8 pushed reports); the minimum safe reserve uses max_age instead.",
+      "args": {
+        "entity": "sensor.solaredge_m1_ac_power"
+      }
+    },
+    {
+      "code": "phase_sum_skipped",
+      "severity": "warning",
+      "field": "meter.total",
+      "documentPath": null,
+      "message": "Only 0 aligned samples of the total and every phase so far (3 needed); keep the page open a little longer.",
+      "args": {
+        "reason": "not_enough_samples"
+      }
+    },
+    {
+      "code": "phase_self_test_missing",
+      "severity": "warning",
+      "field": "devices[0].phase",
+      "documentPath": null,
+      "message": "The phase of Grzałka CWU L1 is not confirmed yet: run the phase self-test (switch the device on and off yourself while the wizard watches).",
+      "args": {
+        "device": "Grzałka CWU L1",
+        "reason": "timed_out"
+      }
+    },
+    {
+      "code": "phase_self_test_missing",
+      "severity": "warning",
+      "field": "devices[1].phase",
+      "documentPath": null,
+      "message": "The phase of Grzałka CWU L2 is not confirmed yet: run the phase self-test (switch the device on and off yourself while the wizard watches).",
+      "args": {
+        "device": "Grzałka CWU L2",
+        "reason": "timed_out"
+      }
+    },
+    {
+      "code": "phase_self_test_missing",
+      "severity": "warning",
+      "field": "devices[2].phase",
+      "documentPath": null,
+      "message": "The phase of Grzałka CWU L3 is not confirmed yet: run the phase self-test (switch the device on and off yourself while the wizard watches).",
+      "args": {
+        "device": "Grzałka CWU L3",
+        "reason": "timed_out"
+      }
+    }
+  ],
+  "checks": {
+    "phaseSum": {
+      "state": "skipped",
+      "residual": null,
+      "tolerance": null,
+      "samples": 0,
+      "unit": null,
+      "reason": "not_enough_samples"
+    },
+    "refresh": [
+      {
+        "field": "meter.phases.L1.current",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.phases.L1.power",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.phases.L2.current",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.phases.L2.power",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.phases.L3.current",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.phases.L3.power",
+        "detectedS": 10,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 60
+      },
+      {
+        "field": "meter.total.power",
+        "detectedS": null,
+        "maxAgeS": 90,
+        "state": "not_detected",
+        "suggestedMaxAgeS": null
+      },
+      {
+        "field": "sources.inverter.power",
+        "detectedS": 30,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 180
+      },
+      {
+        "field": "sources.inverter.phaseCurrents.L1",
+        "detectedS": 30,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 180
+      },
+      {
+        "field": "sources.inverter.phaseCurrents.L2",
+        "detectedS": 30,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 180
+      },
+      {
+        "field": "sources.inverter.phaseCurrents.L3",
+        "detectedS": 30,
+        "maxAgeS": 90,
+        "state": "ok",
+        "suggestedMaxAgeS": 180
+      }
+    ]
+  },
+  "reserve": {
+    "perPhase": [
+      {
+        "phase": "L1",
+        "reserveW": 2500,
+        "minimumSafeW": 631.5,
+        "refreshS": 10,
+        "refreshDetected": true,
+        "belowMinimum": false
+      },
+      {
+        "phase": "L2",
+        "reserveW": 2500,
+        "minimumSafeW": 631.5,
+        "refreshS": 10,
+        "refreshDetected": true,
+        "belowMinimum": false
+      },
+      {
+        "phase": "L3",
+        "reserveW": 2500,
+        "minimumSafeW": 631.5,
+        "refreshS": 10,
+        "refreshDetected": true,
+        "belowMinimum": false
+      }
+    ],
+    "explanation": {
+      "reserveW": 2500,
+      "phaseW": 5750,
+      "continuousA": 28.249999999999996,
+      "allocatableW": 3250,
+      "referenceStepW": 2000,
+      "worstCaseA": 22.82608695652174,
+      "multiple": 0.9130434782608695,
+      "reaction": "hold",
+      "allowedS": null
+    }
+  },
+  "selfTest": [
+    {
+      "field": "devices[0].phase",
+      "device": "heater_l1",
+      "stateEntity": "switch.grzalka_2",
+      "verdict": "inconclusive",
+      "observedPhase": null,
+      "reason": "timed_out",
+      "confirmed": 0,
+      "mismatched": 0,
+      "inconclusive": 0
+    },
+    {
+      "field": "devices[1].phase",
+      "device": "heater_l2",
+      "stateEntity": "switch.grzalka_1",
+      "verdict": "inconclusive",
+      "observedPhase": null,
+      "reason": "timed_out",
+      "confirmed": 0,
+      "mismatched": 0,
+      "inconclusive": 0
+    },
+    {
+      "field": "devices[2].phase",
+      "device": "heater_l3",
+      "stateEntity": "switch.grzalka_3",
+      "verdict": "inconclusive",
+      "observedPhase": null,
+      "reason": "timed_out",
+      "confirmed": 0,
+      "mismatched": 0,
+      "inconclusive": 0
+    }
+  ]
+}

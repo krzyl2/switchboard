@@ -1,0 +1,115 @@
+{
+  "devices": [
+    {
+      "id": "heater_l1",
+      "stateEntity": "switch.grzalka_2",
+      "phase": "L1",
+      "observations": [],
+      "verdict": {
+        "verdict": "inconclusive",
+        "observedPhase": null,
+        "reason": "timed_out",
+        "confirmed": 0,
+        "mismatched": 0,
+        "inconclusive": 0
+      }
+    },
+    {
+      "id": "heater_l2",
+      "stateEntity": "switch.grzalka_1",
+      "phase": "L2",
+      "observations": [
+        {
+          "at": "2026-10-22T07:40:05+00:00",
+          "transition": "on",
+          "deltas": {
+            "L1": -11.599999999999994,
+            "L2": 1701.1999999999998,
+            "L3": -19.399999999999977
+          },
+          "unit": "W",
+          "verdict": "confirmed",
+          "observedPhase": "L2",
+          "reason": null,
+          "ratingRatio": 1.0007058823529411,
+          "source": "watch",
+          "houseLoad": false,
+          "note": null
+        },
+        {
+          "at": "2026-10-22T07:46:05+00:00",
+          "transition": "off",
+          "deltas": {
+            "L1": 20.400000000000006,
+            "L2": -1707.7,
+            "L3": -11.300000000000011
+          },
+          "unit": "W",
+          "verdict": "confirmed",
+          "observedPhase": "L2",
+          "reason": null,
+          "ratingRatio": 1.004529411764706,
+          "source": "watch",
+          "houseLoad": false,
+          "note": null
+        },
+        {
+          "at": "2026-10-22T07:40:05+00:00",
+          "transition": "on",
+          "deltas": {
+            "L1": -5,
+            "L2": 1690,
+            "L3": -5
+          },
+          "unit": "W",
+          "verdict": "confirmed",
+          "observedPhase": "L2",
+          "reason": null,
+          "ratingRatio": 0.9941176470588236,
+          "source": "recorded",
+          "houseLoad": true,
+          "note": null
+        },
+        {
+          "at": "2026-10-22T07:46:05+00:00",
+          "transition": "off",
+          "deltas": {
+            "L1": -5,
+            "L2": -1695,
+            "L3": -5
+          },
+          "unit": "W",
+          "verdict": "confirmed",
+          "observedPhase": "L2",
+          "reason": null,
+          "ratingRatio": 0.9970588235294118,
+          "source": "recorded",
+          "houseLoad": true,
+          "note": null
+        }
+      ],
+      "verdict": {
+        "verdict": "confirmed",
+        "observedPhase": null,
+        "reason": null,
+        "confirmed": 4,
+        "mismatched": 0,
+        "inconclusive": 0
+      }
+    },
+    {
+      "id": "heater_l3",
+      "stateEntity": "switch.grzalka_3",
+      "phase": "L3",
+      "observations": [],
+      "verdict": {
+        "verdict": "inconclusive",
+        "observedPhase": null,
+        "reason": "timed_out",
+        "confirmed": 0,
+        "mismatched": 0,
+        "inconclusive": 0
+      }
+    }
+  ]
+}

@@ -14,12 +14,13 @@ internal static partial class SpaContract
 {
     public static bool WriteSamples => Environment.GetEnvironmentVariable("SWITCHBOARD_WRITE_SPA_SAMPLES") == "1";
 
-    public static List<string> Describe(IEnumerable<JsonElement> documents)
+    /// <param name="freeMaps">Paths of objects whose keys are data, not a shape (issue args, per-phase deltas): only their presence is compared.</param>
+    public static List<string> Describe(IEnumerable<JsonElement> documents, params string[] freeMaps)
     {
         var shapes = new SortedDictionary<string, string[]>(StringComparer.Ordinal);
         foreach (var document in documents)
         {
-            Collect(document, "$", shapes);
+            Collect(document, "$", shapes, freeMaps);
         }
 
         return [.. shapes.Select(s => $"{s.Key}: {string.Join(",", s.Value)}")];
@@ -55,10 +56,13 @@ internal static partial class SpaContract
         return [.. QuotedItem().Matches(match.Groups["items"].Value).Select(m => m.Groups[1].Value)];
     }
 
-    private static void Collect(JsonElement element, string path, SortedDictionary<string, string[]> shapes)
+    private static void Collect(JsonElement element, string path, SortedDictionary<string, string[]> shapes, string[] freeMaps)
     {
         switch (element.ValueKind)
         {
+            case JsonValueKind.Object when freeMaps.Contains(path):
+                shapes[path] = ["<map>"];
+                break;
             case JsonValueKind.Object:
                 var keys = element.EnumerateObject().Select(p => p.Name).ToArray();
                 if (shapes.TryGetValue(path, out var seen))
@@ -69,14 +73,14 @@ internal static partial class SpaContract
                 shapes[path] = keys;
                 foreach (var property in element.EnumerateObject())
                 {
-                    Collect(property.Value, $"{path}.{property.Name}", shapes);
+                    Collect(property.Value, $"{path}.{property.Name}", shapes, freeMaps);
                 }
 
                 break;
             case JsonValueKind.Array:
                 foreach (var item in element.EnumerateArray())
                 {
-                    Collect(item, path + "[]", shapes);
+                    Collect(item, path + "[]", shapes, freeMaps);
                 }
 
                 break;

@@ -6,6 +6,12 @@ import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
 import enSource from './en.ts?raw';
+import { setup } from './setup';
+import { setupConnection } from './setupConnection';
+import { setupLoads } from './setupLoads';
+import { setupMeter } from './setupMeter';
+import { setupMode } from './setupMode';
+import { setupSources } from './setupSources';
 import { shell } from './shell';
 
 // UI-14: every piece of chrome must exist in both languages. A key present in one file only would
@@ -66,7 +72,7 @@ describe('fill', () => {
 // file. A key defined twice would be silently overwritten by the later spread, so the files must not
 // overlap, and every key of a screen file starts with that screen's own prefix.
 describe('per-screen translation files', () => {
-  const files = { shell, dashboard, flows, device, limits, log };
+  const files = { shell, dashboard, flows, device, limits, log, setup, setupMeter, setupConnection, setupSources, setupLoads, setupMode };
   const prefixes: Record<string, string[]> = {
     shell: ['shell.', 'nav.', 'theme.', 'common.', 'age.', 'poll.', 'powerUnknown.', 'generationNote.', 'segment.', 'source.', 'bar.'],
     dashboard: ['dashboard.'],
@@ -74,6 +80,12 @@ describe('per-screen translation files', () => {
     device: ['device.'],
     limits: ['limits.'],
     log: ['log.', 'decisionKind.'],
+    setup: ['setup.'],
+    setupMeter: ['setupMeter.'],
+    setupConnection: ['setupConnection.'],
+    setupSources: ['setupSources.'],
+    setupLoads: ['setupLoads.'],
+    setupMode: ['setupMode.'],
   };
 
   it.each(Object.entries(files))('%s: en and pl define exactly the same keys, each with its prefix', (name, file) => {

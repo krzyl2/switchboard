@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Options;
+using Switchboard.Application.Setup;
 using Switchboard.Application.Signals;
 
 namespace Switchboard.Infrastructure.Configuration;
@@ -46,7 +47,7 @@ public sealed class ConfigurationFileReader(string path, int maxFileBytes, Confi
             }
 
             var bytes = buffer.AsSpan(0, length).ToArray();
-            return new FileSnapshot(bytes, null, ConfigurationStatus.Valid, Convert.ToHexString(SHA256.HashData(bytes)));
+            return new FileSnapshot(bytes, null, ConfigurationStatus.Valid, Fingerprint(bytes));
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -57,6 +58,22 @@ public sealed class ConfigurationFileReader(string path, int maxFileBytes, Confi
             return FileSnapshot.Problem(ConfigurationStatus.Invalid, ConfigurationIssueCodes.FileUnreadable, $"{Path} cannot be read: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// The snapshot <see cref="ReadFile"/> would take of a file holding exactly these bytes (the same
+    /// size cap and fingerprint), so the wizard validates what it is about to write the way the
+    /// running add-on will read it.
+    /// </summary>
+    public FileSnapshot Snapshot(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        return bytes.Length > maxFileBytes
+            ? FileSnapshot.Problem(ConfigurationStatus.Invalid, ConfigurationIssueCodes.FileTooLarge, $"{Path} would be larger than {maxFileBytes} bytes.")
+            : new FileSnapshot(bytes, null, ConfigurationStatus.Valid, Fingerprint(bytes));
+    }
+
+    /// <summary>The content fingerprint the watcher compares, and the wizard's revision of the file.</summary>
+    public static string Fingerprint(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     public ConfigurationResult Parse(FileSnapshot file, DateTimeOffset loadedAt)
     {
@@ -99,7 +116,7 @@ public sealed class ConfigurationFileReader(string path, int maxFileBytes, Confi
 /// file has been quiet for the debounce, and only when the content actually changed. A broken edit
 /// is applied too: it puts the store in the safe state and the log and UI say why.
 /// </summary>
-public sealed class ConfigurationFileWatcher : IDisposable
+public sealed class ConfigurationFileWatcher : IDisposable, IConfigurationReloads
 {
     private readonly ConfigurationFileReader _reader;
     private readonly SignalInbox _inbox;
@@ -128,6 +145,9 @@ public sealed class ConfigurationFileWatcher : IDisposable
         _logger = logger;
     }
 
+    /// <summary>Raised after every reload with the fingerprint of the file read and how it parsed; handlers must not block.</summary>
+    public event EventHandler<ConfigurationReloaded>? Reloaded;
+
     /// <summary>File-system events as an accelerator of the poll; off only in tests that drive time themselves.</summary>
     internal bool FileEventsEnabled { get; init; } = true;
 
@@ -142,6 +162,20 @@ public sealed class ConfigurationFileWatcher : IDisposable
             _watcher = FileEventsEnabled ? TryWatch() : null;
         }
     }
+
+    public bool Watching
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _debounce is not null && !_disposed;
+            }
+        }
+    }
+
+    /// <summary>Asks for a check of the file now (after the debounce), as a file-system event would: the wizard calls it after a save.</summary>
+    public void RequestCheck() => OnFileEvent();
 
     /// <summary>A file-system event for the document: check after the debounce. Internal for tests.</summary>
     internal void OnFileEvent()
@@ -211,6 +245,15 @@ public sealed class ConfigurationFileWatcher : IDisposable
         var result = _reader.Parse(file, _time.GetUtcNow());
         Log(result);
         _inbox.Post(result);
+        try
+        {
+            Reloaded?.Invoke(this, new ConfigurationReloaded(file.Fingerprint, result.Status));
+        }
+        catch (Exception ex)
+        {
+            // A listener (the wizard waiting for its save) never stops the reload itself.
+            _logger.LogWarning("A configuration reload listener failed: {Reason}", ex.Message);
+        }
     }
 
     private void Log(ConfigurationResult result)

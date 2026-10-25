@@ -16,7 +16,7 @@ import './log.css';
 
 // Screen 07 — Decision log (MODE-03, MODE-04, SIG-05), route #/log. Structure and vocabulary follow
 // docs/mockups "Dziennik decyzji": the decisions with time, device, change and reason sentence
-// (filters and paging over the add-on's memory window), then the signal health panel and the daily
+// (filters and paging over the retained decision files), then the signal health panel and the daily
 // summary, where "Breaker trips" stays on screen permanently and claims only what can be measured.
 
 const NO_VALUE = '—';
@@ -94,14 +94,14 @@ function DecisionRow({ decision, today, name, t, lang }: { decision: Decision; t
 
 /**
  * MODE-03 / MODE-04: the decisions newest first, filtered by device and kind, paged with the
- * add-on's cursor over its memory window. A new filter starts again at the newest page.
+ * add-on's cursor over the retained daily files. A new filter starts again at the newest page.
  */
 function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now: Date; name: (id: string) => string } & Props) {
   const [device, setDevice] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<DecisionKind | undefined>(undefined);
   // The cursors of the older pages opened, newest first; empty on the newest page.
   const [cursors, setCursors] = useState<string[]>([]);
-  const view = useDecisionLog({ device, kind, before: cursors.at(-1) });
+  const view = useDecisionLog({ device, kind, cursor: cursors.at(-1) });
   const today = localDay(now);
   const options = [...devices];
   if (device !== undefined && !options.some((d) => d.id === device)) options.push({ id: device, name: null, valuePerKwh: 0 });
@@ -188,7 +188,10 @@ function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now
         </button>
         <span class="sub-inline">{fill(t['log.page.position'], { page: String(cursors.length + 1) })}</span>
       </div>
-      {page !== null && page.next === null && cursors.length > 0 && <p class="note">{t['log.page.end']}</p>}
+      {page !== null && page.partial && <p class="note">{t['log.page.partial']}</p>}
+      {page !== null && page.next === null && cursors.length > 0 && (
+        <p class="note">{page.retainedFrom === null ? t['log.none'] : fill(t['log.page.end'], { from: page.retainedFrom, days: String(page.retentionDays) })}</p>
+      )}
       {view.kind === 'live' && (
         <p class="updated">
           {t.lastUpdated}: <Timestamp at={view.updatedAt} lang={lang} />

@@ -1,0 +1,254 @@
+/* Screen 03, step 4 (Loads) and the device form step 3 shares. Layout only; colours come from the
+   tokens in styles.css. Classes start with loads- so no other step's rules apply here. Nothing may
+   make the page scroll sideways at 400 px: entity IDs wrap anywhere, the observation table scrolls
+   inside .tablewrap. */
+
+.loads-block {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  min-width: 0;
+}
+
+.loads-block h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.loads-discovery {
+  display: grid;
+  gap: 4px;
+}
+
+.loads-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 9px;
+}
+
+.loads-template {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.loads-template:hover,
+.loads-template:focus-visible {
+  border-color: var(--accent);
+}
+
+.loads-template .t {
+  font-weight: 600;
+}
+
+.loads-template .d {
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}
+
+.loads-device {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.loads-device:focus {
+  outline: 2px solid var(--accent);
+}
+
+.loads-device-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.loads-device-head h4 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.loads-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+.loads-field {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+}
+
+.loads-field > input,
+.loads-field > select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.loads-field input[type='text'] {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.loads-field input.mono {
+  font-family: var(--font-mono);
+}
+
+.loads-field input[readonly] {
+  background: var(--surface-2);
+}
+
+.loads-field input[aria-invalid='true'],
+.loads-field select[aria-invalid='true'] {
+  border-color: var(--crit);
+}
+
+.loads-num {
+  max-width: 10rem;
+}
+
+.loads-field-issues {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loads-field-issue {
+  display: block;
+  color: var(--crit);
+  font-size: 0.85rem;
+}
+
+.loads-readout .mono,
+.loads-device .mono {
+  overflow-wrap: anywhere;
+}
+
+.loads-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  margin: 0;
+}
+
+.loads-fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.loads-fieldset legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.loads-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.loads-check {
+  margin-top: 16px;
+}
+
+.loads-primary {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.loads-danger {
+  border-color: var(--crit);
+  color: var(--crit);
+}
+
+.loads-remove,
+.loads-block > button,
+.loads-fieldset > button {
+  justify-self: start;
+}
+
+.loads-confirm {
+  padding: 10px;
+  border-left: 3px solid var(--crit);
+  background: var(--surface-2);
+}
+
+.loads-confirm p {
+  margin: 0 0 8px;
+}
+
+.loads-selftest {
+  display: grid;
+  gap: 8px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.loads-selftest h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.loads-selftest p {
+  margin: 0;
+}
+
+.loads-selftest-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.loads-selftest-watch {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.loads-selftest-history summary {
+  cursor: pointer;
+}
+
+.loads-observations td {
+  padding: 5px 10px 5px 0;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.loads-observations td .sub {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+}

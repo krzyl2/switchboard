@@ -72,9 +72,10 @@ public sealed class Stage4ArchitectureTests
     }
 
     [Fact]
-    public void Allow_list_is_still_ping_subscribe_unsubscribe()
+    public void Allow_list_holds_only_the_live_types_and_the_read_only_queries()
     {
-        Assert.Equal(["ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
+        // The runtime UI added nothing; Stage 5 added read-only discovery queries only.
+        Assert.Equal(["config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
     }
 
     [Theory]

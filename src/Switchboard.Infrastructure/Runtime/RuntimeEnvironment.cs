@@ -46,6 +46,9 @@ public sealed class RuntimeEnvironment
     /// <summary>The raw replay speed; validated when the signal source is chosen.</summary>
     public string? DevReplaySpeed { get; init; }
 
+    /// <summary>Discovery fixtures for the setup wizard in development replay; null when unset.</summary>
+    public string? DevDiscoveryPath { get; init; }
+
     /// <summary>Dev compose only: turns off the ingress source-address check.</summary>
     public bool DevTrustAllRequests { get; init; }
 
@@ -58,6 +61,7 @@ public sealed class RuntimeEnvironment
         var configPath = lookup(EnvironmentVariableNames.ConfigPath);
         var dataPath = lookup(EnvironmentVariableNames.DataPath);
         var replay = lookup(EnvironmentVariableNames.DevReplay);
+        var discovery = lookup(EnvironmentVariableNames.DevDiscovery);
         return new RuntimeEnvironment
         {
             SupervisorToken = lookup(EnvironmentVariableNames.SupervisorToken),
@@ -74,10 +78,11 @@ public sealed class RuntimeEnvironment
             DataPath = string.IsNullOrWhiteSpace(dataPath) ? DefaultDataPath : dataPath,
             DevReplayPath = string.IsNullOrWhiteSpace(replay) ? null : replay,
             DevReplaySpeed = lookup(EnvironmentVariableNames.DevReplaySpeed),
+            DevDiscoveryPath = string.IsNullOrWhiteSpace(discovery) ? null : discovery,
             DevTrustAllRequests = bool.TryParse(lookup(EnvironmentVariableNames.DevTrustAllRequests), out var trust) && trust,
         };
     }
 
     public override string ToString() =>
-        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DataPath = {DataPath}, DevReplay = {DevReplayPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
+        $"RuntimeEnvironment {{ Addon = {IsAddon}, OptionsPath = {OptionsPath}, ConfigPath = {ConfigPath}, DataPath = {DataPath}, DevReplay = {DevReplayPath is not null}, DevDiscovery = {DevDiscoveryPath is not null}, DevTrustAllRequests = {DevTrustAllRequests} }}";
 }
