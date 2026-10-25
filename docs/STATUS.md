@@ -22,7 +22,7 @@ Single entry point for a new session. Updated 2026-10-25 at version 0.7.1 (git `
 | 4 Runtime UI (dashboard, flows, device card, limits, decision log) | 0.5 | done, live |
 | 5 Onboarding wizard (5 steps, passive phase test, backups) | 0.6 | done, live |
 | Control (inserted before 6): global switch, command path, `start:`, active phase test | 0.7.0 | done; live with control off |
-| 0.7.1: select as stop actuator (go-e force state), cleanups | 0.7.1 | done; live, see "Live file" below |
+| 0.7.1: select as stop actuator (go-e force state), cleanups | 0.7.1 | done; live, go-e select stop applied to the live file (20 signals) |
 | 6 Public release (docs, store text, second-person install) | – | not started |
 | v2.0 tariffs, settlement, surplus routing, value per kWh | – | not started |
 | v3.0 planner, forecasts, deadline goals | – | not started |
@@ -68,4 +68,4 @@ Single entry point for a new session. Updated 2026-10-25 at version 0.7.1 (git `
 
 ## Live file
 
-`/addon_configs/fb9ed8c0_switchboard/switchboard.yaml` follows `deploy/examples/switchboard.yaml`. Check the first line of the 0.7.1 section of `DECISIONS.md` for whether the go-e select stop (`stop_actuator: select.goe_422752_frc`, options `"1"` / `"0"`) has been applied; the maintainer approved it on 2026-10-25.
+`/addon_configs/fb9ed8c0_switchboard/switchboard.yaml` equals `deploy/examples/switchboard.yaml` (sha256 1fec5453…c1f4, LF) including the go-e select stop (`stop_actuator: select.goe_422752_frc`, `stop_option: "1"`, `resume_option: "0"`), applied 2026-10-25 with the maintainer's approval. Open live checks for phase 2: does `select.goe_422752_frc` report only on change, go unavailable on a go-e link loss, reset on unplug; are its options exactly 0/1/2.
