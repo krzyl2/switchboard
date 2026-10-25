@@ -64,3 +64,7 @@ Documentation, translations, store description with the "not a protective device
 | v4.0 | Jinja templates on every field, then sandboxed scripting only if users ask for it |
 
 Economics are not in v1.0 on purpose. The guard is useful, differentiating and verifiable without a single price. Prices add a configuration burden and a whole class of "it charged at the wrong time" support questions, and they should arrive only once the protection layer is trusted.
+
+## Optional module: EV charging
+
+Specified in `docs/12-EV-MODULE.md` (maintainer interview 2026-10-25): PV surplus first, G13 off-peak second, peak only for a trip deadline; trips from the Google calendar `Kursy`; target SoC = trip SoC + 25 % floor + 15 points reserve; Forecast.Solar 2-day forecast; manual mode and "charge now". Builds on the v2.0 tariff and settlement modules and the v3.0 forecast and deadline goals, so it comes after them. Optional, off by default.

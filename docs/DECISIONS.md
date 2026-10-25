@@ -410,3 +410,17 @@ Small choices the documentation left open, one line each. Larger ones that need 
 - 2026-10-25 — Maintainer: switching control off during an active phase test still sends that test's own off once (the only exception to 'switching control off sends nothing'); question closed.
 - 2026-10-25 — Maintainer: the go-e is stopped by setting its force-state select (select.goe_422752_frc, options 0 neutral / 1 don't charge / 2 charge) to 'don't charge'. A stop_actuator may therefore be a select entity with declared stop and resume options (0.7.1); no go-e switch is a stop.
 - 2026-10-25 — Maintainer: allowed a live HA Core restart and a ~2 min SolarEdge Modbus outage with control off to verify the safe state without commands.
+- 2026-10-25 — Live 0.7.0 with control off: HA Core restart (17:03:21Z) → safe_state_entered source_disconnected with switch_off for all 4 devices refused_by mode_shadow; reconnected and resubscribed after 31 s without intervention, MQTT discovery republished; a 2 s meter_invalid while Modbus loaded. SolarEdge Modbus disabled 17:05:30–17:07:49Z → safe_state_entered meter_invalid at once, exited at 17:07:59 when data returned. No decision commanded, no device entity changed state. A broker (Mosquitto) restart is still untested (PKG-06 stays open).
+
+## EV module (maintainer interview 2026-10-25)
+
+- 2026-10-25 — Maintainer interview: an optional EV charging module is specified in docs/12-EV-MODULE.md and added to the roadmap after v3.0. It is built from general blocks (zoned tariff with a G13 preset, PV forecast, energy-by-deadline goal) with the EV as their first user, not as a closed module (D5, D6).
+- 2026-10-25 — The car is a PHEV with an 18 kWh battery; kWh/km is learned from SoC and electric range (smoothed), both read from HA.
+- 2026-10-25 — Trips come from the calendar `Kursy` through HA; `km: <n>` in the description is the whole door-to-door trip; event start and end are departure and return. No address resolution (D10).
+- 2026-10-25 — Target SoC at departure = max(25 %, trip SoC + 25 % floor after the trip + 15 points reserve), i.e. trip SoC + 40 points; confirmed by the maintainer. The trip target overrides the 90 % surplus cap and is a hard deadline met in any G13 zone, with no comparison against fuel cost.
+- 2026-10-25 — Without a trip: hold 25 % from off-peak, above that PV surplus only up to 90 %; once a week (configurable weekday, default Sunday) up to 100 %.
+- 2026-10-25 — Surplus is the hourly net-billing balance (charge while the hour is expected to end with export >= 0), not the instantaneous surplus.
+- 2026-10-25 — PV forecast: Forecast.Solar, 2 days, read from HA; missing or stale means a plan with zero PV. Presence: go-e car state only.
+- 2026-10-25 — G13 zones as the maintainer remembers them: peak 07-13 all year, 19-22 Apr-Sep, 16-21 Oct-Mar, weekends and holidays off-peak; to be verified against the contract. Prices per kWh are configuration.
+- 2026-10-25 — Manual control: mode Auto / PV only / Off and "charge now to X %", which never overrides the L1 limit. Starting values with no origin, for review: ready margin 30 min, charging losses 10 %.
+- 2026-10-25 — Specification only, no code. Proposed EV reason codes (docs/12-EV-MODULE.md) would raise the closed list to version 4 when implemented.
