@@ -10,7 +10,8 @@ tests need, at known times:
     live meter does in ~90 % of polls;
   * inverter polled every 30 s: total power and per-phase currents;
   * EV charger (go-e shape) every 2.5 s, L1 current and power; every fourth value repeats, so Home
-    Assistant records no row for it (doubling that interval);
+    Assistant records no row for it (doubling that interval); its force-state select (the example's
+    stop actuator, 0.7.1) reported "0" (neutral) once at the start;
   * 12 min of import (little sun), then 13 min of export (full sun);
   * one out-of-step inverter row at 10:18:01 (a cloud reported before the meter sees it);
   * the L2 current frozen for 3 min from 10:08:00 (fourth column last_reported marks it);
@@ -109,6 +110,9 @@ while moment < START + DURATION:
         add("sensor.goe_422752_nrg_7", moment + timedelta(milliseconds=2), f"{amps * VOLTS:.0f}")
     sample += 1
     moment += timedelta(milliseconds=2500)
+
+# The charger's force-state select: neutral, reported once (a select reports only on change).
+add("select.goe_422752_frc", START + timedelta(milliseconds=3), "0")
 
 rows.sort(key=lambda r: r[0])
 target = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synthetic-three-phase-import-export.csv")

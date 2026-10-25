@@ -31,7 +31,7 @@ public sealed partial class Stage2ArchitectureTests
     public void Only_the_allow_list_names_a_service_call()
     {
         // String literals only (comments may explain what is refused): since Stage C the allow-list
-        // holds the one service call and its three services; no other source builds a message or a
+        // holds the one service call and its four services; no other source builds a message or a
         // URL that changes state in Home Assistant, and nothing anywhere names fire_event,
         // execute_script or the REST services API.
         var offenders = new List<string>();
@@ -110,9 +110,9 @@ public sealed partial class Stage2ArchitectureTests
     [GeneratedRegex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")]
     private static partial Regex StringLiteral();
 
-    [GeneratedRegex(@"call_service|fire_event|execute_script|api/services|/services/(?!mqtt)|turn_on|turn_off|set_value", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"call_service|fire_event|execute_script|api/services|/services/(?!mqtt)|turn_on|turn_off|set_value|select_option", RegexOptions.IgnoreCase)]
     private static partial Regex Commanding();
 
-    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value)\"$")]
+    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value|select_option)\"$")]
     private static partial Regex ServiceCall();
 }

@@ -21,6 +21,11 @@ function payload(change?: (p: any) => void): unknown {
 // The page must never show an intention, an override or a "not responding" flag the add-on did
 // not report: anything outside the exact contract is rejected and the card says "unavailable".
 describe('parseDispatch', () => {
+  // 0.7.1: the 0.6.x UI choice is gone from the mode.
+  it('reads the mode without the 0.6.x UI choice', () => {
+    expect(parseDispatch(payload()).mode).toEqual({ ceiling: 'shadow', effective: 'shadow', note: 'none' });
+  });
+
   it('accepts the documented payload and keeps every phase, device and history entry', () => {
     const parsed = parseDispatch(payload());
 

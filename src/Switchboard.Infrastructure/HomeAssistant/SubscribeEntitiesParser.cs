@@ -10,12 +10,14 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// event is the initial state of every requested entity (<c>a</c>); later events carry additions
 /// (<c>a</c>), diffs (<c>c</c> with <c>+</c> and <c>-</c>) and removals (<c>r</c>). A state carries
 /// <c>s</c>, <c>a</c> (attributes), <c>lc</c> (last_changed) and <c>lu</c> (last_updated, left out
-/// when equal to lc); <c>lr</c> (last_reported) is read when present. Stateful: diffs only make
-/// sense against the cached state, so one parser serves one subscription.
+/// when equal to lc); <c>lr</c> (last_reported) is read when present. Of the attributes only the
+/// unit and a select's <c>options</c> are kept. Stateful: diffs only make sense against the cached
+/// state, so one parser serves one subscription.
 /// </summary>
 public sealed class SubscribeEntitiesParser
 {
     private const string UnitAttribute = "unit_of_measurement";
+    private const string OptionsAttribute = "options";
 
     private readonly ImmutableArray<EntityId> _requested;
     private readonly Dictionary<EntityId, CachedState> _states = [];
@@ -137,7 +139,10 @@ public sealed class SubscribeEntitiesParser
             Unit(state, null),
             lastChanged,
             Timestamp(state, "lu") ?? lastChanged,
-            Timestamp(state, "lr"));
+            Timestamp(state, "lr"))
+        {
+            Options = Options(state, null),
+        };
     }
 
     private static CachedState Diff(CachedState cached, JsonElement diff)
@@ -155,7 +160,7 @@ public sealed class SubscribeEntitiesParser
                 throw new FormatException("'+' is not an object");
             }
 
-            next = next with { State = State(plus) ?? next.State, Unit = Unit(plus, next.Unit) };
+            next = next with { State = State(plus) ?? next.State, Unit = Unit(plus, next.Unit), Options = Options(plus, next.Options) };
 
             // A new last_changed means a new state, and HA updates last_updated with it.
             if (Timestamp(plus, "lc") is { } lastChanged)
@@ -172,13 +177,38 @@ public sealed class SubscribeEntitiesParser
         }
 
         if (diff.TryGetProperty("-", out var minus) && minus.ValueKind == JsonValueKind.Object
-            && minus.TryGetProperty("a", out var removedAttributes) && removedAttributes.ValueKind == JsonValueKind.Array
-            && removedAttributes.EnumerateArray().Any(a => a.ValueKind == JsonValueKind.String && a.GetString() == UnitAttribute))
+            && minus.TryGetProperty("a", out var removedAttributes) && removedAttributes.ValueKind == JsonValueKind.Array)
         {
-            next = next with { Unit = null };
+            var removed = removedAttributes.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()).ToList();
+            if (removed.Contains(UnitAttribute))
+            {
+                next = next with { Unit = null };
+            }
+
+            if (removed.Contains(OptionsAttribute))
+            {
+                next = next with { Options = null };
+            }
         }
 
         return next;
+    }
+
+    /// <summary>
+    /// A select's options from the attributes, replacing <paramref name="current"/> when the
+    /// attributes carry them; a list of the wrong shape or beyond the schema bounds reads as unknown
+    /// (null), never as an error that would drop the state itself.
+    /// </summary>
+    private static ImmutableArray<string>? Options(JsonElement state, ImmutableArray<string>? current)
+    {
+        if (!state.TryGetProperty("a", out var attributes) || attributes.ValueKind != JsonValueKind.Object || !attributes.TryGetProperty(OptionsAttribute, out var options))
+        {
+            return current;
+        }
+
+        return options.ValueKind == JsonValueKind.Array && options.GetArrayLength() <= EntityUpdate.MaxOptions
+            ? EntityUpdate.BoundedOptions([.. options.EnumerateArray().Select(o => o.ValueKind == JsonValueKind.String ? o.GetString() : null)])
+            : null;
     }
 
     private static string? State(JsonElement state) =>
@@ -228,11 +258,13 @@ public sealed class SubscribeEntitiesParser
 
     private sealed record CachedState(string State, string? Unit, DateTimeOffset LastChanged, DateTimeOffset LastUpdated, DateTimeOffset? LastReported)
     {
+        public ImmutableArray<string>? Options { get; init; }
+
         /// <summary>last_reported where present, else the newer of last_updated and last_changed, as HA defines it.</summary>
         public EntityUpdate ToUpdate(EntityId id)
         {
             var updated = LastUpdated > LastChanged ? LastUpdated : LastChanged;
-            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated);
+            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated) { Options = Options };
         }
     }
 }

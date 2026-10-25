@@ -92,8 +92,12 @@ public sealed class ConfigurationPackagingTests
                 [.. d.Stages.Select(_ => (Switchboard.Domain.Devices.AppliedState?)null)],
                 false,
                 System.Collections.Immutable.ImmutableDictionary<int, Switchboard.Domain.Guard.StageLimit>.Empty))]);
-        // The charger has no stop actuator: it is reduced to its minimum and never spends a second
-        // (switch off) step that could not happen.
-        Assert.Equal(["heater_l1", "ev_charger"], l1.Select(s => s.Device.Value));
+        // The charger is stopped through its force-state select (0.7.1, maintainer 2026-10-25): it is
+        // reduced to its minimum first, and stopped below it as a second step (BRK-03).
+        Assert.Equal(
+            [("heater_l1", Switchboard.Domain.Guard.ShedAction.SwitchOff), ("ev_charger", Switchboard.Domain.Guard.ShedAction.ReduceToMinimum), ("ev_charger", Switchboard.Domain.Guard.ShedAction.SwitchOff)],
+            l1.Select(s => (s.Device.Value, s.Action)));
+        var charger = configuration.Devices.Single(d => d.Id.Value == "ev_charger");
+        Assert.Equal(("select.goe_422752_frc", "1", "0"), (charger.StopActuator!.Value.Value, charger.StopOptions!.StopOption.Value, charger.StopOptions.ResumeOption.Value));
     }
 }

@@ -9,7 +9,26 @@ namespace Switchboard.Application.Signals;
 /// otherwise <c>last_changed</c>, exactly as HA itself falls back (SIG-06).
 /// </summary>
 /// <param name="Unit">The <c>unit_of_measurement</c> attribute; null when the entity has none.</param>
-public sealed record EntityUpdate(EntityId Entity, string State, string? Unit, DateTimeOffset LastUpdated, DateTimeOffset Reported);
+public sealed record EntityUpdate(EntityId Entity, string State, string? Unit, DateTimeOffset LastUpdated, DateTimeOffset Reported)
+{
+    /// <summary>Schema bounds on an <c>options</c> attribute (a select's choices); a longer list or option is read as no options.</summary>
+    public const int MaxOptions = 64;
+
+    /// <inheritdoc cref="MaxOptions"/>
+    public const int MaxOptionLength = 255;
+
+    /// <summary>
+    /// The <c>options</c> attribute (what a select offers), as Home Assistant reported it; null when
+    /// the state carries no usable options list.
+    /// </summary>
+    public ImmutableArray<string>? Options { get; init; }
+
+    /// <summary>An options list within the schema bounds, or null: never an error, only "not known".</summary>
+    public static ImmutableArray<string>? BoundedOptions(IReadOnlyList<string?>? options) =>
+        options is { Count: > 0 and <= MaxOptions } && options.All(o => o is { Length: > 0 and <= MaxOptionLength })
+            ? [.. options!]
+            : null;
+}
 
 public enum BatchOrigin
 {

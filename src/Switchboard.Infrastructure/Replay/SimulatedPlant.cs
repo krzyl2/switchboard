@@ -11,7 +11,8 @@ namespace Switchboard.Infrastructure.Replay;
 /// One simulated load of the development plant: the phase it really loads (which may differ from
 /// what the configuration declares: a deliberately swapped phase) and its step. A relay draws
 /// <see cref="PowerW"/> and <see cref="CurrentA"/> while on; a setpoint actuator draws its value in
-/// amperes at <see cref="Volts"/>.
+/// amperes at <see cref="Volts"/>; an entry with a phase only is a stateless control (a select stop
+/// actuator), which reports the option it was set to and draws nothing itself.
 /// </summary>
 public sealed record PlantLoad(Phase Phase, double? PowerW, double? CurrentA, double? Volts);
 
@@ -109,6 +110,11 @@ public sealed class SimulatedPlant : IReplayOverlay
                 break;
             case ActuatorService.TurnOff:
                 (state, watts, amps) = ("off", 0, 0);
+                break;
+            case ActuatorService.SelectOption:
+                // A select stop actuator reports the option it was set to; the load it stops (the
+                // charger's draw) stays as recorded, which the plant does not simulate.
+                (state, watts, amps) = (call.Option ?? string.Empty, 0, 0);
                 break;
             default:
                 var value = call.Value ?? 0;

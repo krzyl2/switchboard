@@ -274,6 +274,22 @@
   font-weight: 600;
 }
 
+/* A select stop's stop and resume options: side by side where they fit, stacked at 400 px. */
+.loads-stop-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.loads-stop-options > .sub {
+  grid-column: 1 / -1;
+}
+
+.loads-stop-now .mono {
+  overflow-wrap: anywhere;
+}
+
 .loads-selftest h5 {
   margin: 4px 0 0;
   font-size: 0.9rem;

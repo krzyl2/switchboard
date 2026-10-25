@@ -2,6 +2,35 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.1
+
+A charger that is stopped through a select. The go-e has no switch that stops charging; its force-state select does (`1` don't charge, `0` neutral). After this update Switchboard still controls nothing until you set the option `mode: active` **and** switch **Control allowed** on: shadow stays the default and the switch stays off. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- A modulating device's `stop_actuator` may be a `select` or `input_select`, with the new keys `stop_option` (stops the device) and `resume_option` (lets it run again), both required there and refused next to a switch; `1` and `"1"` are the same option. `switchboard.yaml` stays schema version 1. The example declares the go-e force state (`select.goe_422752_frc`, `stop_option: "1"`, `resume_option: "0"`).
+- `select_option` joins the commands that can be sent: only to a select declared as a stop actuator, only with its declared stop or resume option, and, once Home Assistant reported the select's options, only an option it offers (otherwise the call is not sent, the command path's last failure names the option, and the Signals page warns). During an invalid configuration only the stop option is sent.
+- Below its minimum a charger with a select stop is stopped by protection (full shed, shed one, budget), the safe state, the kill switch, the add-on stopping and the reconnect re-send, exactly as with a switch stop, and given back with its resume option. Only declared options are ever sent: a charger you had set to another option (`2`, force charging) is stopped anyway and resumed with the resume option, and the log names the option that was not restored, also across a restart. A charger you stopped yourself is never resumed by `restore_only`. A new `resume_option` alone, saved while Switchboard holds the charger stopped, keeps what is to be given back (it is resumed with the option declared then); a changed stop actuator or `stop_option` ends it, and the wizard warns.
+- The setup wizard lists selects as stop actuators of a modulating device, with their options to choose from; it refuses missing, equal or not offered options, and Switchboard's own entities as an actuator, and warns when you change the stop actuator or stop option of a device Switchboard holds reduced.
+- A hand-written file that declares one of Switchboard's own entities as an actuator or stop actuator gets a warning (`own_entity_actuator`).
+
+### Changed
+
+- With a stop actuator declared, dispatch (not only protection) stops a charger when even its minimum does not fit the reserve, and a `force_off` override stops it instead of leaving it at its minimum.
+- A restore baseline taken while a device's state was unknown keeps the device's first reported level when that report is older than the acknowledgement of the stop (after a restart the acknowledgement and the first states can arrive together); 0.7.0 dropped it and left the device reduced.
+- The 0.6.x UI mode choice is gone from the mode sensor's attributes (`ui_choice`), from `api/guard`, `api/dispatch` and mode decisions; `control_allowed` says what it stood for.
+- A refusal at send time logs why (not declared, or an option the select does not offer).
+
+### Fixed
+
+- A current changed on a charger while Switchboard holds it stopped (in the charger's app, by an automation) is now the level it is resumed at; 0.7.0 took it for a choice to stay stopped and never resumed it. This holds for a switch stop too.
+
+### Compatibility
+
+- A restore baseline of a select-stopped device is written with `option_before` in `state.json` (schema 3). **A downgrade to 0.7.0 sets such a file aside** (control locked off, the kill switch on until confirmed). Let the charger resume, or turn control off and confirm afterwards, before downgrading. Baselines without a select stop are written exactly as 0.7.0 wrote them.
+- Mode decisions written by 0.7.1 carry no `ui_choice`; 0.7.0 skips them when it reads the log. Lines of 0.7.0 and older still read.
+- A select stop is a setting kept in the charger: it stays at `stop_option` after the add-on stops, while the kill switch is on, when control is switched off or the add-on is uninstalled, until Switchboard resumes it or you change it.
+
 ## 0.7.0
 
 Control. Switchboard can now switch the devices you declared, but only when you allow it twice: the add-on option `mode: active` **and** the new **Control allowed** switch, which is off after install and after this update. Until you do both it still controls nothing: shadow stays the default. Not a protective device; your breakers remain the protection.

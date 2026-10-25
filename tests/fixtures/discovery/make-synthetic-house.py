@@ -9,7 +9,9 @@ SWITCHBOARD_DEV_DISCOVERY; .NET tests read them directly.
 
 Besides the primary measurements it holds the derived sensors the wizard must refuse as inputs
 (template, statistics, powercalc) and one YAML template sensor without a unique_id, which is not in
-the entity registry, so its source cannot be verified.
+the entity registry, so its source cannot be verified. The charger's force-state select (its stop,
+0.7.1) carries its options, and one of Switchboard's own MQTT selects shows that the add-on's own
+entities are recognised (never offered as an actuator).
 
 Run: python tests/fixtures/discovery/make-synthetic-house.py   (rewrites synthetic-house/ next to this script)
 """
@@ -44,6 +46,10 @@ ENTITIES = [
     ("sensor.goe_422752_nrg_6", "0.0", "A", "current", "measurement", "go-e current L3", "goecharger_api2", "dev_goe"),
     ("sensor.goe_422752_nrg_7", "0", "W", "power", "measurement", "go-e power L1", "goecharger_api2", "dev_goe"),
     ("binary_sensor.goe_422752_car_0", "off", None, "plug", None, "go-e car connected", "goecharger_api2", "dev_goe"),
+    # The go-e force state: its options are what the wizard offers as stop and resume options.
+    ("select.goe_422752_frc", "0", None, None, None, "go-e force state", "goecharger_api2", "dev_goe"),
+    # One of Switchboard's own MQTT entities (unique_id switchboard_<object_id>): never an actuator.
+    ("select.switchboard_ev_charger_override", "auto", None, None, None, "Switchboard ev_charger override", "mqtt", "dev_switchboard"),
     # Derived sensors: never a control input (docs/07-PITFALLS.md).
     ("sensor.usage", "1500.0", "W", "power", "measurement", "Usage", "template", None),
     ("sensor.moc_grzalek_cwu", "0.0", "W", "power", "measurement", "Moc grzałek CWU", "template", None),
@@ -63,7 +69,19 @@ DEVICES = [
     {"id": "dev_inverter", "name": "SolarEdge SE7K", "name_by_user": None, "manufacturer": "SolarEdge", "model": "SE7K-RWS"},
     {"id": "dev_relays", "name": "Modbus relays", "name_by_user": "Przekaźniki CWU", "manufacturer": None, "model": None},
     {"id": "dev_goe", "name": "go-e Charger 422752", "name_by_user": None, "manufacturer": "go-e", "model": "Gemini flex"},
+    {"id": "dev_switchboard", "name": "Switchboard", "name_by_user": None, "manufacturer": None, "model": "Home Assistant add-on"},
 ]
+
+# The options attribute of the selects (what HA reports with their state).
+OPTIONS = {
+    "select.goe_422752_frc": ["0", "1", "2"],
+    "select.switchboard_ev_charger_override": ["auto", "force_on", "force_off"],
+}
+
+# Registry unique_ids that follow an integration's own scheme instead of the synthetic default.
+UNIQUE_IDS = {
+    "select.switchboard_ev_charger_override": "switchboard_ev_charger_override",
+}
 
 
 def state(entity_id, value, unit, device_class, state_class, name):
@@ -74,6 +92,8 @@ def state(entity_id, value, unit, device_class, state_class, name):
         attributes["device_class"] = device_class
     if state_class is not None:
         attributes["state_class"] = state_class
+    if entity_id in OPTIONS:
+        attributes["options"] = OPTIONS[entity_id]
     return {
         "entity_id": entity_id,
         "state": value,
@@ -104,7 +124,7 @@ def registry(entity_id, platform, device_id, name):
         "original_name": name,
         "platform": platform,
         "translation_key": None,
-        "unique_id": entity_id.replace(".", "_") + "_uid",
+        "unique_id": UNIQUE_IDS.get(entity_id, entity_id.replace(".", "_") + "_uid"),
     }
 
 

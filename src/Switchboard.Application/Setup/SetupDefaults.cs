@@ -66,7 +66,11 @@ public sealed record TemplateDescription(
     TimeSpan MinOff,
     ImmutableArray<string> ActuatorDomains,
     ImmutableArray<string> StateDomains,
-    bool DrawRecommended);
+    bool DrawRecommended)
+{
+    /// <summary>The domains a stop actuator may have (a switch or a select); empty for a type that takes none.</summary>
+    public ImmutableArray<string> StopActuatorDomains { get; init; } = [];
+}
 
 public static class DeviceTemplates
 {
@@ -95,7 +99,10 @@ public static class DeviceTemplates
                 setpoint ? control.Devices.ModulatingMinOff : control.Dispatch.RelayMinOff,
                 DeviceSectionParser.ActuatorDomainsFor(t.Type),
                 DeviceSectionParser.StateDomainsFor(t.Type),
-                t.DrawRecommended);
+                t.DrawRecommended)
+            {
+                StopActuatorDomains = t.Type == DeviceType.Modulating ? DeviceSectionParser.StopActuatorDomains() : [],
+            };
         })];
     }
 

@@ -83,7 +83,7 @@ public sealed class SetupServiceTests : IDisposable
     public async Task Saved_document_hot_reloaded_without_restart()
     {
         // The running watcher (the same one the add-on uses) reads the new file and hands the store
-        // the new configuration: 19 signals and the four devices, no restart.
+        // the new configuration: 20 signals (the charger's stop included) and the four devices, no restart.
         File.WriteAllText(FilePath, TestConfigurations.Example);
         _watcher.Start();
         Assert.True(_inbox.Reader.TryRead(out _));
@@ -99,7 +99,7 @@ public sealed class SetupServiceTests : IDisposable
         Assert.True(saved.Reloaded);
         Assert.True(_inbox.Reader.TryRead(out var message));
         var result = Assert.IsType<ConfigurationInput>(message).Result;
-        Assert.Equal((ConfigurationStatus.Valid, 19), (result.Status, result.Configuration!.Signals.Length));
+        Assert.Equal((ConfigurationStatus.Valid, 20), (result.Status, result.Configuration!.Signals.Length));
         Assert.Equal(["Grzałka łazienka", "Grzałka CWU L2", "Grzałka CWU L3", "Ładowarka go-e"], result.Configuration.Devices.Select(d => d.Name));
         Assert.NotNull(saved.Backup);
         Assert.Equal(TestConfigurations.Example, File.ReadAllText(Path.Combine(ConfigDirectory, saved.Backup!)));

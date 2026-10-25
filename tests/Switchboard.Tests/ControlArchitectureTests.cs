@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application;
+using Switchboard.Application.Configuration;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Host.Composition;
 using Switchboard.Infrastructure.HomeAssistant;
@@ -68,6 +70,19 @@ public sealed partial class ControlArchitectureTests
             .Where(t => t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Any(f => f.FieldType == typeof(ICallServiceChannel)))
             .ToList();
         Assert.Equal([typeof(HomeAssistantDeviceCommandPort)], holders);
+    }
+
+    [Fact]
+    public void Start_is_required_wherever_it_is_declared()
+    {
+        // Cleanup 0.7.1: the start policy always comes from the parser (devices.default_start in
+        // control-defaults.yaml, or the device's own start:); no type falls back to restore_only by
+        // itself, so a construction that forgets it does not compile.
+        foreach (var type in new[] { typeof(Switchboard.Domain.Devices.DeviceSpec), typeof(DispatchDeviceStatus), typeof(DeviceDefinition) })
+        {
+            var start = type.GetProperty("Start")!;
+            Assert.True(start.IsDefined(typeof(System.Runtime.CompilerServices.RequiredMemberAttribute), inherit: false), $"{type.Name}.Start is not required");
+        }
     }
 
     [Fact]
@@ -156,7 +171,9 @@ public sealed partial class ControlArchitectureTests
     [GeneratedRegex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")]
     private static partial Regex StringLiteral();
 
-    [GeneratedRegex(@"fire_event|execute_script|subscribe_trigger|render_template|config/[a-z_]+/(?:update|remove|delete|create)|config_entries/|api/services|homeassistant\.|\btoggle\b|script\.turn_on|automation\.", RegexOptions.IgnoreCase)]
+    // select_next / select_previous / select_first / select_last and set_options (input_select) change
+    // a select's state without a declared option: never named in src (0.7.1).
+    [GeneratedRegex(@"fire_event|execute_script|subscribe_trigger|render_template|config/[a-z_]+/(?:update|remove|delete|create)|config_entries/|api/services|homeassistant\.|\btoggle\b|script\.turn_on|automation\.|select_(?:next|previous|first|last)|set_options", RegexOptions.IgnoreCase)]
     private static partial Regex Forbidden();
 
     [GeneratedRegex(@"\.CallServiceAsync\(|Task<CallOutcome> CallServiceAsync\(")]
@@ -171,6 +188,6 @@ public sealed partial class ControlArchitectureTests
     [GeneratedRegex(@"\bIDeviceCommandPort\b|_port!?\.Submit\(")]
     private static partial Regex PortSubmit();
 
-    [GeneratedRegex(@"""(?:switch|number|input_boolean|input_number|sensor|binary_sensor)\.[a-z0-9_]+""|""(?:turn_on|turn_off|set_value|call_service)""")]
+    [GeneratedRegex(@"""(?:switch|number|input_boolean|input_number|select|input_select|sensor|binary_sensor)\.[a-z0-9_]+""|""(?:turn_on|turn_off|set_value|select_option|call_service)""")]
     private static partial Regex EntityLiteral();
 }

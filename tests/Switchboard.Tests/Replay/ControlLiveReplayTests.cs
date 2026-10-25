@@ -33,7 +33,7 @@ public sealed class ControlLiveReplayTests(ITestOutputHelper output)
         var protection = ProtectionSetupFactory.Build(configuration);
         var violations = new ViolationAnalyzer(protection, harness.Observations, harness.Decisions, harness.Steps);
         var missed = violations.MissedViolations();
-        var declared = configuration.Devices.SelectMany(d => d.Stages.Select(s => s.Actuator)).ToHashSet();
+        var declared = configuration.Devices.SelectMany(d => d.Stages.Select(s => s.Actuator).Concat(d.StopActuator is { } stop ? [stop] : [])).ToHashSet();
 
         output.WriteLine($"Replayed {data.Start:O} to {data.End:O}: {harness.Steps.Count} steps, {harness.Decisions.Count} decisions, {path.Calls.Count} calls.");
         foreach (var group in path.Calls.GroupBy(c => $"{c.Call.Entity} {c.Call.Service}").OrderBy(g => g.Key, StringComparer.Ordinal))

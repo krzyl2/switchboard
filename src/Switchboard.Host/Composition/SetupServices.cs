@@ -1,12 +1,14 @@
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Dispatch;
 using Switchboard.Application.Options;
 using Switchboard.Application.Setup;
 using Switchboard.Application.Setup.Discovery;
 using Switchboard.Application.Setup.Readouts;
 using Switchboard.Application.Setup.SelfTest;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Devices;
 using Switchboard.Infrastructure.Configuration;
 using Switchboard.Infrastructure.HomeAssistant;
 using Switchboard.Infrastructure.Persistence;
@@ -18,10 +20,16 @@ namespace Switchboard.Host.Composition;
 /// <summary>The control parameters shipped in control-defaults.yaml alone (no document); the wizard's fallback.</summary>
 public sealed record ShippedControl(ControlParameters Parameters);
 
-/// <summary>The wizard's narrow view of the running add-on, read from the published signal diagnostics.</summary>
-public sealed class DiagnosticsRuntimeView(ISignalDiagnosticsSource diagnostics) : ISetupRuntimeView
+/// <summary>
+/// The wizard's narrow view of the running add-on, read from the published signal diagnostics and,
+/// for the devices Switchboard holds reduced, the published dispatch status (read-only).
+/// </summary>
+public sealed class DiagnosticsRuntimeView(ISignalDiagnosticsSource diagnostics, IDispatchStatusSource? dispatch = null) : ISetupRuntimeView
 {
     public SwitchboardConfiguration? Configuration => diagnostics.Current.Configuration?.Configuration;
+
+    public IReadOnlyCollection<DeviceName> ReducedBySwitchboard =>
+        dispatch is null ? [] : [.. dispatch.Current.Devices.Where(d => d.Baseline is { Commanded: true }).Select(d => d.Id)];
 
     public IReadOnlyDictionary<EntityId, TimeSpan> DetectedRefresh
     {
@@ -58,7 +66,7 @@ public static class SetupServices
     public static IServiceCollection AddSetup(this IServiceCollection services)
     {
         services.AddSingleton(_ => EmbeddedSetupDefaults.Load());
-        services.AddSingleton<ISetupRuntimeView>(sp => new DiagnosticsRuntimeView(sp.GetRequiredService<ISignalDiagnosticsSource>()));
+        services.AddSingleton<ISetupRuntimeView>(sp => new DiagnosticsRuntimeView(sp.GetRequiredService<ISignalDiagnosticsSource>(), sp.GetRequiredService<IDispatchStatusSource>()));
         services.AddSingleton(_ => new ShippedControl(
             SwitchboardDocumentParser.BindControl(null, EmbeddedControlDefaults.Load())
             ?? throw new InvalidOperationException("The embedded control defaults do not bind.")));

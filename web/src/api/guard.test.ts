@@ -34,6 +34,11 @@ describe('parseGuard', () => {
     expect(parsed.at.toISOString()).toBe('2026-10-24T10:00:00.004Z');
   });
 
+  // 0.7.1: the 0.6.x UI choice is gone; the mode is the option (ceiling), the effective mode and its note.
+  it('reads the mode without the 0.6.x UI choice', () => {
+    expect(parseGuard(payload()).mode).toEqual({ ceiling: 'shadow', effective: 'shadow', note: 'none' });
+  });
+
   it('keeps a stage that is not fresh without an applied state, and its last known one apart', () => {
     const boiler = parseGuard(payload()).devices.find((d) => d.id === 'boiler');
 

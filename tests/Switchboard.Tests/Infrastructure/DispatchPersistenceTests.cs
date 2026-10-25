@@ -76,6 +76,31 @@ public sealed class DispatchPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void A_0_7_0_mode_line_with_ui_choice_still_reads()
+    {
+        // 0.7.0 wrote the 0.6.x UI choice next to the control switch; 0.7.1 no longer writes it, and a
+        // line of the last 30 days that carries it must still read, with everything else intact.
+        const string Line = """{"v":2,"codes":3,"id":"a1b2c3-000000003","at":"2026-10-25T10:00:00.0000000Z","scope":"system","device":null,"stage":null,"phase":null,"action":"mode_resolved","reason":"mode_shadow","overridden":null,"mode":"shadow","commanded":false,"refused_by":null,"origin":null,"group":null,"target":null,"inputs":{"mode":{"ceiling":"shadow","ui_choice":"shadow","note":"none","control_allowed":false,"configuration_valid":true,"state_confirmed":true,"missing":["option_shadow","control_off"],"source":"default"}}}""";
+
+        var parsed = DecisionJson.TryParse(Line)!;
+
+        Assert.Equal(DecisionAction.ModeResolved, parsed.Action);
+        Assert.Equal((OperatingMode.Shadow, ModeNote.None, (bool?)false), (parsed.Inputs.Mode!.Ceiling, parsed.Inputs.Mode.Note, parsed.Inputs.Mode.ControlAllowed));
+        Assert.Equal([ModeCondition.OptionShadow, ModeCondition.ControlOff], parsed.Inputs.Mode.Missing);
+    }
+
+    [Fact]
+    public void Mode_decisions_write_no_ui_choice()
+    {
+        var decision = TestDecisions.Mode(new DateTimeOffset(2026, 10, 25, 10, 0, 0, TimeSpan.Zero));
+
+        var line = DecisionJson.Serialize(decision);
+
+        Assert.DoesNotContain("ui_choice", line, StringComparison.Ordinal);
+        Assert.Equal(decision.Inputs, DecisionJson.TryParse(line)!.Inputs);
+    }
+
+    [Fact]
     public void Legacy_guard_line_still_parses_and_cannot_carry_stage_3_fields()
     {
         // A 0.3.x shed line reads as before. Dispatch inputs exist only in format 2: a format 1 line

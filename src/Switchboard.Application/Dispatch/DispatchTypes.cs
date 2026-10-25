@@ -149,7 +149,7 @@ public sealed record DispatchDeviceStatus(
     ImmutableArray<VerificationRecord> History)
 {
     /// <summary>What dispatch may do beyond restoring (<c>start:</c>).</summary>
-    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+    public required StartPolicy Start { get; init; }
 
     /// <summary>What Switchboard reduced the device from (restore_only restores up to it); null when nothing is to be restored.</summary>
     public StartBaseline? Baseline { get; init; }

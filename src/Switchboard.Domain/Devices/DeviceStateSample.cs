@@ -6,7 +6,11 @@ namespace Switchboard.Domain.Devices;
 public abstract record AppliedState;
 
 /// <summary>A relay stage reported on or off.</summary>
-public sealed record RelayApplied(bool On) : AppliedState;
+public sealed record RelayApplied(bool On) : AppliedState
+{
+    /// <summary>A select stop actuator's reported option, as written (on is any option but the stop option); null for a switch.</summary>
+    public OptionText? Option { get; init; }
+}
 
 /// <summary>A modulating device's reported setpoint, in amperes.</summary>
 public sealed record SetpointApplied(Amperes Setpoint) : AppliedState;

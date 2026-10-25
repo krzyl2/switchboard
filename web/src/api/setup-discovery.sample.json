@@ -17,7 +17,9 @@
       "inRegistry": true,
       "state": "off",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "binary_sensor.goe_422752_car_0",
@@ -33,7 +35,9 @@
       "inRegistry": true,
       "state": "off",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "light.kitchen",
@@ -49,7 +53,9 @@
       "inRegistry": true,
       "state": "on",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "number.goe_422752_amp",
@@ -65,7 +71,53 @@
       "inRegistry": true,
       "state": "20",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
+    },
+    {
+      "entityId": "select.goe_422752_frc",
+      "domain": "select",
+      "name": "go-e force state",
+      "deviceClass": null,
+      "stateClass": null,
+      "unit": null,
+      "platform": "goecharger_api2",
+      "deviceId": "dev_goe",
+      "disabled": false,
+      "hidden": false,
+      "inRegistry": true,
+      "state": "0",
+      "lastReported": "2026-10-22T07:39:00+00:00",
+      "derived": null,
+      "options": [
+        "0",
+        "1",
+        "2"
+      ],
+      "own": false
+    },
+    {
+      "entityId": "select.switchboard_ev_charger_override",
+      "domain": "select",
+      "name": "Switchboard ev_charger override",
+      "deviceClass": null,
+      "stateClass": null,
+      "unit": null,
+      "platform": "mqtt",
+      "deviceId": "dev_switchboard",
+      "disabled": false,
+      "hidden": false,
+      "inRegistry": true,
+      "state": "auto",
+      "lastReported": "2026-10-22T07:39:00+00:00",
+      "derived": null,
+      "options": [
+        "auto",
+        "force_on",
+        "force_off"
+      ],
+      "own": true
     },
     {
       "entityId": "sensor.goe_422752_nrg_4",
@@ -81,7 +133,9 @@
       "inRegistry": true,
       "state": "0.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.goe_422752_nrg_5",
@@ -97,7 +151,9 @@
       "inRegistry": true,
       "state": "0.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.goe_422752_nrg_6",
@@ -113,7 +169,9 @@
       "inRegistry": true,
       "state": "0.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.goe_422752_nrg_7",
@@ -129,7 +187,9 @@
       "inRegistry": true,
       "state": "0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.grzalki_srednie_5m",
@@ -147,7 +207,9 @@
       "lastReported": "2026-10-22T07:39:00+00:00",
       "derived": {
         "platform": "statistics"
-      }
+      },
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.house_load_yaml",
@@ -163,7 +225,9 @@
       "inRegistry": false,
       "state": "1500.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.kettle_power",
@@ -181,7 +245,9 @@
       "lastReported": "2026-10-22T07:39:00+00:00",
       "derived": {
         "platform": "powercalc"
-      }
+      },
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.moc_grzalek_cwu",
@@ -199,7 +265,9 @@
       "lastReported": "2026-10-22T07:39:00+00:00",
       "derived": {
         "platform": "template"
-      }
+      },
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_current_a",
@@ -215,7 +283,9 @@
       "inRegistry": true,
       "state": "0.80",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_current_b",
@@ -231,7 +301,9 @@
       "inRegistry": true,
       "state": "1.67",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_current_c",
@@ -247,7 +319,9 @@
       "inRegistry": true,
       "state": "1.08",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_power",
@@ -263,7 +337,9 @@
       "inRegistry": true,
       "state": "-1500.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_power_a",
@@ -279,7 +355,9 @@
       "inRegistry": true,
       "state": "182.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_power_b",
@@ -295,7 +373,9 @@
       "inRegistry": true,
       "state": "382.8",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_power_c",
@@ -311,7 +391,9 @@
       "inRegistry": true,
       "state": "246.4",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_voltage_an",
@@ -327,7 +409,9 @@
       "inRegistry": true,
       "state": "230.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_voltage_bn",
@@ -343,7 +427,9 @@
       "inRegistry": true,
       "state": "230.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.solaredge_m1_ac_voltage_cn",
@@ -359,7 +445,9 @@
       "inRegistry": true,
       "state": "230.0",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.usage",
@@ -377,7 +465,9 @@
       "lastReported": "2026-10-22T07:39:00+00:00",
       "derived": {
         "platform": "template"
-      }
+      },
+      "options": null,
+      "own": false
     },
     {
       "entityId": "sensor.zuzycie_srednie_5m",
@@ -395,7 +485,9 @@
       "lastReported": "2026-10-22T07:39:00+00:00",
       "derived": {
         "platform": "statistics"
-      }
+      },
+      "options": null,
+      "own": false
     },
     {
       "entityId": "switch.grzalka_1",
@@ -411,7 +503,9 @@
       "inRegistry": true,
       "state": "off",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "switch.grzalka_2",
@@ -427,7 +521,9 @@
       "inRegistry": true,
       "state": "off",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     },
     {
       "entityId": "switch.grzalka_3",
@@ -443,7 +539,9 @@
       "inRegistry": true,
       "state": "off",
       "lastReported": "2026-10-22T07:39:00+00:00",
-      "derived": null
+      "derived": null,
+      "options": null,
+      "own": false
     }
   ],
   "devices": [
@@ -470,6 +568,12 @@
       "name": "go-e Charger 422752",
       "manufacturer": "go-e",
       "model": "Gemini flex"
+    },
+    {
+      "id": "dev_switchboard",
+      "name": "Switchboard",
+      "manufacturer": null,
+      "model": "Home Assistant add-on"
     }
   ]
 }

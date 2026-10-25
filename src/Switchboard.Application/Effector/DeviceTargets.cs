@@ -97,7 +97,15 @@ public sealed record VerificationRecord(DateTimeOffset At, HistoryKind Kind, dou
 /// <param name="Level">The pre-intervention level, as the device last reported it.</param>
 /// <param name="Shed">The level Switchboard brought it to: after a restart a persisted baseline stands only while the device still reports this level.</param>
 /// <param name="Commanded">The reduction was sent to Home Assistant (active mode); a shadow ("would") baseline is virtual and never persisted.</param>
-public sealed record StartBaseline(DeviceLevel Level, DeviceLevel Shed, DateTimeOffset Since, bool Commanded);
+public sealed record StartBaseline(DeviceLevel Level, DeviceLevel Shed, DateTimeOffset Since, bool Commanded)
+{
+    /// <summary>
+    /// A select stop actuator's option before Switchboard stopped the device, as it last reported it
+    /// (null when unknown, or for a switch stop). Resuming always sends the declared resume option;
+    /// this only lets the log name an undeclared option that is not restored.
+    /// </summary>
+    public OptionText? OptionBefore { get; init; }
+}
 
 /// <summary>The ledger's view of one device, for dispatch and the status.</summary>
 /// <param name="Target">The resolved target; null while unset (it then follows the reported state).</param>
@@ -235,8 +243,11 @@ public sealed class DeviceTargets : IDispatchLedgerView
         /// <summary>A reduction taken while the reported level was unknown: the first fresh report decides its baseline.</summary>
         public StartBaseline? BaselinePending { get; set; }
 
-        /// <summary>An acknowledged command reached the device after <see cref="BaselinePending"/> was taken: its first report no longer shows the user's level.</summary>
-        public bool AckedSincePending { get; set; }
+        /// <summary>
+        /// When the first command acknowledged after <see cref="BaselinePending"/> was taken (step time):
+        /// a first report older than that still shows the user's level; a newer one may show ours.
+        /// </summary>
+        public DateTimeOffset? PendingAckedAt { get; set; }
 
         /// <summary>The baseline came from state.json: it stands only if the first fresh report still shows the level it was shed to.</summary>
         public bool BaselineRestored { get; set; }
@@ -272,7 +283,7 @@ public sealed class DeviceTargets : IDispatchLedgerView
         {
             Baseline = null;
             BaselinePending = null;
-            AckedSincePending = false;
+            PendingAckedAt = null;
             BaselineRestored = false;
         }
 

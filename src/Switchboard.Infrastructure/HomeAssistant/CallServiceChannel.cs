@@ -22,7 +22,7 @@ public interface ICallServiceChannel
     long Generation { get; }
 
     /// <summary>Sends one call; refuses (throws <see cref="HomeAssistantCommandRefusedException"/>) unless the allow-list and <paramref name="isDeclared"/> accept it.</summary>
-    Task<CallOutcome> SendAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken);
+    Task<CallOutcome> SendAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken);
 }
 
 /// <summary>The one serialization of a service call, shared by the client and the development sink.</summary>
@@ -43,6 +43,12 @@ public static class CallServicePayload
             {
                 writer.WriteStartObject("service_data");
                 writer.WriteNumber("value", value);
+                writer.WriteEndObject();
+            }
+            else if (call.Option is { } option)
+            {
+                writer.WriteStartObject("service_data");
+                writer.WriteString("option", option);
                 writer.WriteEndObject();
             }
 
@@ -74,7 +80,7 @@ public sealed class HomeAssistantCallServiceChannel : ICallServiceChannel
         Volatile.Write(ref _client, client);
     }
 
-    public Task<CallOutcome> SendAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken) =>
+    public Task<CallOutcome> SendAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken) =>
         Volatile.Read(ref _client) is { } client
             ? client.CallServiceAsync(call, isDeclared, timeout, cancellationToken)
             : Task.FromResult(new CallOutcome(CommandOutcome.NotSent, "Home Assistant is not connected"));

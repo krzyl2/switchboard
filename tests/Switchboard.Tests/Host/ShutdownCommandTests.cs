@@ -86,6 +86,48 @@ public sealed class ShutdownCommandTests
         await sender.Soon();
     }
 
+    [Fact]
+    public async Task Shutdown_sends_the_select_stop_before_the_link_closes()
+    {
+        // SAFE-01 at a stop, with a charger stopped through its select (0.7.1): the shutdown step
+        // sends its floor setpoint and its stop option over the real command port, and the decision
+        // is commanded once Home Assistant acknowledged both.
+        var channel = new AnsweringChannel();
+        var time = new ObservableTimeProvider();
+        var directory = new ActuatorDirectoryHolder();
+        var outcomes = new GuardInbox();
+        var options = TestOptions.HomeAssistant();
+        var port = new HomeAssistantDeviceCommandPort(channel, directory, TestModes.State(OperatingMode.Active, controlAllowed: true), outcomes, MsOptions.Create(options), time, NullLogger<HomeAssistantDeviceCommandPort>.Instance);
+        var harness = new GuardRunnerHarness(TestDevices.Document(SelectStopRig.Charger), OperatingMode.Active, port: port);
+        directory.Observe(harness.Configuration.Configuration);
+        using var stop = new CancellationTokenSource();
+        var sender = port.RunAsync(stop.Token);
+        harness.Control.Set(true, ControlSwitchSource.Api);
+        harness.Push(("number.charger_current", "10", "A"), ("select.charger_force", "0", null), ("sensor.meter_current_a", "12", "A"), ("sensor.meter_current_b", "5", "A"), ("sensor.meter_current_c", "5", "A"));
+        harness.Runner.Step();
+        Assert.Equal(0, channel.Count);
+
+        await harness.Runner.ShutdownAsync(TestContext.Current.CancellationToken);
+        var calls = new List<AnsweringChannel.Call> { await channel.NextAsync(), await channel.NextAsync() };
+
+        Assert.Equal(
+            ["number.charger_current set_value 6", "select.charger_force select_option 1"],
+            calls.Select(c => $"{c.Sent.Entity.Value} {HomeAssistantCommandAllowList.ServiceName(c.Sent.Service)} {c.Sent.Value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? c.Sent.Option}").Order(StringComparer.Ordinal));
+        foreach (var call in calls)
+        {
+            call.Answer(CommandOutcome.Acknowledged);
+        }
+
+        await port.WhenIdleAsync(options.ShutdownCommandWait, TestContext.Current.CancellationToken).Soon();
+        harness.Runner.Drain();
+
+        var shutdown = Assert.Single(harness.Recorder.Decisions, d => d.Reason == ReasonCode.SafeState && d.Origin == DecisionOrigin.Guard && d.Device?.Value == "ev_charger");
+        Assert.Equal((DecisionAction.SwitchOff, true), (shutdown.Action, shutdown.Commanded));
+
+        await stop.CancelAsync();
+        await sender.Soon();
+    }
+
     /// <summary>A connected link whose calls the test answers; the same allow-list check as the client.</summary>
     private sealed class AnsweringChannel : ICallServiceChannel
     {
@@ -98,7 +140,7 @@ public sealed class ShutdownCommandTests
 
         public int Count => Volatile.Read(ref _count);
 
-        public Task<CallOutcome> SendAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
+        public Task<CallOutcome> SendAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
         {
             HomeAssistantCommandAllowList.EnsureCallServiceAllowed(CallServicePayload.Build(1, call).Span, isDeclared);
             Interlocked.Increment(ref _count);

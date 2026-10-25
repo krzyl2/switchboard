@@ -41,7 +41,7 @@ public static class SetupDocumentMapper
         ("rated_current_a", "ratedCurrentA"), ("rated_power_w", "ratedPowerW"), ("min", "min"), ("max", "max"), ("step", "step"),
         ("value_per_kwh", "valuePerKwh"), ("state_reports", "stateReports"), ("state_max_age", "stateReports"), ("reaction_time", "reactionTime"),
         ("min_on", "minOn"), ("min_off", "minOff"), ("rotation_group", "rotationGroup"), ("circuit_group", "circuitGroup"), ("draw", "draw"),
-        ("stop_actuator", "stopActuator"), ("start", "start"),
+        ("stop_actuator", "stopActuator"), ("stop_option", "stopOption"), ("resume_option", "resumeOption"), ("start", "start"),
     ];
 
     private static readonly string[] EditableTypes = ["onoff", "modulating", "storage"];
@@ -258,6 +258,8 @@ public static class SetupDocumentMapper
             CircuitGroup = ConfigTree.AsText(device.Get("circuit_group")),
             RotationGroup = ConfigTree.AsText(device.Get("rotation_group")),
             StopActuator = ConfigTree.AsText(device.Get("stop_actuator")),
+            StopOption = ConfigTree.AsText(device.Get("stop_option")),
+            ResumeOption = ConfigTree.AsText(device.Get("resume_option")),
             Start = ConfigTree.AsText(device.Get("start")),
             Draw = draw is null ? null : new DrawDraft
             {
@@ -501,6 +503,10 @@ public static class SetupDocumentMapper
         // start: the default needs no key (a later default still applies); a key the file had stays
         // written, whatever its value, so the wizard never silently changes what the user wrote.
         var start = draft.Start is { } wanted && (device.Get("start") is not null || wanted != defaultStart) ? wanted : null;
+
+        // The options belong to a select stop only (a switch stop is turned off and on); an option
+        // the file wrote as 1 stays 1, a new one is written quoted so it reads back as text.
+        var selectStop = type == "modulating" && IsSelectStop(draft.StopActuator);
         device = device
             .SetText("name", draft.Name)
             .SetText("actuator", draft.Actuator)
@@ -519,6 +525,8 @@ public static class SetupDocumentMapper
             .SetText("rotation_group", relay ? draft.RotationGroup : null)
             .SetText("circuit_group", draft.CircuitGroup)
             .SetText("stop_actuator", type == "modulating" ? draft.StopActuator : null)
+            .SetText("stop_option", selectStop ? draft.StopOption : null)
+            .SetText("resume_option", selectStop ? draft.ResumeOption : null)
             .SetPlain("start", start);
 
         // state_max_age belongs to an age-judged state; next to on_change the parser refuses it, at a
@@ -543,6 +551,10 @@ public static class SetupDocumentMapper
             .SetPlain("power_unit", drawDraft.Power is null || drawDraft.PowerUnit == DeviceSectionParser.DefaultPowerUnit ? null : drawDraft.PowerUnit);
         return device.Set("draw", draw);
     }
+
+    /// <summary>Whether a stop actuator is a select (or input_select), whose stop and resume options the wizard writes.</summary>
+    public static bool IsSelectStop(string? stopActuator) =>
+        EntityId.TryParse(stopActuator, out var entity) && DeviceSectionParser.SelectStopDomains.Contains(entity.Value.Value[..entity.Value.Value.IndexOf('.', StringComparison.Ordinal)]);
 
     /// <summary>One signal slot the wizard owns: a role, on a phase or not, and the draft value for it.</summary>
     private sealed record Slot(string Role, Phase? Phase, SignalDraft? Value, string Field, string DefaultName, string Kind)

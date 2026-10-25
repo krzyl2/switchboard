@@ -127,6 +127,36 @@ public sealed class SetupEndpointTests
     }
 
     [Fact]
+    public async Task Discovery_carries_a_selects_options_and_marks_switchboards_own_entities()
+    {
+        // 0.7.1: the stop picker offers the charger's force-state select with what it offers, and
+        // never Switchboard's own override select.
+        using var root = new TempWebRoot();
+        using var factory = ReplayHost(root, new SteppableTime(At(7, 0)));
+
+        var body = Json(await SendAsync(factory, "GET", "/api/setup/discovery"));
+
+        var entities = body.GetProperty("entities").EnumerateArray().ToDictionary(e => e.GetProperty("entityId").GetString()!);
+        Assert.Equal(["0", "1", "2"], entities["select.goe_422752_frc"].GetProperty("options").EnumerateArray().Select(o => o.GetString()));
+        Assert.False(entities["select.goe_422752_frc"].GetProperty("own").GetBoolean());
+        Assert.True(entities["select.switchboard_ev_charger_override"].GetProperty("own").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, entities["number.goe_422752_amp"].GetProperty("options").ValueKind);
+    }
+
+    [Fact]
+    public async Task Templates_carry_the_stop_actuator_domains_from_the_parser()
+    {
+        using var root = new TempWebRoot();
+        using var factory = ReplayHost(root, new SteppableTime(At(7, 0)));
+
+        var body = Json(await SendAsync(factory, "GET", "/api/setup/templates"));
+
+        var templates = body.GetProperty("templates").EnumerateArray().ToDictionary(t => t.GetProperty("id").GetString()!);
+        Assert.Equal(["switch", "input_boolean", "select", "input_select"], templates["ev_charger"].GetProperty("stopActuatorDomains").EnumerateArray().Select(d => d.GetString()));
+        Assert.Empty(templates["water_heater_element"].GetProperty("stopActuatorDomains").EnumerateArray());
+    }
+
+    [Fact]
     public void Dev_discovery_is_refused_without_replay()
     {
         using var root = new TempWebRoot();
@@ -393,14 +423,15 @@ public sealed class SetupSpaContractTests
         Assert.Equal(SpaContract.Describe([full], free), SpaContract.Describe([committed], free));
     }
 
-    /// <summary>A compact sample: the first entities of a long list, with derived and unverifiable ones kept.</summary>
+    /// <summary>A compact sample: the first entities of a long list, with derived and unverifiable ones, the meter, the relays and the charger's own entities kept.</summary>
     private static JsonElement Trim(JsonElement document, string list, int keep)
     {
         var node = JsonNode.Parse(document.GetRawText())!;
         var items = node[list]!.AsArray();
         var kept = items.Where((item, i) => i < keep || item!["derived"] is not null || item!["inRegistry"]!.GetValue<bool>() == false
             || item!["entityId"]!.GetValue<string>().StartsWith("sensor.solaredge_m1_ac_", StringComparison.Ordinal)
-            || item!["entityId"]!.GetValue<string>().StartsWith("switch.", StringComparison.Ordinal)).Select(i => i!.DeepClone()).ToList();
+            || item!["entityId"]!.GetValue<string>().StartsWith("switch.", StringComparison.Ordinal)
+            || item!["entityId"]!.GetValue<string>().StartsWith("sensor.goe_422752_", StringComparison.Ordinal)).Select(i => i!.DeepClone()).ToList();
         node[list] = new JsonArray([.. kept]);
         using var json = JsonDocument.Parse(node.ToJsonString());
         return json.RootElement.Clone();

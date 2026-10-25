@@ -16,7 +16,9 @@ charger's own draw as a controlled load) never rejects a sample.
   * heater relays switch.grzalka_1/2/3 (Modbus, on_change): reported "off" once at the start and
     then only when someone else switches them;
   * go-e charger: current setpoint number.goe_422752_amp at 20 A all morning; its own draw
-    (nrg_4 in A, nrg_7 in W, every 2.5 s while it changes) is 0 except while the car charges.
+    (nrg_4 in A, nrg_7 in W, every 2.5 s while it changes) is 0 except while the car charges; its
+    force-state select select.goe_422752_frc (the example's stop actuator, 0.7.1) reported "0"
+    (neutral) once at the start.
 
 Events (meter phase A = L1, B = L2, C = L3, as the example maps them):
 
@@ -119,6 +121,7 @@ def load(phase, moment):
 for heater in ("switch.grzalka_1", "switch.grzalka_2", "switch.grzalka_3"):
     add(heater, START + timedelta(milliseconds=1), "off")
 add("number.goe_422752_amp", START + timedelta(milliseconds=2), "20")
+add("select.goe_422752_frc", START + timedelta(milliseconds=2), "0")
 add("sensor.goe_422752_nrg_4", START + timedelta(milliseconds=3), "0.0")
 add("sensor.goe_422752_nrg_7", START + timedelta(milliseconds=3), "0")
 entity, _, on, off = EXTERNAL_HEATER

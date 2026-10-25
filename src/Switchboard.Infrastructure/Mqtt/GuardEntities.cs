@@ -199,7 +199,6 @@ public sealed partial class GuardEntities : IMqttEntitySource
         Json(new Dictionary<string, object?>
         {
             ["ceiling"] = Snake(status.Mode.Ceiling),
-            ["ui_choice"] = Snake(status.Mode.UiChoice),
             ["note"] = Snake(status.Mode.Note),
             ["control_allowed"] = status.Mode.ControlAllowed,
             ["missing"] = status.Mode.Missing.Select(Snake).ToArray(),

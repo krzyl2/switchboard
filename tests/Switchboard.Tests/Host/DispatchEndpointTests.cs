@@ -47,7 +47,7 @@ public sealed class DispatchEndpointTests
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Assert.Equal(["at", "mode", "commandPath", "phases", "devices"], Names(body));
-        Assert.Equal(["ceiling", "uiChoice", "effective", "note"], Names(body.GetProperty("mode")));
+        Assert.Equal(["ceiling", "effective", "note"], Names(body.GetProperty("mode")));
         Assert.False(body.GetProperty("commandPath").GetBoolean());
         var phase = body.GetProperty("phases")[0];
         Assert.Equal(["phase", "envelopeA", "inFlightA", "dataValid", "invalidReason", "foreignW", "foreignBaselineW", "rank", "groups"], Names(phase));

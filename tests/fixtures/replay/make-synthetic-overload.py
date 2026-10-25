@@ -9,7 +9,8 @@ and entity IDs as the live recording, so deploy/examples/switchboard.yaml maps i
     poll, per-phase power (positive = export) 15 ms after, voltages once. Every poll alternates the
     value by 0.01 A, so Home Assistant history has a row for every poll, as the live meter does;
   * the inverter asleep all night (unavailable), so there is no production;
-  * heater elements switch.grzalka_1/2/3 on, the go-e charger current number.goe_422752_amp at 16 A;
+  * heater elements switch.grzalka_1/2/3 on, the go-e charger current number.goe_422752_amp at 16 A
+    and its force-state select select.goe_422752_frc (the example's stop actuator) at "0" (neutral);
   * L1 to L3 at a quiet 8 A between segments; every segment is preceded by 13 min of quiet, so the
     overload budget is full and every limit released before it starts.
 
@@ -94,6 +95,7 @@ def current_at(phase, poll, index):
 for heater in ("switch.grzalka_1", "switch.grzalka_2", "switch.grzalka_3"):
     add(heater, START + timedelta(milliseconds=1), "on")
 add("number.goe_422752_amp", START + timedelta(milliseconds=2), "16")
+add("select.goe_422752_frc", START + timedelta(milliseconds=2), "0")
 add("sensor.solaredge_ac_power", START + timedelta(milliseconds=3), "unavailable")
 for phase in PHASES:
     add(f"sensor.solaredge_ac_current_{phase}", START + timedelta(milliseconds=4), "unavailable")

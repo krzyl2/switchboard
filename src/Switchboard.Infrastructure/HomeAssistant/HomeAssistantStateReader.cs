@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -140,13 +141,22 @@ public sealed class HomeAssistantStateReader : IEntityStateReader
             var lastUpdated = Time(root, "last_updated") ?? lastChanged;
             var reported = Time(root, "last_reported") ?? lastUpdated;
             string? unit = null;
-            if (root.TryGetProperty("attributes", out var attributes) && attributes.ValueKind == JsonValueKind.Object
-                && attributes.TryGetProperty("unit_of_measurement", out var unitElement) && unitElement.ValueKind == JsonValueKind.String)
+            ImmutableArray<string>? options = null;
+            if (root.TryGetProperty("attributes", out var attributes) && attributes.ValueKind == JsonValueKind.Object)
             {
-                unit = unitElement.GetString();
+                if (attributes.TryGetProperty("unit_of_measurement", out var unitElement) && unitElement.ValueKind == JsonValueKind.String)
+                {
+                    unit = unitElement.GetString();
+                }
+
+                // A select's choices; anything but a bounded list of texts reads as not known.
+                if (attributes.TryGetProperty("options", out var optionsElement) && optionsElement.ValueKind == JsonValueKind.Array && optionsElement.GetArrayLength() <= EntityUpdate.MaxOptions)
+                {
+                    options = EntityUpdate.BoundedOptions([.. optionsElement.EnumerateArray().Select(o => o.ValueKind == JsonValueKind.String ? o.GetString() : null)]);
+                }
             }
 
-            return new EntityStateRead.Found(new EntityUpdate(entity, state, unit, lastUpdated, reported));
+            return new EntityStateRead.Found(new EntityUpdate(entity, state, unit, lastUpdated, reported) { Options = options });
         }
         catch (JsonException)
         {

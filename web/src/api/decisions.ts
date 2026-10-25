@@ -211,7 +211,6 @@ export interface DispatchInputs {
  */
 export interface ModeInputs {
   ceiling: OperatingMode;
-  uiChoice: OperatingMode;
   note: ModeNote;
   controlAllowed: boolean | null;
   configurationValid: boolean | null;
@@ -375,7 +374,6 @@ function modeInputs(raw: unknown, path: string): ModeInputs {
   const r = object(raw, path);
   return {
     ceiling: oneOf(OPERATING_MODES, field(r, 'ceiling', path), `${path}.ceiling`),
-    uiChoice: oneOf(OPERATING_MODES, field(r, 'uiChoice', path), `${path}.uiChoice`),
     note: oneOf(MODE_NOTES, field(r, 'note', path), `${path}.note`),
     controlAllowed: nullable(field(r, 'controlAllowed', path), `${path}.controlAllowed`, bool),
     configurationValid: nullable(field(r, 'configurationValid', path), `${path}.configurationValid`, bool),

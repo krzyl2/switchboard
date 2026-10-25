@@ -167,12 +167,14 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
     // DISP-10 and DISP-08: the elements are free to rotate, so the one on the phase with the most
     // headroom (L2, the lowest base load) goes first, and only one increase is in flight at a time:
     // the charger's restore from the startup hold (06:03:30) takes the next window, so the L3
-    // element starts only at the first boundary after that window closed.
+    // element starts only at the first boundary after that window closed. Since 0.7.1 the startup
+    // hold stops the charger through its select, so that restore is a switch-on (enabled again at a
+    // setpoint), no longer a setpoint change from 6 A.
     [Fact]
     public void Rotation_starts_the_element_with_the_most_headroom_first_one_window_at_a_time()
     {
-        var starts = run.Shadow.Decisions.Where(d => d.Origin == DecisionOrigin.Dispatch && d.Action == DecisionAction.SwitchOn).Take(2).ToList();
-        var restore = DispatchSyntheticReplayRun.Of(run.Shadow, "ev_charger", DecisionAction.SetSetpoint).First();
+        var starts = run.Shadow.Decisions.Where(d => d.Origin == DecisionOrigin.Dispatch && d.Action == DecisionAction.SwitchOn && d.Device?.Value != "ev_charger").Take(2).ToList();
+        var restore = ChargerRestore(run.Shadow);
 
         Assert.Equal(
             [("heater_l2", DispatchSyntheticReplayRun.At(6, 3)), ("heater_l3", DispatchSyntheticReplayRun.At(6, 4, 30))],
@@ -183,8 +185,10 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
     }
 
     // DISP-03 / 04 §3: the charger is worth more per kWh, so its setpoint takes L1's headroom first;
-    // the L1 element (7 A plus the start hysteresis) does not fit next to even the charger's 6 A
-    // floor, and starts only once protection has the charger at its minimum.
+    // the L1 element (7 A plus the start hysteresis) does not fit next to the charger's setpoint, and
+    // starts only once protection has the charger at its minimum. Since 0.7.1 the charger can be
+    // stopped (its select), so its floor is zero: alone the element would fit, and what holds it back
+    // is the charger's higher value per kWh (value_rank_below_cutoff), no longer headroom alone.
     [Fact]
     public void The_charger_worth_more_takes_the_L1_headroom_and_the_element_waits()
     {
@@ -197,26 +201,32 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         Assert.True(firstL1Start.At > chargerFloor.At, $"heater_l1 started at {firstL1Start.At:O}, before the charger was lowered at {chargerFloor.At:O}.");
         Assert.True(charger.Intended!.Setpoint!.Value.Value > 6, "The charger should hold more than its floor of L1's headroom.");
         Assert.True(charger.StartRank < element.StartRank);
-        Assert.Equal(ReasonCode.HeadroomInsufficient, element.Reason);
+        Assert.Equal(ReasonCode.ValueRankBelowCutoff, element.Reason);
     }
 
     // The live 0.3.0 finding: a setpoint is a ceiling, not a draw. The idle charger at 20 A relieves
     // nothing, so the guard's estimate on L1 is the measured current; and its ceiling is budgeted:
-    // held at its 6 A floor by the startup safe state, the intended setpoint is restored (a recorded
-    // would-increase from the held level, DISP-03) only to what fits under the reserve threshold,
-    // never to the 20 A the idle car would "allow" if its draw were budgeted instead.
+    // held by the startup safe state (stopped through its select since 0.7.1, at its 6 A floor), the
+    // charger is restored (a recorded would-increase from the held level, DISP-03) only to what fits
+    // under the reserve threshold, never to the 20 A the idle car would "allow" if its draw were
+    // budgeted instead.
     [Fact]
     public void Idle_charger_at_a_20A_setpoint_relieves_nothing_and_is_budgeted_at_its_ceiling()
     {
         var l1 = run.Shadow.StatusAt(DispatchSyntheticReplayRun.At(7, 0)).Phases.Single(p => p.Phase == Phase.L1);
         var held = DispatchSyntheticReplayRun.Of(run.Shadow, "ev_charger", DecisionAction.SwitchOff, DecisionOrigin.Guard).First();
-        var restored = DispatchSyntheticReplayRun.Of(run.Shadow, "ev_charger", DecisionAction.SetSetpoint).First();
+        var restored = ChargerRestore(run.Shadow);
 
         Assert.Equal(l1.Current!.Value.Value, l1.EffectiveCurrent!.Value.Value, 3);
-        Assert.Equal(6, held.Target!.Setpoint!.Value.Value);
+        Assert.Equal((6.0, false), (held.Target!.Setpoint!.Value.Value, held.Target.Enabled));
         Assert.Equal((DispatchSyntheticReplayRun.At(6, 3, 30), ReasonCode.HeadroomAvailable), (restored.At, restored.Reason));
-        Assert.InRange(restored.Target!.Setpoint!.Value.Value, 6.5, 19.5);
+        Assert.True(restored.Target!.Enabled);
+        Assert.InRange(restored.Target.Setpoint!.Value.Value, 6.5, 19.5);
     }
+
+    /// <summary>The charger's first restore by dispatch: enabled again (from the stop) or a raised setpoint.</summary>
+    private static Decision ChargerRestore(GuardReplayHarness harness) =>
+        harness.Decisions.First(d => d.Device?.Value == "ev_charger" && d.Origin == DecisionOrigin.Dispatch && d.Action is DecisionAction.SwitchOn or DecisionAction.SetSetpoint);
 
     // DISP-09: a reduction wanted inside min_on is recorded once as deferred and applied when the
     // lockout expires (the L3 element started 06:04:30, the kettle came at 06:06: a foreign load, v3).
@@ -345,7 +355,10 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
 
     // DISP-07 for a setpoint: a car limits its own current, so an increase it does not draw is
     // inconclusive, never a mismatch; a decrease is verified strictly (still drawing above the new
-    // ceiling is a mismatch).
+    // ceiling is a mismatch). The recording's car keeps drawing whatever is commanded: since 0.7.1
+    // the guard also stops the charger through its select, and that stop does not show in the
+    // recorded draw either, so the charger may be marked unresponsive, but only by a stop the
+    // recording could not follow (expected 0 A, measured a draw), never by an increase.
     [Fact]
     public void A_charger_increase_it_does_not_draw_is_inconclusive_and_a_decrease_is_verified_strictly()
     {
@@ -353,7 +366,9 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
 
         Assert.Contains(history, h => h.Kind == HistoryKind.Command && h.Unit == MeasureUnit.Amperes && h.Verdict == Verdict.Inconclusive && h.Measured < h.Expected);
         Assert.Contains(history, h => h.Kind == HistoryKind.Command && h.Unit == MeasureUnit.Amperes && h.Verdict == Verdict.Mismatch && h.Measured > h.Expected);
-        Assert.DoesNotContain(run.Active.Decisions, d => d.Device?.Value == "ev_charger" && d.Action == DecisionAction.MarkedUnresponsive);
+        Assert.All(
+            run.Active.Decisions.Where(d => d.Device?.Value == "ev_charger" && d.Action == DecisionAction.MarkedUnresponsive),
+            d => Assert.True(d.Inputs.Dispatch!.Verification is { Expected: 0, Verdict: Verdict.Mismatch } v && v.Measured > 0, $"marked unresponsive at {d.At:O} by {d.Inputs.Dispatch.Verification}"));
     }
 
     // SAFE-05 in the active run: every command the gate sent addresses a declared device.

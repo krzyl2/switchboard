@@ -49,14 +49,6 @@ public sealed class ModeResolutionTests
     }
 
     [Fact]
-    public void Ui_choice_reads_as_the_control_switch()
-    {
-        // The Stage 5 UI choice became the switch: decision lines and the MQTT attribute keep the word.
-        Assert.Equal(OperatingMode.Active, ModeState.Resolve(OperatingMode.Shadow, true, true, true).UiChoice);
-        Assert.Equal(OperatingMode.Shadow, ModeState.Resolve(OperatingMode.Active, false, true, true).UiChoice);
-    }
-
-    [Fact]
     public void Each_effective_mode_change_records_ModeResolved_in_the_same_step()
     {
         var (loop, _) = Loop(OperatingMode.Active);

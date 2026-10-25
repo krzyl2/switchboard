@@ -39,6 +39,45 @@ public sealed class SetupDocumentMapperTests
     }
 
     [Fact]
+    public void Select_options_round_trip_and_keep_the_files_spelling()
+    {
+        // 0.7.1: the wizard reads and writes stop_option and resume_option; an option the file wrote
+        // as a plain 1 stays exactly as written, a new one is written quoted so it reads back as text.
+        var yaml = Rich.Replace("stop_option: \"1\"", "stop_option: 1", StringComparison.Ordinal);
+        var draft = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml)).Draft;
+        var charger = draft.Devices.Single(d => d.Id == "ev_charger");
+        Assert.Equal(("select.goe_422752_frc", "1", "0"), (charger.StopActuator, charger.StopOption, charger.ResumeOption));
+
+        var (unchanged, result, _) = SetupFixtures.Apply(yaml, draft);
+        Assert.Contains("stop_option: 1\n", unchanged.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Equal(("1", "0"), (result.Configuration!.Devices.Single(d => d.Id.Value == "ev_charger").StopOptions!.StopOption.Value, result.Configuration.Devices.Single(d => d.Id.Value == "ev_charger").StopOptions!.ResumeOption.Value));
+
+        var edited = draft with { Devices = [.. draft.Devices.Select(d => d.Id == "ev_charger" ? d with { StopOption = "2", ResumeOption = "0" } : d)] };
+        var (text, reparsed, _) = SetupFixtures.Apply(yaml, edited);
+        Assert.Contains("stop_option: \"2\"", text, StringComparison.Ordinal);
+        Assert.Equal("2", reparsed.Configuration!.Devices.Single(d => d.Id.Value == "ev_charger").StopOptions!.StopOption.Value);
+    }
+
+    [Fact]
+    public void Switch_stop_removes_options()
+    {
+        // The options belong to a select stop only: picking a switch stop (or none) removes them, so
+        // the parser never sees an option next to a switch.
+        var draft = SetupDocumentMapper.Read(SetupFixtures.Tree(Rich)).Draft;
+        var toSwitch = draft with { Devices = [.. draft.Devices.Select(d => d.Id == "ev_charger" ? d with { StopActuator = "switch.goe_422752_charging" } : d)] };
+        var toNone = draft with { Devices = [.. draft.Devices.Select(d => d.Id == "ev_charger" ? d with { StopActuator = null } : d)] };
+
+        var (switchText, switchResult, _) = SetupFixtures.Apply(Rich, toSwitch);
+        var (noneText, noneResult, _) = SetupFixtures.Apply(Rich, toNone);
+
+        Assert.DoesNotContain("stop_option", switchText, StringComparison.Ordinal);
+        Assert.DoesNotContain("resume_option", switchText, StringComparison.Ordinal);
+        Assert.Equal(ConfigurationStatus.Valid, switchResult.Status);
+        Assert.DoesNotContain("stop_", noneText, StringComparison.Ordinal);
+        Assert.Equal(ConfigurationStatus.Valid, noneResult.Status);
+    }
+
+    [Fact]
     public void Written_document_reparses_to_same_tree_and_configuration()
     {
         var tree = SetupFixtures.Tree(Rich);
@@ -134,9 +173,11 @@ public sealed class SetupDocumentMapperTests
     public void A_new_device_reusing_a_removed_device_id_is_refused_at_its_id()
     {
         // Remove the charger, add the EV-charger template, which suggests the id ev_charger: merged
-        // into the removed entry, the "new" charger would silently keep every key the wizard does not
-        // own (a stop actuator, a shed priority, a draw unit), an actuator the user believes is gone.
-        var yaml = Rich.Replace("    actuator: number.goe_422752_amp\n", "    actuator: number.goe_422752_amp\n    stop_actuator: switch.goe_422752_stop\n    shed_priority: 1\n", StringComparison.Ordinal);
+        // into the removed entry, the "new" charger would silently keep keys of the old one (its
+        // select stop and options from the example, a shed priority, a draw unit), an actuator the
+        // user believes is gone.
+        var yaml = Rich.Replace("    actuator: number.goe_422752_amp\n", "    actuator: number.goe_422752_amp\n    shed_priority: 1\n", StringComparison.Ordinal);
+        Assert.Contains("stop_actuator: select.goe_422752_frc", yaml, StringComparison.Ordinal);
         Assert.Equal(ConfigurationStatus.Valid, TestConfigurations.Parse(yaml).Status);
         var draft = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml)).Draft;
         var template = new DeviceDraft { Id = "ev_charger", Template = "ev_charger", Type = "modulating", Actuator = "number.other_charger_amp", Phase = "L1", Min = 6, Max = 16, Step = 1, ValuePerKwh = 1 };
@@ -147,6 +188,7 @@ public sealed class SetupDocumentMapperTests
         var issue = Assert.Single(mapped.Issues);
         Assert.Equal((SetupIssueCodes.DeviceIdTaken, "devices[3].id", "ev_charger"), (issue.Code, issue.Field, issue.Args["device"]));
         Assert.DoesNotContain("stop_actuator", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("stop_option", text, StringComparison.Ordinal);
     }
 
     [Fact]

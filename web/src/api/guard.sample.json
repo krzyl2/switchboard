@@ -2,7 +2,6 @@
   "at": "2026-10-24T10:00:00.004+00:00",
   "mode": {
     "ceiling": "shadow",
-    "uiChoice": "shadow",
     "effective": "shadow",
     "note": "none"
   },
@@ -919,7 +918,6 @@
         "device": null,
         "mode": {
           "ceiling": "shadow",
-          "uiChoice": "shadow",
           "note": "none",
           "controlAllowed": false,
           "configurationValid": true,

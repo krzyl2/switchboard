@@ -48,22 +48,33 @@ public sealed class Pkg03EvidenceTests
     {
         var (loop, entities) = Build();
         loop.Runner.Step();
-        Assert.Equal(("shadow", "shadow"), (entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId).State, Attribute(entities, "ui_choice")));
+        Assert.Equal(("shadow", false), (entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId).State, Attributes(entities).GetProperty("control_allowed").GetBoolean()));
 
         loop.Control!.Set(true, ControlSwitchSource.Api);
         loop.Runner.Step();
 
         var entity = entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId);
         Assert.Equal("active", entity.State);
-        Assert.Equal("active", Attribute(entities, "ui_choice"));
-        Assert.Equal("active", Attribute(entities, "ceiling"));
+        Assert.True(Attributes(entities).GetProperty("control_allowed").GetBoolean());
+        Assert.Equal("active", Attributes(entities).GetProperty("ceiling").GetString());
     }
 
-    private static string? Attribute(GuardEntities entities, string key)
+    [Fact]
+    public void Mode_entity_attributes_have_no_ui_choice()
+    {
+        // Cleanup 0.7.1: the 0.6.x UI choice (always shadow since the control switch replaced it)
+        // is gone from the mode sensor; control_allowed says what it used to stand for.
+        var (loop, entities) = Build();
+        loop.Runner.Step();
+
+        Assert.Equal(["ceiling", "note", "control_allowed", "missing"], Attributes(entities).EnumerateObject().Select(p => p.Name));
+    }
+
+    private static JsonElement Attributes(GuardEntities entities)
     {
         var attributes = entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ModeObjectId).Attributes!;
         using var json = JsonDocument.Parse(attributes);
-        return json.RootElement.GetProperty(key).GetString();
+        return json.RootElement.Clone();
     }
 
     private static (ControlLoop Loop, GuardEntities Entities) Build()

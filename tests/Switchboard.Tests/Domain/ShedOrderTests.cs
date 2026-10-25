@@ -145,7 +145,10 @@ public sealed class ShedOrderTests
             TimeSpan.FromSeconds(20),
             false,
             TimeSpan.FromSeconds(60),
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(60))
+        {
+            Start = StartPolicy.RestoreOnly,
+        };
 
         Assert.Equal([(ShedAction.ReduceToMinimum, 10.0)], ShedOrder.For(Phase.L1, [Candidate(battery, new SetpointApplied(new Amperes(10)))]).Select(s => (s.Action, s.Relief.Value)));
         Assert.Empty(ShedOrder.For(Phase.L1, [Candidate(battery, new SetpointApplied(new Amperes(-5)))]));
@@ -165,7 +168,10 @@ public sealed class ShedOrderTests
             TimeSpan.FromSeconds(1),
             false,
             TimeSpan.FromMinutes(6),
-            TimeSpan.FromSeconds(90));
+            TimeSpan.FromSeconds(90))
+        {
+            Start = StartPolicy.RestoreOnly,
+        };
 
         var steps = ShedOrder.For(Phase.L1, [Candidate(boiler, new RelayApplied(true), new RelayApplied(true), new RelayApplied(true))]);
 
@@ -199,7 +205,10 @@ public sealed class ShedOrderTests
         TimeSpan.FromSeconds(1),
         false,
         TimeSpan.FromMinutes(6),
-        TimeSpan.FromSeconds(90));
+        TimeSpan.FromSeconds(90))
+    {
+        Start = StartPolicy.RestoreOnly,
+    };
 
     private static DeviceSpec Charger() => new(
         DeviceName.Parse("charger"),
@@ -211,7 +220,10 @@ public sealed class ShedOrderTests
         TimeSpan.FromSeconds(20),
         false,
         TimeSpan.FromSeconds(60),
-        TimeSpan.FromSeconds(60));
+        TimeSpan.FromSeconds(60))
+    {
+        Start = StartPolicy.RestoreOnly,
+    };
 
     private static ShedCandidate Candidate(DeviceSpec spec, bool underMinOn = false) =>
         new(spec, [.. spec.Stages.Select(_ => (AppliedState?)new RelayApplied(true))], underMinOn, ImmutableDictionary<int, StageLimit>.Empty);

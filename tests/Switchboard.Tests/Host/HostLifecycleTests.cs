@@ -110,6 +110,7 @@ public sealed class HostLifecycleTests
         // the stop path survives the same failure again, and the entity goes OFF and offline.
         var transport = new FakeMqttTransport(new MqttTopicGuard("homeassistant", "switchboard"));
         using var root = new TempWebRoot();
+        BrokenControlSource? broken = null;
         var factory = new SwitchboardHostFactory(root.Path, replaceLinks: services =>
         {
             services.RemoveAll<IMqttTransport>();
@@ -119,18 +120,22 @@ public sealed class HostLifecycleTests
             services.RemoveAll<IWebSocketTransportFactory>();
             services.AddSingleton<IWebSocketTransportFactory>(new ScriptedTransportFactory());
             services.RemoveAll<IControlInputSource>();
-            services.AddSingleton<IControlInputSource>(new BrokenControlSource(transport));
+            services.AddSingleton<IControlInputSource>(sp => broken = new BrokenControlSource(sp.GetRequiredService<SignalSnapshotHolder>()));
         });
 
+        // The defect strikes only once the host has started and the broker session is up: a stop
+        // requested while the host is still starting would dispose it under the test host before
+        // it hands out its server (flaky in 0.7.0: 2 of 6 full runs, ObjectDisposedException), and
+        // a guard that died before MQTT connected would leave no ON entity to turn OFF.
         _ = factory.Server;
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(() => stopping.TrySetResult());
+        await transport.UntilAsync(o => o.Kind == "connect");
+        broken!.Arm();
         await stopping.Task.Soon();
 
-        // The broker session is up (the broken input fails only once it is); whether it got as far
-        // as its subscriptions before the stop is a race the stop path must not depend on, so the
-        // test does not wait for them either.
-        await transport.UntilAsync(o => o.Kind == "connect");
+        // Whether the broker session got as far as its subscriptions before the stop is a race the
+        // stop path must not depend on, so the test does not wait for them.
         await factory.DisposeAsync();
 
         Assert.Equal(
@@ -139,26 +144,38 @@ public sealed class HostLifecycleTests
     }
 
     /// <summary>
-    /// A defect in the guard's input path: every read throws, once the broker session is up. Since
-    /// .NET 10 a BackgroundService's ExecuteAsync runs off the start path, so the MQTT link no longer
-    /// connects before the guard starts; a guard that died first would leave no ON entity to turn
-    /// OFF, which is not the case this test is about.
+    /// A defect in the guard's input path: the composition's own inputs until the test arms it, then
+    /// every read throws. Arming announces new inputs, as the signal store would, so the guard steps
+    /// at once and dies on the read; no clock is involved.
     /// </summary>
-    private sealed class BrokenControlSource(FakeMqttTransport transport) : IControlInputSource
+    private sealed class BrokenControlSource(SignalSnapshotHolder holder) : IControlInputSource
     {
-        public ControlInputs Current
-        {
-            get
-            {
-                SpinWait.SpinUntil(() => transport.IsConnected, TimeSpan.FromSeconds(10));
-                throw new InvalidOperationException("A defect in the guard's input path.");
-            }
-        }
+        private readonly IControlInputSource _inner = holder;
+        private volatile bool _armed;
+        private EventHandler<ControlInputs>? _published;
+
+        public ControlInputs Current => _armed ? throw new InvalidOperationException("A defect in the guard's input path.") : _inner.Current;
 
         public event EventHandler<ControlInputs>? Published
         {
-            add { }
-            remove { }
+            add
+            {
+                _published += value;
+                _inner.Published += value;
+            }
+
+            remove
+            {
+                _published -= value;
+                _inner.Published -= value;
+            }
+        }
+
+        public void Arm()
+        {
+            var last = _inner.Current;
+            _armed = true;
+            _published?.Invoke(this, last);
         }
     }
 }

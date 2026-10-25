@@ -28,7 +28,7 @@ public sealed record GuardResponse(
     StateFileDto StateFile,
     IReadOnlyList<DecisionDto> Decisions);
 
-public sealed record GuardModeDto(string Ceiling, string UiChoice, string Effective, string Note);
+public sealed record GuardModeDto(string Ceiling, string Effective, string Note);
 
 public sealed record SafeStateDto(bool Active, string Scope, string? Reason, IReadOnlyList<string> Phases, DateTimeOffset? Since);
 
@@ -180,7 +180,7 @@ internal static class GuardEndpoint
         var log = decisions.Status;
         return new GuardResponse(
             status.At,
-            new GuardModeDto(ApiText.Snake(status.Mode.Ceiling), ApiText.Snake(status.Mode.UiChoice), ApiText.Snake(status.Mode.Effective), ApiText.Snake(status.Mode.Note)),
+            new GuardModeDto(ApiText.Snake(status.Mode.Ceiling), ApiText.Snake(status.Mode.Effective), ApiText.Snake(status.Mode.Note)),
             new SafeStateDto(
                 status.SafeState.Active,
                 ApiText.Snake(status.SafeState.Scope),

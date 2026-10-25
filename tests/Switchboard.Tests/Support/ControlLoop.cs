@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
@@ -18,6 +19,7 @@ namespace Switchboard.Tests.Support;
 internal sealed class ControlLoop
 {
     /// <param name="inbox">The guard's inbox, when the test built it first (a mode state that wakes the guard needs it).</param>
+    /// <param name="gateLogger">The effector gate's logger, for a test that reads its warnings; silent otherwise.</param>
     public ControlLoop(
         IControlInputSource inputs,
         SignalClock clock,
@@ -28,7 +30,8 @@ internal sealed class ControlLoop
         GuardInbox? inbox = null,
         KillSwitchState? killSwitch = null,
         ControlSwitchState? control = null,
-        SelfTestSlot? selfTest = null)
+        SelfTestSlot? selfTest = null,
+        ILogger<EffectorGate>? gateLogger = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         Inbox = inbox ?? new GuardInbox();
@@ -39,7 +42,7 @@ internal sealed class ControlLoop
         Engine = new GuardEngine(Lockouts, Targets, NullLogger<GuardEngine>.Instance);
         var ids = new DecisionIdGenerator(boot);
         var settings = new EffectorSettings(20);
-        Gate = new EffectorGate(Lockouts, Targets, ids, settings, NullLogger<EffectorGate>.Instance, port, selfTest);
+        Gate = new EffectorGate(Lockouts, Targets, ids, settings, gateLogger ?? NullLogger<EffectorGate>.Instance, port, selfTest);
         KillSwitch = killSwitch ?? new KillSwitchState(Inbox, clock, NullLogger<KillSwitchState>.Instance);
         Control = control;
         Overrides = new DeviceOverrides(Inbox, inputs, clock, NullLogger<DeviceOverrides>.Instance);
@@ -86,13 +89,13 @@ internal sealed class ControlLoop
     /// The loop with the real control switch and mode state over <paramref name="inputs"/> (the
     /// configuration validity comes from them), as GuardService composes it; control starts off.
     /// </summary>
-    public static ControlLoop WithControl(IControlInputSource inputs, SignalClock clock, OperatingMode ceiling, string boot, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null)
+    public static ControlLoop WithControl(IControlInputSource inputs, SignalClock clock, OperatingMode ceiling, string boot, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null, ILogger<EffectorGate>? gateLogger = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         var inbox = new GuardInbox();
         var killSwitch = new KillSwitchState(inbox, clock, NullLogger<KillSwitchState>.Instance);
         var control = new ControlSwitchState(inbox, killSwitch, clock, NullLogger<ControlSwitchState>.Instance);
         var mode = new ModeState(ceiling, control, inputs);
-        return new ControlLoop(inputs, clock, mode, boot, port, inbox: inbox, killSwitch: killSwitch, control: control, selfTest: selfTest);
+        return new ControlLoop(inputs, clock, mode, boot, port, inbox: inbox, killSwitch: killSwitch, control: control, selfTest: selfTest, gateLogger: gateLogger);
     }
 }

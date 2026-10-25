@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Switchboard.Infrastructure.Replay;
 
 namespace Switchboard.Tests.Support;
@@ -33,10 +35,35 @@ internal static class ReplayFixtures
         }
     }
 
+    /// <summary>
+    /// The recording with one row of <paramref name="entity"/> at its first instant: an entity the
+    /// recording predates (it was not mapped then) is assumed to have held <paramref name="state"/>
+    /// throughout, as Home Assistant reports an unchanged state only once.
+    /// </summary>
+    public static ReplayData WithAssumedState(ReplayData data, string entity, string state)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var csv = new StringBuilder("entity_id,ts_utc,state,last_reported\n");
+        void Row(string id, DateTimeOffset at, string value, DateTimeOffset? reported) =>
+            csv.Append(CultureInfo.InvariantCulture, $"{id},{at.UtcDateTime:O},\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\",{(reported is { } r ? r.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) : string.Empty)}\n");
+
+        Row(entity, data.Start, state, null);
+        foreach (var row in data.Rows)
+        {
+            Row(row.Entity.Value, row.Timestamp, row.State, row.LastReported);
+        }
+
+        using var reader = new StringReader(csv.ToString());
+        return ReplayData.Parse(reader, $"{entity} assumed {state}");
+    }
+
     private static ReplayData? LoadLive()
     {
         var directory = RepoPaths.Combine("tests", "fixtures", "replay");
         var file = Directory.Exists(directory) ? Directory.GetFiles(directory, "live-*.csv.gz").Order().LastOrDefault() : null;
-        return file is null ? null : ReplayData.Load(file);
+
+        // The recording (2026-10-21 to 24) predates the go-e force-state select the example declares
+        // as the charger's stop (0.7.1): it is assumed neutral ("0") throughout, as it was.
+        return file is null ? null : WithAssumedState(ReplayData.Load(file), "select.goe_422752_frc", "0");
     }
 }

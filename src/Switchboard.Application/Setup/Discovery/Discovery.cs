@@ -25,6 +25,15 @@ public sealed record DiscoveredEntity(
     bool InRegistry)
 {
     public string Domain => Entity.Value[..Entity.Value.IndexOf('.', StringComparison.Ordinal)];
+
+    /// <summary>The <c>options</c> attribute (what a select offers); null when the state carries none, or none usable.</summary>
+    public ImmutableArray<string>? Options { get; init; }
+
+    /// <summary>
+    /// One of Switchboard's own MQTT entities (its registry unique_id follows the add-on's identity
+    /// scheme): never an actuator, since commanding it would loop back into Switchboard itself.
+    /// </summary>
+    public bool Own { get; init; }
 }
 
 public sealed record DiscoveredDevice(string Id, string? Name, string? Manufacturer, string? Model);

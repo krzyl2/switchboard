@@ -405,6 +405,46 @@
     }
   },
   {
+    "entity_id": "select.goe_422752_frc",
+    "state": "0",
+    "attributes": {
+      "friendly_name": "go-e force state",
+      "options": [
+        "0",
+        "1",
+        "2"
+      ]
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
+    "entity_id": "select.switchboard_ev_charger_override",
+    "state": "auto",
+    "attributes": {
+      "friendly_name": "Switchboard ev_charger override",
+      "options": [
+        "auto",
+        "force_on",
+        "force_off"
+      ]
+    },
+    "last_changed": "2026-10-22T06:00:00.000000+00:00",
+    "last_reported": "2026-10-22T06:00:00.000000+00:00",
+    "last_updated": "2026-10-22T06:00:00.000000+00:00",
+    "context": {
+      "id": "01JSYNTHETIC0000000000000000",
+      "parent_id": null,
+      "user_id": null
+    }
+  },
+  {
     "entity_id": "sensor.usage",
     "state": "1500.0",
     "attributes": {

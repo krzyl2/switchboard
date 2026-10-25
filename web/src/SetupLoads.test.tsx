@@ -492,68 +492,289 @@ describe('phase self-test', () => {
   });
 });
 
-// Control stage (maintainer survey 2026-10-25): a modulating device may declare a stop actuator, the
-// switch that stops it below its minimum. Only the user declares it (CLAUDE.md): discovery suggests
-// the switches of the control entity's own Home Assistant device, and nothing is ever preselected.
+// Control stage (maintainer survey 2026-10-25, select stop 0.7.1): a modulating device may declare a
+// stop actuator, a switch or a select that stops it below its minimum. Only the user declares it
+// (CLAUDE.md): discovery suggests the switches and selects of the control entity's own Home
+// Assistant device, and nothing is ever preselected, neither the entity nor its options.
 describe('stop actuator', () => {
-  /** The go-e device gains its charging switch (and a select, which is not a stop this version can send). */
-  function discoveryWithGoeSwitch(): Payload {
-    const discovery = structuredClone(samples.discoverySample) as unknown as { entities: Payload[] };
+  type Entity = Payload & { entityId: string };
+
+  /** The sample's go-e device (control entity, force-state select) gains its charging switch; Switchboard's own switch is added too. */
+  function discoveryWith(change: (entities: Entity[]) => void = () => {}): Payload {
+    const discovery = structuredClone(samples.discoverySample) as unknown as { entities: Entity[] };
     const amp = discovery.entities.find((e) => e.entityId === 'number.goe_422752_amp')!;
+    const own = discovery.entities.find((e) => e.entityId === 'select.switchboard_ev_charger_override')!;
     discovery.entities.push(
       { ...amp, entityId: 'switch.goe_422752_charging', domain: 'switch', name: 'go-e charging allowed', deviceClass: 'switch', unit: null, state: 'on' },
-      { ...amp, entityId: 'select.goe_422752_frc', domain: 'select', name: 'go-e force state', deviceClass: null, unit: null, state: 'neutral' },
+      { ...own, entityId: 'switch.switchboard_control_allowed', domain: 'switch', name: 'Switchboard control allowed', state: 'off', options: null },
     );
+    change(discovery.entities);
     return discovery as unknown as Payload;
   }
 
-  it('suggests the switches of the charger’s own Home Assistant device first and never preselects one', async () => {
-    serve(fetchMock, { discovery: discoveryWithGoeSwitch() });
+  /** The file's charger with a select stop and the given options. */
+  function draftWithSelectStop(stopOption: string | null, resumeOption: string | null): Payload {
+    const view = structuredClone(samples.draftSample) as unknown as { draft: { devices: Payload[] } };
+    Object.assign(view.draft.devices[3]!, { stopActuator: 'select.goe_422752_frc', stopOption, resumeOption });
+    return view as unknown as Payload;
+  }
+
+  /** Readouts as the add-on answers them, the force-state select reporting the given option. */
+  const readoutsWithSelect = (state: string) => (url: string) => {
+    const answer = readoutsFor(url) as { items: Payload[] };
+    for (const item of answer.items) if (item.entityId === 'select.goe_422752_frc') Object.assign(item, { state, unit: null });
+    return answer;
+  };
+
+  const suggestions = () => card('ev_charger').querySelector('.loads-stop-suggest') as HTMLElement;
+  const stopOption = () => byField<HTMLSelectElement>('devices[3].stopOption');
+  const resumeOption = () => byField<HTMLSelectElement>('devices[3].resumeOption');
+  const fieldOf = (element: HTMLElement) => element.closest('.loads-field') as HTMLElement;
+
+  it('offers selects of the charger’s device as suggestions, never preselected', async () => {
+    serve(fetchMock, { discovery: discoveryWith() });
     const setup = await renderStep(SetupLoads, vi.fn());
 
     const picker = byField<HTMLSelectElement>('devices[3].stopActuator');
     expect(picker.value).toBe('');
     expect(setup().draft.devices[3]!.stopActuator).toBeNull();
-    // The same-device switch leads the list; every relay entity stays pickable, a select never is.
-    expect(optionValues(picker)[0]).toBe('switch.goe_422752_charging');
+    // The same-device select and switch lead the list; every relay and select entity stays pickable,
+    // the control entity's own domain (number) does not.
+    expect(optionValues(picker).slice(0, 2)).toEqual(['select.goe_422752_frc', 'switch.goe_422752_charging']);
     expect(optionValues(picker)).toEqual(expect.arrayContaining(['switch.grzalka_1', 'switch.grzalka_2', 'switch.grzalka_3']));
-    expect(optionValues(picker)).not.toContain('select.goe_422752_frc');
-    const suggestions = card('ev_charger').querySelector('.loads-stop-suggest')!;
-    expect(suggestions.textContent).toContain('Switches of the same Home Assistant device as number.goe_422752_amp:');
-    expect([...suggestions.querySelectorAll('li')].map((li) => li.getAttribute('data-entity'))).toEqual(['switch.goe_422752_charging']);
-    // An on/off device has no stop actuator (the add-on writes it for modulating devices only).
+    expect(optionValues(picker)).not.toContain('number.goe_422752_amp');
+    expect(suggestions().textContent).toContain('Switches and selects of the same Home Assistant device as number.goe_422752_amp:');
+    expect([...suggestions().querySelectorAll('li')].map((li) => li.getAttribute('data-entity'))).toEqual(['select.goe_422752_frc', 'switch.goe_422752_charging']);
+    // No option is asked before a select is picked, and an on/off device has no stop actuator at all
+    // (the add-on writes it for modulating devices only).
+    expect(stopOption()).toBeNull();
     expect(byField('devices[0].stopActuator')).toBeNull();
 
-    fireEvent.click(within(suggestions as HTMLElement).getByRole('button', { name: 'Use switch.goe_422752_charging' }));
+    fireEvent.click(within(suggestions()).getByRole('button', { name: 'Use switch.goe_422752_charging' }));
     expect(setup().draft.devices[3]!.stopActuator).toBe('switch.goe_422752_charging');
+    // A switch is turned off to stop and on to resume: it takes no options.
+    expect(stopOption()).toBeNull();
     await act(async () => {
       await setup().save();
     });
-    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: { stopActuator: string | null }[] };
-    expect(sent.devices[3]!.stopActuator).toBe('switch.goe_422752_charging');
+    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: Payload[] };
+    expect(sent.devices[3]).toMatchObject({ stopActuator: 'switch.goe_422752_charging', stopOption: null, resumeOption: null });
   });
 
-  it('says plainly when the charger’s device has no switch, instead of suggesting an unrelated one', async () => {
-    serve(fetchMock);
+  it('asks for stop and resume options from the select’s options, none preselected, showing its state', async () => {
+    // The user had set the select to another option themselves: the live readout shows it, and
+    // nothing is chosen from it.
+    serve(fetchMock, { discovery: discoveryWith(), readouts: readoutsWithSelect('2') });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    fireEvent.click(within(suggestions()).getByRole('button', { name: 'Use select.goe_422752_frc' }));
+    await advance();
+
+    expect(setup().draft.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: null, resumeOption: null });
+    for (const [select, label] of [
+      [stopOption(), 'Stop option'],
+      [resumeOption(), 'Resume option'],
+    ] as const) {
+      expect(document.querySelector(`label[for="${select.id}"]`)?.textContent).toBe(label);
+      expect(optionValues(select)).toEqual(['0', '1', '2']);
+      expect(select.value).toBe('');
+      expect(select.options[0]!.textContent).toBe('Choose…');
+      expect(select.required).toBe(true);
+      expect(fieldOf(select).querySelector('.loads-stop-now')?.textContent).toBe('Now: 2');
+    }
+
+    fireEvent.change(stopOption(), { target: { value: '1' } });
+    fireEvent.change(resumeOption(), { target: { value: '0' } });
+    expect(setup().draft.devices[3]).toMatchObject({ stopOption: '1', resumeOption: '0' });
+    await act(async () => {
+      await setup().save();
+    });
+    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: Payload[] };
+    expect(sent.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: '1', resumeOption: '0' });
+  });
+
+  it('names the options in Polish', async () => {
+    serve(fetchMock, { discovery: discoveryWith(), draft: draftWithSelectStop(null, null), readouts: readoutsWithSelect('0') });
+    await renderStep(SetupLoads, vi.fn(), 'pl');
+    await advance();
+
+    expect(document.querySelector(`label[for="${stopOption().id}"]`)?.textContent).toBe('Opcja zatrzymania');
+    expect(document.querySelector(`label[for="${resumeOption().id}"]`)?.textContent).toBe('Opcja wznowienia');
+    expect(stopOption().options[0]!.textContent).toBe('Wybierz…');
+    expect(fieldOf(stopOption()).querySelector('.loads-stop-now')?.textContent).toBe('Teraz: 0');
+  });
+
+  it('keeps the file’s options', async () => {
+    serve(fetchMock, { discovery: discoveryWith(), draft: draftWithSelectStop('1', '0') });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    expect(byField<HTMLSelectElement>('devices[3].stopActuator').value).toBe('select.goe_422752_frc');
+    expect(stopOption().value).toBe('1');
+    expect(resumeOption().value).toBe('0');
+    await act(async () => {
+      await setup().save();
+    });
+    const sent = posted(fetchMock, 'api/setup/save')[0]!.draft as { devices: Payload[] };
+    expect(sent.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: '1', resumeOption: '0' });
+  });
+
+  it('keeps a file option the entity does not offer, marked, with the add-on’s error at it', async () => {
+    // A hand-written 1.0 is not the select's 1: Switchboard would refuse to send it, so the page
+    // shows it as written (never blank, never lost) and the add-on's error lands on that field.
+    const unknown: SetupIssue = {
+      code: 'stop_option_unknown',
+      severity: 'error',
+      field: 'devices[3].stopOption',
+      documentPath: null,
+      message: 'select.goe_422752_frc does not offer the option 1.0.',
+      args: { entity: 'select.goe_422752_frc', option: '1.0', options: '0, 1, 2' },
+    };
+    serve(fetchMock, {
+      discovery: discoveryWith(),
+      draft: draftWithSelectStop('1.0', '0'),
+      validation: () => ({ ...structuredClone(samples.validationSample), valid: false, issues: [unknown] }),
+    });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    expect(stopOption().value).toBe('1.0');
+    expect(stopOption().selectedOptions[0]!.textContent).toBe('1.0 (not offered by this entity)');
+    expect(optionValues(stopOption())).toEqual(['0', '1', '2', '1.0']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check the loads and continue' }));
+    await advance();
+    await advance();
+    expect(fieldOf(stopOption()).querySelector('.loads-field-issues')?.textContent).toBe(
+      'select.goe_422752_frc does not offer the option 1.0 (it offers 0, 1, 2); Switchboard would never send it.',
+    );
+    expect(document.activeElement).toBe(stopOption());
+    expect(stopOption().getAttribute('aria-invalid')).toBe('true');
+    expect(setup().draft.devices[3]!.stopOption).toBe('1.0');
+  });
+
+  it('lands on the option the add-on names when an option is missing or both are the same', async () => {
+    const issues: SetupIssue[] = [
+      { code: 'required_field', severity: 'error', field: 'devices[3].stopOption', documentPath: null, message: 'required', args: { field: 'devices[3].stopOption' } },
+      { code: 'stop_options_equal', severity: 'error', field: 'devices[3].resumeOption', documentPath: null, message: 'equal', args: { option: '1' } },
+    ];
+    serve(fetchMock, {
+      discovery: discoveryWith(),
+      draft: draftWithSelectStop(null, '1'),
+      validation: () => ({ ...structuredClone(samples.validationSample), valid: false, issues }),
+    });
+    const goTo = vi.fn();
+    await renderStep(SetupLoads, goTo);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check the loads and continue' }));
+    await advance();
+    await advance();
+
+    expect(goTo).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(stopOption());
+    expect(fieldOf(stopOption()).textContent).toContain('This field is required.');
+    expect(fieldOf(resumeOption()).textContent).toContain('The resume option must differ from the stop option (1): one stops the device, the other lets it run.');
+  });
+
+  it('clears options when the stop changes to a switch', async () => {
+    serve(fetchMock, { discovery: discoveryWith(), draft: draftWithSelectStop('1', '0') });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    fireEvent.change(byField('devices[3].stopActuator'), { target: { value: 'switch.goe_422752_charging' } });
+    expect(setup().draft.devices[3]).toMatchObject({ stopActuator: 'switch.goe_422752_charging', stopOption: null, resumeOption: null });
+    expect(stopOption()).toBeNull();
+
+    // Options belong to the entity they were chosen from: back on the select, nothing is chosen again.
+    fireEvent.click(within(suggestions()).getByRole('button', { name: 'Use select.goe_422752_frc' }));
+    expect(setup().draft.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: null, resumeOption: null });
+    expect(stopOption().value).toBe('');
+    expect(resumeOption().value).toBe('');
+  });
+
+  it('lets the user type options when HA reports none', async () => {
+    serve(fetchMock, {
+      discovery: discoveryWith((entities) => {
+        entities.find((e) => e.entityId === 'select.goe_422752_frc')!.options = null;
+      }),
+    });
+    const setup = await renderStep(SetupLoads, vi.fn());
+
+    fireEvent.change(byField('devices[3].stopActuator'), { target: { value: 'select.goe_422752_frc' } });
+    await advance();
+
+    expect(stopOption().tagName).toBe('INPUT');
+    expect(resumeOption().tagName).toBe('INPUT');
+    expect(card('ev_charger').textContent).toContain('Home Assistant reports no options for this entity: type each option exactly as Home Assistant shows it.');
+    fireEvent.input(stopOption(), { target: { value: '1' } });
+    fireEvent.input(resumeOption(), { target: { value: '0' } });
+    expect(setup().draft.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: '1', resumeOption: '0' });
+  });
+
+  it('still warns that a PV-surplus switch is not a stop, and that another select of the device is not one either', async () => {
+    serve(fetchMock, { discovery: discoveryWith() });
     await renderStep(SetupLoads, vi.fn());
 
-    expect(card('ev_charger').querySelector('.loads-stop-suggest')).toBeNull();
-    expect(card('ev_charger').querySelector('.loads-stop-none')?.textContent).toBe(
-      'No switch of the same Home Assistant device as number.goe_422752_amp was found. A stop that is not a switch (a select, for example) cannot be declared in this version.',
+    expect(suggestions().textContent).toContain('Check that it really stops the device: a switch for PV surplus or access control is not a stop.');
+    expect(suggestions().textContent).toContain('For a select, the stop option must stop the device; another select of the same device (a mode, phase switching) is not a stop.');
+  });
+
+  it('never offers Switchboard’s own entities as a control or stop entity', async () => {
+    // Commanding one would loop back into Switchboard (its override select, its control switch), and
+    // a "confirmed" stop through it would say nothing about the device's real draw.
+    serve(fetchMock, { discovery: discoveryWith() });
+    await renderStep(SetupLoads, vi.fn());
+
+    const stopPicker = optionValues(byField<HTMLSelectElement>('devices[3].stopActuator'));
+    expect(stopPicker).not.toContain('select.switchboard_ev_charger_override');
+    expect(stopPicker).not.toContain('switch.switchboard_control_allowed');
+    const actuatorPicker = optionValues(byField<HTMLSelectElement>('devices[0].actuator'));
+    expect(actuatorPicker).not.toContain('switch.switchboard_control_allowed');
+    expect(actuatorPicker).toContain('switch.grzalka_2');
+  });
+
+  it('shows the add-on’s refusal of an own entity at the stop field and its warning about a stop changed while reduced', async () => {
+    // A hand-written file can still name Switchboard's own entity (the picker never offers it), and
+    // changing the stop of a charger Switchboard holds reduced leaves it stopped: both must be seen.
+    const issues: SetupIssue[] = [
+      { code: 'own_entity_not_actuator', severity: 'error', field: 'devices[3].stopActuator', documentPath: null, message: 'own', args: { entity: 'select.switchboard_ev_charger_override' } },
+      { code: 'stop_changed_while_reduced', severity: 'warning', field: 'devices[3].stopActuator', documentPath: null, message: 'reduced', args: { device: 'ev_charger', entity: 'select.goe_422752_frc' } },
+    ];
+    serve(fetchMock, { discovery: discoveryWith(), validation: () => ({ ...structuredClone(samples.validationSample), valid: false, issues }) });
+    await renderStep(SetupLoads, vi.fn(), 'pl');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sprawdź odbiorniki i przejdź dalej' }));
+    await advance();
+    await advance();
+
+    expect(fieldOf(byField('devices[3].stopActuator')).querySelector('.loads-field-issues')?.textContent).toBe(
+      'select.switchboard_ev_charger_override to encja samego Switchboard i Switchboard nie może nią sterować. Wybierz encję urządzenia.',
     );
+    const warning = document.querySelector('.setup-issues li[data-issue="stop_changed_while_reduced"]');
+    expect(warning?.getAttribute('data-field')).toBe('devices[3].stopActuator');
+    expect(warning?.textContent).toContain('Switchboard trzyma ev_charger ograniczone przez select.goe_422752_frc');
+  });
+
+  it('says plainly when the charger’s device has no switch or select, instead of suggesting an unrelated one', async () => {
+    serve(fetchMock, {
+      discovery: discoveryWith((entities) => {
+        for (const gone of ['select.goe_422752_frc', 'switch.goe_422752_charging']) entities.splice(entities.findIndex((e) => e.entityId === gone), 1);
+      }),
+    });
+    await renderStep(SetupLoads, vi.fn());
+
+    expect(suggestions()).toBeNull();
+    expect(card('ev_charger').querySelector('.loads-stop-none')?.textContent).toBe('No switch or select of the same Home Assistant device as number.goe_422752_amp was found.');
     expect(byField<HTMLSelectElement>('devices[3].stopActuator').value).toBe('');
   });
 
   it('asks for the control entity first on a new charger: suggestions come from its device', async () => {
-    serve(fetchMock, { draft: cleanDraft(), discovery: discoveryWithGoeSwitch() });
+    serve(fetchMock, { draft: cleanDraft(), discovery: discoveryWith() });
     const setup = await renderStep(SetupLoads, vi.fn());
     fireEvent.click(screen.getByRole('button', { name: /^EV charger/ }));
     await advance();
 
     expect(card('ev_charger').textContent).toContain('Pick the control entity first: suggestions come from its Home Assistant device.');
     fireEvent.change(byField('devices[0].actuator'), { target: { value: 'number.goe_422752_amp' } });
-    expect(card('ev_charger').querySelector('.loads-stop-suggest li')?.getAttribute('data-entity')).toBe('switch.goe_422752_charging');
-    expect(setup().draft.devices[0]!.stopActuator).toBeNull();
+    expect([...card('ev_charger').querySelectorAll('.loads-stop-suggest li')].map((li) => li.getAttribute('data-entity'))).toEqual(['select.goe_422752_frc', 'switch.goe_422752_charging']);
+    expect(setup().draft.devices[0]).toMatchObject({ stopActuator: null, stopOption: null, resumeOption: null });
   });
 });
 

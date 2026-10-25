@@ -607,6 +607,101 @@ public sealed class SetupValidatorTests
         return new PhaseObservation(Now - TimeSpan.FromMinutes(direction > 0 ? 10 : 5), direction, EntityId.Parse(entity), ObservationSource.Recorded, "W", false, true, terms, phases, true, null);
     }
 
+    [Theory]
+    [InlineData(null, "0", "devices[3].stopOption")]
+    [InlineData("1", null, "devices[3].resumeOption")]
+    [InlineData("", "0", "devices[3].stopOption")]
+    public void Select_stop_needs_both_options_at_their_fields(string? stop, string? resume, string field)
+    {
+        var issue = Assert.Single(Errors(Validate(WithSelectStop(stop, resume))));
+
+        Assert.Equal((SetupIssueCodes.RequiredField, field), (issue.Code, issue.Field));
+    }
+
+    [Fact]
+    public void Equal_options_error_at_resumeOption()
+    {
+        var issue = Assert.Single(Errors(Validate(WithSelectStop("1", "1"))));
+
+        Assert.Equal((SetupIssueCodes.StopOptionsEqual, "devices[3].resumeOption", "1"), (issue.Code, issue.Field, issue.Args["option"]));
+    }
+
+    [Fact]
+    public void Option_not_offered_is_an_error_naming_it()
+    {
+        // The force-state select offers "0", "1", "2" (discovery): a hand-typed "1.0" would never be
+        // sent, so the device could not be stopped through it.
+        var issue = Assert.Single(Errors(Validate(WithSelectStop("1.0", "0"))));
+
+        Assert.Equal((SetupIssueCodes.StopOptionUnknown, "devices[3].stopOption"), (issue.Code, issue.Field));
+        Assert.Equal(("select.goe_422752_frc", "1.0", "0, 1, 2"), (issue.Args["entity"], issue.Args["option"], issue.Args["options"]));
+    }
+
+    [Fact]
+    public void Unknown_options_skip_membership()
+    {
+        // Home Assistant cannot be asked (a live readout still knows the select): the options are
+        // judged by the add-on at run time; only presence and difference are checked here.
+        var readouts = Healthy();
+        readouts.Set("select.goe_422752_frc", "0", null, Now - TimeSpan.FromSeconds(3));
+
+        var validation = SetupValidator.Validate(WithSelectStop("1.0", "0"), Context(unreachable: true, readouts: readouts));
+
+        Assert.DoesNotContain(validation.Issues, i => i.Code == SetupIssueCodes.StopOptionUnknown);
+        Assert.DoesNotContain(validation.Issues, i => i.Field is "devices[3].stopOption" or "devices[3].resumeOption");
+    }
+
+    [Fact]
+    public void The_maintainers_select_stop_validates_without_errors()
+    {
+        Assert.Empty(Errors(Validate(WithSelectStop("1", "0"))));
+    }
+
+    [Theory]
+    [InlineData("actuator")]
+    [InlineData("stopActuator")]
+    public void Own_entity_is_never_an_actuator(string field)
+    {
+        // Switchboard's own override select would loop a stop back into Switchboard itself.
+        var draft = WithSelectStop("1", "0");
+        var charger = draft.Devices[3];
+        var own = field == "actuator" ? charger with { Actuator = "select.switchboard_ev_charger_override" } : charger with { StopActuator = "select.switchboard_ev_charger_override", StopOption = "force_off", ResumeOption = "auto" };
+
+        var issues = Errors(Validate(draft with { Devices = [.. draft.Devices.Take(3), own] }));
+
+        Assert.Contains(issues, i => i.Code == SetupIssueCodes.OwnEntityNotActuator && i.Field == $"devices[3].{field}" && i.Args["entity"] == "select.switchboard_ev_charger_override");
+    }
+
+    [Fact]
+    public void A_stop_changed_on_a_device_switchboard_holds_reduced_is_warned()
+    {
+        // The running add-on holds the charger stopped through "1": changing its stop option (or the
+        // stop entity) means Switchboard never resumes it through the old one. A warning, not an error.
+        var running = TestConfigurations.Valid(TestConfigurations.Example).Configuration!;
+        var context = Context() with { Running = running, ReducedBySwitchboard = [Switchboard.Domain.Devices.DeviceName.Parse("ev_charger")] };
+
+        var changed = SetupValidator.Validate(WithSelectStop("2", "0"), context);
+        var same = SetupValidator.Validate(WithSelectStop("1", "0"), context);
+        var notHeld = SetupValidator.Validate(WithSelectStop("2", "0"), context with { ReducedBySwitchboard = [] });
+
+        // A new resume option alone keeps the stop entity and what its state means: Switchboard still
+        // resumes the device, with the option declared then, so there is nothing to warn about.
+        var resumeOnly = SetupValidator.Validate(WithSelectStop("1", "2"), context);
+
+        var warning = Assert.Single(changed.Issues, i => i.Code == SetupIssueCodes.StopChangedWhileReduced);
+        Assert.Equal((IssueSeverity.Warning, "devices[3].stopActuator", "select.goe_422752_frc"), (warning.Severity, warning.Field, warning.Args["entity"]));
+        Assert.DoesNotContain(same.Issues, i => i.Code == SetupIssueCodes.StopChangedWhileReduced);
+        Assert.DoesNotContain(notHeld.Issues, i => i.Code == SetupIssueCodes.StopChangedWhileReduced);
+        Assert.DoesNotContain(resumeOnly.Issues, i => i.Code == SetupIssueCodes.StopChangedWhileReduced);
+    }
+
+    /// <summary>The maintainer's draft with the go-e force state as the charger's stop.</summary>
+    private static SetupDraft WithSelectStop(string? stop, string? resume)
+    {
+        var draft = SetupFixtures.MaintainerDraft();
+        return draft with { Devices = [.. draft.Devices.Take(3), draft.Devices[3] with { StopActuator = "select.goe_422752_frc", StopOption = stop, ResumeOption = resume }] };
+    }
+
     private SetupValidation Validate(SetupDraft draft, FakeReadouts? readouts = null) =>
         SetupValidator.Validate(draft, Context(readouts: readouts ?? Healthy()));
 

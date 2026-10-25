@@ -72,12 +72,25 @@ public static class SetupIssueCodes
     /// <summary>The runtime parser refused the document; <c>Args["issue"]</c> carries its own configuration issue code.</summary>
     public const string DocumentInvalid = "document_invalid";
 
+    /// <summary>A select stop's stop and resume options are the same option.</summary>
+    public const string StopOptionsEqual = "stop_options_equal";
+
+    /// <summary>A select stop's option is not one the entity offers (its options attribute); it would never be sent.</summary>
+    public const string StopOptionUnknown = "stop_option_unknown";
+
+    /// <summary>An actuator or stop actuator is one of Switchboard's own MQTT entities: commanding it would loop back into Switchboard.</summary>
+    public const string OwnEntityNotActuator = "own_entity_not_actuator";
+
+    /// <summary>The stop actuator (or its options) of a device Switchboard holds reduced changes: the old one is never resumed by Switchboard.</summary>
+    public const string StopChangedWhileReduced = "stop_changed_while_reduced";
+
     public static ImmutableArray<string> All { get; } =
     [
         EntityNotFound, EntityCheckUnavailable, EntityUnavailable, UnitMismatch, DeviceClassMismatch, ValueImplausible,
         PhaseSumMismatch, PhaseSumSkipped, MaxAgeBelowRefresh, RefreshNotDetected, DerivedSensorRefused, DerivedCheckUnavailable,
         ActuatorDerived, ReserveBelowMinimum, PhaseSelfTestMismatch, PhaseSelfTestMissing, AcknowledgementRequired,
         CommentsAcknowledgementRequired, ReplaceUnreadableRequired, RevisionConflict, ExistingDeviceImmutable, DeviceIdTaken,
-        MaxAgeAboveRefresh, RequiredField, PreservedPathUnknown, DocumentInvalid, SourceNotInRegistry,
+        MaxAgeAboveRefresh, RequiredField, PreservedPathUnknown, DocumentInvalid, SourceNotInRegistry, StopOptionsEqual,
+        StopOptionUnknown, OwnEntityNotActuator, StopChangedWhileReduced,
     ];
 }

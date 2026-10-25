@@ -48,11 +48,11 @@ public sealed class DocumentParserTests
     {
         var result = TestConfigurations.Valid(TestConfigurations.Example);
 
-        // 13 mapped signals, one applied-state signal per device stage (three heaters, the charger)
-        // and the charger's own draw (current and power).
+        // 13 mapped signals, one applied-state signal per device stage (three heaters, the charger),
+        // the charger's stop (its force-state select, 0.7.1) and its own draw (current and power).
         Assert.Empty(result.Warnings);
         Assert.Equal(13, result.Configuration!.Signals.Count(s => s.Role is not (SignalRole.DeviceState or SignalRole.DeviceCurrent or SignalRole.DevicePower)));
-        Assert.Equal(4, result.Configuration.Signals.Count(s => s.Role == SignalRole.DeviceState));
+        Assert.Equal(5, result.Configuration.Signals.Count(s => s.Role == SignalRole.DeviceState));
         Assert.Equal(2, result.Configuration.Signals.Count(s => s.Role is SignalRole.DeviceCurrent or SignalRole.DevicePower));
     }
 

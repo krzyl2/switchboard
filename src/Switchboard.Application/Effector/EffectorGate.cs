@@ -100,7 +100,7 @@ public sealed class EffectorGate
             null,
             DecisionInputs.None with
             {
-                Mode = new ModeDecisionInputs(mode.Ceiling, mode.UiChoice, mode.Note)
+                Mode = new ModeDecisionInputs(mode.Ceiling, mode.Note)
                 {
                     ControlAllowed = mode.ControlAllowed,
                     ConfigurationValid = mode.ConfigurationValid,
@@ -979,6 +979,27 @@ public sealed class EffectorGate
             return;
         }
 
+        if (device.IsSetpoint && device.HasStopActuator && state.TargetCommanded && state.Target is { Enabled: false } stopped
+            && !previous.Enabled && !reported.Enabled)
+        {
+            // Switchboard holds the device stopped through its stop actuator and only the setpoint
+            // moved (the charger's app, an automation): the user chose a new level, not to stay
+            // stopped, so it is the level to give back. The baseline and the target take the new
+            // setpoint and the stop stands; only a move of the stop itself ends the baseline (below).
+            if (state.Baseline is { } baseline)
+            {
+                state.Baseline = baseline with { Level = baseline.Level with { Setpoint = reported.Setpoint } };
+            }
+
+            state.Target = stopped with { Setpoint = reported.Setpoint };
+            if (state.Window is null or { Kind: WindowKind.Observation })
+            {
+                state.Window = OpenWindow(context, device, WindowKind.Observation, previous, reported, applied: false, probe: false);
+            }
+
+            return;
+        }
+
         // Someone else switched the device, and the step is observed for the history either way.
         // Where the intended state follows the real one (no target set, or active mode, which does
         // not fight another controller) its contacts moved: the target lockouts restart and a set
@@ -1044,8 +1065,10 @@ public sealed class EffectorGate
 
     /// <summary>
     /// A restore baseline taken while the level was unknown is decided by the first fresh report
-    /// (set when it is above the shed level and no acknowledged command reached the device first);
-    /// one restored from state.json stands only while the device still shows the level it was shed to.
+    /// (set when it is above the shed level and was reported before the first acknowledgement of a
+    /// command since: a report older than that is the user's level, even when the acknowledgement
+    /// and the report arrive in the same step after a restart); one restored from state.json stands
+    /// only while the device still shows the level it was shed to.
     /// When it does not (the user acted while the add-on was down, or the shutdown's off never
     /// landed) and a reduction of Switchboard holds the device below what it reports now (the
     /// startup safe state, taken while its level was unknown), the reported level is the one to give
@@ -1061,10 +1084,12 @@ public sealed class EffectorGate
         if (state.BaselinePending is { } pending)
         {
             state.BaselinePending = null;
-            state.Baseline = !state.AckedSincePending && DeviceLevels.Total(device, reported) > DeviceLevels.Total(device, pending.Shed) + DeviceLevel.SetpointTolerance
-                ? pending with { Level = reported }
+            var reportedAt = ReportedAt(context, device);
+            var usersLevel = state.PendingAckedAt is not { } acked || (reportedAt is { } at && at < acked);
+            state.Baseline = usersLevel && DeviceLevels.Total(device, reported) > DeviceLevels.Total(device, pending.Shed) + DeviceLevel.SetpointTolerance
+                ? pending with { Level = reported, OptionBefore = OptionNow(context, device) }
                 : null;
-            state.AckedSincePending = false;
+            state.PendingAckedAt = null;
         }
 
         if (state.BaselineRestored)
@@ -1074,7 +1099,7 @@ public sealed class EffectorGate
             {
                 state.Baseline = state.Target is { } target && state.Origin is DecisionOrigin.Guard or DecisionOrigin.Dispatch
                     && DeviceLevels.Total(device, target) < DeviceLevels.Total(device, reported) - DeviceLevel.SetpointTolerance
-                    ? new StartBaseline(reported, target, context.Now, CommandsFor(context, device))
+                    ? new StartBaseline(reported, target, context.Now, CommandsFor(context, device)) { OptionBefore = OptionNow(context, device) }
                     : null;
             }
         }
@@ -1335,6 +1360,10 @@ public sealed class EffectorGate
         if (decrease)
         {
             TakeBaseline(context, device, state, origin, level, reported, commanding);
+            if (device.StopOptions is { } options && from.Enabled && !level.Enabled)
+            {
+                NoteOptionBefore(context, device, state, options, commanding);
+            }
         }
         else if (increase && (commanding || state.Baseline is { Commanded: false }) && state.Baseline is { } baseline
             && DeviceLevels.Total(device, level) >= DeviceLevels.Total(device, baseline.Level) - DeviceLevel.SetpointTolerance)
@@ -1342,7 +1371,14 @@ public sealed class EffectorGate
             // Restored up to the level the device had before Switchboard reduced it. A reduction that
             // was sent ends only with a restore that is sent too: a "would" restore in shadow (control
             // switched off after the shed) leaves the device where it is, still to be given back.
+            WarnUndeclaredResume(device, from, level, baseline, commanding);
             state.ClearBaseline();
+        }
+        else if (increase && state.Baseline is { } partial)
+        {
+            // Enabled again below the level to give back (the rest waits for headroom): the resume
+            // option leaves now all the same.
+            WarnUndeclaredResume(device, from, level, partial, commanding);
         }
 
         var priority = origin == DecisionOrigin.Guard ? CommandPriority.Protective : CommandPriority.Ordinary;
@@ -1394,15 +1430,83 @@ public sealed class EffectorGate
         if (reported is null)
         {
             state.BaselinePending = new StartBaseline(level, level, context.Now, commanded);
-            state.AckedSincePending = false;
+            state.PendingAckedAt = null;
             return;
         }
 
         if (DeviceLevels.Total(device, reported) > DeviceLevels.Total(device, level) + DeviceLevel.SetpointTolerance)
         {
-            state.Baseline = new StartBaseline(reported, level, context.Now, commanded);
+            state.Baseline = new StartBaseline(reported, level, context.Now, commanded) { OptionBefore = OptionNow(context, device) };
         }
     }
+
+    /// <summary>
+    /// A select stop is about to stop the device: the option it reports now is the one it is
+    /// stopped from (the baseline may be older, taken at a setpoint reduction before the user changed
+    /// the option). An option not known now (its state not fresh, the first step after a restart
+    /// before Home Assistant delivered it) keeps the one captured earlier. Protection stops it
+    /// whatever that option is; when it is not a declared one, the log says that the device will
+    /// come back with the resume option instead.
+    /// </summary>
+    private void NoteOptionBefore(StepContext context, DeviceSpec device, DeviceTargets.State state, StopOptions options, bool commanding)
+    {
+        var now = OptionNow(context, device);
+        OptionText? option;
+        if (state.Baseline is { } baseline)
+        {
+            option = now ?? baseline.OptionBefore;
+            state.Baseline = baseline with { OptionBefore = option };
+        }
+        else if (state.BaselinePending is { } pending)
+        {
+            option = now ?? pending.OptionBefore;
+            state.BaselinePending = pending with { OptionBefore = option };
+        }
+        else
+        {
+            return;
+        }
+
+        if (commanding && option is { } before && before != options.ResumeOption && before != options.StopOption)
+        {
+            _logger.LogWarning(
+                "Stopping {Device} from the undeclared option '{Before}'; it will be resumed with its resume option '{Resume}'",
+                device.Id,
+                before,
+                options.ResumeOption);
+        }
+    }
+
+    /// <summary>
+    /// A select stop is resumed (enabled again by a command that leaves) after it was stopped from an
+    /// option nobody declared: only declared options are ever sent, so the user's own option is not
+    /// restored, and the log names it.
+    /// </summary>
+    private void WarnUndeclaredResume(DeviceSpec device, DeviceLevel from, DeviceLevel level, StartBaseline baseline, bool commanding)
+    {
+        if (commanding && device.StopOptions is { } options && !from.Enabled && level.Enabled
+            && baseline.OptionBefore is { } before && before != options.ResumeOption && before != options.StopOption)
+        {
+            _logger.LogWarning(
+                "Resuming {Device} with its resume option '{Resume}': before Switchboard stopped it, it reported '{Before}', an option that is not declared and is not restored",
+                device.Id,
+                options.ResumeOption,
+                before);
+        }
+    }
+
+    /// <summary>The option a select stop actuator reports now (fresh), or null: unknown, or a switch stop.</summary>
+    private static OptionText? OptionNow(StepContext context, DeviceSpec device) =>
+        device.StopOptions is not null && context.Inputs?.Protection.DeviceStates is { IsDefault: false } samples
+        && samples.FirstOrDefault(s => s.Device == device.Id && s.Stage == DeviceStateSample.StopStage) is { Fresh: true, Applied: RelayApplied { Option: { } option } }
+            ? option
+            : null;
+
+    /// <summary>When the device's fresh state was last reported (the newest of its stages and stop actuator), or null.</summary>
+    private static DateTimeOffset? ReportedAt(StepContext context, DeviceSpec device) =>
+        context.Inputs?.Protection.DeviceStates is { IsDefault: false } samples
+            ? samples.Where(s => s.Device == device.Id && s.Fresh && s.ReportedAt is not null).Select(s => s.ReportedAt).Max()
+            : null;
 
     /// <summary>
     /// Submits the commands of a change, if commands may leave for this device: in active mode, for a
@@ -1520,7 +1624,7 @@ public sealed class EffectorGate
         {
             if (state.BaselinePending is not null)
             {
-                state.AckedSincePending = true;
+                state.PendingAckedAt ??= now;
             }
 
             if (state.OpenTickets.Count == 0 && state.Spec is { StateReportsOnChange: true } spec)
@@ -1539,7 +1643,9 @@ public sealed class EffectorGate
 
         if (result is { Outcome: CommandOutcome.NotSent, NotSent: CommandNotSentReason.NotDeclared })
         {
-            _logger.LogError("A command for {Device} was refused at send time: its entity is not a declared actuator of the configuration loaded now ({Detail})", info.Device, result.Detail);
+            // The detail says why: not a declared actuator of the configuration loaded now, or an
+            // option the entity does not offer.
+            _logger.LogError("A command for {Device} was refused at send time: {Detail}", info.Device, result.Detail);
         }
         else if (result.Outcome != CommandOutcome.NotSent)
         {

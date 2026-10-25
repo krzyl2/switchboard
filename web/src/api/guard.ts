@@ -125,7 +125,7 @@ export interface GuardDevice {
 
 export interface GuardStatus {
   at: Date;
-  mode: { ceiling: OperatingMode; uiChoice: OperatingMode; effective: OperatingMode; note: ModeNote };
+  mode: { ceiling: OperatingMode; effective: OperatingMode; note: ModeNote };
   safeState: { active: boolean; scope: SafeStateScope; reason: ReasonCode | null; phases: PhaseName[]; since: Date | null };
   /**
    * locked: engaged by an untrusted state.json at start and held until the user confirms (api/control/confirm).
@@ -292,7 +292,6 @@ export function parseGuard(raw: unknown): GuardStatus {
     at: instant(field(r, 'at', 'payload'), 'at'),
     mode: {
       ceiling: oneOf(OPERATING_MODES, field(mode, 'ceiling', 'mode'), 'mode.ceiling'),
-      uiChoice: oneOf(OPERATING_MODES, field(mode, 'uiChoice', 'mode'), 'mode.uiChoice'),
       effective: oneOf(OPERATING_MODES, field(mode, 'effective', 'mode'), 'mode.effective'),
       note: oneOf(MODE_NOTES, field(mode, 'note', 'mode'), 'mode.note'),
     },

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Devices;
 
 namespace Switchboard.Application.Setup;
 
@@ -80,4 +81,10 @@ public interface ISetupRuntimeView
 
     /// <summary>The refresh detected for each mapped entity that has one (SIG-07).</summary>
     IReadOnlyDictionary<EntityId, TimeSpan> DetectedRefresh { get; }
+
+    /// <summary>
+    /// The devices Switchboard holds below the level it reduced them from by a command that was sent
+    /// (a commanded restore baseline, the leftReduced list of api/control); empty when none or unknown.
+    /// </summary>
+    IReadOnlyCollection<DeviceName> ReducedBySwitchboard => [];
 }

@@ -15,10 +15,25 @@ public enum ActuatorService
     TurnOn,
     TurnOff,
     SetValue,
+
+    /// <summary>A select stop actuator set to one of its two declared options (stop or resume).</summary>
+    SelectOption,
 }
 
 /// <summary>One service call for one declared actuator: its entity, its domain, the service and, for a setpoint, the value in the actuator's own unit.</summary>
-public sealed record ActuatorCall(EntityId Entity, string Domain, ActuatorService Service, double? Value);
+public sealed record ActuatorCall(EntityId Entity, string Domain, ActuatorService Service, double? Value)
+{
+    /// <summary>A select stop actuator's option (select_option only, never together with a value).</summary>
+    public string? Option { get; init; }
+}
+
+/// <summary>
+/// The second, independent check at send time, as the allow-list asks it of the serialized call:
+/// whether <paramref name="entity"/> is a declared actuator (or stop actuator) of the configuration
+/// loaded now that allows <paramref name="service"/> with <paramref name="value"/> (a setpoint, in the
+/// actuator's unit) or <paramref name="option"/> (a select stop's option).
+/// </summary>
+public delegate bool ActuatorDeclaredCheck(EntityId entity, string domain, ActuatorService service, double? value, string? option);
 
 public enum ActuatorRefusal
 {
@@ -41,15 +56,18 @@ public interface IActuatorDirectory
     /// <summary>
     /// The second, independent check at send time: whether <paramref name="entity"/> is a declared
     /// actuator (or stop actuator) of the configuration loaded now that allows <paramref name="service"/>
-    /// with <paramref name="value"/> (in the actuator's unit, within its declared range, on its step grid).
+    /// with <paramref name="value"/> (in the actuator's unit, within its declared range, on its step
+    /// grid) or <paramref name="option"/> (one of a select stop's two declared options, offered by the
+    /// entity when Home Assistant reported its options).
     /// </summary>
-    bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value);
+    bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value, string? option);
 }
 
 /// <summary>
 /// The actuators of one configuration, by device: each relay stage's actuator, a modulating
-/// device's stop actuator, a setpoint device's actuator with its range and unit. Built in the
-/// configuration layer, the only place where a device meets an entity ID.
+/// device's stop actuator (a switch, or a select with its stop and resume options), a setpoint
+/// device's actuator with its range and unit. Built in the configuration layer, the only place where
+/// a device meets an entity ID.
 /// </summary>
 public sealed class ActuatorDirectory
 {
@@ -61,6 +79,7 @@ public sealed class ActuatorDirectory
 
     private static readonly ImmutableArray<string> RelayDomains = DeviceSectionParser.ActuatorDomainsFor(DeviceType.OnOff);
     private static readonly ImmutableArray<string> SetpointDomains = DeviceSectionParser.ActuatorDomainsFor(DeviceType.Modulating);
+    private static readonly ImmutableArray<string> SelectDomains = DeviceSectionParser.SelectStopDomains;
 
     private readonly ImmutableDictionary<DeviceName, DeviceActuators> _devices;
 
@@ -104,13 +123,20 @@ public sealed class ActuatorDirectory
             d.ActuatorRevision,
             [.. d.Stages.Select(s => s.Actuator)],
             d.StopActuator,
+            d.StopOptions,
             d.Range,
             d.RangeUnit ?? DeviceSectionParser.DefaultUnit)));
     }
 
+    /// <summary>The select stop actuators of this configuration with their declared options, for the options check.</summary>
+    public IEnumerable<(DeviceName Device, EntityId Entity, StopOptions Options)> SelectStops =>
+        _devices.Values.Where(d => d.Stop is not null && d.StopOptions is not null).Select(d => (d.Id, d.Stop!.Value, d.StopOptions!));
+
+
     /// <param name="decreasesOnly">An invalid configuration: only offs and a setpoint at its floor (never an increase, 04 §8).</param>
-    /// <param name="offOnly">A retiring device: exactly a turn_off of a stage or stop actuator, nothing else.</param>
-    public ActuatorResolution Resolve(DeviceCommand command, bool decreasesOnly, bool offOnly = false)
+    /// <param name="offOnly">A retiring device: exactly the off of a stage or stop actuator (a select's stop option), nothing else.</param>
+    /// <param name="offered">The options Home Assistant reported per entity: a select stop's option it does not offer is never sent.</param>
+    public ActuatorResolution Resolve(DeviceCommand command, bool decreasesOnly, bool offOnly = false, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? offered = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         if (!_devices.TryGetValue(command.Device, out var device))
@@ -144,7 +170,19 @@ public sealed class ActuatorDirectory
                     return Refused(ActuatorRefusal.NotDeclared, "only offs are sent now");
                 }
 
-                return Call(stop, command.On ? ActuatorService.TurnOn : ActuatorService.TurnOff, null);
+                if (device.StopOptions is not { } options)
+                {
+                    return Call(stop, command.On ? ActuatorService.TurnOn : ActuatorService.TurnOff, null);
+                }
+
+                // A select stop: its declared stop option stops it, its resume option resumes it.
+                var option = (command.On ? options.ResumeOption : options.StopOption).Value;
+                if (NotOffered(stop, option, offered) is { } notOffered)
+                {
+                    return Refused(ActuatorRefusal.NotDeclared, notOffered);
+                }
+
+                return Call(stop, ActuatorService.SelectOption, null, option);
             case DeviceCommandKind.Setpoint when !offOnly && device.Type is DeviceType.Modulating or DeviceType.Storage && command.Setpoint is { } setpoint && device.Range is { } range:
                 var amps = OnGrid(setpoint.Value, range, Floor(device));
                 if (decreasesOnly && Math.Abs(amps - Floor(device)) > GridTolerance * range.Step.Value)
@@ -158,16 +196,39 @@ public sealed class ActuatorDirectory
         }
     }
 
-    public bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value, bool decreasesOnly)
+    /// <param name="offered">The options Home Assistant reported per entity (see <see cref="Resolve"/>).</param>
+    public bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value, string? option, bool decreasesOnly, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? offered = null)
     {
+        // Only select_option carries an option; every other service carries none.
+        if (service == ActuatorService.SelectOption ? option is null || value is not null : option is not null)
+        {
+            return false;
+        }
+
         foreach (var device in _devices.Values)
         {
             var relay = device.Type is DeviceType.OnOff or DeviceType.Stepped;
-            if (relay && device.Stages.Contains(entity) || device.Stop == entity)
+            if (relay && device.Stages.Contains(entity))
             {
-                // A relay stage or a stop actuator: on and off only, never a value.
+                // A relay stage: on and off only, never a value or an option.
                 return Domain(entity) == domain && RelayDomains.Contains(domain) && value is null
                     && (service == ActuatorService.TurnOff || (service == ActuatorService.TurnOn && !decreasesOnly));
+            }
+
+            if (device.Stop == entity)
+            {
+                if (device.StopOptions is not { } options)
+                {
+                    // A switch stop: on and off only, never a value or an option.
+                    return Domain(entity) == domain && RelayDomains.Contains(domain) && value is null
+                        && (service == ActuatorService.TurnOff || (service == ActuatorService.TurnOn && !decreasesOnly));
+                }
+
+                // A select stop: select_option with its stop option, or its resume option outside an
+                // invalid configuration, and only an option the entity offers when its options are known.
+                return service == ActuatorService.SelectOption && Domain(entity) == domain && SelectDomains.Contains(domain)
+                    && (option == options.StopOption.Value || (option == options.ResumeOption.Value && !decreasesOnly))
+                    && NotOffered(entity, option!, offered) is null;
             }
 
             if (!relay && device.Stages[0] == entity)
@@ -209,25 +270,37 @@ public sealed class ActuatorDirectory
         return Math.Clamp(value, floor, range.Max.Value);
     }
 
+    /// <summary>
+    /// Why an option is not sent: Home Assistant reported the entity's options and this one is not
+    /// among them (a typo, 1.0 for 1). Null when it is offered, or when the options are not known: a
+    /// protective stop is never held back for want of an options list.
+    /// </summary>
+    public static string? NotOffered(EntityId entity, string option, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? offered) =>
+        offered is not null && offered.TryGetValue(entity, out var options) && !options.Contains(option, StringComparer.Ordinal)
+            ? $"option '{option}' is not offered by {entity} (it offers {string.Join(", ", options.Select(o => $"'{o}'"))})"
+            : null;
+
     private static double Floor(DeviceActuators device) => device.Type == DeviceType.Storage ? 0 : device.Range?.Min.Value ?? 0;
 
-    private static ActuatorResolution Call(EntityId entity, ActuatorService service, double? value) =>
-        new(new ActuatorCall(entity, Domain(entity), service, value), null, null);
+    private static ActuatorResolution Call(EntityId entity, ActuatorService service, double? value, string? option = null) =>
+        new(new ActuatorCall(entity, Domain(entity), service, value) { Option = option }, null, null);
 
     private static ActuatorResolution Refused(ActuatorRefusal refusal, string detail) => new(null, refusal, detail);
 
     private static string Domain(EntityId entity) => entity.Value[..entity.Value.IndexOf('.', StringComparison.Ordinal)];
 
-    private sealed record DeviceActuators(DeviceName Id, DeviceType Type, long Revision, ImmutableArray<EntityId> Stages, EntityId? Stop, ModulatingRange? Range, string Unit);
+    private sealed record DeviceActuators(DeviceName Id, DeviceType Type, long Revision, ImmutableArray<EntityId> Stages, EntityId? Stop, StopOptions? StopOptions, ModulatingRange? Range, string Unit);
 }
 
 /// <summary>
 /// The actuator directory of the configuration loaded now, published by the signal store runner
 /// from the same reload that builds the protection setup. During an invalid or missing
-/// configuration it answers from the last valid one, decreases only (offs, floor setpoints). A
-/// device a valid reload removed keeps a single-use retiring entry until the next reload: exactly
-/// one turn_off of a stage or its stop actuator, for the final off of a device Switchboard started.
-/// Thread-safe: published on the store's thread, read by the command path's sender.
+/// configuration it answers from the last valid one, decreases only (offs, floor setpoints, a
+/// select's stop option). A device a valid reload removed keeps a single-use retiring entry until
+/// the next reload: exactly one off of a stage or its stop actuator (a select's stop option), for the
+/// final off of a device Switchboard started. The options Home Assistant reports for each select are
+/// observed too: an option the entity does not offer is never sent. Thread-safe: published on the
+/// store's thread, read by the command path's sender.
 /// </summary>
 public sealed class ActuatorDirectoryHolder : IActuatorDirectory
 {
@@ -235,9 +308,23 @@ public sealed class ActuatorDirectoryHolder : IActuatorDirectory
     private ActuatorDirectory _current = ActuatorDirectory.Empty;
     private ActuatorDirectory _retiring = ActuatorDirectory.Empty;
     private HashSet<(DeviceName Device, DeviceCommandKind Kind, int Stage)> _retiringLeft = [];
-    private readonly List<(EntityId Entity, ActuatorService Service)> _permits = [];
+    private readonly List<(EntityId Entity, ActuatorService Service, string? Option)> _permits = [];
+    private ImmutableDictionary<EntityId, ImmutableArray<string>> _offered = ImmutableDictionary<EntityId, ImmutableArray<string>>.Empty;
     private SwitchboardConfiguration? _configuration;
     private bool _valid;
+
+    /// <summary>
+    /// The options Home Assistant reported for the entities it reports (absent: not known, never
+    /// "none"); published by the signal store runner whenever they change.
+    /// </summary>
+    public void ObserveOptions(ImmutableDictionary<EntityId, ImmutableArray<string>> reported)
+    {
+        ArgumentNullException.ThrowIfNull(reported);
+        lock (_gate)
+        {
+            _offered = reported;
+        }
+    }
 
     /// <summary>A configuration result was applied: <paramref name="configuration"/> is null while the document is invalid or missing.</summary>
     public void Observe(SwitchboardConfiguration? configuration)
@@ -282,33 +369,36 @@ public sealed class ActuatorDirectoryHolder : IActuatorDirectory
                     return new ActuatorResolution(null, ActuatorRefusal.NotDeclared, $"{command.Device} has no retiring entry for this command");
                 }
 
-                var retired = _retiring.Resolve(command, decreasesOnly: true, offOnly: true);
+                var retired = _retiring.Resolve(command, decreasesOnly: true, offOnly: true, _offered);
                 if (retired.Call is { } final)
                 {
-                    // Single use: one turn_off per actuator of the removed device, then it is gone.
-                    _permits.Add((final.Entity, final.Service));
+                    // Single use: one off per actuator of the removed device (a turn_off, or a select's
+                    // stop option), then it is gone.
+                    _permits.Add((final.Entity, final.Service, final.Option));
                     _retiringLeft.Remove(slot);
                 }
 
                 return retired;
             }
 
-            return _current.Resolve(command, decreasesOnly: !_valid || command.Final);
+            return _current.Resolve(command, decreasesOnly: !_valid || command.Final, offered: _offered);
         }
     }
 
-    public bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value)
+    public bool IsDeclared(EntityId entity, string domain, ActuatorService service, double? value, string? option)
     {
         lock (_gate)
         {
-            var permit = _permits.FindIndex(p => p.Entity == entity && p.Service == service);
-            if (permit >= 0 && service == ActuatorService.TurnOff && value is null)
+            // A permit is exactly the call its retiring entry resolved: the same entity, the off
+            // service and, for a select, the same stop option; a value never passes.
+            var permit = _permits.FindIndex(p => p.Entity == entity && p.Service == service && p.Option == option);
+            if (permit >= 0 && service is ActuatorService.TurnOff or ActuatorService.SelectOption && value is null)
             {
                 _permits.RemoveAt(permit);
                 return true;
             }
 
-            return _current.IsDeclared(entity, domain, service, value, decreasesOnly: !_valid);
+            return _current.IsDeclared(entity, domain, service, value, option, decreasesOnly: !_valid, _offered);
         }
     }
 }

@@ -23,7 +23,13 @@
         "input_number",
         "sensor"
       ],
-      "drawRecommended": true
+      "drawRecommended": true,
+      "stopActuatorDomains": [
+        "switch",
+        "input_boolean",
+        "select",
+        "input_select"
+      ]
     },
     {
       "id": "water_heater_element",
@@ -45,7 +51,8 @@
         "input_boolean",
         "binary_sensor"
       ],
-      "drawRecommended": false
+      "drawRecommended": false,
+      "stopActuatorDomains": []
     },
     {
       "id": "heat_pump",
@@ -69,7 +76,8 @@
         "input_boolean",
         "binary_sensor"
       ],
-      "drawRecommended": false
+      "drawRecommended": false,
+      "stopActuatorDomains": []
     },
     {
       "id": "generic_onoff",
@@ -91,7 +99,8 @@
         "input_boolean",
         "binary_sensor"
       ],
-      "drawRecommended": false
+      "drawRecommended": false,
+      "stopActuatorDomains": []
     }
   ],
   "prefillVoltageV": 230

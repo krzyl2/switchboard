@@ -22,6 +22,8 @@ public sealed record DiscoveryResponse(DateTimeOffset TakenAt, bool RegistryAvai
 
 /// <param name="InRegistry">False for an entity defined in YAML without a unique_id: its source cannot be verified.</param>
 /// <param name="Derived">Set when the registry platform computes the sensor from other sensors; such an entity is never a control input.</param>
+/// <param name="Options">What a select offers (its options attribute); null when the entity reports none.</param>
+/// <param name="Own">One of Switchboard's own MQTT entities: never offered as an actuator.</param>
 public sealed record DiscoveredEntityDto(
     string EntityId,
     string Domain,
@@ -36,7 +38,9 @@ public sealed record DiscoveredEntityDto(
     bool InRegistry,
     string? State,
     DateTimeOffset? LastReported,
-    DerivedDto? Derived);
+    DerivedDto? Derived,
+    IReadOnlyList<string>? Options,
+    bool Own);
 
 public sealed record DerivedDto(string Platform);
 
@@ -116,7 +120,8 @@ public sealed record TemplatesResponse(IReadOnlyList<TemplateDto> Templates, dou
 
 /// <param name="Prefill">Draft fields the template sets (written to the file).</param>
 /// <param name="Inherited">What the device inherits from the control defaults (shown, not written).</param>
-public sealed record TemplateDto(string Id, string Type, IReadOnlyDictionary<string, object> Prefill, InheritedDto Inherited, IReadOnlyList<string> ActuatorDomains, IReadOnlyList<string> StateDomains, bool DrawRecommended);
+/// <param name="StopActuatorDomains">The domains a stop actuator may have (switch or select); empty for a type without one.</param>
+public sealed record TemplateDto(string Id, string Type, IReadOnlyDictionary<string, object> Prefill, InheritedDto Inherited, IReadOnlyList<string> ActuatorDomains, IReadOnlyList<string> StateDomains, bool DrawRecommended, IReadOnlyList<string> StopActuatorDomains);
 
 public sealed record InheritedDto(string ReactionTime, string MinOn, string MinOff);
 
@@ -429,7 +434,9 @@ internal static class SetupEndpoint
             e.InRegistry,
             e.State,
             e.Reported,
-            DerivedSensorRule.Check(e, snapshot, defaults) == DerivedCheck.Derived ? new DerivedDto(e.Platform!) : null))],
+            DerivedSensorRule.Check(e, snapshot, defaults) == DerivedCheck.Derived ? new DerivedDto(e.Platform!) : null,
+            e.Options is { } options ? [.. options] : null,
+            e.Own))],
         [.. snapshot.Devices.Select(d => new DiscoveredDeviceDto(d.Id, d.Name, d.Manufacturer, d.Model))]);
 
     internal static ReadoutDto Readout(CandidateReadout readout) => new(
@@ -493,7 +500,8 @@ internal static class SetupEndpoint
             new InheritedDto(Duration(t.ReactionTime), Duration(t.MinOn), Duration(t.MinOff)),
             [.. t.ActuatorDomains],
             [.. t.StateDomains],
-            t.DrawRecommended))],
+            t.DrawRecommended,
+            [.. t.StopActuatorDomains]))],
         defaults.PrefillVoltage);
 
     /// <summary>A duration the way switchboard.yaml writes it: the largest whole unit.</summary>

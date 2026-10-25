@@ -101,7 +101,7 @@ public sealed record DeviceInputsDto(
     bool CanSwitchOff);
 
 /// <summary>The mode at a mode decision; the control switch's parts are null on lines written before 0.7.0.</summary>
-public sealed record ModeInputsDto(string Ceiling, string UiChoice, string Note, bool? ControlAllowed, bool? ConfigurationValid, bool? StateConfirmed, IReadOnlyList<string> Missing, string? Source);
+public sealed record ModeInputsDto(string Ceiling, string Note, bool? ControlAllowed, bool? ConfigurationValid, bool? StateConfirmed, IReadOnlyList<string> Missing, string? Source);
 
 internal static class DecisionsEndpoint
 {
@@ -248,7 +248,7 @@ internal static class DecisionsEndpoint
                     d.CanSwitchOff)
                 : null,
             decision.Inputs.Mode is { } m
-                ? new ModeInputsDto(ApiText.Snake(m.Ceiling), ApiText.Snake(m.UiChoice), ApiText.Snake(m.Note), m.ControlAllowed, m.ConfigurationValid, m.StateConfirmed, [.. (m.Missing.IsDefault ? [] : m.Missing).Select(ApiText.Snake)], ApiText.SnakeOrNull(m.Source))
+                ? new ModeInputsDto(ApiText.Snake(m.Ceiling), ApiText.Snake(m.Note), m.ControlAllowed, m.ConfigurationValid, m.StateConfirmed, [.. (m.Missing.IsDefault ? [] : m.Missing).Select(ApiText.Snake)], ApiText.SnakeOrNull(m.Source))
                 : null,
             ApiText.SnakeOrNull(decision.Inputs.KillSwitch),
             ApiText.SnakeOrNull(decision.Inputs.SafeStateCause),

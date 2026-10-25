@@ -192,8 +192,14 @@ public sealed record DeviceDraft
 
     public DrawDraft? Draw { get; init; }
 
-    /// <summary>A modulating device's stop actuator (a switch that disables it); suggested by discovery, never preselected: only the user declares it.</summary>
+    /// <summary>A modulating device's stop actuator (a switch or a select that disables it); suggested by discovery, never preselected: only the user declares it.</summary>
     public string? StopActuator { get; init; }
+
+    /// <summary>A select stop actuator's option that stops the device (<c>stop_option</c>); written only for a select stop.</summary>
+    public string? StopOption { get; init; }
+
+    /// <summary>A select stop actuator's option that lets the device run again (<c>resume_option</c>); written only for a select stop.</summary>
+    public string? ResumeOption { get; init; }
 
     /// <summary>restore_only or headroom (<c>start:</c>); written only when it differs from the default or the file already had it.</summary>
     public string? Start { get; init; }

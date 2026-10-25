@@ -85,6 +85,53 @@ public sealed class RuntimeStateFileTests : IDisposable
     }
 
     [Fact]
+    public void Select_baseline_keeps_option_before_across_restart()
+    {
+        // 0.7.1: a charger stopped through its select keeps the option it reported before the stop,
+        // so the log after a restart can still name an undeclared option that is not restored.
+        var file = File();
+        var stopped = new Switchboard.Application.Effector.StartBaseline(DeviceLevel.At(new Amperes(10)), DeviceLevel.At(new Amperes(6), enabled: false), At.AddMinutes(-4), true) { OptionBefore = OptionText.Parse("2") };
+        file.Save(Full() with { StartBaselines = Full().StartBaselines.SetItem(DeviceName.Parse("ev_charger"), stopped) });
+
+        var loaded = file.Load();
+
+        Assert.Equal(StateFileStatus.Loaded, loaded.Status);
+        Assert.Equal(stopped, loaded.State.StartBaselines[DeviceName.Parse("ev_charger")]);
+        Assert.Equal(OptionText.Parse("2"), loaded.State.StartBaselines[DeviceName.Parse("ev_charger")].OptionBefore);
+    }
+
+    [Fact]
+    public void Baseline_without_option_before_is_written_as_in_0_7_0()
+    {
+        // A switch stop or a relay keeps the 0.7.0 shape exactly (no key, not even null), so a file
+        // without a select stop still reads in 0.7.0.
+        File().Save(Full());
+
+        var text = System.IO.File.ReadAllText(Path.Combine(_data.Path, "state.json"));
+
+        Assert.DoesNotContain("option_before", text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\"option_before\":\"\"")]
+    [InlineData("\"option_before\":1")]
+    [InlineData("\"option_before\":null")]
+    [InlineData("\"option_before\":\"a\\nb\"")]
+    public void Untrusted_option_before_refuses_the_file(string tampered)
+    {
+        var file = File();
+        var stopped = new Switchboard.Application.Effector.StartBaseline(DeviceLevel.At(new Amperes(10)), DeviceLevel.At(new Amperes(6), enabled: false), At, true) { OptionBefore = OptionText.Parse("0") };
+        file.Save(Full() with { StartBaselines = Full().StartBaselines.SetItem(DeviceName.Parse("ev_charger"), stopped) });
+        var text = System.IO.File.ReadAllText(file.FilePath);
+        Assert.Contains("\"option_before\":\"0\"", text, StringComparison.Ordinal);
+        System.IO.File.WriteAllText(file.FilePath, text.Replace("\"option_before\":\"0\"", tampered, StringComparison.Ordinal));
+
+        var load = file.Load();
+
+        Assert.Equal(StateFileStatus.ResetCorrupt, load.Status);
+    }
+
+    [Fact]
     public void Written_atomically_via_temp_and_rename()
     {
         var file = File();

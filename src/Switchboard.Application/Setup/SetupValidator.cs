@@ -6,6 +6,7 @@ using Switchboard.Application.Setup.Readouts;
 using Switchboard.Application.Setup.SelfTest;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -31,6 +32,12 @@ public sealed record SetupContext(
     /// a signal without sigma uses signals.default_sigma, as the runtime parser does.
     /// </summary>
     public IReadOnlyDictionary<EntityId, double> DeclaredSigma { get; init; } = ImmutableDictionary<EntityId, double>.Empty;
+
+    /// <summary>The valid configuration in force (the running add-on's), to compare a device's stop actuator with; null without one.</summary>
+    public SwitchboardConfiguration? Running { get; init; }
+
+    /// <summary>The devices Switchboard holds reduced by a command it sent (a commanded restore baseline).</summary>
+    public IReadOnlyCollection<DeviceName> ReducedBySwitchboard { get; init; } = [];
 }
 
 /// <param name="State">passed, failed or skipped (never passed without a total).</param>
@@ -117,6 +124,8 @@ public static class SetupValidator
         }
 
         DeviceStateAges(draft, context, issues);
+        StopActuators(draft, context, issues);
+        OwnEntities(draft, context, issues);
         var phaseSum = PhaseSum(draft, context, issues);
         var reserve = Reserve(draft, profile, context, issues);
         var selfTest = SelfTests(draft, profile, context, issues);
@@ -613,6 +622,97 @@ public static class SetupValidator
                     $"{entity} last reported {age.TotalMinutes:0} min ago, longer than the state max age ({context.Control.Devices.StateMaxAge.TotalMinutes:0} min): it seems to report only on change. Choose 'reports on change', or the device will be held off as stale."),
                 ("entity", entity.Value.Value),
                 ("suggest", OnChange)));
+        }
+    }
+
+    /// <summary>
+    /// A select stop actuator needs its two options, different, and (when Home Assistant reports the
+    /// entity's options) offered by it: an option it does not offer is refused at send time, so the
+    /// device could not be stopped through it. A device Switchboard holds reduced whose stop actuator
+    /// or stop option changes is warned about: Switchboard never resumes it through the old one (a
+    /// new resume option alone keeps the baseline: the device is resumed with the option declared then).
+    /// </summary>
+    private static void StopActuators(SetupDraft draft, SetupContext context, List<SetupIssue> issues)
+    {
+        for (var i = 0; i < draft.Devices.Count; i++)
+        {
+            var device = draft.Devices[i];
+            var path = $"devices[{i.ToString(CultureInfo.InvariantCulture)}]";
+            if ((device.Existing && !device.Editable) || device.Type != "modulating")
+            {
+                continue;
+            }
+
+            if (SetupDocumentMapper.IsSelectStop(device.StopActuator))
+            {
+                var entity = EntityId.Parse(device.StopActuator!);
+                var offered = context.Discovery?.Find(entity)?.Options;
+                foreach (var (field, option, what) in new[] { ("stopOption", device.StopOption, "The stop option"), ("resumeOption", device.ResumeOption, "The resume option") })
+                {
+                    if (string.IsNullOrEmpty(option))
+                    {
+                        issues.Add(SetupIssue.Error(SetupIssueCodes.RequiredField, $"{path}.{field}", $"{what} of a select stop actuator is required.", ("field", $"{path}.{field}")));
+                    }
+                    else if (offered is { } options && !options.Contains(option, StringComparer.Ordinal))
+                    {
+                        issues.Add(SetupIssue.Error(
+                            SetupIssueCodes.StopOptionUnknown,
+                            $"{path}.{field}",
+                            $"{entity} does not offer the option '{option}' (it offers {string.Join(", ", options.Select(o => $"'{o}'"))}); Switchboard would never send it.",
+                            ("entity", entity.Value),
+                            ("option", option),
+                            ("options", string.Join(", ", options))));
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(device.StopOption) && string.Equals(device.StopOption, device.ResumeOption, StringComparison.Ordinal))
+                {
+                    issues.Add(SetupIssue.Error(
+                        SetupIssueCodes.StopOptionsEqual,
+                        $"{path}.resumeOption",
+                        $"The resume option must differ from the stop option ('{device.StopOption}'): one stops the device, the other lets it run.",
+                        ("option", device.StopOption)));
+                }
+            }
+
+            if (device.Id is { } id && DeviceName.TryParse(id, out var name) && context.ReducedBySwitchboard.Contains(name.Value)
+                && context.Running?.Devices.FirstOrDefault(d => d.Id == name.Value) is { StopActuator: { } runningStop } running
+                && (device.StopActuator != runningStop.Value
+                    || (running.StopOptions is { } was && device.StopOption != was.StopOption.Value)))
+            {
+                issues.Add(SetupIssue.Warning(
+                    SetupIssueCodes.StopChangedWhileReduced,
+                    $"{path}.stopActuator",
+                    $"Switchboard holds {id} reduced through {runningStop}; after this change it never resumes it through that entity. Let it resume first, or set {runningStop} back by hand.",
+                    ("device", id),
+                    ("entity", runningStop.Value)));
+            }
+        }
+    }
+
+    /// <summary>Switchboard's own MQTT entities (its override selects, its switches) are never an actuator: commanding one would loop back into Switchboard.</summary>
+    private static void OwnEntities(SetupDraft draft, SetupContext context, List<SetupIssue> issues)
+    {
+        for (var i = 0; i < draft.Devices.Count; i++)
+        {
+            var device = draft.Devices[i];
+            if (device.Existing && !device.Editable)
+            {
+                continue;
+            }
+
+            var path = $"devices[{i.ToString(CultureInfo.InvariantCulture)}]";
+            foreach (var (field, text) in new[] { ("actuator", device.Actuator), ("stopActuator", device.StopActuator) })
+            {
+                if (EntityId.TryParse(text, out var entity) && context.Discovery?.Find(entity.Value) is { Own: true })
+                {
+                    issues.Add(SetupIssue.Error(
+                        SetupIssueCodes.OwnEntityNotActuator,
+                        $"{path}.{field}",
+                        $"{entity} is one of Switchboard's own entities; it cannot be commanded by Switchboard. Pick the device's own entity.",
+                        ("entity", entity.Value.Value)));
+                }
+            }
         }
     }
 

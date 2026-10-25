@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using Switchboard.Application.Setup.Discovery;
 using Switchboard.Application.Signals;
+using Switchboard.Infrastructure.Mqtt;
 
 namespace Switchboard.Infrastructure.HomeAssistant;
 
@@ -12,10 +13,14 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// one discovery. The answers are untrusted: a state list of the wrong shape is refused as a whole
 /// (never half-read), and a registry of the wrong shape counts as not available (no entity is then
 /// judged by its platform). At most <c>max</c> entities are kept, in entity-ID order, and the result
-/// says when that cut anything.
+/// says when that cut anything. A select's options are read where the state carries a bounded list
+/// of texts, and Switchboard's own MQTT entities are marked so they are never offered as actuators.
 /// </summary>
 public static class DiscoveryResponseParser
 {
+    // The integration of Switchboard's own discovered entities (with the add-on's unique_id scheme).
+    private const string MqttPlatform = "mqtt";
+
     public static DiscoverySnapshot Parse(JsonElement states, JsonElement? entityRegistry, JsonElement? deviceRegistry, DateTimeOffset at, int max)
     {
         var stateEntries = ReadStates(states)
@@ -42,7 +47,11 @@ public static class DiscoveryResponseParser
                 entry?.Hidden ?? false,
                 state?.State,
                 state?.Reported,
-                entry is not null));
+                entry is not null)
+            {
+                Options = state?.Options,
+                Own = entry is { Platform: MqttPlatform } && MqttIdentity.IsOwnUniqueId(entry.UniqueId),
+            });
         }
 
         // The platform index covers the whole registry: only the list shown to the user is cut.
@@ -52,9 +61,15 @@ public static class DiscoveryResponseParser
         };
     }
 
-    private sealed record StateEntry(string State, string? Unit, string? DeviceClass, string? StateClass, string? FriendlyName, DateTimeOffset? Reported);
+    private sealed record StateEntry(string State, string? Unit, string? DeviceClass, string? StateClass, string? FriendlyName, DateTimeOffset? Reported)
+    {
+        public ImmutableArray<string>? Options { get; init; }
+    }
 
-    private sealed record RegistryEntry(string? Platform, string? DeviceId, bool Disabled, bool Hidden, string? Name, string? OriginalName, string? DeviceClass, string? OriginalDeviceClass);
+    private sealed record RegistryEntry(string? Platform, string? DeviceId, bool Disabled, bool Hidden, string? Name, string? OriginalName, string? DeviceClass, string? OriginalDeviceClass)
+    {
+        public string? UniqueId { get; init; }
+    }
 
     private static Dictionary<EntityId, StateEntry>? ReadStates(JsonElement states)
     {
@@ -77,7 +92,10 @@ public static class DiscoveryResponseParser
             var hasAttributes = item.TryGetProperty("attributes", out attributes);
             string? Attribute(string key) => hasAttributes ? Text(attributes, key) : null;
             var reported = Time(item, "last_reported") ?? Time(item, "last_updated") ?? Time(item, "last_changed");
-            result[id.Value] = new StateEntry(state, Attribute("unit_of_measurement"), Attribute("device_class"), Attribute("state_class"), Attribute("friendly_name"), reported);
+            result[id.Value] = new StateEntry(state, Attribute("unit_of_measurement"), Attribute("device_class"), Attribute("state_class"), Attribute("friendly_name"), reported)
+            {
+                Options = hasAttributes ? Options(attributes) : null,
+            };
         }
 
         return result;
@@ -106,11 +124,20 @@ public static class DiscoveryResponseParser
                 Text(item, "name"),
                 Text(item, "original_name"),
                 Text(item, "device_class"),
-                Text(item, "original_device_class"));
+                Text(item, "original_device_class"))
+            {
+                UniqueId = Text(item, "unique_id"),
+            };
         }
 
         return result;
     }
+
+    /// <summary>A select's options: a bounded list of texts, anything else read as not known (never a refusal of the whole list).</summary>
+    private static ImmutableArray<string>? Options(JsonElement attributes) =>
+        attributes.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array && options.GetArrayLength() <= EntityUpdate.MaxOptions
+            ? EntityUpdate.BoundedOptions([.. options.EnumerateArray().Select(o => o.ValueKind == JsonValueKind.String ? o.GetString() : null)])
+            : null;
 
     private static ImmutableArray<DiscoveredDevice>? ReadDevices(JsonElement devices)
     {

@@ -237,7 +237,7 @@ public sealed class HomeAssistantClient
     /// message. A session that ends first is no answer, like a timeout (the call may or may not have
     /// run): the device's reported state decides, never a mismatch counted against it.
     /// </summary>
-    internal async Task<CallOutcome> CallServiceAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
+    internal async Task<CallOutcome> CallServiceAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(call);
         var transport = Volatile.Read(ref _transport);

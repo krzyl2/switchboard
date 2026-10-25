@@ -55,9 +55,6 @@ public sealed record ModeStatus(
     ImmutableArray<ModeCondition> Missing,
     ModeNote Note)
 {
-    /// <summary>The control switch in the vocabulary of the Stage 5 UI choice: active while control is allowed.</summary>
-    public OperatingMode UiChoice => ControlAllowed ? OperatingMode.Active : OperatingMode.Shadow;
-
     /// <summary>
     /// The only thing missing is a valid configuration: the gate may still send the safe state's
     /// offs and minimums to the devices of the last valid document (04 §8), never an increase.

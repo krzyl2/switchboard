@@ -330,6 +330,8 @@ public sealed class SetupService
         var context = new SetupContext(discovery, _readouts, _runtime.DetectedRefresh, _defaults, control, _evidence, now)
         {
             DeclaredSigma = SetupDocumentMapper.DeclaredSigma(mapped.Root),
+            Running = _runtime.Configuration,
+            ReducedBySwitchboard = _runtime.ReducedBySwitchboard,
         };
         var validation = SetupValidator.Validate(draft, context);
         var issues = new List<SetupIssue>(mapped.Issues);

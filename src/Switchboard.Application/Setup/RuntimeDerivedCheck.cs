@@ -19,6 +19,9 @@ public static class ConfigurationWarningCodes
 
     /// <summary>Home Assistant's entity registry could not be read, so no input could be checked.</summary>
     public const string DerivedCheckUnavailable = "derived_check_unavailable";
+
+    /// <summary>An actuator or stop actuator of a hand-written file is one of Switchboard's own MQTT entities (0.7.1).</summary>
+    public const string OwnEntityActuator = "own_entity_actuator";
 }
 
 /// <summary>One warning about the configuration in force; never a safe state, never a refusal of the file.</summary>
@@ -31,7 +34,9 @@ public sealed record ConfigurationWarning(string Code, SignalName? Signal, Entit
 /// refuses a derived sensor as a measurement input, a file edited by hand is only warned about. Every
 /// measurement input (meter, inverter, totals, device draws, circuit-group sub-meters) is looked up
 /// in Home Assistant's entity registry: a derived platform, or no registry entry, is a warning; a
-/// registry that cannot be read is one derived_check_unavailable warning.
+/// registry that cannot be read is one derived_check_unavailable warning. An actuator or stop
+/// actuator that is one of Switchboard's own MQTT entities is warned about too: commanding it would
+/// loop back into Switchboard instead of reaching the device.
 /// </summary>
 public static class RuntimeDerivedCheck
 {
@@ -89,6 +94,24 @@ public static class RuntimeDerivedCheck
                         now,
                         $"{signal.Entity} ({signal.Path}) is in no entity registry, so its source cannot be verified; give it a unique_id, or map the primary measurement."));
                     break;
+            }
+        }
+
+        foreach (var device in configuration.Devices)
+        {
+            var commanded = device.Stages.Select(s => ((EntityId?)s.Actuator, "actuator")).Append((device.StopActuator, "stop_actuator"));
+            foreach (var (actuator, key) in commanded)
+            {
+                if (actuator is { } entity && snapshot.Find(entity) is { Own: true })
+                {
+                    warnings.Add(new ConfigurationWarning(
+                        ConfigurationWarningCodes.OwnEntityActuator,
+                        null,
+                        entity,
+                        null,
+                        now,
+                        $"{entity} ({device.Path}.{key}) is one of Switchboard's own entities; commanding it would loop back into Switchboard instead of reaching {device.Id}. Declare the device's own entity."));
+                }
             }
         }
 

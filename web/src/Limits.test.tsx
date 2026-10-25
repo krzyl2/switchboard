@@ -100,7 +100,7 @@ describe('limits page', () => {
 
   // MODE-01 rule from DECISIONS: an active add-on option is only a ceiling; this version stays shadow.
   it('says why an active add-on option still runs in shadow mode', async () => {
-    serve({ guard: () => respond(copy(guardSample, (p) => (p.mode = { ceiling: 'active', uiChoice: 'active', effective: 'shadow', note: 'active_not_enabled' }))) });
+    serve({ guard: () => respond(copy(guardSample, (p) => (p.mode = { ceiling: 'active', effective: 'shadow', note: 'active_not_enabled' }))) });
     await open();
 
     expect(fact(card('Limits and overloads'), 'Mode').textContent).toContain('it stays in shadow mode');

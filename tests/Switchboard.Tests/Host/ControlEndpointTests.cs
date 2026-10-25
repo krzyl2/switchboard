@@ -138,7 +138,15 @@ public sealed class ControlEndpointTests
             string? text = null;
             try
             {
-                text = File.Exists(path) ? await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken) : null;
+                // Shared for writing and deletion: a reader holding FileShare.Read makes the writer's
+                // atomic replace (File.Move over it) fail on Windows, and its retry comes only after
+                // WriteRetryInterval, longer than this wait (flaky in 0.7.0).
+                if (File.Exists(path))
+                {
+                    await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                    using var reader = new StreamReader(stream);
+                    text = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+                }
             }
             catch (IOException)
             {

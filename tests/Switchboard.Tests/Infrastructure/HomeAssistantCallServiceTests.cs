@@ -20,7 +20,7 @@ public sealed class HomeAssistantCallServiceTests : IAsyncDisposable
 {
     private static readonly TimeSpan Timeout = TestOptions.CommandTimeout;
     private static readonly ActuatorCall Off = new(EntityId.Parse("switch.heater_1"), "switch", ActuatorService.TurnOff, null);
-    private static readonly Func<EntityId, string, ActuatorService, double?, bool> Declared = (_, _, _, _) => true;
+    private static readonly ActuatorDeclaredCheck Declared = (_, _, _, _, _) => true;
 
     private readonly ObservableTimeProvider _time = new();
     private readonly ScriptedTransportFactory _factory = new();
@@ -106,7 +106,7 @@ public sealed class HomeAssistantCallServiceTests : IAsyncDisposable
         var transport = await ConnectAsync();
         var before = transport.Sent.Count;
 
-        await Assert.ThrowsAsync<HomeAssistantCommandRefusedException>(() => _client.CallServiceAsync(Off, (_, _, _, _) => false, Timeout, CancellationToken.None));
+        await Assert.ThrowsAsync<HomeAssistantCommandRefusedException>(() => _client.CallServiceAsync(Off, (_, _, _, _, _) => false, Timeout, CancellationToken.None));
 
         Assert.Equal(before, transport.Sent.Count);
     }

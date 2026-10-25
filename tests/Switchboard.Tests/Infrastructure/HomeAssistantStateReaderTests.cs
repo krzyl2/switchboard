@@ -39,6 +39,22 @@ public sealed class HomeAssistantStateReaderTests
     }
 
     [Fact]
+    public async Task Probe_reads_options()
+    {
+        // A select's options come with its state (0.7.1): the send-time options check reads them.
+        _handler.Respond(HttpStatusCode.OK, """
+            {"entity_id":"select.charger_force","state":"0","attributes":{"options":["0","1","2"],"friendly_name":"Force"},
+             "last_changed":"2026-10-21T10:20:54.020123+00:00","last_reported":"2026-10-21T10:27:24.020456+00:00",
+             "last_updated":"2026-10-21T10:21:54.000001+00:00","context":{"id":"x"}}
+            """);
+
+        var update = Assert.IsType<EntityStateRead.Found>(await Reader().ReadAsync(EntityId.Parse("select.charger_force"), CancellationToken.None)).Update;
+
+        Assert.Equal(["0", "1", "2"], update.Options!.Value);
+        Assert.Null(update.Unit);
+    }
+
+    [Fact]
     public async Task Only_GET_states_of_a_validated_entity_is_possible()
     {
         _handler.Respond(HttpStatusCode.NotFound, "{}");

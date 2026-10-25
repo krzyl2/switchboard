@@ -22,7 +22,10 @@ public sealed class LoadModelTests
         TimeSpan.FromSeconds(20),
         false,
         TimeSpan.FromSeconds(60),
-        TimeSpan.FromSeconds(60));
+        TimeSpan.FromSeconds(60))
+    {
+        Start = StartPolicy.RestoreOnly,
+    };
 
     private static readonly DeviceSpec MeasuredCharger = Charger with { CurrentDrawPhases = [Phase.L1] };
 
@@ -36,7 +39,10 @@ public sealed class LoadModelTests
         TimeSpan.FromSeconds(1),
         false,
         TimeSpan.FromMinutes(6),
-        TimeSpan.FromSeconds(90));
+        TimeSpan.FromSeconds(90))
+    {
+        Start = StartPolicy.RestoreOnly,
+    };
 
     [Fact]
     public void Relief_never_exceeds_measured_draw_so_an_idle_charger_hides_no_overload()

@@ -125,7 +125,6 @@ describe('parseDecisionsPage, dispatch decisions', () => {
         (p) =>
           (at(p, 'mode_resolved').inputs.mode = {
             ceiling: 'active',
-            uiChoice: 'active',
             note,
             controlAllowed: null,
             configurationValid: null,
@@ -147,7 +146,6 @@ describe('parseDecisionsPage, dispatch decisions', () => {
         (p) =>
           (at(p, 'mode_resolved').inputs.mode = {
             ceiling: 'active',
-            uiChoice: 'shadow',
             note: 'none',
             controlAllowed: false,
             configurationValid: true,

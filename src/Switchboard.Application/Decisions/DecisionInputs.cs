@@ -61,11 +61,11 @@ public sealed record DeviceDecisionInputs(
     bool CanSwitchOff);
 
 /// <summary>
-/// The mode at a mode decision (MODE-02). <see cref="UiChoice"/> is the control switch in the Stage 5
-/// vocabulary (active while control is allowed); the remaining parts arrived with 0.7.0 and are null
-/// on lines written before it.
+/// The mode at a mode decision (MODE-02): the add-on option (the ceiling) and its note; the control
+/// switch's parts arrived with 0.7.0 and are null on lines written before it. The Stage 5 UI choice
+/// of older lines is read and ignored (0.7.1).
 /// </summary>
-public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiChoice, ModeNote Note)
+public sealed record ModeDecisionInputs(OperatingMode Ceiling, ModeNote Note)
 {
     /// <summary>The global "control allowed" switch.</summary>
     public bool? ControlAllowed { get; init; }
@@ -84,7 +84,6 @@ public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiC
     public bool Equals(ModeDecisionInputs? other) =>
         other is not null
         && Ceiling == other.Ceiling
-        && UiChoice == other.UiChoice
         && Note == other.Note
         && ControlAllowed == other.ControlAllowed
         && ConfigurationValid == other.ConfigurationValid
@@ -92,7 +91,7 @@ public sealed record ModeDecisionInputs(OperatingMode Ceiling, OperatingMode UiC
         && Source == other.Source
         && (Missing.IsDefault ? [] : Missing).SequenceEqual(other.Missing.IsDefault ? [] : other.Missing);
 
-    public override int GetHashCode() => HashCode.Combine(Ceiling, UiChoice, Note, ControlAllowed, ConfigurationValid, StateConfirmed, Source);
+    public override int GetHashCode() => HashCode.Combine(Ceiling, Note, ControlAllowed, ConfigurationValid, StateConfirmed, Source);
 }
 
 /// <summary>The headroom on one constraint at a dispatch decision.</summary>

@@ -52,6 +52,22 @@ public sealed class RuntimeDerivedCheckTests
     }
 
     [Fact]
+    public void Switchboards_own_entity_declared_as_a_stop_actuator_is_a_warning()
+    {
+        // A hand-written file that declares Switchboard's own override select as the charger's stop
+        // would loop every stop back into Switchboard instead of reaching the charger (0.7.1).
+        var yaml = TestConfigurations.Example.Replace("stop_actuator: select.goe_422752_frc", "stop_actuator: select.switchboard_ev_charger_override", StringComparison.Ordinal);
+        Assert.NotEqual(TestConfigurations.Example, yaml);
+        var configuration = TestConfigurations.Valid(yaml).Configuration!;
+
+        var warning = Assert.Single(RuntimeDerivedCheck.Run(configuration, SetupValidatorTests.Fixture(), SetupFixtures.Defaults, Now), w => w.Code == ConfigurationWarningCodes.OwnEntityActuator);
+
+        Assert.Equal(EntityId.Parse("select.switchboard_ev_charger_override"), warning.Entity);
+        Assert.Contains("devices[3].stop_actuator", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(RuntimeDerivedCheck.Run(Configuration(), SetupValidatorTests.Fixture(), SetupFixtures.Defaults, Now), w => w.Code == ConfigurationWarningCodes.OwnEntityActuator);
+    }
+
+    [Fact]
     public void A_registry_that_cannot_be_read_is_one_warning_never_a_pass()
     {
         Assert.Equal(

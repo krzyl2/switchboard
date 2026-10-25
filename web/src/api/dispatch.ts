@@ -144,7 +144,7 @@ export interface DispatchDevice {
 
 export interface DispatchStatus {
   at: Date;
-  mode: { ceiling: OperatingMode; uiChoice: OperatingMode; effective: OperatingMode; note: ModeNote };
+  mode: { ceiling: OperatingMode; effective: OperatingMode; note: ModeNote };
   /** True only while commands are sent: effective active mode (option active, control allowed, configuration valid, state confirmed). */
   commandPath: boolean;
   phases: DispatchPhase[];
@@ -302,7 +302,6 @@ export function parseDispatch(raw: unknown): DispatchStatus {
     at: instant(field(r, 'at', 'payload'), 'at'),
     mode: {
       ceiling: oneOf(OPERATING_MODES, field(mode, 'ceiling', 'mode'), 'mode.ceiling'),
-      uiChoice: oneOf(OPERATING_MODES, field(mode, 'uiChoice', 'mode'), 'mode.uiChoice'),
       effective: oneOf(OPERATING_MODES, field(mode, 'effective', 'mode'), 'mode.effective'),
       note: oneOf(MODE_NOTES, field(mode, 'note', 'mode'), 'mode.note'),
     },

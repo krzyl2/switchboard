@@ -123,6 +123,91 @@ public sealed class FailSafeTableTests
         Assert.True(start.At >= released + TimeSpan.FromSeconds(150), $"started at {start.At:O}, released at {released:O}");
     }
 
+    [Fact]
+    public void Kill_switch_sends_the_select_stop_within_one_cycle()
+    {
+        // SAFE-03 with a select stop (0.7.1): the kill switch's step itself sends the stop option.
+        var rig = new SelectStopRig().Begin();
+
+        rig.Harness.KillSwitch.Set(true, KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+
+        Assert.Equal(["1"], rig.SelectOptions);
+        Assert.Contains(rig.Harness.Recorder.Decisions, d => d.Device?.Value == "ev_charger" && d.Action == DecisionAction.SwitchOff && d.Reason == Switchboard.Domain.Decisions.ReasonCode.KillSwitch && d.Commanded);
+    }
+
+    [Fact]
+    public void Stale_meter_sends_the_select_stop()
+    {
+        // SAFE-01 "stale signal": the meter falls silent beyond its 90 s max_age; the safe state
+        // stops the charger through its select like any controlled device.
+        var rig = new SelectStopRig().Begin();
+
+        rig.Harness.Time.Advance(TimeSpan.FromSeconds(91));
+        rig.Harness.Publish();
+        rig.Harness.Runner.Step();
+
+        Assert.Equal(["1"], rig.SelectOptions);
+        Assert.Contains(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.SafeStateEntered);
+    }
+
+    [Fact]
+    public void HA_loss_stop_is_reasserted_after_reconnect()
+    {
+        // SAFE-01 "HA disconnected": the safe state's stop cannot leave while the link is down; the
+        // new link's states still show the charger running, so the stop is sent again, once.
+        var rig = new SelectStopRig().Begin();
+        rig.Disconnect();
+        rig.Harness.Publish();
+        rig.Harness.Runner.Step();
+        Assert.Equal(["1"], rig.SelectOptions);
+
+        rig.Harness.Time.Advance(TimeSpan.FromSeconds(30));
+        rig.Reconnect();
+        rig.Poll(2);
+        rig.Hold(2, TimeSpan.FromSeconds(30));
+
+        Assert.Equal(["1", "1"], rig.SelectOptions);
+        Assert.Contains(rig.Harness.Recorder.Decisions, d => d.Device?.Value == "ev_charger" && d.Inputs.Dispatch?.Reasserted == true && d.Commanded);
+    }
+
+    [Fact]
+    public void Stale_select_state_still_gets_the_protective_stop()
+    {
+        // The go-e's link drops: its select turns unavailable and its options are no longer known.
+        // Its state is unknown, so protection holds it off, and the stop is sent anyway: unknown
+        // options never block a protective stop.
+        var rig = new SelectStopRig().Begin();
+        rig.Option = "unavailable";
+
+        rig.Poll(2);
+
+        Assert.Equal(["1"], rig.SelectOptions);
+        Assert.Empty(rig.Path.Refused);
+    }
+
+    [Fact]
+    public void A_stop_acknowledged_in_the_step_of_the_first_states_still_resumes_the_users_level()
+    {
+        // After a restart the charger's states arrive after the safe state's stop left and was
+        // acknowledged; the first report (its old last_reported, from before the stop) shows the
+        // user's "0" at 10 A. It is the level to give back, so the charger is resumed after the
+        // release (0.7.0 dropped it when the acknowledgement came first, and left the charger stopped).
+        var rig = new SelectStopRig().BeginWithoutCharger();
+        Assert.Equal(["1"], rig.SelectOptions);
+        var before = rig.Harness.Now - TimeSpan.FromHours(3);
+
+        rig.Harness.Time.Advance(TimeSpan.FromSeconds(10));
+        rig.ReportCharger(before);
+        rig.Harness.Publish();
+        rig.Harness.Runner.Step();
+        Assert.NotNull(rig.Ledger.Baseline);
+
+        rig.Hold(2, TimeSpan.FromMinutes(12));
+
+        Assert.Equal(["1", "0"], rig.SelectOptions);
+    }
+
     /// <summary>heater_l1 reported off, the other loads on, every phase at a quiet 8 A.</summary>
     private static void PushQuiet(GuardRunnerHarness harness) => harness.Push(
         ("switch.heater_1", "off", null),

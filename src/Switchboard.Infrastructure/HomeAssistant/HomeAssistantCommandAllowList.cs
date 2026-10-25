@@ -13,11 +13,12 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// <para>
 /// The only state-changing type is <c>call_service</c> (control, maintainer survey 2026-10-25),
 /// in exactly one shape: one entity as <c>target.entity_id</c> (never a list, never an area or a
-/// device), one of six domain/service pairs (relays and stop actuators on and off, setpoints
-/// set_value with one finite number), the entity's own domain, and an entity the configuration
-/// loaded at send time declares as an actuator allowing that service and value. Nothing else that
-/// changes state in Home Assistant (fire_event, execute_script, registry or config writes, a service
-/// on an undeclared entity) has a shape here; an architecture test keeps it that way.
+/// device), one of eight domain/service pairs (relays and switch stop actuators on and off,
+/// setpoints set_value with one finite number, select stop actuators select_option with one option
+/// as text), the entity's own domain, and an entity the configuration loaded at send time declares
+/// as an actuator allowing that service, value and option. Nothing else that changes state in Home
+/// Assistant (fire_event, execute_script, registry or config writes, a service on an undeclared
+/// entity) has a shape here; an architecture test keeps it that way.
 /// </para>
 /// </summary>
 public static class HomeAssistantCommandAllowList
@@ -48,6 +49,7 @@ public static class HomeAssistantCommandAllowList
     private const string TurnOn = "turn_on";
     private const string TurnOff = "turn_off";
     private const string SetValue = "set_value";
+    private const string SelectOption = "select_option";
 
     private const string IdKey = "id";
     private const string TypeKey = "type";
@@ -59,6 +61,7 @@ public static class HomeAssistantCommandAllowList
     private const string TargetKey = "target";
     private const string EntityIdKey = "entity_id";
     private const string ValueKey = "value";
+    private const string OptionKey = "option";
 
     private static readonly FrozenDictionary<string, FrozenSet<string>> Shapes = new Dictionary<string, FrozenSet<string>>
     {
@@ -71,9 +74,10 @@ public static class HomeAssistantCommandAllowList
         [CallService] = new[] { IdKey, TypeKey, DomainKey, ServiceKey, TargetKey }.ToFrozenSet(StringComparer.Ordinal),
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
-    private static readonly FrozenSet<string> SetValueShape = new[] { IdKey, TypeKey, DomainKey, ServiceKey, ServiceDataKey, TargetKey }.ToFrozenSet(StringComparer.Ordinal);
+    /// <summary>The keys of a call with service_data: set_value ({value}) and select_option ({option}).</summary>
+    private static readonly FrozenSet<string> ServiceDataShape = new[] { IdKey, TypeKey, DomainKey, ServiceKey, ServiceDataKey, TargetKey }.ToFrozenSet(StringComparer.Ordinal);
 
-    /// <summary>The domain/service pairs a call_service may carry, each with its meaning: relays and stop actuators on and off, setpoints set_value.</summary>
+    /// <summary>The domain/service pairs a call_service may carry, each with its meaning: relays and switch stops on and off, setpoints set_value, select stops select_option.</summary>
     private static readonly FrozenDictionary<(string Domain, string Service), ActuatorService> Pairs = new Dictionary<(string, string), ActuatorService>
     {
         [("switch", TurnOn)] = ActuatorService.TurnOn,
@@ -82,6 +86,8 @@ public static class HomeAssistantCommandAllowList
         [("input_boolean", TurnOff)] = ActuatorService.TurnOff,
         [("number", SetValue)] = ActuatorService.SetValue,
         [("input_number", SetValue)] = ActuatorService.SetValue,
+        [("select", SelectOption)] = ActuatorService.SelectOption,
+        [("input_select", SelectOption)] = ActuatorService.SelectOption,
     }.ToFrozenDictionary();
 
     public static FrozenSet<string> Allowed { get; } = Shapes.Keys.ToFrozenSet(StringComparer.Ordinal);
@@ -98,6 +104,7 @@ public static class HomeAssistantCommandAllowList
         ActuatorService.TurnOn => TurnOn,
         ActuatorService.TurnOff => TurnOff,
         ActuatorService.SetValue => SetValue,
+        ActuatorService.SelectOption => SelectOption,
         _ => throw new ArgumentOutOfRangeException(nameof(service), service, "Not a service of the allow-list."),
     };
 
@@ -202,16 +209,17 @@ public static class HomeAssistantCommandAllowList
     /// <summary>
     /// The one shape of a service call, re-read as Home Assistant would read it: exactly
     /// <c>{id, type: "call_service", domain, service, target: {entity_id: "&lt;one entity&gt;"}}</c>,
-    /// plus <c>service_data: {value: &lt;finite number&gt;}</c> for set_value and only there; each key
-    /// once; the pair on the list; the entity's domain equal to <c>domain</c>; and
-    /// <paramref name="isDeclared"/> (the configuration loaded now) accepting the entity, the service
-    /// and the value. Anything else is refused before the socket is touched.
+    /// plus <c>service_data: {value: &lt;finite number&gt;}</c> for set_value and
+    /// <c>service_data: {option: "&lt;non-empty text&gt;"}</c> for select_option, and only there; each
+    /// key once; the pair on the list; the entity's domain equal to <c>domain</c>; and
+    /// <paramref name="isDeclared"/> (the configuration loaded now) accepting the entity, the service,
+    /// the value and the option. Anything else is refused before the socket is touched.
     /// </summary>
-    public static void EnsureCallServiceAllowed(ReadOnlySpan<byte> utf8Json, Func<EntityId, string, ActuatorService, double?, bool> isDeclared)
+    public static void EnsureCallServiceAllowed(ReadOnlySpan<byte> utf8Json, ActuatorDeclaredCheck isDeclared)
     {
         ArgumentNullException.ThrowIfNull(isDeclared);
         string? type = null, domain = null, service = null, entity = null;
-        double? value = null;
+        (string Name, JsonTokenType Token, string? Text)? data = null;
         var keys = new HashSet<string>(StringComparer.Ordinal);
         try
         {
@@ -247,8 +255,8 @@ public static class HomeAssistantCommandAllowList
                         entity = ReadSingle(ref reader, EntityIdKey, JsonTokenType.String, "target is exactly {entity_id: one entity ID}") is { } text ? text : null;
                         break;
                     case ServiceDataKey when reader.TokenType == JsonTokenType.StartObject:
-                        var raw = ReadSingle(ref reader, ValueKey, JsonTokenType.Number, "service_data is exactly {value: one number}");
-                        value = double.Parse(raw!, System.Globalization.CultureInfo.InvariantCulture);
+                        // One property, judged once the service is known: {value} for set_value, {option} for select_option.
+                        data = ReadOne(ref reader, "service_data is exactly one key: {value: one number} or {option: one text}");
                         break;
                     default:
                         throw Refused(CallService, $"key '{key}' is not allowed in a {CallService} or has the wrong type");
@@ -275,15 +283,31 @@ public static class HomeAssistantCommandAllowList
             throw Refused(CallService, $"{domain}.{service} is not an allowed service");
         }
 
-        var shape = meaning == ActuatorService.SetValue ? SetValueShape : Shapes[CallService];
+        var shape = meaning is ActuatorService.SetValue or ActuatorService.SelectOption ? ServiceDataShape : Shapes[CallService];
         if (!keys.SetEquals(shape))
         {
             throw Refused(CallService, $"a {domain}.{service} call has exactly the keys {string.Join(", ", shape)}");
         }
 
-        if (value is { } number && !double.IsFinite(number))
+        double? value = null;
+        string? option = null;
+        switch (meaning)
         {
-            throw Refused(CallService, "the value is not a finite number");
+            case ActuatorService.SetValue when data is { Name: ValueKey, Token: JsonTokenType.Number, Text: { } raw }:
+                if (!double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) || !double.IsFinite(number))
+                {
+                    throw Refused(CallService, "the value is not a finite number");
+                }
+
+                value = number;
+                break;
+            case ActuatorService.SetValue:
+                throw Refused(CallService, "a setpoint's service_data is exactly {value: one number}");
+            case ActuatorService.SelectOption when data is { Name: OptionKey, Token: JsonTokenType.String, Text: { Length: > 0 } text }:
+                option = text;
+                break;
+            case ActuatorService.SelectOption:
+                throw Refused(CallService, "a select stop's service_data is exactly {option: one non-empty text}");
         }
 
         if (entity is null || !EntityId.TryParse(entity, out var id) || id.Value.Value[..id.Value.Value.IndexOf('.', StringComparison.Ordinal)] != domain)
@@ -291,22 +315,35 @@ public static class HomeAssistantCommandAllowList
             throw Refused(CallService, $"the target is not one entity of the {domain} domain");
         }
 
-        if (!isDeclared(id.Value, domain, meaning, value))
+        if (!isDeclared(id.Value, domain, meaning, value, option))
         {
-            throw Refused(CallService, $"{id} is not a declared actuator that allows {domain}.{service} with this value in the configuration loaded now");
+            throw Refused(CallService, $"{id} is not a declared actuator that allows {domain}.{service} with this value or option in the configuration loaded now");
         }
     }
 
     /// <summary>Reads an object holding exactly one key of one token type; returns that value as text.</summary>
     private static string? ReadSingle(ref Utf8JsonReader reader, string name, JsonTokenType token, string shape)
     {
-        if (!reader.Read() || reader.TokenType != JsonTokenType.PropertyName || reader.GetString() != name)
+        if (ReadOne(ref reader, shape) is not { } single || single.Name != name || single.Token != token)
         {
             throw Refused(CallService, shape);
         }
 
+        return single.Text;
+    }
+
+    /// <summary>Reads an object holding exactly one key with a string or number value; returns its name, token and text.</summary>
+    private static (string Name, JsonTokenType Token, string? Text)? ReadOne(ref Utf8JsonReader reader, string shape)
+    {
+        if (!reader.Read() || reader.TokenType != JsonTokenType.PropertyName)
+        {
+            throw Refused(CallService, shape);
+        }
+
+        var name = reader.GetString()!;
         reader.Read();
-        if (reader.TokenType != token)
+        var token = reader.TokenType;
+        if (token is not (JsonTokenType.String or JsonTokenType.Number))
         {
             throw Refused(CallService, shape);
         }
@@ -319,7 +356,7 @@ public static class HomeAssistantCommandAllowList
             throw Refused(CallService, shape);
         }
 
-        return text;
+        return (name, token, text);
     }
 
     private static HomeAssistantCommandRefusedException Refused(string? type, string reason) => new(type, reason);

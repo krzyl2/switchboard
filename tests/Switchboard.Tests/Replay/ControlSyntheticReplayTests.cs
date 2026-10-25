@@ -111,6 +111,53 @@ public sealed class ControlSyntheticReplayTests(ControlSyntheticReplayRun run) :
         Assert.Equal(before - 7, after, 1);
     }
 
+    [Fact]
+    public async Task Simulated_select_follows_stop_and_resume()
+    {
+        // Development replay with the example (0.7.1): the go-e force state is a stateless control of
+        // the plant (synthetic-plant.json). The sink checks each call as the live link would, keeps
+        // its option, and the plant's select reports the option it was set to; it draws nothing
+        // itself, so the meter rows are unchanged.
+        var data = ReplayData.Load(RepoPaths.Combine("tests", "fixtures", "replay", DispatchSyntheticReplayRun.File));
+        var configuration = TestConfigurations.Valid(TestConfigurations.Example).Configuration!;
+        var plant = new SimulatedPlant(PlantDefinition.Load(RepoPaths.Combine("tests", "fixtures", "replay", "synthetic-plant.json")), data, () => configuration);
+        var sink = new DevCommandSink(new SignalClock(new SteppableTime(data.Start)), plant);
+        var directory = new ActuatorDirectoryHolder();
+        directory.Observe(configuration);
+        var force = EntityId.Parse("select.goe_422752_frc");
+        var meter = EntityId.Parse("sensor.solaredge_m1_ac_power_a");
+        var recordedMeter = data.LatestAtOrBefore(meter, data.Start + TimeSpan.FromMinutes(5))!;
+
+        await sink.SendAsync(new ActuatorCall(force, "select", ActuatorService.SelectOption, null) { Option = "1" }, directory.IsDeclared, TimeSpan.FromSeconds(5), CancellationToken.None);
+        Assert.Equal("1", plant.Transform(force, "0", data.Start + TimeSpan.FromMinutes(5)));
+        Assert.Equal(recordedMeter.State, plant.Transform(meter, recordedMeter.State, recordedMeter.Timestamp));
+
+        await sink.SendAsync(new ActuatorCall(force, "select", ActuatorService.SelectOption, null) { Option = "0" }, directory.IsDeclared, TimeSpan.FromSeconds(5), CancellationToken.None);
+        Assert.Equal("0", plant.Transform(force, "1", data.Start + TimeSpan.FromMinutes(6)));
+
+        Assert.Equal(["1", "0"], sink.Entries.Select(e => (string)e.ServiceData!["option"]));
+        Assert.All(sink.Entries, e => Assert.Equal(("select", "select_option", "select.goe_422752_frc"), (e.Domain, e.Service, e.EntityId)));
+    }
+
+    [Fact]
+    public async Task Dev_sink_refuses_an_undeclared_option()
+    {
+        // "2" (force charging) is an option of the select, but not one the configuration declares:
+        // the sink refuses it exactly as the live link would, and the plant never sees it.
+        var data = ReplayData.Load(RepoPaths.Combine("tests", "fixtures", "replay", DispatchSyntheticReplayRun.File));
+        var configuration = TestConfigurations.Valid(TestConfigurations.Example).Configuration!;
+        var plant = new SimulatedPlant(PlantDefinition.Load(RepoPaths.Combine("tests", "fixtures", "replay", "synthetic-plant.json")), data, () => configuration);
+        var sink = new DevCommandSink(new SignalClock(new SteppableTime(data.Start)), plant);
+        var directory = new ActuatorDirectoryHolder();
+        directory.Observe(configuration);
+        var force = EntityId.Parse("select.goe_422752_frc");
+
+        await Assert.ThrowsAsync<HomeAssistantCommandRefusedException>(() => sink.SendAsync(new ActuatorCall(force, "select", ActuatorService.SelectOption, null) { Option = "2" }, directory.IsDeclared, TimeSpan.FromSeconds(5), CancellationToken.None));
+
+        Assert.Empty(sink.Entries);
+        Assert.Equal("0", plant.Transform(force, "0", data.Start));
+    }
+
     [Theory]
     [InlineData(100)]
     [InlineData(114)]

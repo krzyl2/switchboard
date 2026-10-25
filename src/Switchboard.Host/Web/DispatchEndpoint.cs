@@ -178,7 +178,7 @@ internal static class DispatchEndpoint
 
     internal static DispatchResponse Build(DispatchStatus status) => new(
         status.At,
-        new GuardModeDto(ApiText.Snake(status.Mode.Ceiling), ApiText.Snake(status.Mode.UiChoice), ApiText.Snake(status.Mode.Effective), ApiText.Snake(status.Mode.Note)),
+        new GuardModeDto(ApiText.Snake(status.Mode.Ceiling), ApiText.Snake(status.Mode.Effective), ApiText.Snake(status.Mode.Note)),
         status.CommandPath,
         [.. status.Phases.Select(p => new DispatchPhaseDto(
             p.Phase.ToString(),

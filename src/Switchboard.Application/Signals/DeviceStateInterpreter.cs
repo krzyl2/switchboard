@@ -4,11 +4,13 @@ using Switchboard.Domain.Signals;
 namespace Switchboard.Application.Signals;
 
 /// <summary>
-/// Reads a device stage's applied state from its state signal (SIG-05). A relay state (and a stop
-/// actuator's) must be exactly <c>on</c> or <c>off</c>; a setpoint arrives as a current the signal
-/// layer has already unit-checked and normalized to A, and must not be negative, except for a
-/// storage device, whose negative setpoint is a discharge. Anything else, and any signal that is
-/// not fresh, leaves the state unknown, which protection counts as on.
+/// Reads a device stage's applied state from its state signal (SIG-05). A relay state (and a switch
+/// stop actuator's) must be exactly <c>on</c> or <c>off</c>; a select stop actuator reads stopped
+/// only on its declared stop option, and able to run on any other option, declared or not, so an
+/// option nobody declared can never hide a draw; a setpoint arrives as a current the signal layer
+/// has already unit-checked and normalized to A, and must not be negative, except for a storage
+/// device, whose negative setpoint is a discharge. Anything else, and any signal that is not fresh,
+/// leaves the state unknown, which protection counts as on.
 /// </summary>
 public static class DeviceStateInterpreter
 {
@@ -23,7 +25,8 @@ public static class DeviceStateInterpreter
         SignalDetail detail,
         SignalValue? value,
         DateTimeOffset? reportedAt,
-        bool allowNegativeSetpoint = false)
+        bool allowNegativeSetpoint = false,
+        StopOptions? select = null)
     {
         if (source != SignalSourceStatus.Connected)
         {
@@ -47,6 +50,8 @@ public static class DeviceStateInterpreter
 
         AppliedState? applied = value switch
         {
+            // A state that is no option text at all is not the stop option either: able to run.
+            StateValue { State: var option } when select is not null => new RelayApplied(option != select.StopOption.Value) { Option = OptionText.TryParse(option, out var text) ? text : null },
             StateValue { State: OnState } => new RelayApplied(true),
             StateValue { State: OffState } => new RelayApplied(false),
             CurrentValue current when current.Current.Value >= 0 || allowNegativeSetpoint => new SetpointApplied(current.Current),

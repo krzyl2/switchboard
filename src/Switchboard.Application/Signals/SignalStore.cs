@@ -18,9 +18,11 @@ public sealed record SignalStoreSettings(TimeSpan ProbeLatencyAllowance);
 /// (SIG-01). Normalizes units and signs (SIG-02), resolves direction (SIG-03), keeps freshness from
 /// report times (SIG-05, SIG-06), detects refresh intervals (SIG-07), derives per-phase house load
 /// (SIG-08) and runs the balance check (SIG-09). It also reads the devices' applied states (a
-/// state declared on_change is fresh while available, with no age limit), their declared draws and
-/// the circuit groups' sub-meters. Deterministic: it never reads a clock, every call is handed
-/// <c>now</c>, and it is driven by exactly one reader.
+/// state declared on_change is fresh while available, with no age limit; a select stop actuator is
+/// read against its declared stop option), their declared draws and the circuit groups' sub-meters,
+/// and keeps the options each entity reports (a select's choices) for the send-time options check.
+/// Deterministic: it never reads a clock, every call is handed <c>now</c>, and it is driven by
+/// exactly one reader.
 /// </summary>
 public sealed class SignalStore
 {
@@ -36,7 +38,7 @@ public sealed class SignalStore
     private ProtectionSetup? _setup;
     private DispatchSetup? _dispatchSetup;
     private ImmutableDictionary<SignalName, ImmutableArray<DeviceName>> _dependents = ImmutableDictionary<SignalName, ImmutableArray<DeviceName>>.Empty;
-    private ImmutableArray<(DeviceName Device, int Stage, SignalName Signal, bool Storage)> _deviceStates = [];
+    private ImmutableArray<(DeviceName Device, int Stage, SignalName Signal, bool Storage, StopOptions? Select)> _deviceStates = [];
     private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _currentDraws = [];
     private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _powerDraws = [];
     private ImmutableArray<(GroupName Group, Phase Phase, SignalName? Signal)> _groupPhases = [];
@@ -116,8 +118,8 @@ public sealed class SignalStore
         _deviceStates =
         [
             .. configuration.Devices.SelectMany(d => d.Stages
-                .Select(s => (d.Id, s.Index, s.StateSignal, d.Type == DeviceType.Storage))
-                .Concat(d.StopSignal is { } stop ? [(d.Id, DeviceStateSample.StopStage, stop, false)] : [])),
+                .Select(s => (d.Id, s.Index, s.StateSignal, d.Type == DeviceType.Storage, (StopOptions?)null))
+                .Concat(d.StopSignal is { } stop ? [(d.Id, DeviceStateSample.StopStage, stop, false, d.StopOptions)] : [])),
         ];
         _currentDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Current.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
         _powerDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Power.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
@@ -128,12 +130,37 @@ public sealed class SignalStore
         SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit)).OrderBy(t => t.Entity)]);
 
         // After the new set is in place, so the balance check and direction see the new definitions.
-        // The report time stays the one Home Assistant gave: re-reading never makes a sample younger.
+        // The report time stays the one Home Assistant gave: re-reading never makes a sample younger,
+        // and the options it reported stay known (a select may not report again for hours).
         foreach (var (runtime, raw) in reread)
         {
-            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported), BatchOrigin.Probe, now);
+            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options }, BatchOrigin.Probe, now);
             runtime.Raw = runtime.Raw! with { HaReported = raw.HaReported };
         }
+    }
+
+    /// <summary>
+    /// The options Home Assistant reported with the latest state of each tracked entity that reports
+    /// any (a select's choices). Empty while the source is not connected: nothing is known then, and
+    /// an entity removed, missing or re-awaited has none. Absent never means "offers nothing".
+    /// </summary>
+    public ImmutableDictionary<EntityId, ImmutableArray<string>> ReportedOptions()
+    {
+        if (Source != SignalSourceStatus.Connected)
+        {
+            return ImmutableDictionary<EntityId, ImmutableArray<string>>.Empty;
+        }
+
+        var options = ImmutableDictionary.CreateBuilder<EntityId, ImmutableArray<string>>();
+        foreach (var signal in _signals)
+        {
+            if (signal.Presence == Presence.Present && signal.Raw?.Options is { } offered)
+            {
+                options[signal.Definition.Entity] = offered;
+            }
+        }
+
+        return options.ToImmutable();
     }
 
     /// <summary>
@@ -306,7 +333,9 @@ public sealed class SignalStore
     /// <summary>
     /// Run-time configuration warnings. A repeating value stays fresh only through a probe that
     /// starts after after_fraction × max_age and must answer before max_age, so the rest of max_age
-    /// has to cover one refresh plus the probe's own answer time.
+    /// has to cover one refresh plus the probe's own answer time. A select stop actuator whose
+    /// reported options lack its declared stop or resume option is named too: that option would be
+    /// refused at send time, so the device could not be stopped (or resumed) through it.
     /// </summary>
     public ImmutableArray<ConfigurationIssue> RuntimeWarnings()
     {
@@ -317,6 +346,28 @@ public sealed class SignalStore
 
         var parameters = _configuration.Control.Signals;
         var warnings = ImmutableArray.CreateBuilder<ConfigurationIssue>();
+        var offered = ReportedOptions();
+        foreach (var device in _configuration.Devices)
+        {
+            if (device.StopActuator is not { } stop || device.StopOptions is not { } options || !offered.TryGetValue(stop, out var choices))
+            {
+                continue;
+            }
+
+            foreach (var (key, option) in new[] { ("stop_option", options.StopOption), ("resume_option", options.ResumeOption) })
+            {
+                if (!choices.Contains(option.Value, StringComparer.Ordinal))
+                {
+                    warnings.Add(new ConfigurationIssue(
+                        ConfigurationIssueCodes.InvalidValue,
+                        $"{device.Path}.{key}",
+                        null,
+                        null,
+                        $"{stop} does not offer the option '{option}' declared as {key} of {device.Id} (it offers {string.Join(", ", choices.Select(c => $"'{c}'"))}); Switchboard will not send it, so {(key == "stop_option" ? "the device cannot be stopped" : "the device cannot be resumed")} through it. Declare the option exactly as the select offers it."));
+                }
+            }
+        }
+
         foreach (var signal in _signals)
         {
             if (signal.Definition.Freshness == StateFreshness.OnChange || signal.Refresh.Estimate(parameters.Refresh) is not { } refresh)
@@ -451,7 +502,7 @@ public sealed class SignalStore
 
         var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit);
         signal.Presence = Presence.Present;
-        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported);
+        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options };
         if (normalized.Outcome == NormalizationOutcome.Unavailable)
         {
             signal.RawStatus = RawStatus.Unavailable;
@@ -764,7 +815,7 @@ public sealed class SignalStore
     private ImmutableArray<DeviceStateSample> DeviceStates(DateTimeOffset now)
     {
         var samples = ImmutableArray.CreateBuilder<DeviceStateSample>(_deviceStates.Length);
-        foreach (var (device, stage, name, storage) in _deviceStates)
+        foreach (var (device, stage, name, storage, select) in _deviceStates)
         {
             var signal = _byName[name];
             var (state, detail) = Classify(signal, now);
@@ -776,7 +827,8 @@ public sealed class SignalStore
                 detail,
                 state == SignalState.Fresh ? signal.Accepted?.Value : null,
                 signal.Accepted?.Effective ?? signal.Raw?.Reported,
-                allowNegativeSetpoint: storage));
+                allowNegativeSetpoint: storage,
+                select: select));
         }
 
         return samples.MoveToImmutable();

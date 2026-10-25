@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Switchboard.Application.Configuration;
 using Switchboard.Domain.Signals;
 
@@ -25,7 +26,11 @@ internal enum RawStatus
 /// arrival; <see cref="HaReported"/> is Home Assistant's own last_reported, unclamped, so a repeat is
 /// recognised as a confirmation only when Home Assistant's report time itself moved on.
 /// </summary>
-internal sealed record RawSample(string State, string? Unit, DateTimeOffset LastUpdated, DateTimeOffset Reported, DateTimeOffset HaReported);
+internal sealed record RawSample(string State, string? Unit, DateTimeOffset LastUpdated, DateTimeOffset Reported, DateTimeOffset HaReported)
+{
+    /// <summary>The options the entity offered with this state (a select's choices); null when not reported.</summary>
+    public ImmutableArray<string>? Options { get; init; }
+}
 
 /// <summary>
 /// The value in use. <see cref="SampleReported"/> is when this value was first reported;

@@ -11,7 +11,9 @@ namespace Switchboard.Tests.Replay;
 /// <summary>
 /// One pass of the guard over the committed tier walk (tests/fixtures/replay/make-synthetic-overload.py)
 /// with the maintainer's example configuration: heater elements (0.35 per kWh) on L1, L2, L3 and the
-/// go-e charger (2.03 per kWh, 6 to 20 A) on L1, so on L1 the heater sheds first.
+/// go-e charger (2.03 per kWh, 6 to 20 A) on L1, so on L1 the heater sheds first. Since 0.7.1 the
+/// example declares the charger's force-state select as its stop actuator, so below its minimum the
+/// charger is stopped too (BRK-03): the only outcomes of the walk that changed with it.
 /// </summary>
 public sealed class GuardSyntheticReplayRun
 {
@@ -76,14 +78,15 @@ public sealed class GuardSyntheticReplayTests(GuardSyntheticReplayRun run) : ICl
     {
         // 1.08 × In from 37:00: reduce during the ordinary cycle, i.e. after persistence_down_cycles
         // (2) cycle boundaries; its 15 min band timer counts from the report before the rise
-        // (36:50.010) and then takes the charger to its minimum. Without a stop actuator that is
-        // all it can give: no further step is spent on it.
+        // (36:50.010) and then takes the charger to its minimum. The phase is still over at the next
+        // poll, and the charger now has a stop (its select, 0.7.1): the next step stops it, one step
+        // per evaluation (BRK-03; before 0.7.1 it was left at 6 A, the fixture's own description).
         var heater = Assert.Single(run.Sheds("heater_l1", GuardSyntheticReplayRun.Minute(36, 59), GuardSyntheticReplayRun.Minute(54)));
         Assert.Equal((GuardSyntheticReplayRun.Minute(38), DecisionAction.SwitchOff, ReasonCode.GuardTierExceeded), (heater.At, heater.Action, heater.Reason));
 
         var charger = run.Sheds("ev_charger", GuardSyntheticReplayRun.Minute(36, 59), GuardSyntheticReplayRun.Minute(54)).ToList();
         Assert.Equal(
-            [(GuardSyntheticReplayRun.Poll(36, 50) + TimeSpan.FromMinutes(15), DecisionAction.ReduceToMinimum)],
+            [(GuardSyntheticReplayRun.Poll(36, 50) + TimeSpan.FromMinutes(15), DecisionAction.ReduceToMinimum), (GuardSyntheticReplayRun.Poll(52), DecisionAction.SwitchOff)],
             charger.Select(d => (d.At, d.Action)));
         Assert.All(charger, d => Assert.Equal(ReasonCode.GuardTierExceeded, d.Reason));
     }
@@ -104,8 +107,9 @@ public sealed class GuardSyntheticReplayTests(GuardSyntheticReplayRun run) : ICl
     {
         // 1.20 × In from 83:00 (report before: 82:50.010): reduce next cycle; the budget falls at
         // 1/180 per second, is at 0.5 at t0 + 90 s and below 0.25 at t0 + 135 s, which takes the
-        // charger to its minimum (strictly below: the first tick after it is exactly 0.25); it has
-        // no stop actuator, so the next boundary takes no further step on it.
+        // charger to its minimum (strictly below: the first tick after it is exactly 0.25). With its
+        // select stop (0.7.1) the next boundary (85:30) stops it below that minimum (BRK-03; before
+        // 0.7.1 the boundary took no further step).
         var t0 = GuardSyntheticReplayRun.Poll(82, 50);
         var heater = Assert.Single(run.Sheds("heater_l1", GuardSyntheticReplayRun.Minute(82, 59), GuardSyntheticReplayRun.Minute(88)));
         Assert.Equal(GuardSyntheticReplayRun.Minute(83, 30), heater.At);
@@ -113,7 +117,7 @@ public sealed class GuardSyntheticReplayTests(GuardSyntheticReplayRun run) : ICl
         Assert.Equal(0.5, run.Harness.StatusAt(t0 + TimeSpan.FromSeconds(90)).Phases.Single(p => p.Phase == Phase.L1).Budget, 9);
         var charger = run.Sheds("ev_charger", GuardSyntheticReplayRun.Minute(82, 59), GuardSyntheticReplayRun.Minute(88)).ToList();
         Assert.Equal(
-            [(t0 + TimeSpan.FromSeconds(135) + TimeSpan.FromTicks(1), DecisionAction.ReduceToMinimum)],
+            [(t0 + TimeSpan.FromSeconds(135) + TimeSpan.FromTicks(1), DecisionAction.ReduceToMinimum), (GuardSyntheticReplayRun.Minute(85, 30), DecisionAction.SwitchOff)],
             charger.Select(d => (d.At, d.Action)));
         Assert.All(charger, d => Assert.Equal(ReasonCode.GuardBudgetLow, d.Reason));
     }
@@ -122,16 +126,17 @@ public sealed class GuardSyntheticReplayTests(GuardSyntheticReplayRun run) : ICl
     public void Shed_one_band_sheds_at_the_entering_sample_and_the_budget_empties_in_30_seconds()
     {
         // 1.32 × In from 100:00 (report before: 99:50.010) costs 1/30 of the budget per second:
-        // below 0.25 just after t0 + 22.5 s (the charger to its minimum), empty at t0 + 30 s
-        // (everything that can give is off already: the charger has no stop actuator). The heater
-        // goes at the entering sample.
+        // below 0.25 just after t0 + 22.5 s (the charger to its minimum), empty at t0 + 30 s. The
+        // heater goes at the entering sample. With its select stop (0.7.1) the shed-one band stops
+        // the charger at the next poll (100:20), before the budget is empty (BRK-03: a modulating
+        // charger stopped fully below its minimum; before 0.7.1 it stayed at 6 A).
         var t0 = GuardSyntheticReplayRun.Poll(99, 50);
         var heater = Assert.Single(run.Sheds("heater_l1", GuardSyntheticReplayRun.Minute(99, 55), GuardSyntheticReplayRun.Minute(101)));
         Assert.Equal((GuardSyntheticReplayRun.Poll(100), ReasonCode.GuardTierExceeded), (heater.At, heater.Reason));
 
         var charger = run.Sheds("ev_charger", GuardSyntheticReplayRun.Minute(99, 55), GuardSyntheticReplayRun.Minute(101)).ToList();
         Assert.Equal(
-            [(t0 + TimeSpan.FromSeconds(22.5) + TimeSpan.FromTicks(1), DecisionAction.ReduceToMinimum)],
+            [(t0 + TimeSpan.FromSeconds(22.5) + TimeSpan.FromTicks(1), DecisionAction.ReduceToMinimum), (GuardSyntheticReplayRun.Poll(100, 20), DecisionAction.SwitchOff)],
             charger.Select(d => (d.At, d.Action)));
         Assert.Equal(0, run.Harness.StatusAt(t0 + TimeSpan.FromSeconds(30)).Phases.Single(p => p.Phase == Phase.L1).Budget, 9);
     }
@@ -139,13 +144,14 @@ public sealed class GuardSyntheticReplayTests(GuardSyntheticReplayRun run) : ICl
     [Fact]
     public void Open_band_sheds_everything_on_the_phase_at_the_entering_sample()
     {
-        // Everything on L1 at the entering sample: the heater off, the charger (no stop actuator) to its floor.
+        // Everything on L1 at the entering sample: the heater off, and the charger stopped outright
+        // through its select (0.7.1; full shed, BRK-03), where before it could only go to its floor.
         var sheds = L1Sheds(GuardSyntheticReplayRun.Minute(113, 55), GuardSyntheticReplayRun.Minute(115)).ToList();
 
         Assert.Equal(["ev_charger", "heater_l1"], sheds.Select(d => d.Device!.Value.Value).Order(StringComparer.Ordinal));
         Assert.All(sheds, d => Assert.Equal((GuardSyntheticReplayRun.Poll(114), ReasonCode.GuardTierExceeded), (d.At, d.Reason)));
         Assert.Equal(
-            [("ev_charger", DecisionAction.ReduceToMinimum), ("heater_l1", DecisionAction.SwitchOff)],
+            [("ev_charger", DecisionAction.SwitchOff), ("heater_l1", DecisionAction.SwitchOff)],
             sheds.Select(d => (d.Device!.Value.Value, d.Action)).Order());
     }
 

@@ -73,11 +73,24 @@ describe('discovery (UI-03)', () => {
     expect(parsed.registryAvailable).toBe(true);
   });
 
+  // 0.7.1: a select's options become the stop and resume options the wizard offers; Switchboard's
+  // own entities are marked so they are never offered as an actuator.
+  it('reads a select with its options and marks Switchboard’s own entities', () => {
+    const parsed = parseDiscovery(copy(discoverySample));
+
+    expect(parsed.entities.find((e) => e.entityId === 'select.goe_422752_frc')).toMatchObject({ domain: 'select', options: ['0', '1', '2'], own: false, state: '0' });
+    expect(parsed.entities.find((e) => e.entityId === 'select.switchboard_ev_charger_override')?.own).toBe(true);
+    expect(parsed.entities.find((e) => e.entityId === 'number.goe_422752_amp')).toMatchObject({ options: null, own: false });
+  });
+
   it.each([
     ['an entity without its derived key', (p: any) => delete p.entities[0].derived],
     ['a derived without its platform', (p: any) => (p.entities[0].derived = {})],
     ['a missing truncation flag', (p: any) => delete p.truncated],
     ['an entity id that is not text', (p: any) => (p.entities[0].entityId = 7)],
+    ['an entity without its options key', (p: any) => delete p.entities[0].options],
+    ['options that are not a list of texts', (p: any) => (p.entities[0].options = ['0', 1])],
+    ['an entity without its own flag', (p: any) => delete p.entities[0].own],
   ])('refuses %s', (_case, change) => {
     expect(() => parseDiscovery(copy(discoverySample, change))).toThrow();
   });
@@ -138,8 +151,24 @@ describe('draft (UI-06)', () => {
       copy(draftSample, (p) => Object.assign(p.draft.devices[3], { stopActuator: 'switch.goe_allow_charging', start: 'headroom' })),
     );
 
-    expect(view.draft.devices[3]).toMatchObject({ stopActuator: 'switch.goe_allow_charging', start: 'headroom' });
+    expect(view.draft.devices[3]).toMatchObject({ stopActuator: 'switch.goe_allow_charging', stopOption: null, resumeOption: null, start: 'headroom' });
     expect(view.draft.devices[0]).toMatchObject({ stopActuator: null, start: null });
+  });
+
+  // 0.7.1: a select stop carries the option that stops the device and the one that resumes it, as text.
+  it('reads a select stop with its stop and resume options', () => {
+    const view = parseDraftView(
+      copy(draftSample, (p) => Object.assign(p.draft.devices[3], { stopActuator: 'select.goe_422752_frc', stopOption: '1', resumeOption: '0' })),
+    );
+
+    expect(view.draft.devices[3]).toMatchObject({ stopActuator: 'select.goe_422752_frc', stopOption: '1', resumeOption: '0' });
+  });
+
+  it.each([
+    ['a device without its stop option key', (p: any) => delete p.draft.devices[3].stopOption],
+    ['a resume option that is a number', (p: any) => (p.draft.devices[3].resumeOption = 0)],
+  ])('refuses %s', (_case, change) => {
+    expect(() => parseDraftView(copy(draftSample, change))).toThrow();
   });
 
   it('an empty draft round-trips through the parser', () => {
@@ -217,6 +246,16 @@ describe('templates (UI-02)', () => {
     expect(parsed.templates[0]).toMatchObject({ type: 'modulating', prefill: { type: 'modulating', min: 6, max: 16, step: 1 }, drawRecommended: true });
     expect(parsed.templates[1]?.inherited).toEqual({ reactionTime: '1s', minOn: '6m', minOff: '90s' });
     expect(parsed.prefillVoltageV).toBe(230);
+  });
+
+  // 0.7.1: the stop picker of a modulating device lists the domains the add-on accepts as a stop
+  // (switches and selects), read from the parser, never hard-coded in the page.
+  it('reads the stop actuator domains of each card, empty where a type takes no stop', () => {
+    const parsed = parseTemplates(copy(templatesSample));
+
+    expect(parsed.templates[0]?.stopActuatorDomains).toEqual(['switch', 'input_boolean', 'select', 'input_select']);
+    expect(parsed.templates[1]?.stopActuatorDomains).toEqual([]);
+    expect(() => parseTemplates(copy(templatesSample, (p) => delete p.templates[0].stopActuatorDomains))).toThrow();
   });
 });
 

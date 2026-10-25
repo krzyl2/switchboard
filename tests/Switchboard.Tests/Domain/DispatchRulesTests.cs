@@ -193,7 +193,10 @@ public sealed class DispatchRulesTests
         TimeSpan.FromSeconds(1),
         false,
         TimeSpan.FromMinutes(6),
-        TimeSpan.FromSeconds(90));
+        TimeSpan.FromSeconds(90))
+    {
+        Start = StartPolicy.RestoreOnly,
+    };
 
     private static AllocationDevice Heater(string name, bool off)
     {
@@ -214,7 +217,10 @@ public sealed class DispatchRulesTests
             TimeSpan.FromSeconds(20),
             false,
             TimeSpan.FromSeconds(60),
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(60))
+        {
+            Start = StartPolicy.RestoreOnly,
+        };
         var levels = DeviceLevels.All(spec);
         return new AllocationDevice(spec, [ConstraintKey.Main(Phase.L1)], DeviceLevel.At(new Amperes(basis)), levels, 0, (int)(max - 6));
     }

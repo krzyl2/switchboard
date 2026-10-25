@@ -103,6 +103,8 @@ export function newDevice(prefill: Record<string, string | number> = {}, templat
     circuitGroup: null,
     rotationGroup: null,
     stopActuator: null,
+    stopOption: null,
+    resumeOption: null,
     start: null,
     draw: null,
   };

@@ -8,8 +8,8 @@ using Switchboard.Infrastructure.HomeAssistant;
 namespace Switchboard.Infrastructure.Replay;
 
 /// <summary>One service call the development sink received, as Home Assistant would have.</summary>
-/// <param name="ServiceData">set_value's data ({ value }); null for turn_on and turn_off.</param>
-public sealed record SinkEntry(DateTimeOffset At, string Domain, string Service, string EntityId, IReadOnlyDictionary<string, double>? ServiceData);
+/// <param name="ServiceData">set_value's data ({ value }) or select_option's ({ option }); null for turn_on and turn_off.</param>
+public sealed record SinkEntry(DateTimeOffset At, string Domain, string Service, string EntityId, IReadOnlyDictionary<string, object>? ServiceData);
 
 /// <summary>
 /// The command path's channel in standalone development replay: it never reaches a Home Assistant.
@@ -51,7 +51,7 @@ public sealed class DevCommandSink : ICallServiceChannel
         }
     }
 
-    public Task<CallOutcome> SendAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
+    public Task<CallOutcome> SendAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(call);
         var payload = CallServicePayload.Build(Interlocked.Increment(ref _lastId), call);
@@ -63,7 +63,7 @@ public sealed class DevCommandSink : ICallServiceChannel
             root.GetProperty("domain").GetString()!,
             root.GetProperty("service").GetString()!,
             root.GetProperty("target").GetProperty("entity_id").GetString()!,
-            root.TryGetProperty("service_data", out var data) ? new Dictionary<string, double> { ["value"] = data.GetProperty("value").GetDouble() } : null);
+            root.TryGetProperty("service_data", out var data) ? ServiceData(data) : null);
         lock (_gate)
         {
             _entries.Enqueue(entry);
@@ -76,4 +76,10 @@ public sealed class DevCommandSink : ICallServiceChannel
         _plant?.Apply(call);
         return Task.FromResult(new CallOutcome(CommandOutcome.Acknowledged, null));
     }
+
+    /// <summary>The checked service_data as the sink shows it: {value} as a number, {option} as text.</summary>
+    private static Dictionary<string, object> ServiceData(JsonElement data) =>
+        data.TryGetProperty("option", out var option)
+            ? new Dictionary<string, object> { ["option"] = option.GetString()! }
+            : new Dictionary<string, object> { ["value"] = data.GetProperty("value").GetDouble() };
 }

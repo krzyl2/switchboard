@@ -29,6 +29,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// control off and their ui_mode ignored. A file that is corrupt, untrusted or unreadable is set
 /// aside, and the run starts with control locked off and the kill switch on until the user confirms
 /// (maintainer survey 2026-10-25). A rollback to 0.6.x sets a schema 3 file aside the same way.
+/// 0.7.1 adds an optional <c>option_before</c> to a restore baseline (a select stop's option before
+/// the stop), written only when known; 0.7.0 sets a file carrying it aside like any untrusted file.
 /// </para>
 /// </summary>
 public sealed class RuntimeStateFile : IRuntimeStateStore
@@ -42,6 +44,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private const int MaxStages = 64;
     private const int MaxDiscovered = 2048;
     private const int MaxGroups = 64;
+
 
     private static readonly string[] Version1Keys = ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt"];
     private static readonly string[] Version2Keys = [.. Version1Keys, "overrides", "group_budgets"];
@@ -251,6 +254,13 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
                 WriteLevel(writer, "level", baseline.Level);
                 WriteLevel(writer, "shed", baseline.Shed);
                 WriteTime(writer, "since", baseline.Since);
+                if (baseline.OptionBefore is { } option)
+                {
+                    // 0.7.1: a select stop's option before the stop; left out otherwise, so a baseline
+                    // without one is written exactly as 0.7.0 wrote it.
+                    writer.WriteString("option_before", option.Value);
+                }
+
                 writer.WriteEndObject();
             }
 
@@ -367,8 +377,14 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             }
 
             var path = $"start_baselines.{property.Name}";
-            var entry = Keys(property.Value, path, "level", "shed", "since");
-            baselines.Add(device.Value, new StartBaseline(Level(entry["level"], $"{path}.level"), Level(entry["shed"], $"{path}.shed"), Time(entry["since"], $"{path}.since")!.Value, Commanded: true));
+            var withOption = property.Value.ValueKind == JsonValueKind.Object && property.Value.TryGetProperty("option_before", out _);
+            var entry = withOption
+                ? Keys(property.Value, path, "level", "shed", "since", "option_before")
+                : Keys(property.Value, path, "level", "shed", "since");
+            baselines.Add(device.Value, new StartBaseline(Level(entry["level"], $"{path}.level"), Level(entry["shed"], $"{path}.shed"), Time(entry["since"], $"{path}.since")!.Value, Commanded: true)
+            {
+                OptionBefore = withOption ? Option(entry["option_before"], $"{path}.option_before") : null,
+            });
         }
 
         return baselines.ToImmutable();
@@ -626,6 +642,12 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
 
         return properties;
     }
+
+    /// <summary>A select's option: 1 to 255 characters of text without control characters, as the configuration allows.</summary>
+    private static OptionText Option(JsonElement element, string path) =>
+        element.ValueKind == JsonValueKind.String && OptionText.TryParse(element.GetString(), out var option)
+            ? option.Value
+            : throw new InvalidStateException($"{path} is not an option (1 to {OptionText.MaxLength} characters of text)");
 
     private static double Number(JsonElement element, string path) =>
         element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out var value) && double.IsFinite(value)

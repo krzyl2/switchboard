@@ -896,7 +896,6 @@
         "device": null,
         "mode": {
           "ceiling": "shadow",
-          "uiChoice": "shadow",
           "note": "none",
           "controlAllowed": false,
           "configurationValid": true,

@@ -243,6 +243,49 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task The_port_resolves_select_stop_commands_at_send_time()
+    {
+        // 0.7.1: a charger whose stop is a select is stopped and resumed through its declared options,
+        // resolved from the configuration loaded when the command leaves, in the allow-list's shape.
+        var configuration = TestConfigurations.Valid(TestDevices.Document(SelectStopRig.Charger)).Configuration!;
+        _directory.Observe(configuration);
+        var revision = configuration.Devices.Single().ActuatorRevision;
+
+        var stop = _port.Submit(new DeviceCommand(DeviceName.Parse("ev_charger"), DeviceCommandKind.Enable, 1, false, null, CommandPriority.Protective) { Revision = revision, Decrease = true });
+        _port.Flush();
+        var sent = await _channel.NextAsync();
+        Assert.Equal(("select.charger_force", ActuatorService.SelectOption, "1"), (sent.Call.Entity.Value, sent.Call.Service, sent.Call.Option));
+        sent.Answer(CommandOutcome.Acknowledged);
+        await UntilAsync(() => Results().Any(r => r.Ticket == stop));
+
+        var resume = _port.Submit(new DeviceCommand(DeviceName.Parse("ev_charger"), DeviceCommandKind.Enable, 1, true, null, CommandPriority.Ordinary) { Revision = revision });
+        _port.Flush();
+        sent = await _channel.NextAsync();
+        Assert.Equal(("select.charger_force", ActuatorService.SelectOption, "0"), (sent.Call.Entity.Value, sent.Call.Service, sent.Call.Option));
+        sent.Answer(CommandOutcome.Acknowledged);
+        await UntilAsync(() => Results().Any(r => r.Ticket == resume));
+        Assert.Equal(CommandOutcome.Acknowledged, Outcome(resume).Outcome);
+    }
+
+    [Fact]
+    public async Task An_option_the_select_does_not_offer_is_not_sent_and_says_why()
+    {
+        // The select reported its options and the declared stop option is not among them: the
+        // command never leaves, and the last failure names the option and what the entity offers.
+        var configuration = TestConfigurations.Valid(TestDevices.Document(SelectStopRig.Charger)).Configuration!;
+        _directory.Observe(configuration);
+        _directory.ObserveOptions(System.Collections.Immutable.ImmutableDictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>>.Empty.Add(EntityId.Parse("select.charger_force"), ["0", "2"]));
+
+        var ticket = _port.Submit(new DeviceCommand(DeviceName.Parse("ev_charger"), DeviceCommandKind.Enable, 1, false, null, CommandPriority.Protective) { Revision = configuration.Devices.Single().ActuatorRevision, Decrease = true });
+        _port.Flush();
+        await UntilAsync(() => Results().Count == 1);
+
+        Assert.Equal((CommandOutcome.NotSent, CommandNotSentReason.NotDeclared), Outcome(ticket));
+        Assert.Equal(0, _channel.Sent);
+        Assert.Contains("option '1' is not offered by select.charger_force", _port.Status.LastFailure!.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_call_the_allow_list_refuses_at_send_time_is_not_sent()
     {
         // The second check runs on the serialized bytes against the configuration loaded now.
@@ -371,10 +414,10 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
 
         public int Sent => Volatile.Read(ref _count);
 
-        public Task<CallOutcome> SendAsync(ActuatorCall call, Func<EntityId, string, ActuatorService, double?, bool> isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
+        public Task<CallOutcome> SendAsync(ActuatorCall call, ActuatorDeclaredCheck isDeclared, TimeSpan timeout, CancellationToken cancellationToken)
         {
             var payload = CallServicePayload.Build(1, call);
-            HomeAssistantCommandAllowList.EnsureCallServiceAllowed(payload.Span, Refuse ? (_, _, _, _) => false : isDeclared);
+            HomeAssistantCommandAllowList.EnsureCallServiceAllowed(payload.Span, Refuse ? (_, _, _, _, _) => false : isDeclared);
             Interlocked.Increment(ref _count);
             var answer = new TaskCompletionSource<CallOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
             _sent.Writer.TryWrite(new SentCall(call, answer));

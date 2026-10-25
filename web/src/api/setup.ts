@@ -38,6 +38,10 @@ export const SETUP_ISSUE_CODES = [
   'preserved_path_unknown',
   'document_invalid',
   'source_not_in_registry',
+  'stop_options_equal',
+  'stop_option_unknown',
+  'own_entity_not_actuator',
+  'stop_changed_while_reduced',
 ] as const;
 export const SETUP_SEVERITIES = ['error', 'warning'] as const;
 /** A candidate entity's live readout (UI-04). */
@@ -188,8 +192,12 @@ export interface DeviceDraft {
   valuePerKwh: number | null;
   circuitGroup: string | null;
   rotationGroup: string | null;
-  /** A modulating device's stop actuator (switch or input_boolean); null for none or another type. */
+  /** A modulating device's stop actuator (a switch or a select); null for none or another type. */
   stopActuator: string | null;
+  /** A select stop actuator's option that stops the device; null for a switch stop or none. */
+  stopOption: string | null;
+  /** A select stop actuator's option that lets the device run again; null for a switch stop or none. */
+  resumeOption: string | null;
   /** start: restore_only or headroom; null leaves the device on the file's default (devices.default_start). */
   start: string | null;
   /** currentUnit / powerUnit: the unit the picked draw entity reports in; null for the default A / W. */
@@ -241,6 +249,8 @@ export function parseDeviceDraft(raw: unknown, path: string): DeviceDraft {
     circuitGroup: optText(r, 'circuitGroup', path),
     rotationGroup: optText(r, 'rotationGroup', path),
     stopActuator: optText(r, 'stopActuator', path),
+    stopOption: optText(r, 'stopOption', path),
+    resumeOption: optText(r, 'resumeOption', path),
     start: optText(r, 'start', path),
     draw: nullable(field(r, 'draw', path), `${path}.draw`, (v, p) => {
       const d = object(v, p);
@@ -543,6 +553,10 @@ export interface DiscoveredEntity {
   lastReported: Date | null;
   /** Set when the entity is computed from other sensors: never a control input. */
   derived: { platform: string } | null;
+  /** What a select offers (its options attribute); null when the entity reports none. */
+  options: string[] | null;
+  /** One of Switchboard's own MQTT entities: never offered as an actuator. */
+  own: boolean;
 }
 
 export interface Discovery {
@@ -576,6 +590,8 @@ export function parseDiscovery(raw: unknown): Discovery {
         state: optText(x, 'state', p),
         lastReported: nullable(field(x, 'lastReported', p), `${p}.lastReported`, instant),
         derived: nullable(field(x, 'derived', p), `${p}.derived`, (dv, dp) => ({ platform: text(field(object(dv, dp), 'platform', dp), `${dp}.platform`) })),
+        options: nullable(field(x, 'options', p), `${p}.options`, (ov, op) => list(ov, op, text)),
+        own: bool(field(x, 'own', p), `${p}.own`),
       };
     }),
     devices: list(field(r, 'devices', 'payload'), 'devices', (v, p) => {
@@ -638,6 +654,8 @@ export interface Template {
   actuatorDomains: string[];
   stateDomains: string[];
   drawRecommended: boolean;
+  /** The domains a stop actuator may have (switch or select); empty for a type without one. */
+  stopActuatorDomains: string[];
 }
 
 export function parseTemplates(raw: unknown): { templates: Template[]; prefillVoltageV: number } {
@@ -661,6 +679,7 @@ export function parseTemplates(raw: unknown): { templates: Template[]; prefillVo
         actuatorDomains: list(field(x, 'actuatorDomains', p), `${p}.actuatorDomains`, text),
         stateDomains: list(field(x, 'stateDomains', p), `${p}.stateDomains`, text),
         drawRecommended: bool(field(x, 'drawRecommended', p), `${p}.drawRecommended`),
+        stopActuatorDomains: list(field(x, 'stopActuatorDomains', p), `${p}.stopActuatorDomains`, text),
       };
     }),
     prefillVoltageV: number(field(r, 'prefillVoltageV', 'payload'), 'prefillVoltageV'),

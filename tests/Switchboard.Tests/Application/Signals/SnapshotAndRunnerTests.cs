@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Signals;
 using Switchboard.Tests.Support;
@@ -225,6 +226,27 @@ public sealed class SignalStoreRunnerTests : IAsyncDisposable
             }
         };
         _runner = new SignalStoreRunner(_inbox, _store, _source, _holder, new SignalClock(_time), NullLogger<SignalStoreRunner>.Instance);
+    }
+
+    [Fact]
+    public void The_options_a_select_reports_reach_the_send_time_check()
+    {
+        // 0.7.1: the runner hands the options of each select to the actuator directory whenever they
+        // change, so an option the select does not offer is refused when the command leaves.
+        var directory = new ActuatorDirectoryHolder();
+        var runner = new SignalStoreRunner(_inbox, _store, _source, _holder, new SignalClock(_time), NullLogger<SignalStoreRunner>.Instance, directory);
+        var force = EntityId.Parse("select.charger_force");
+        _inbox.Post(TestConfigurations.Valid(TestDevices.Document(SelectStopRig.Charger)));
+        _inbox.Post(SignalSourceStatus.Connected);
+        _inbox.Post(EntityUpdateBatch.Of(BatchOrigin.Initial, new EntityUpdate(force, "0", null, _time.GetUtcNow(), _time.GetUtcNow()) { Options = ["0", "1", "2"] }));
+        runner.Step();
+        Assert.True(directory.IsDeclared(force, "select", ActuatorService.SelectOption, null, "1"));
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+        _inbox.Post(EntityUpdateBatch.Of(BatchOrigin.Change, new EntityUpdate(force, "0", null, _time.GetUtcNow(), _time.GetUtcNow()) { Options = ["0", "2"] }));
+        runner.Step();
+
+        Assert.False(directory.IsDeclared(force, "select", ActuatorService.SelectOption, null, "1"));
     }
 
     [Fact]

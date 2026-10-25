@@ -26,5 +26,12 @@
     "name_by_user": null,
     "manufacturer": "go-e",
     "model": "Gemini flex"
+  },
+  {
+    "id": "dev_switchboard",
+    "name": "Switchboard",
+    "name_by_user": null,
+    "manufacturer": null,
+    "model": "Home Assistant add-on"
   }
 ]

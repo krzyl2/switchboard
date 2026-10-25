@@ -89,12 +89,18 @@ public sealed partial class SignalArchitectureTests
     {
         // DeviceName and GroupName are leaves: their text matches ^[a-z][a-z0-9_]{0,39}$ and can
         // never hold a '.', so neither can be an entity ID (GuardArchitectureTests proves the pattern).
+        // OptionText (0.7.1, a select stop's option) is a leaf for another reason: it is compared and
+        // logged only, and no command carries it (Stage3ArchitectureTests pins DeviceCommand), so even
+        // an option that looked like an entity ID could never address one.
         foreach (var root in new[] { typeof(ProtectionInputs), typeof(DispatchInputs) })
         {
             var graph = TypeGraph(root);
             Assert.DoesNotContain(typeof(EntityId), graph);
             Assert.DoesNotContain(typeof(string), graph);
         }
+
+        Assert.Contains(typeof(Switchboard.Domain.Devices.OptionText), TypeGraph(typeof(ProtectionInputs)));
+        Assert.DoesNotContain(typeof(Switchboard.Domain.Devices.OptionText), TypeGraph(typeof(Switchboard.Application.Effector.DeviceCommand)));
     }
 
     [Fact]
@@ -163,7 +169,7 @@ public sealed partial class SignalArchitectureTests
 
     /// <summary>
     /// Every type reachable through public properties and generic arguments, staying inside our own
-    /// assemblies. A device or group name is a leaf (see <see cref="Consumer_views_carry_no_entity_ids"/>).
+    /// assemblies. A device or group name and a select's option are leaves (see <see cref="Consumer_views_carry_no_entity_ids"/>).
     /// </summary>
     internal static HashSet<Type> TypeGraph(Type root)
     {
@@ -183,7 +189,8 @@ public sealed partial class SignalArchitectureTests
 
             if (type.Assembly.GetName().Name?.StartsWith("Switchboard", StringComparison.Ordinal) != true
                 || type == typeof(Switchboard.Domain.Devices.DeviceName)
-                || type == typeof(Switchboard.Domain.Connection.GroupName))
+                || type == typeof(Switchboard.Domain.Connection.GroupName)
+                || type == typeof(Switchboard.Domain.Devices.OptionText))
             {
                 continue;
             }

@@ -37,10 +37,12 @@ internal static class DeviceSectionParser
     // Display bound for a device's name: it labels a row on a phone screen, not a description.
     private const int MaxNameLength = 40;
 
+
     private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start"];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
     private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
-    private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator"];
+    private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator", "stop_option", "resume_option"];
+    private static readonly string[] StopOptionKeys = ["stop_option", "resume_option"];
     private static readonly string[] StorageKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit"];
     private static readonly string[] SteppedKeys = ["stages"];
     private static readonly string[] DrawKeys = ["current", "power", "max_age", "current_unit", "power_unit"];
@@ -65,6 +67,7 @@ internal static class DeviceSectionParser
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
     private static readonly ImmutableArray<string> RelayActuatorDomains = ["switch", "input_boolean"];
+    private static readonly ImmutableArray<string> SelectActuatorDomains = ["select", "input_select"];
     private static readonly ImmutableArray<string> ModulatingActuatorDomains = ["number", "input_number"];
     private static readonly ImmutableArray<string> RelayStateDomains = ["switch", "input_boolean", "binary_sensor"];
     private static readonly ImmutableArray<string> ModulatingStateDomains = ["number", "input_number", "sensor"];
@@ -177,6 +180,15 @@ internal static class DeviceSectionParser
     /// <summary>The domains an actuator of <paramref name="type"/> may have (SAFE-05: only these can ever be declared).</summary>
     public static ImmutableArray<string> ActuatorDomainsFor(DeviceType type) =>
         type is DeviceType.OnOff or DeviceType.Stepped ? RelayActuatorDomains : ModulatingActuatorDomains;
+
+    /// <summary>
+    /// The domains a modulating device's stop actuator may have: a switch (off stops it, on resumes
+    /// it) or a select (its declared stop_option stops it, its resume_option resumes it).
+    /// </summary>
+    public static ImmutableArray<string> StopActuatorDomains() => [.. RelayActuatorDomains, .. SelectActuatorDomains];
+
+    /// <summary>The stop actuator domains that take options (select_option) instead of on and off.</summary>
+    public static ImmutableArray<string> SelectStopDomains => SelectActuatorDomains;
 
     /// <summary>The domains a state entity of <paramref name="type"/> may have.</summary>
     public static ImmutableArray<string> StateDomainsFor(DeviceType type) =>
@@ -327,6 +339,8 @@ internal static class DeviceSectionParser
             ?? (setpoint ? control?.Devices.ModulatingMinOn : control?.Dispatch.RelayMinOn);
         var minOff = OptionalDuration(mapping, "min_off", path, issues, positive: false)
             ?? (setpoint ? control?.Devices.ModulatingMinOff : control?.Dispatch.RelayMinOff);
+        // Null for an unknown policy (reported) or without control parameters: the draft is then
+        // invalid and never built, so no default is ever made up here.
         var start = ConfigRead.Optional(mapping, "start") is { } startNode
             ? ConfigRead.Choice(startNode, ConfigRead.Join(path, "start"), issues, ControlParametersBinder.StartPolicies)
             : control?.Devices.DefaultStart;
@@ -352,7 +366,7 @@ internal static class DeviceSectionParser
         }
 
         var phases = stages.Where(s => s.Valid).SelectMany(s => s.Phases).Distinct().Order().ToImmutableArray();
-        var stop = deviceType == DeviceType.Modulating ? ReadStopActuator(mapping, path, issues) : (null, null);
+        var stop = deviceType == DeviceType.Modulating ? ReadStopActuator(mapping, path, issues) : (null, null, null);
         var draw = ReadDraw(mapping, path, phases, context);
         var rotation = ReadGroupName(mapping, "rotation_group", path, issues);
         var circuit = ReadCircuitGroup(mapping, path, phases, context);
@@ -381,13 +395,14 @@ internal static class DeviceSectionParser
             StateReports = stateReports ?? StateFreshness.Age,
             Stop = stop.Entity,
             StopNode = stop.Node,
+            StopOptions = stop.Options,
             Draw = draw,
             RotationGroup = rotation.Name,
             RotationNode = rotation.Node,
             CircuitGroup = circuit,
             ShedPriorityDeclared = shedPriority is not null,
             Name = name,
-            Start = start ?? StartPolicy.RestoreOnly,
+            Start = start,
         };
     }
 
@@ -455,7 +470,7 @@ internal static class DeviceSectionParser
                         ? $"'{entry.Key}' is not used: a setpoint device's range is min, max and step in its actuator's unit."
                         : $"'{entry.Key}' applies to modulating devices only, and is not used: their range is min, max and step.");
             }
-            else if (entry.Key is "rotation_group" or "stop_actuator")
+            else if (entry.Key is "rotation_group" or "stop_actuator" or "stop_option" or "resume_option")
             {
                 issues.ErrorAtKey(
                     ConfigurationIssueCodes.KeyNotAllowed,
@@ -463,7 +478,7 @@ internal static class DeviceSectionParser
                     entry,
                     entry.Key == "rotation_group"
                         ? "rotation_group applies to onoff devices only (identical elements, one per phase)."
-                        : "stop_actuator applies to modulating devices only.");
+                        : $"{entry.Key} applies to modulating devices only.");
             }
             else
             {
@@ -698,14 +713,90 @@ internal static class DeviceSectionParser
         return Math.Abs(steps - Math.Round(steps)) <= 1e-9 * Math.Max(1, steps);
     }
 
-    private static (EntityId? Entity, ConfigNode? Node) ReadStopActuator(ConfigMapping mapping, string path, ConfigIssues issues)
+    /// <summary>
+    /// A modulating device's stop actuator: a switch (turned off to stop, on to resume) or a select
+    /// with its two declared options, stop_option and resume_option, both required there and refused
+    /// anywhere else. An option is read as written, so <c>1</c> and <c>"1"</c> are the same option.
+    /// </summary>
+    private static (EntityId? Entity, ConfigNode? Node, StopOptions? Options) ReadStopActuator(ConfigMapping mapping, string path, ConfigIssues issues)
     {
+        var present = StopOptionKeys.Select(mapping.Find).OfType<ConfigEntry>().ToList();
         if (ConfigRead.Optional(mapping, "stop_actuator") is not { } node)
         {
-            return (null, null);
+            foreach (var entry in present)
+            {
+                issues.ErrorAtKey(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, entry.Key), entry, $"{entry.Key} belongs to a select stop_actuator; this device declares none.");
+            }
+
+            return (null, null, null);
         }
 
-        return (ReadEntity(node, ConfigRead.Join(path, "stop_actuator"), RelayActuatorDomains, ConfigurationIssueCodes.ActuatorDomainNotAllowed, "a stop actuator", issues), node);
+        var entity = ReadEntity(node, ConfigRead.Join(path, "stop_actuator"), StopActuatorDomains(), ConfigurationIssueCodes.ActuatorDomainNotAllowed, "a stop actuator", issues);
+        if (entity is not { } stop)
+        {
+            return (null, node, null);
+        }
+
+        if (!SelectActuatorDomains.Contains(Domain(stop)))
+        {
+            foreach (var entry in present)
+            {
+                issues.ErrorAtKey(
+                    ConfigurationIssueCodes.KeyNotAllowed,
+                    ConfigRead.Join(path, entry.Key),
+                    entry,
+                    $"{entry.Key} applies to a select stop_actuator only: a switch stop is turned off to stop and on to resume.");
+            }
+
+            return (stop, node, null);
+        }
+
+        var stopOption = ReadOption(mapping, "stop_option", path, issues);
+        var resumeOption = ReadOption(mapping, "resume_option", path, issues);
+        if (stopOption is null || resumeOption is null)
+        {
+            return (stop, node, null);
+        }
+
+        if (stopOption == resumeOption)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                ConfigRead.Join(path, "resume_option"),
+                mapping.Find("resume_option")!.Value,
+                $"resume_option must differ from stop_option ('{stopOption}'): one option stops the device, the other lets it run.");
+            return (stop, node, null);
+        }
+
+        return (stop, node, new StopOptions(stopOption.Value, resumeOption.Value));
+    }
+
+    /// <summary>One option of a select stop: required, a scalar read as written, 1 to 255 characters without control characters.</summary>
+    private static OptionText? ReadOption(ConfigMapping mapping, string key, string path, ConfigIssues issues)
+    {
+        var keyPath = ConfigRead.Join(path, key);
+        if (mapping.Find(key) is not { } entry)
+        {
+            issues.Error(ConfigurationIssueCodes.MissingKey, keyPath, mapping, $"'{key}' is required when stop_actuator is a select.");
+            return null;
+        }
+
+        if (ConfigRead.String(entry.Value, keyPath, issues) is not { } text)
+        {
+            return null;
+        }
+
+        if (!OptionText.TryParse(text, out var option))
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                keyPath,
+                entry.Value,
+                string.Create(CultureInfo.InvariantCulture, $"An option is 1 to {OptionText.MaxLength} characters of text without control characters, exactly as the select offers it."));
+            return null;
+        }
+
+        return option;
     }
 
     /// <summary>
@@ -1089,11 +1180,15 @@ internal static class DeviceSectionParser
 
         public string? Name { get; init; }
 
-        public StartPolicy Start { get; init; }
+        public StopOptions? StopOptions { get; init; }
+
+        /// <summary>Null when the policy was unknown or no control parameters were read: such a draft is never built.</summary>
+        public StartPolicy? Start { get; init; }
 
         public DeviceDefinition Build()
         {
             var name = id!.Value;
+            var start = Start ?? throw new InvalidOperationException("A valid device draft always has a start policy.");
             return new DeviceDefinition(
                 index,
                 name,
@@ -1118,6 +1213,7 @@ internal static class DeviceSectionParser
             {
                 StateReports = StateReports,
                 StopActuator = Stop,
+                StopOptions = StopOptions,
                 StopSignal = Stop is null ? null : SignalName.Parse($"{SignalPrefix}{name.Value}_stop"),
                 Draw = Draw is null ? null : new DeviceDrawDefinition(
                     Draw.Current.ToImmutableDictionary(c => c.Key, c => DrawSignalName(name, "current", c.Key, Draw.PerPhase)),
@@ -1126,7 +1222,7 @@ internal static class DeviceSectionParser
                 RotationGroup = RotationGroup,
                 CircuitGroup = CircuitGroup,
                 Name = Name,
-                Start = Start,
+                Start = start,
             };
         }
 

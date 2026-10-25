@@ -140,7 +140,10 @@ internal static class TestSteps
                 var spec = setup.Device(DeviceName.Parse(d.Device))!.Spec;
                 return new DispatchDeviceStatus(
                     spec.Id, spec.Type, spec.Phases, null, null, d.Level, d.Level, true, true, null, null, null, null,
-                    TimeSpan.Zero, TimeSpan.Zero, null, SettlingStatus.None, null, 0, DeviceOverride.Auto, null, []);
+                    TimeSpan.Zero, TimeSpan.Zero, null, SettlingStatus.None, null, 0, DeviceOverride.Auto, null, [])
+                {
+                    Start = spec.Start,
+                };
             })]);
     }
 }

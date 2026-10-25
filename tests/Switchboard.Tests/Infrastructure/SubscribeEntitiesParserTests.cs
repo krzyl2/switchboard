@@ -148,6 +148,51 @@ public sealed class SubscribeEntitiesParserTests
         Assert.Equal("5.4", update.State);
     }
 
+    [Fact]
+    public void Options_follow_initial_state_and_diffs()
+    {
+        // 0.7.1: a select's options attribute is kept like the unit: from the initial state, replaced
+        // by a diff that carries it, kept by a diff that does not, cleared when HA removes it.
+        var parser = new SubscribeEntitiesParser([EntityId.Parse("select.charger_force")]);
+        EntityUpdate Next(string body)
+        {
+            using var document = JsonDocument.Parse(Json(body));
+            return parser.Parse(document.RootElement, out var problem)!.Updates.Single();
+        }
+
+        Assert.Equal(["0", "1", "2"], Next("""{"a":{"select.charger_force":{"s":"0","a":{"options":["0","1","2"],"friendly_name":"Force"},"c":"x","lc":@T0}}}""").Options!.Value);
+        Assert.Equal(["0", "1", "2"], Next("""{"c":{"select.charger_force":{"+":{"s":"1","lc":@T10}}}}""").Options!.Value);
+        Assert.Equal(["0", "1"], Next("""{"c":{"select.charger_force":{"+":{"lu":@T20,"a":{"options":["0","1"]}}}}}""").Options!.Value);
+        Assert.Null(Next("""{"c":{"select.charger_force":{"+":{"lu":@T30},"-":{"a":["options"]}}}}""").Options);
+    }
+
+    [Theory]
+    [InlineData("""{"options":"0,1,2"}""")]
+    [InlineData("""{"options":["0",1]}""")]
+    [InlineData("""{"options":[]}""")]
+    [InlineData("""{"options":["0",""]}""")]
+    public void Oversized_or_misshapen_options_read_as_unknown(string attributes)
+    {
+        // Never a refusal of the event: the state itself is still read, only its options are not known.
+        var parser = new SubscribeEntitiesParser([EntityId.Parse("select.charger_force")]);
+        using var document = JsonDocument.Parse(Json("""{"a":{"select.charger_force":{"s":"0","a":ATTRIBUTES,"c":"x","lc":@T0}}}""".Replace("ATTRIBUTES", attributes, StringComparison.Ordinal)));
+
+        var update = parser.Parse(document.RootElement, out _)!.Updates.Single();
+
+        Assert.Equal("0", update.State);
+        Assert.Null(update.Options);
+    }
+
+    [Fact]
+    public void Options_beyond_the_schema_bound_read_as_unknown()
+    {
+        var parser = new SubscribeEntitiesParser([EntityId.Parse("select.charger_force")]);
+        var many = string.Join(",", Enumerable.Range(0, EntityUpdate.MaxOptions + 1).Select(i => $"\"{i}\""));
+        using var document = JsonDocument.Parse(Json("""{"a":{"select.charger_force":{"s":"0","a":{"options":[MANY]},"c":"x","lc":@T0}}}""".Replace("MANY", many, StringComparison.Ordinal)));
+
+        Assert.Null(parser.Parse(document.RootElement, out _)!.Updates.Single().Options);
+    }
+
     // HA writes epoch seconds with microseconds; formatted invariantly so the JSON never depends on the test machine's culture.
     private static string T(int offsetSeconds) => (Lc + offsetSeconds).ToString(CultureInfo.InvariantCulture);
 

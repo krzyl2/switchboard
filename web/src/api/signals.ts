@@ -60,7 +60,7 @@ export const ISSUE_CODES = [
   'max_age_short_for_probe',
 ] as const;
 /** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
-export const CONFIGURATION_WARNING_CODES = ['derived_measurement_input', 'measurement_not_in_registry', 'derived_check_unavailable'] as const;
+export const CONFIGURATION_WARNING_CODES = ['derived_measurement_input', 'measurement_not_in_registry', 'derived_check_unavailable', 'own_entity_actuator'] as const;
 export type ConfigurationWarningCode = (typeof CONFIGURATION_WARNING_CODES)[number];
 export const TOPOLOGIES = ['three_phase', 'three_phase_summed', 'single_phase'] as const;
 export const CHARACTERISTICS = ['B', 'C', 'unknown'] as const;

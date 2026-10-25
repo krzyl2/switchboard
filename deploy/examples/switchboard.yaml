@@ -216,8 +216,10 @@ devices:
   # (0-19.2 A in the recording), nrg_7 the power on its L1 in W (up to 4.49 kW; a few W negative
   # at rest). The draw decides how much shedding the charger can give and is the only basis for
   # checking that it followed a change.
-  # It has no stop actuator declared: the guard reduces it to 6 A at most and records any further
-  # step as "would switch off". A go-e switch that stops charging could be declared as stop_actuator.
+  # Stop (0.7.1): no go-e switch stops charging; its force-state select does (maintainer 2026-10-25).
+  # Below the 6 A minimum the guard sets it to "1" (don't charge) and gives it back as "0" (neutral,
+  # the charger decides again). Only these two options are ever sent, and only while control is in
+  # force. The select reports only on change, like the setpoint: its state follows state_reports.
   # Live 0.4.0: the go-e entities report only on change, so at rest the setpoint and both draw
   # sensors are hours old. The setpoint is a device state: state_reports: on_change. The draw stays
   # judged by age: a draw silent after exactly 0 is an idle charger and counts as 0 W (0.5.1); a
@@ -227,6 +229,9 @@ devices:
     name: Ładowarka go-e
     type: modulating
     actuator: number.goe_422752_amp
+    stop_actuator: select.goe_422752_frc   # go-e force state: 0 neutral, 1 don't charge, 2 charge
+    stop_option: "1"                       # don't charge: stops it below the 6 A minimum
+    resume_option: "0"                     # neutral: the charger decides again (its usual setting)
     phase: L1
     min: 6
     max: 20

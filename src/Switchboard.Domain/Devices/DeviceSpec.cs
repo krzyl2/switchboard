@@ -53,8 +53,11 @@ public sealed record DeviceSpec(
     TimeSpan MinOn,
     TimeSpan MinOff)
 {
-    /// <summary>A modulating device with a declared stop actuator (a switch that disables it): it can be switched off.</summary>
+    /// <summary>A modulating device with a declared stop actuator (a switch, or a select, that disables it): it can be switched off.</summary>
     public bool HasStopActuator { get; init; }
+
+    /// <summary>The stop and resume options when the stop actuator is a select; null for a switch (or no stop actuator).</summary>
+    public StopOptions? StopOptions { get; init; }
 
     /// <summary>The phases on which a draw-current signal measures this device's own current.</summary>
     public ImmutableArray<Phase> CurrentDrawPhases { get; init; } = [];
@@ -62,8 +65,12 @@ public sealed record DeviceSpec(
     /// <summary>The downstream breaker group this device sits behind (CONN-03); null when none.</summary>
     public GroupName? CircuitGroup { get; init; }
 
-    /// <summary>What dispatch may do beyond restoring what protection shed (<c>start:</c>); it changes no level, so it is not part of the device's identity.</summary>
-    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+    /// <summary>
+    /// What dispatch may do beyond restoring what protection shed (<c>start:</c>); it changes no level,
+    /// so it is not part of the device's identity. Always set by the configuration layer from
+    /// devices.default_start or the device's own key: there is no fallback here.
+    /// </summary>
+    public required StartPolicy Start { get; init; }
 
     /// <summary>
     /// An opaque fingerprint of the entities that command and report this device (actuators, stop

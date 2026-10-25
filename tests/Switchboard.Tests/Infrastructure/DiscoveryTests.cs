@@ -29,10 +29,40 @@ public sealed class DiscoveryParserTests
         Assert.Equal(("A", "current", "measurement", "solaredge_modbus", "dev_m1", true), (current.Unit, current.DeviceClass, current.StateClass, current.Platform, current.DeviceId, current.InRegistry));
         Assert.Equal(new DateTimeOffset(2026, 10, 22, 6, 0, 0, TimeSpan.Zero), current.Reported);
         Assert.Equal("2.61", current.State);
-        Assert.Equal(4, snapshot.Devices.Length);
+        Assert.Equal(5, snapshot.Devices.Length);
         Assert.Equal("Przekaźniki CWU", snapshot.Devices.Single(d => d.Id == "dev_relays").Name);
         Assert.True(snapshot.RegistryAvailable);
         Assert.False(snapshot.Truncated);
+    }
+
+    [Fact]
+    public void Get_states_fixture_carries_a_selects_options_and_marks_switchboards_own_entities()
+    {
+        // The wizard offers a select's options as stop and resume options (0.7.1); Switchboard's own
+        // MQTT entities (unique_id switchboard_<object_id>) are marked, so they are never an actuator.
+        var snapshot = SetupValidatorTests.Fixture();
+
+        var force = snapshot.Find(EntityId.Parse("select.goe_422752_frc"))!;
+        Assert.Equal(["0", "1", "2"], force.Options!.Value);
+        Assert.Equal(("0", "dev_goe", false), (force.State, force.DeviceId, force.Own));
+        Assert.True(snapshot.Find(EntityId.Parse("select.switchboard_ev_charger_override"))!.Own);
+        Assert.Null(snapshot.Find(EntityId.Parse("sensor.solaredge_m1_ac_current_a"))!.Options);
+    }
+
+    [Theory]
+    // Not a list, a list with a number, an empty list, an empty option: read as not known, never a
+    // refusal of the whole answer.
+    [InlineData("""{"options":"0,1"}""")]
+    [InlineData("""{"options":["0",1]}""")]
+    [InlineData("""{"options":[]}""")]
+    [InlineData("""{"options":["0",""]}""")]
+    public void Options_of_the_wrong_shape_read_as_unknown(string attributes)
+    {
+        using var states = JsonDocument.Parse($$"""[{"entity_id":"select.x","state":"0","attributes":{{attributes}}}]""");
+
+        var snapshot = DiscoveryResponseParser.Parse(states.RootElement, null, null, DateTimeOffset.UnixEpoch, 100);
+
+        Assert.Null(snapshot.Find(EntityId.Parse("select.x"))!.Options);
     }
 
     [Fact]

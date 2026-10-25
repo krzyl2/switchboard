@@ -174,7 +174,6 @@ public static class DecisionJson
         {
             writer.WriteStartObject("mode");
             writer.WriteString("ceiling", Snake(mode.Ceiling));
-            writer.WriteString("ui_choice", Snake(mode.UiChoice));
             writer.WriteString("note", Snake(mode.Note));
             if (mode.ControlAllowed is { } allowed)
             {
@@ -452,7 +451,8 @@ public static class DecisionJson
                     break;
                 case "mode" when mode is null:
                     var m = property.Value;
-                    mode = new ModeDecisionInputs(EnumValue<OperatingMode>(m, "ceiling"), EnumValue<OperatingMode>(m, "ui_choice"), EnumValue<ModeNote>(m, "note"));
+                    // ui_choice (0.3.x … 0.7.0, the Stage 5 UI choice) is accepted on old lines and ignored.
+                    mode = new ModeDecisionInputs(EnumValue<OperatingMode>(m, "ceiling"), EnumValue<ModeNote>(m, "note"));
                     if (m.TryGetProperty("control_allowed", out _))
                     {
                         mode = mode with

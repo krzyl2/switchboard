@@ -77,7 +77,6 @@ describe('describeDecision', () => {
         (d) =>
           (d.inputs.mode = {
             ceiling: 'active',
-            uiChoice: 'active',
             note: 'active_not_enabled',
             controlAllowed: null,
             configurationValid: null,

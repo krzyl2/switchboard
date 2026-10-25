@@ -38,8 +38,11 @@ public sealed record DeviceDefinition(
     /// <summary>How the applied-state signals are judged fresh: by age (default) or, for a relay that reports only on change, by availability.</summary>
     public StateFreshness StateReports { get; init; } = StateFreshness.Age;
 
-    /// <summary>A switch that disables a modulating device (its only way to reach zero); validated like an actuator.</summary>
+    /// <summary>A switch or a select that disables a modulating device (its only way to reach zero); validated like an actuator.</summary>
     public EntityId? StopActuator { get; init; }
+
+    /// <summary>The declared stop and resume options when <see cref="StopActuator"/> is a select (or input_select); null for a switch.</summary>
+    public StopOptions? StopOptions { get; init; }
 
     /// <summary>The state signal reading <see cref="StopActuator"/> (<c>device_&lt;id&gt;_stop</c>).</summary>
     public SignalName? StopSignal { get; init; }
@@ -56,13 +59,18 @@ public sealed record DeviceDefinition(
     /// <summary>An optional display name (<c>name:</c>), shown in the UI next to the id; never used for a decision.</summary>
     public string? Name { get; init; }
 
-    /// <summary>What dispatch may do beyond restoring what was shed (<c>start:</c>, default from devices.default_start).</summary>
-    public StartPolicy Start { get; init; } = StartPolicy.RestoreOnly;
+    /// <summary>What dispatch may do beyond restoring what was shed (<c>start:</c>, default from devices.default_start); always set by the parser.</summary>
+    public required StartPolicy Start { get; init; }
 
     /// <summary>
     /// An opaque fingerprint of every entity that commands or reports this device (FNV-1a over the
-    /// stage actuators, state entities and stop actuator): protection and the ledger compare it
-    /// without ever seeing an entity ID, so a device re-pointed at another entity starts afresh.
+    /// stage actuators, state entities and stop actuator, and a select stop actuator's stop option):
+    /// protection and the ledger compare it without ever seeing an entity ID, so a device re-pointed
+    /// at another entity, or at another stop option (it changes what the reported state means),
+    /// starts afresh. The resume option is left out: it is only what a resume sends, resolved from
+    /// the configuration loaded at send time, so a new one keeps the restore baseline of a device
+    /// Switchboard holds stopped. A switch stop adds nothing, so its fingerprint is the one 0.7.0
+    /// computed.
     /// </summary>
     public long ActuatorRevision
     {
@@ -89,6 +97,11 @@ public sealed record DeviceDefinition(
             }
 
             Add(StopActuator?.Value ?? string.Empty);
+            if (StopOptions is { } options)
+            {
+                Add(options.StopOption.Value);
+            }
+
             return unchecked((long)hash);
         }
     }
@@ -106,6 +119,7 @@ public sealed record DeviceDefinition(
         MinOff)
     {
         HasStopActuator = StopActuator is not null,
+        StopOptions = StopOptions,
         CurrentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Order()],
         CircuitGroup = CircuitGroup,
         Start = Start,

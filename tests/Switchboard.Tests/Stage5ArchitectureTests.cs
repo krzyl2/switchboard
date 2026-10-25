@@ -40,7 +40,7 @@ public sealed partial class Stage5ArchitectureTests
     [Fact]
     public void No_literal_in_src_names_a_state_changing_message_type()
     {
-        // Stage C: the allow-list alone holds call_service and its three services, as whole literals.
+        // Stage C: the allow-list alone holds call_service and its four services, as whole literals.
         var offenders = new List<string>();
         foreach (var file in SourceFiles("src"))
         {
@@ -147,12 +147,12 @@ public sealed partial class Stage5ArchitectureTests
     [GeneratedRegex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")]
     private static partial Regex StringLiteral();
 
-    [GeneratedRegex(@"call_service|fire_event|execute_script|subscribe_trigger|render_template|config/[a-z_]+/(?:update|remove|delete|create)|config_entries/|api/services|turn_on|turn_off|set_value", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"call_service|fire_event|execute_script|subscribe_trigger|render_template|config/[a-z_]+/(?:update|remove|delete|create)|config_entries/|api/services|turn_on|turn_off|set_value|select_option", RegexOptions.IgnoreCase)]
     private static partial Regex StateChanging();
 
     [GeneratedRegex(@"\bQueryAsync\(")]
     private static partial Regex QueryCall();
 
-    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value)\"$")]
+    [GeneratedRegex("^\"(call_service|turn_on|turn_off|set_value|select_option)\"$")]
     private static partial Regex ServiceCall();
 }

@@ -116,6 +116,50 @@ public sealed class GuardTierReactionTests
     }
 
     [Fact]
+    public void Full_shed_stops_the_charger_through_its_select_below_its_minimum()
+    {
+        // BRK-03 with a select stop (0.7.1, the go-e force state): the open band takes everything on
+        // L1 at once, and the charger goes below its 6 A minimum, stopped by its declared stop option
+        // in the allow-list's shape, besides its floor setpoint.
+        var path = new PlantCommandPath(TestConfigurations.Valid(TestDevices.Document(SelectCharger)).Configuration!, plant: null);
+        var s = new GuardScenario(TestDevices.Document(SelectCharger), mode: DispatchScenario.Active, port: path.Port);
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(10));
+
+        var evaluation = s.Sample(Phase.L1, 37.5);
+
+        Assert.Equal([("ev_charger", GuardTarget.Off), ("heater_l1", GuardTarget.Off)], evaluation.Intents.Select(i => (i.Device.Value, i.Target)).Order());
+        var stop = Assert.Single(path.Calls, c => c.Call.Service == Switchboard.Application.Configuration.ActuatorService.SelectOption);
+        Assert.Equal(("select.charger_force", "1"), (stop.Call.Entity.Value, stop.Call.Option));
+        Assert.Contains(path.Calls, c => c.Call.Entity.Value == "number.charger_current" && c.Call.Value == 6);
+        Assert.Contains(s.DecisionsFor("ev_charger"), d => d.Action == DecisionAction.SwitchOff && d.Commanded);
+    }
+
+    [Fact]
+    public void Shed_one_reduces_to_minimum_before_stopping()
+    {
+        // BRK-03 one step per new sample (1.35 × In): the heater first (lower value), then the charger
+        // to its minimum, then, since it can be stopped through its select, below it; never the
+        // stop before the reduction.
+        var path = new PlantCommandPath(TestConfigurations.Valid(TestDevices.Document(SelectCharger)).Configuration!, plant: null);
+        var s = new GuardScenario(TestDevices.Document(SelectCharger), mode: DispatchScenario.Active, port: path.Port);
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(1));
+        foreach (var seconds in new[] { 1, 10, 20 })
+        {
+            s.RunUntil(T0 + TimeSpan.FromSeconds(seconds));
+            s.Sample(Phase.L1, 33.75);
+        }
+
+        Assert.Equal(
+            [("heater_l1", GuardTarget.Off), ("ev_charger", GuardTarget.AtMinimum), ("ev_charger", GuardTarget.Off)],
+            s.Timeline.Select(t => (t.Intent.Device.Value, t.Intent.Target)));
+        Assert.Equal(
+            ["number.charger_current 6", "select.charger_force 1"],
+            path.Calls.Where(c => c.Command.Device.Value == "ev_charger").Select(c => $"{c.Call.Entity.Value} {c.Call.Value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? c.Call.Option}"));
+    }
+
+    [Fact]
     public void Shed_on_one_phase_never_touches_another()
     {
         var s = new GuardScenario(TestDevices.Document());
@@ -464,6 +508,9 @@ public sealed class GuardTierReactionTests
 
     /// <summary>The reference devices with a stop actuator on the charger (DISP-01): it can be switched off.</summary>
     private static readonly string StopCharger = TestDevices.Reference.ReplaceLineEndings("\n") + "\n    stop_actuator: switch.charger_enable";
+
+    /// <summary>The reference devices with a select stop on the charger (0.7.1): "1" stops it, "0" lets it run.</summary>
+    private static readonly string SelectCharger = TestDevices.Reference.ReplaceLineEndings("\n") + "\n    stop_actuator: select.charger_force\n    stop_option: \"1\"\n    resume_option: \"0\"";
 
     private const string SmallLoads = """
           - id: load_a

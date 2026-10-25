@@ -28,6 +28,9 @@ public static class MqttIdentity
 
     public static string UniqueId(string objectId) => UniqueIdPrefix + objectId;
 
+    /// <summary>Whether a registry unique_id is one of the add-on's own (the scheme above, unchanged): such an entity is never an actuator.</summary>
+    public static bool IsOwnUniqueId(string? uniqueId) => uniqueId is not null && uniqueId.StartsWith(UniqueIdPrefix, StringComparison.Ordinal);
+
     public static string DefaultEntityId(string component, string objectId) => $"{component}.{UniqueId(objectId)}";
 
     public static string DiscoveryTopic(string discoveryPrefix, string component, string baseTopic, string objectId) =>

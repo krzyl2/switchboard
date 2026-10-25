@@ -2,6 +2,7 @@ entity_id,ts_utc,state,last_reported
 sensor.goe_422752_nrg_4,2026-10-21T10:00:00.001Z,15.87,
 sensor.solaredge_ac_power,2026-10-21T10:00:00.002Z,304,
 sensor.goe_422752_nrg_7,2026-10-21T10:00:00.002Z,3651,
+select.goe_422752_frc,2026-10-21T10:00:00.003Z,0,
 sensor.solaredge_ac_current_a,2026-10-21T10:00:00.004Z,0.44,
 sensor.solaredge_ac_current_b,2026-10-21T10:00:00.004Z,0.44,
 sensor.solaredge_ac_current_c,2026-10-21T10:00:00.004Z,0.44,

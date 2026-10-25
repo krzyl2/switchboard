@@ -1,5 +1,5 @@
 {
-  "revision": "508420A292730412678CD8C1668D8D562DB232383447CD52940200316BC7B0E6",
+  "revision": "1FEC545360A8AD44CB04027DE6CBEA94A730B30B70E14FCA66E3F73D29BFC1F4",
   "fileState": "valid",
   "hasComments": true,
   "unreadable": false,
@@ -131,6 +131,8 @@
         "rotationGroup": "cwu_heaters",
         "draw": null,
         "stopActuator": null,
+        "stopOption": null,
+        "resumeOption": null,
         "start": null
       },
       {
@@ -157,6 +159,8 @@
         "rotationGroup": "cwu_heaters",
         "draw": null,
         "stopActuator": null,
+        "stopOption": null,
+        "resumeOption": null,
         "start": null
       },
       {
@@ -183,6 +187,8 @@
         "rotationGroup": "cwu_heaters",
         "draw": null,
         "stopActuator": null,
+        "stopOption": null,
+        "resumeOption": null,
         "start": null
       },
       {
@@ -215,6 +221,8 @@
           "powerUnit": null
         },
         "stopActuator": null,
+        "stopOption": null,
+        "resumeOption": null,
         "start": null
       }
     ],

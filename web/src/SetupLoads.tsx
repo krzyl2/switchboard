@@ -1041,20 +1041,103 @@ const START_POLICIES = ['restore_only', 'headroom'] as const;
 const isStartPolicy = (value: string): value is (typeof START_POLICIES)[number] => (START_POLICIES as readonly string[]).includes(value);
 
 /**
- * A modulating device's stop actuator: the switch that stops it below its minimum (a charger's
- * charging switch). The parser accepts the relay domains of an on/off device, so the picker offers
- * those, and the switches of the control entity's own Home Assistant device are listed first and
- * named as suggestions. Nothing is preselected: only the user declares (CLAUDE.md).
+ * Home Assistant's select domains: a stop actuator of one of these is set to an option instead of
+ * being switched (the device parser's select stop domains), so it needs its stop and resume options.
  */
-function StopActuatorField({ setup, index, device, entities, t }: { setup: SetupState; index: number; device: DeviceDraft; entities: readonly DiscoveredEntity[] | null; t: Messages }) {
+const SELECT_STOP_DOMAINS = ['select', 'input_select'] as const;
+const isSelectStop = (entity: string | null): boolean => entity !== null && (SELECT_STOP_DOMAINS as readonly string[]).includes(entity.split('.')[0] ?? '');
+
+/** Switchboard's own MQTT entities are never offered as an actuator: commanding one would loop back into Switchboard. */
+const commandable = (entities: readonly DiscoveredEntity[] | null): DiscoveredEntity[] | null => (entities === null ? null : entities.filter((e) => !e.own));
+
+/**
+ * A select stop's two options (0.7.1): what stops the device and what lets it run again. Both are
+ * required and offered from the entity's options attribute, nothing chosen until the user chooses;
+ * the entity's current state is shown beside each. A file's option the entity does not offer stays
+ * as written, marked, so it is never lost or saved blank (the add-on names the error). When Home
+ * Assistant reports no options, the user types them.
+ */
+function StopOptionFields({ setup, index, device, entity, readout, t }: { setup: SetupState; index: number; device: DeviceDraft; entity: DiscoveredEntity | undefined; readout: Readout | undefined; t: Messages }) {
+  const offered = entity?.options ?? null;
+  // The live readout once it answers (an unavailable entity says so); discovery's state until then.
+  const now = readout !== undefined && readout.status !== 'pending' ? readout.state : (entity?.state ?? null);
+  return (
+    <div class="loads-stop-options">
+      {(['stopOption', 'resumeOption'] as const).map((name) => {
+        const field = `devices[${index}].${name}`;
+        const value = device[name];
+        const invalid = hasError(setup, field);
+        return (
+          <div class="loads-field" key={name}>
+            <label for={fieldId(field)}>{t[`setupLoads.field.${name}`]}</label>
+            {offered === null ? (
+              <TextInput id={fieldId(field)} value={value} onChange={(v) => setup.set(field, v)} invalid={invalid} mono />
+            ) : (
+              <select id={fieldId(field)} class="mono" required value={value ?? ''} aria-invalid={invalid ? true : undefined} onChange={(e) => setup.set(field, (e.currentTarget as HTMLSelectElement).value || null)}>
+                <option value="">{t['setupLoads.stopOption.choose']}</option>
+                {offered.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+                {value !== null && !offered.includes(value) && <option value={value}>{fill(t['setupLoads.stopOption.notOffered'], { option: value })}</option>}
+              </select>
+            )}
+            {now !== null && (
+              <span class="sub loads-stop-now">
+                {t['setupLoads.stopOption.now']} <span class="mono">{now}</span>
+              </span>
+            )}
+            <FieldErrors issues={setup.issues} field={field} t={t} />
+          </div>
+        );
+      })}
+      {offered === null && <span class="sub">{t['setupLoads.stopOption.typed']}</span>}
+      <span class="sub">{t['setupLoads.stopOption.hint']}</span>
+    </div>
+  );
+}
+
+/**
+ * A modulating device's stop actuator: the switch or select that stops it below its minimum (a
+ * charger's charging switch, a select with a stop option). The picker offers the domains the device
+ * parser accepts for it, without Switchboard's own entities; the switches and selects of the control
+ * entity's own Home Assistant device are listed first and named as suggestions. Nothing is
+ * preselected: only the user declares (CLAUDE.md). A new stop entity starts without options: they
+ * belong to the entity they were chosen from.
+ */
+function StopActuatorField({
+  setup,
+  index,
+  device,
+  entities,
+  readouts,
+  t,
+}: {
+  setup: SetupState;
+  index: number;
+  device: DeviceDraft;
+  entities: readonly DiscoveredEntity[] | null;
+  readouts: ReadonlyMap<string, Readout>;
+  t: Messages;
+}) {
   const field = `devices[${index}].stopActuator`;
-  const filter: PickerFilter = { domains: setup.templates.find((tpl) => tpl.type === 'onoff')?.actuatorDomains ?? [] };
+  const template = setup.templates.find((tpl) => tpl.id === device.template && tpl.type === 'modulating') ?? setup.templates.find((tpl) => tpl.type === 'modulating');
+  const filter: PickerFilter = { domains: template?.stopActuatorDomains ?? [] };
+  const candidates = commandable(entities);
   const haDevice = device.actuator === null ? null : (entities?.find((e) => e.entityId === device.actuator)?.deviceId ?? null);
-  const sameDevice = entities === null || haDevice === null ? [] : entities.filter((e) => e.deviceId === haDevice && e.derived === null && matchesFilter(e, filter));
-  const ordered = entities === null ? null : [...sameDevice, ...entities.filter((e) => !sameDevice.includes(e))];
+  const sameDevice = candidates === null || haDevice === null ? [] : candidates.filter((e) => e.deviceId === haDevice && e.derived === null && matchesFilter(e, filter));
+  const ordered = candidates === null ? null : [...sameDevice, ...candidates.filter((e) => !sameDevice.includes(e))];
+  const choose = (entity: string | null) => {
+    if (entity === device.stopActuator) return;
+    setup.set(field, entity);
+    if (device.stopOption !== null) setup.set(`devices[${index}].stopOption`, null);
+    if (device.resumeOption !== null) setup.set(`devices[${index}].resumeOption`, null);
+  };
+  const stop = device.stopActuator;
   return (
     <div class="loads-field loads-stop">
-      <EntityPicker id={fieldId(field)} label={t['setupLoads.field.stopActuator']} value={device.stopActuator} onChange={(v) => setup.set(field, v)} entities={ordered} filter={filter} t={t} />
+      <EntityPicker id={fieldId(field)} label={t['setupLoads.field.stopActuator']} value={stop} onChange={choose} entities={ordered} filter={filter} t={t} />
       <span class="sub">{t['setupLoads.field.stopActuatorHint']}</span>
       {entities !== null &&
         (device.actuator === null ? (
@@ -1067,7 +1150,7 @@ function StopActuatorField({ setup, index, device, entities, t }: { setup: Setup
             <ul>
               {sameDevice.map((e) => (
                 <li key={e.entityId} data-entity={e.entityId}>
-                  <button type="button" class="linkbutton" aria-pressed={device.stopActuator === e.entityId} onClick={() => setup.set(field, e.entityId)}>
+                  <button type="button" class="linkbutton" aria-pressed={stop === e.entityId} onClick={() => choose(e.entityId)}>
                     {withEntity(t['setupLoads.stop.use'], e.entityId)}
                   </button>
                   {e.name !== null && <span class="sub-inline"> {e.name}</span>}
@@ -1078,6 +1161,7 @@ function StopActuatorField({ setup, index, device, entities, t }: { setup: Setup
           </div>
         ))}
       <FieldErrors issues={setup.issues} field={field} t={t} />
+      {isSelectStop(stop) && <StopOptionFields setup={setup} index={index} device={device} entity={entities?.find((e) => e.entityId === stop)} readout={readouts.get(stop!)} t={t} />}
     </div>
   );
 }
@@ -1213,7 +1297,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
                 label={t['setupLoads.field.actuator']}
                 value={device.actuator}
                 onChange={(v) => set('actuator', v)}
-                entities={context.entities}
+                entities={commandable(context.entities)}
                 filter={{ domains: spec.actuatorDomains }}
                 t={t}
               />
@@ -1233,7 +1317,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               <span class="sub">{t['setupLoads.field.stateEntityHint']}</span>
               <FieldErrors issues={setup.issues} field={f('stateEntity')} t={t} />
             </div>
-            {device.type === 'modulating' && <StopActuatorField setup={setup} index={index} device={device} entities={context.entities} t={t} />}
+            {device.type === 'modulating' && <StopActuatorField setup={setup} index={index} device={device} entities={context.entities} readouts={context.readouts} t={t} />}
           </div>
           {state !== null && (
             <p class="loads-readout">
@@ -1454,9 +1538,9 @@ export function drawUnit(reported: string | null, key: 'current' | 'power'): str
   return reported !== null && accepted.includes(reported) ? reported : null;
 }
 
-/** The entities a device's readouts follow: its state (or actuator) and its draw. */
+/** The entities a device's readouts follow: its state (or actuator), its draw and a select stop (its current option). */
 export function deviceEntities(device: DeviceDraft): (string | null)[] {
-  return [device.stateEntity ?? device.actuator, device.draw?.current ?? null, device.draw?.power ?? null];
+  return [device.stateEntity ?? device.actuator, device.draw?.current ?? null, device.draw?.power ?? null, isSelectStop(device.stopActuator) ? device.stopActuator : null];
 }
 
 // ---------------------------------------------------------------------------------------------

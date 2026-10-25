@@ -19,6 +19,7 @@ public sealed class SignalStoreRunner
     private readonly ILogger<SignalStoreRunner> _logger;
     private readonly ActuatorDirectoryHolder? _actuators;
     private ImmutableHashSet<string> _loggedWarnings = [];
+    private ImmutableDictionary<EntityId, ImmutableArray<string>> _options = ImmutableDictionary<EntityId, ImmutableArray<string>>.Empty;
     private DateTimeOffset? _lastStep;
     private (SwitchboardConfiguration? Configuration, ImmutableDictionary<Domain.Signals.SignalName, EntityId> Entities) _entities =
         (null, ImmutableDictionary<Domain.Signals.SignalName, EntityId>.Empty);
@@ -117,8 +118,15 @@ public sealed class SignalStoreRunner
         var configuration = _store.ConfigurationResult?.Configuration;
 
         // The command path's actuators follow the same reload as the protection setup, published
-        // before the snapshot so a command decided on the new setup is resolved against it.
+        // before the snapshot so a command decided on the new setup is resolved against it; so do
+        // the options each select reports, for the send-time options check.
         _actuators?.Observe(configuration);
+        var options = _store.ReportedOptions();
+        if (!SameOptions(options, _options))
+        {
+            _options = options;
+            _actuators?.ObserveOptions(options);
+        }
         if (!ReferenceEquals(configuration, _entities.Configuration))
         {
             _entities = (configuration, configuration is null
@@ -130,6 +138,9 @@ public sealed class SignalStoreRunner
         LogNewWarnings(warnings);
         _holder.Publish(new SignalDiagnostics(_store.Snapshot(now), _store.ConfigurationResult, _entities.Entities, warnings));
     }
+
+    private static bool SameOptions(ImmutableDictionary<EntityId, ImmutableArray<string>> a, ImmutableDictionary<EntityId, ImmutableArray<string>> b) =>
+        a.Count == b.Count && a.All(entry => b.TryGetValue(entry.Key, out var other) && entry.Value.SequenceEqual(other, StringComparer.Ordinal));
 
     private void LogNewWarnings(ImmutableArray<ConfigurationIssue> warnings)
     {

@@ -334,6 +334,94 @@ public sealed class SettlingScenarioTests
         Assert.All(events, e => Assert.Equal((DecisionScope.Phase, Phase.L1, ReasonCode.ForeignLoad), (e.Scope, e.Phase!.Value, e.Reason)));
     }
 
+    // VER-02 for the stop of a charger, with a switch (0.7.0) and with a select (0.7.1): the stop's
+    // window, its verification against the car's own draw and the unresponsive rule are the same
+    // whatever the stop actuator is. The stop here is the kill switch's (protective, at once).
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Delayed_sample_closes_the_stop_window_when_it_arrives(bool select)
+    {
+        // The stop leaves at T; nothing reports until T + 45 s (reaction time 20 s): the window stays
+        // open until that report, and the car's draw of 0 matches the stop.
+        var rig = new SelectStopRig(switchStop: !select).Begin();
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+        Assert.Equal(["stop"], rig.StopCommands);
+
+        rig.Harness.Time.Advance(TimeSpan.FromSeconds(44));
+        rig.Harness.Runner.Step();
+        Assert.NotNull(rig.Ledger.Window);
+
+        rig.Poll(2, seconds: 1);
+
+        Assert.Null(rig.Ledger.Window);
+        Assert.Equal((HistoryKind.Command, Verdict.Match), (rig.Ledger.History[^1].Kind, rig.Ledger.History[^1].Verdict));
+        Assert.Equal(0, rig.Ledger.Mismatches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Lost_sample_times_out_the_stop_window_and_counts_no_mismatch(bool select)
+    {
+        // The car's draw sensors fall silent after the stop: the window cannot close on them and
+        // times out at the hard timeout (90 s); no mismatch is counted.
+        var rig = new SelectStopRig(switchStop: !select).Begin();
+        rig.ReportDraw = false;
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+        var sent = rig.Harness.Now;
+
+        rig.Hold(2, TimeSpan.FromSeconds(100));
+
+        var timedOut = Assert.Single(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.SettlingTimedOut && d.Device?.Value == "ev_charger");
+        Assert.Equal(sent + TimeSpan.FromSeconds(90), timedOut.At);
+        Assert.Equal(0, rig.Ledger.Mismatches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Unresponsive_stop_is_a_mismatch_and_marks_the_charger_at_the_limit(bool select)
+    {
+        // The stop actuator ignores the command and the car keeps drawing 10 A: at the window's close
+        // the stop is a mismatch (one per command), which marks the charger unresponsive at
+        // settling.mismatch_limit (1 here).
+        var rig = new SelectStopRig(switchStop: !select, control: "  settling:\n    mismatch_limit: 1\n").Begin();
+        rig.Frozen = true;
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+
+        rig.Hold(2, TimeSpan.FromSeconds(40));
+
+        Assert.Equal(Verdict.Mismatch, rig.Ledger.History[^1].Verdict);
+        Assert.Equal(1, rig.Ledger.Mismatches);
+        Assert.True(rig.Ledger.Unresponsive);
+        Assert.Single(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.MarkedUnresponsive && d.Device?.Value == "ev_charger");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Foreign_load_arriving_mid_stop_window_is_not_blamed_on_the_charger(bool select)
+    {
+        // A kettle (9 A) comes on L1 inside the stop's window: the stop is judged on the car's own
+        // draw, which went to 0, so the kettle is recorded as foreign load and never counted against it.
+        var rig = new SelectStopRig(switchStop: !select).Begin();
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+        rig.Poll(2);
+
+        rig.Poll(11);
+        rig.Hold(11, TimeSpan.FromSeconds(30));
+
+        Assert.Equal(Verdict.Match, rig.Ledger.History.Single(h => h.Kind == HistoryKind.Command).Verdict);
+        Assert.Equal(0, rig.Ledger.Mismatches);
+        Assert.Contains(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.ForeignLoadDetected && d.Phase == Phase.L1);
+    }
+
     private static GuardScenario Active(RecordingDeviceCommandPort port, string[] off, string? devices = null) =>
         DispatchScenario.Create(devices ?? DispatchDevices.Heaters, off, Fast, mode: DispatchScenario.Active, port: port);
 }
