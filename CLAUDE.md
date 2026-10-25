@@ -2,7 +2,7 @@
 
 Home Assistant add-on distributing grid connection capacity across controllable high-power loads. Keeps every phase under its breaker first, then sends the remaining headroom to whichever load is worth the most per kWh.
 
-Read `docs/01-PRODUCT.md` before changing anything structural. `docs/04-ALGORITHMS.md` is the control specification; `docs/07-PITFALLS.md` lists traps that already cost debugging time on the predecessor system.
+Start with `docs/STATUS.md` (what is built, what is next, standing rules). Read `docs/01-PRODUCT.md` before changing anything structural. `docs/04-ALGORITHMS.md` is the control specification; `docs/07-PITFALLS.md` lists traps that already cost debugging time on the predecessor system.
 
 ## Hard rules
 
