@@ -101,6 +101,23 @@ signals:
     role: phase_voltage
     phase: L3
 
+  # Energy counters of the main meter, summed over the phases (the meter nets the phases like the
+  # billing meter does): the hourly balance is (export - import) since the last report before the
+  # local :00 (13-HOURLY-BALANCE.md). Primary counters only: never sensor.bilans_godzinowy_tauron,
+  # which is a utility meter built from these two.
+  energy_export:
+    entity: sensor.solaredge_m1_exported_kwh
+    kind: energy_counter
+    unit: kWh
+    max_age: 90s
+    role: energy_export
+  energy_import:
+    entity: sensor.solaredge_m1_imported_kwh
+    kind: energy_counter
+    unit: kWh
+    max_age: 90s
+    role: energy_import
+
   # Inverter: production flows into the house busbar, so positive_import. Asleep at night it reports
   # 0 W at dusk and then nothing until morning (live 0.4.0; it may also go unavailable);
   # unavailable_as_zero counts either as 0 W instead of unknown. Silence after a production stays unknown.

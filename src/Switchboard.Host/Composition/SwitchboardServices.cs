@@ -5,6 +5,7 @@ using Switchboard.Application;
 using Switchboard.Application.Connectivity;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Balance;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
@@ -110,6 +111,7 @@ public static class SwitchboardServices
         services.AddHostedService<SetupLinkService>();
         services.AddHostedService<RuntimeDerivedCheckService>();
         services.AddHostedService<PhaseEvidenceService>();
+        services.AddHostedService<HourlyBalanceService>();
 
         // The command path's sender runs until the guard has stopped, so the shutdown safe state's
         // commands still leave (bounded by HomeAssistant:ShutdownCommandWait).
@@ -342,6 +344,8 @@ public static class SwitchboardServices
         services.AddSingleton<IControlInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<ISignalDiagnosticsSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<SignalStoreRunner>();
+        services.AddSingleton<HourlyBalanceMonitor>();
+        services.AddSingleton<IBalanceSource>(sp => sp.GetRequiredService<HourlyBalanceMonitor>());
 
         // The freshness probe carries the HA token: its own client, never redirected, timed out on the clock.
         services.AddHttpClient(HomeAssistantStateReader.HttpClientName)

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using Switchboard.Application.Configuration;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
@@ -436,7 +437,7 @@ public sealed class SignalStore
             configuration.Connection,
             Readings(configuration, now),
             Protection(configuration, sequence, now),
-            new DispatchInputs(sequence, now, [.. phases.Select(p => Dispatch(p, generation, now))]) { DevicePowers = DevicePowers(now) },
+            new DispatchInputs(sequence, now, [.. phases.Select(p => Dispatch(p, generation, now))]) { DevicePowers = DevicePowers(now), Energy = Energy(now) },
             [.. phases.Select(p => _balance[p].ToPhaseBalance(p))],
             [.. phases.Select(p => Reserve(configuration, p))],
             rejections)
@@ -449,6 +450,27 @@ public sealed class SignalStore
                 phases.ToImmutableDictionary(p => p, p => WithRole(SignalRole.PhaseVoltage, p) is not null),
                 configuration.Devices.Where(d => d.Name is not null).ToImmutableDictionary(d => d.Id, d => d.Name!)),
         };
+    }
+
+    /// <summary>
+    /// The hourly balance's counters (BAL-01): both fresh, or none. The report time is the older of the
+    /// two, so a baseline taken "at or before :00" holds for both. Null when the roles are not mapped.
+    /// </summary>
+    private EnergyInputs? Energy(DateTimeOffset now)
+    {
+        if (WithRole(SignalRole.EnergyExport) is not { } export || WithRole(SignalRole.EnergyImport) is not { } import)
+        {
+            return null;
+        }
+
+        var maxAge = export.Definition.MaxAge < import.Definition.MaxAge ? export.Definition.MaxAge : import.Definition.MaxAge;
+        if (Classify(export, now).State != SignalState.Fresh || Classify(import, now).State != SignalState.Fresh)
+        {
+            return new EnergyInputs(null, maxAge);
+        }
+
+        var reported = export.Accepted!.Effective < import.Accepted!.Effective ? export.Accepted.Effective : import.Accepted.Effective;
+        return new EnergyInputs(new EnergyCounters(Value(export), Value(import), reported), maxAge);
     }
 
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;

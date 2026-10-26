@@ -66,6 +66,12 @@ public enum SignalRole
 
     /// <summary>A circuit group's sub-meter current on one phase, created from <c>circuit_groups:</c>.</summary>
     GroupCurrent,
+
+    /// <summary>The main meter's total exported energy counter (kWh, summed phases): the hourly balance input (BAL-01).</summary>
+    EnergyExport,
+
+    /// <summary>The main meter's total imported energy counter (kWh, summed phases): the hourly balance input (BAL-01).</summary>
+    EnergyImport,
 }
 
 /// <summary>

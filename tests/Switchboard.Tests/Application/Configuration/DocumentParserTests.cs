@@ -48,13 +48,49 @@ public sealed class DocumentParserTests
     {
         var result = TestConfigurations.Valid(TestConfigurations.Example);
 
-        // 13 mapped signals, one applied-state signal per device stage (three heaters, the charger),
+        // 15 mapped signals (13 plus the two energy counters of the hourly balance), one applied-state signal per device stage (three heaters, the charger),
         // the charger's stop (its force-state select, 0.7.1) and its own draw (current and power).
         Assert.Empty(result.Warnings);
-        Assert.Equal(13, result.Configuration!.Signals.Count(s => s.Role is not (SignalRole.DeviceState or SignalRole.DeviceCurrent or SignalRole.DevicePower)));
+        Assert.Equal(15, result.Configuration!.Signals.Count(s => s.Role is not (SignalRole.DeviceState or SignalRole.DeviceCurrent or SignalRole.DevicePower)));
         Assert.Equal(5, result.Configuration.Signals.Count(s => s.Role == SignalRole.DeviceState));
         Assert.Equal(2, result.Configuration.Signals.Count(s => s.Role is SignalRole.DeviceCurrent or SignalRole.DevicePower));
     }
+
+    private const string EnergyPair = """
+        energy_export:
+          entity: sensor.meter_exported_kwh
+          kind: energy_counter
+          unit: kWh
+          max_age: 90s
+          role: energy_export
+        energy_import:
+          entity: sensor.meter_imported_kwh
+          kind: energy_counter
+          unit: kWh
+          max_age: 90s
+          role: energy_import
+        """;
+
+    [Fact]
+    public void The_hourly_balance_needs_both_energy_counters_or_neither()
+    {
+        var both = TestConfigurations.Valid(Base + Indent(EnergyPair));
+        Assert.Equal(2, both.Configuration!.Signals.Count(s => s.Role is SignalRole.EnergyExport or SignalRole.EnergyImport));
+
+        var onlyExport = TestConfigurations.Parse(Base + Indent(EnergyPair.Split("energy_import:")[0]));
+        Assert.Contains(onlyExport.Errors, e => e.Code == "required_signal_missing" && e.Message.Contains("energy_export and energy_import", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_energy_role_needs_an_energy_counter_signal()
+    {
+        var wrongKind = EnergyPair.ReplaceLineEndings("\n").Replace("kind: energy_counter\n  unit: kWh", "kind: power\n  unit: W", StringComparison.Ordinal);
+
+        AssertError(Base + Indent(wrongKind), "role_kind_mismatch", "signals.energy_export.role");
+    }
+
+    private static string Indent(string block) =>
+        string.Concat(block.ReplaceLineEndings("\n").Split('\n').Select(l => "  " + l + "\n"));
 
     [Fact]
     public void Misspelt_key_is_an_error_with_its_line_because_typos_must_not_be_ignored()

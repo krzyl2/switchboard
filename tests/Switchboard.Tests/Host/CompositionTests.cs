@@ -35,7 +35,7 @@ public sealed class CompositionTests
         Assert.NotNull(provider.GetRequiredService<GuardRunner>());
         Assert.NotNull(provider.GetRequiredService<JsonlDecisionLog>());
         Assert.NotNull(provider.GetRequiredService<Switchboard.Application.Presentation.PresentationPersistence>());
-        Assert.Equal(12, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(13, provider.GetServices<IHostedService>().Count());
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class CompositionTests
                 typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
                 typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
                 typeof(PresentationService), typeof(SetupLinkService), typeof(RuntimeDerivedCheckService),
-                typeof(PhaseEvidenceService), typeof(CommandPathService), typeof(GuardService),
+                typeof(PhaseEvidenceService), typeof(HourlyBalanceService), typeof(CommandPathService), typeof(GuardService),
             ],
             provider.GetServices<IHostedService>().Select(s => s.GetType()));
     }

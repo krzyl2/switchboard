@@ -146,6 +146,8 @@ export const en = {
   'role.device_current': 'device current (its own draw)',
   'role.device_power': 'device power (its own draw)',
   'role.group_current': 'circuit group current (sub-meter)',
+  'role.energy_export': 'exported energy counter (hourly balance)',
+  'role.energy_import': 'imported energy counter (hourly balance)',
   'directionSource.signed_signal': 'signed value',
   'directionSource.deadband': 'near zero, counted as import',
   'directionSource.pending': 'waiting for the power of the same reading, counted as import',

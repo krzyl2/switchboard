@@ -15,7 +15,7 @@ public sealed class HourlyBalanceTests
     // 2026-10-26 is winter time (+01:00); 10:00 local is 09:00Z.
     private static readonly DateTimeOffset TenOclock = new(2026, 10, 26, 10, 0, 0, TimeSpan.FromHours(1));
 
-    private static HourlyBalanceTracker Tracker() => new(Warsaw, MaxAge);
+    private static HourlyBalanceTracker Tracker() => new(Warsaw);
 
     private static EnergyCounters At(DateTimeOffset when, double exportKwh, double importKwh) => new(exportKwh, importKwh, when);
 
@@ -23,9 +23,9 @@ public sealed class HourlyBalanceTests
     public void Balance_is_export_minus_import_since_the_last_report_at_or_before_the_hour_in_Wh()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100.000, 200.000));
+        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100.000, 200.000), MaxAge);
 
-        var reading = tracker.Observe(TenOclock.AddMinutes(20), At(TenOclock.AddMinutes(20), 100.500, 200.200));
+        var reading = tracker.Observe(TenOclock.AddMinutes(20), At(TenOclock.AddMinutes(20), 100.500, 200.200), MaxAge);
 
         Assert.True(reading.IsKnown);
         Assert.Equal(300, reading.Wh!.Value, 6);
@@ -36,11 +36,11 @@ public sealed class HourlyBalanceTests
     public void Baseline_is_the_report_before_the_boundary_not_the_first_one_after_it()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-8), At(TenOclock.AddSeconds(-8), 100.000, 200.000));
-        tracker.Observe(TenOclock.AddSeconds(-1), At(TenOclock.AddSeconds(-8), 100.000, 200.000));
+        tracker.Observe(TenOclock.AddSeconds(-8), At(TenOclock.AddSeconds(-8), 100.000, 200.000), MaxAge);
+        tracker.Observe(TenOclock.AddSeconds(-1), At(TenOclock.AddSeconds(-8), 100.000, 200.000), MaxAge);
 
         // The first report after :00 arrives 4 s late and already holds 0.02 kWh of import of the new hour.
-        var reading = tracker.Observe(TenOclock.AddSeconds(4), At(TenOclock.AddSeconds(3), 100.000, 200.020));
+        var reading = tracker.Observe(TenOclock.AddSeconds(4), At(TenOclock.AddSeconds(3), 100.000, 200.020), MaxAge);
 
         Assert.Equal(-20, reading.Wh!.Value, 6);
         Assert.Equal(200.000, tracker.Baseline!.ImportKwh);
@@ -51,12 +51,12 @@ public sealed class HourlyBalanceTests
     {
         var tracker = Tracker();
 
-        var midHour = tracker.Observe(TenOclock.AddMinutes(25), At(TenOclock.AddMinutes(25), 100, 200));
+        var midHour = tracker.Observe(TenOclock.AddMinutes(25), At(TenOclock.AddMinutes(25), 100, 200), MaxAge);
         Assert.False(midHour.IsKnown);
         Assert.Equal(BalanceUnknown.NoBaseline, midHour.Reason);
 
-        tracker.Observe(TenOclock.AddMinutes(59).AddSeconds(55), At(TenOclock.AddMinutes(59).AddSeconds(55), 100.1, 200));
-        var next = tracker.Observe(TenOclock.AddHours(1).AddSeconds(10), At(TenOclock.AddHours(1).AddSeconds(5), 100.1, 200.05));
+        tracker.Observe(TenOclock.AddMinutes(59).AddSeconds(55), At(TenOclock.AddMinutes(59).AddSeconds(55), 100.1, 200), MaxAge);
+        var next = tracker.Observe(TenOclock.AddHours(1).AddSeconds(10), At(TenOclock.AddHours(1).AddSeconds(5), 100.1, 200.05), MaxAge);
 
         Assert.Equal(-50, next.Wh!.Value, 6);
     }
@@ -65,13 +65,13 @@ public sealed class HourlyBalanceTests
     public void A_persisted_baseline_of_the_same_hour_survives_a_restart()
     {
         var before = Tracker();
-        before.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100.000, 200.000));
-        before.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.100, 200.000));
+        before.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100.000, 200.000), MaxAge);
+        before.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.100, 200.000), MaxAge);
         var saved = before.Baseline;
 
         var after = Tracker();
         after.Restore(saved);
-        var reading = after.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100.400, 200.000));
+        var reading = after.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100.400, 200.000), MaxAge);
 
         Assert.Equal(400, reading.Wh!.Value, 6);
     }
@@ -82,7 +82,7 @@ public sealed class HourlyBalanceTests
         var tracker = Tracker();
         tracker.Restore(new HourBaseline(TenOclock.AddHours(-1), 50, 50));
 
-        var reading = tracker.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100, 200));
+        var reading = tracker.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100, 200), MaxAge);
 
         Assert.Equal(BalanceUnknown.NoBaseline, reading.Reason);
     }
@@ -91,16 +91,16 @@ public sealed class HourlyBalanceTests
     public void A_counter_that_decreases_makes_the_hour_unknown_and_the_next_hour_recovers()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200));
-        tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.2, 200));
+        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200), MaxAge);
+        tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.2, 200), MaxAge);
 
-        var reset = tracker.Observe(TenOclock.AddMinutes(20), At(TenOclock.AddMinutes(20), 0.1, 0.3));
+        var reset = tracker.Observe(TenOclock.AddMinutes(20), At(TenOclock.AddMinutes(20), 0.1, 0.3), MaxAge);
         Assert.Equal(BalanceUnknown.CounterReset, reset.Reason);
-        var later = tracker.Observe(TenOclock.AddMinutes(40), At(TenOclock.AddMinutes(40), 0.5, 0.3));
+        var later = tracker.Observe(TenOclock.AddMinutes(40), At(TenOclock.AddMinutes(40), 0.5, 0.3), MaxAge);
         Assert.False(later.IsKnown);
 
-        tracker.Observe(TenOclock.AddMinutes(59).AddSeconds(55), At(TenOclock.AddMinutes(59).AddSeconds(55), 0.9, 0.3));
-        var next = tracker.Observe(TenOclock.AddHours(1).AddSeconds(30), At(TenOclock.AddHours(1).AddSeconds(20), 1.0, 0.3));
+        tracker.Observe(TenOclock.AddMinutes(59).AddSeconds(55), At(TenOclock.AddMinutes(59).AddSeconds(55), 0.9, 0.3), MaxAge);
+        var next = tracker.Observe(TenOclock.AddHours(1).AddSeconds(30), At(TenOclock.AddHours(1).AddSeconds(20), 1.0, 0.3), MaxAge);
         Assert.Equal(100, next.Wh!.Value, 6);
     }
 
@@ -108,15 +108,15 @@ public sealed class HourlyBalanceTests
     public void Stale_counters_make_the_balance_unknown_and_it_is_right_again_with_the_next_report()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200));
-        tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.1, 200));
+        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200), MaxAge);
+        tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(10), 100.1, 200), MaxAge);
 
         // 3 minutes of silence: the same last report, older than max_age.
-        var stale = tracker.Observe(TenOclock.AddMinutes(13), At(TenOclock.AddMinutes(10), 100.1, 200));
+        var stale = tracker.Observe(TenOclock.AddMinutes(13), At(TenOclock.AddMinutes(10), 100.1, 200), MaxAge);
         Assert.Equal(BalanceUnknown.Stale, stale.Reason);
 
         // Counters are cumulative: what was drawn during the gap is in the next report.
-        var back = tracker.Observe(TenOclock.AddMinutes(14), At(TenOclock.AddMinutes(14), 100.3, 200.1));
+        var back = tracker.Observe(TenOclock.AddMinutes(14), At(TenOclock.AddMinutes(14), 100.3, 200.1), MaxAge);
         Assert.Equal(200, back.Wh!.Value, 6);
     }
 
@@ -124,9 +124,9 @@ public sealed class HourlyBalanceTests
     public void Unavailable_counters_are_unknown_and_never_a_zero()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200));
+        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200), MaxAge);
 
-        var reading = tracker.Observe(TenOclock.AddMinutes(5), null);
+        var reading = tracker.Observe(TenOclock.AddMinutes(5), null, MaxAge);
 
         Assert.Equal(BalanceUnknown.Unavailable, reading.Reason);
         Assert.Null(reading.Wh);
@@ -136,10 +136,10 @@ public sealed class HourlyBalanceTests
     public void A_clock_step_back_makes_the_rest_of_the_hour_unknown()
     {
         var tracker = Tracker();
-        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200));
-        tracker.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100.2, 200));
+        tracker.Observe(TenOclock.AddSeconds(-5), At(TenOclock.AddSeconds(-5), 100, 200), MaxAge);
+        tracker.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100.2, 200), MaxAge);
 
-        var stepped = tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(30), 100.2, 200));
+        var stepped = tracker.Observe(TenOclock.AddMinutes(10), At(TenOclock.AddMinutes(30), 100.2, 200), MaxAge);
 
         Assert.Equal(BalanceUnknown.ClockStepBack, stepped.Reason);
     }
@@ -163,11 +163,11 @@ public sealed class HourlyBalanceTests
         var first = new DateTimeOffset(2026, 10, 25, 2, 0, 0, TimeSpan.FromHours(2));
         var second = new DateTimeOffset(2026, 10, 25, 2, 0, 0, TimeSpan.FromHours(1));
         var tracker = Tracker();
-        tracker.Observe(first.AddSeconds(-5), At(first.AddSeconds(-5), 100, 200));
-        var inFirst = tracker.Observe(first.AddMinutes(50), At(first.AddMinutes(50), 100.4, 200));
-        tracker.Observe(second.AddSeconds(-5), At(second.AddSeconds(-5), 100.9, 200));
+        tracker.Observe(first.AddSeconds(-5), At(first.AddSeconds(-5), 100, 200), MaxAge);
+        var inFirst = tracker.Observe(first.AddMinutes(50), At(first.AddMinutes(50), 100.4, 200), MaxAge);
+        tracker.Observe(second.AddSeconds(-5), At(second.AddSeconds(-5), 100.9, 200), MaxAge);
 
-        var inSecond = tracker.Observe(second.AddMinutes(5), At(second.AddMinutes(5), 101.0, 200));
+        var inSecond = tracker.Observe(second.AddMinutes(5), At(second.AddMinutes(5), 101.0, 200), MaxAge);
 
         Assert.Equal(400, inFirst.Wh!.Value, 6);
         Assert.Equal(100, inSecond.Wh!.Value, 6);

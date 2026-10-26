@@ -233,6 +233,11 @@
     },
     "dropPreserved": []
   },
-  "preserved": [],
+  "preserved": [
+    {
+      "path": "signals.energy_export",
+      "summary": "signal energy_export (sensor.solaredge_m1_exported_kwh)"
+    }
+  ],
   "fileIssues": []
 }

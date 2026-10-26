@@ -99,7 +99,7 @@ public sealed class SetupServiceTests : IDisposable
         Assert.True(saved.Reloaded);
         Assert.True(_inbox.Reader.TryRead(out var message));
         var result = Assert.IsType<ConfigurationInput>(message).Result;
-        Assert.Equal((ConfigurationStatus.Valid, 20), (result.Status, result.Configuration!.Signals.Length));
+        Assert.Equal((ConfigurationStatus.Valid, 22), (result.Status, result.Configuration!.Signals.Length));
         Assert.Equal(["Grzałka łazienka", "Grzałka CWU L2", "Grzałka CWU L3", "Ładowarka go-e"], result.Configuration.Devices.Select(d => d.Name));
         Assert.NotNull(saved.Backup);
         Assert.Equal(TestConfigurations.Example, File.ReadAllText(Path.Combine(ConfigDirectory, saved.Backup!)));

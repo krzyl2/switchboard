@@ -59,7 +59,9 @@ public static class SwitchboardDocumentParser
         ("inverter_power", SignalRole.InverterPower),
         ("inverter_phase_current", SignalRole.InverterPhaseCurrent),
         ("total_current", SignalRole.TotalCurrent),
-        ("total_power", SignalRole.TotalPower));
+        ("total_power", SignalRole.TotalPower),
+        ("energy_export", SignalRole.EnergyExport),
+        ("energy_import", SignalRole.EnergyImport));
 
     /// <param name="document">The user's document, or null for an empty file.</param>
     /// <param name="defaults">The embedded control defaults; <c>control:</c> overrides them key by key.</param>
@@ -482,6 +484,7 @@ public static class SwitchboardDocumentParser
         {
             SignalRole.PhaseCurrent or SignalRole.InverterPhaseCurrent or SignalRole.TotalCurrent => SignalKind.Current,
             SignalRole.PhasePower or SignalRole.InverterPower or SignalRole.TotalPower => SignalKind.Power,
+            SignalRole.EnergyExport or SignalRole.EnergyImport => SignalKind.EnergyCounter,
             _ => SignalKind.Voltage,
         };
         if (kind is { } actual && actual != expected)
@@ -669,6 +672,11 @@ public static class SwitchboardDocumentParser
                     signals,
                     $"A {TopologyName(topology)} connection needs a signal with role phase_current on {phase}.");
             }
+        }
+
+        if (seen.ContainsKey((SignalRole.EnergyExport, null)) != seen.ContainsKey((SignalRole.EnergyImport, null)))
+        {
+            issues.Error(ConfigurationIssueCodes.RequiredSignalMissing, "signals", signals, "The hourly balance needs both energy_export and energy_import, or neither.");
         }
 
         var inverterCurrents = phases.Count(p => seen.ContainsKey((SignalRole.InverterPhaseCurrent, p)));

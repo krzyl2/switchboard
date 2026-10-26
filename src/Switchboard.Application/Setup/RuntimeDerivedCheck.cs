@@ -52,6 +52,8 @@ public static class RuntimeDerivedCheck
         SignalRole.DeviceCurrent,
         SignalRole.DevicePower,
         SignalRole.GroupCurrent,
+        SignalRole.EnergyExport,
+        SignalRole.EnergyImport,
     ];
 
     /// <param name="snapshot">Home Assistant's entities and registry; null when it could not be read.</param>

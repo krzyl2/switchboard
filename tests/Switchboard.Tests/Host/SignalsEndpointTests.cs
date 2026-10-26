@@ -148,9 +148,9 @@ public sealed class SignalsEndpointTests
             using var json = JsonDocument.Parse((await SendAsync(factory, "/api/signals")).Response.Body);
 
             Assert.Equal("valid", json.RootElement.GetProperty("configuration").GetProperty("state").GetString());
-            // 13 mapped signals, the applied-state signals of the 4 example devices (Stage 2), the
+            // 15 mapped signals (13 plus the two energy counters of the hourly balance), the applied-state signals of the 4 example devices (Stage 2), the
             // charger's draw current and power (Stage 3) and its stop, the force-state select (0.7.1).
-            Assert.Equal(20, json.RootElement.GetProperty("signals").EnumerateArray().Count(s => s.GetProperty("name").ValueKind == JsonValueKind.String));
+            Assert.Equal(22, json.RootElement.GetProperty("signals").EnumerateArray().Count(s => s.GetProperty("name").ValueKind == JsonValueKind.String));
             Assert.All(json.RootElement.GetProperty("phases").EnumerateArray(), p => Assert.Equal("source_disconnected", p.GetProperty("invalidReason").GetString()));
         }
     }

@@ -146,6 +146,8 @@ export const pl: Messages = {
   'role.device_current': 'prąd urządzenia (jego własny pobór)',
   'role.device_power': 'moc urządzenia (jego własny pobór)',
   'role.group_current': 'prąd grupy obwodu (podlicznik)',
+  'role.energy_export': 'licznik energii wyeksportowanej (saldo godzinowe)',
+  'role.energy_import': 'licznik energii pobranej (saldo godzinowe)',
   'directionSource.signed_signal': 'wartość ze znakiem',
   'directionSource.deadband': 'blisko zera, liczony jako pobór',
   'directionSource.pending': 'czeka na moc z tego samego odczytu, liczony jako pobór',

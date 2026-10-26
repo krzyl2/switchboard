@@ -90,6 +90,8 @@ export const SIGNAL_ROLES = [
   'device_current',
   'device_power',
   'group_current',
+  'energy_export',
+  'energy_import',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [

@@ -44,7 +44,7 @@ public readonly record struct BalanceReading(double? Wh, DateTimeOffset HourStar
 /// back make it unknown for the rest of the hour. Pure state machine driven by the caller's clock; hours
 /// are local clock hours of <c>zone</c> (23 and 25 hour days included, a repeated clock hour is two hours).
 /// </summary>
-public sealed class HourlyBalanceTracker(TimeZoneInfo zone, TimeSpan maxAge)
+public sealed class HourlyBalanceTracker(TimeZoneInfo zone)
 {
     private readonly List<EnergyCounters> _history = [];
     private HourBaseline? _restored;
@@ -68,7 +68,8 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone, TimeSpan maxAge)
 
     /// <param name="now">The injected clock.</param>
     /// <param name="counters">The counters now, or null when unavailable or unknown.</param>
-    public BalanceReading Observe(DateTimeOffset now, EnergyCounters? counters)
+    /// <param name="maxAge">How long a counter may be silent; read every call so a changed configuration keeps the baseline.</param>
+    public BalanceReading Observe(DateTimeOffset now, EnergyCounters? counters, TimeSpan maxAge)
     {
         var hour = HourStartOf(now, zone);
 
@@ -93,12 +94,12 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone, TimeSpan maxAge)
 
         if (_baseline is null && _poison == BalanceUnknown.None)
         {
-            _baseline = ChooseBaseline(hour);
+            _baseline = ChooseBaseline(hour, maxAge);
             _restored = null;
         }
 
-        Prune(hour);
-        return Evaluate(now, hour, counters);
+        Prune(hour, maxAge);
+        return Evaluate(now, hour, counters, maxAge);
     }
 
     private void Record(EnergyCounters reading)
@@ -122,7 +123,7 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone, TimeSpan maxAge)
         _history.Add(reading);
     }
 
-    private HourBaseline? ChooseBaseline(DateTimeOffset hour)
+    private HourBaseline? ChooseBaseline(DateTimeOffset hour, TimeSpan maxAge)
     {
         if (_restored is { } restored && restored.HourStart == hour)
         {
@@ -144,9 +145,9 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone, TimeSpan maxAge)
     }
 
     /// <summary>Reports older than max_age before this hour can serve no baseline now or later.</summary>
-    private void Prune(DateTimeOffset hour) => _history.RemoveAll(r => hour - r.ReportedAt > maxAge);
+    private void Prune(DateTimeOffset hour, TimeSpan maxAge) => _history.RemoveAll(r => hour - r.ReportedAt > maxAge);
 
-    private BalanceReading Evaluate(DateTimeOffset now, DateTimeOffset hour, EnergyCounters? counters)
+    private BalanceReading Evaluate(DateTimeOffset now, DateTimeOffset hour, EnergyCounters? counters, TimeSpan maxAge)
     {
         if (_poison != BalanceUnknown.None)
         {
