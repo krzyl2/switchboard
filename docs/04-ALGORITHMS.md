@@ -199,6 +199,10 @@ Carried over from the working Node-RED flow; they are starting values, not truth
 | overload recovery | 600 s | longer than the worst tier |
 | default reserve | 2.5 kW per phase | one kettle plus margin |
 
+## 7a. Hourly balance
+
+The balance netted per hour is the billing quantity; dispatch decides whether energy is wanted from its projection at the next :00 (band, burn-down, allowance rule). Specified in `13-HOURLY-BALANCE.md`; the guard is unaffected. The 'balance credit 0.25 kWh' row above is the Node-RED predecessor's value and is superseded by the band there.
+
 ## 8. Fail-safe table
 
 Every row has a named test (VER-03). In shadow mode a reaction is a recorded "would switch off"; nothing is commanded.

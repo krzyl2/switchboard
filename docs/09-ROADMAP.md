@@ -59,7 +59,7 @@ Documentation, translations, store description with the "not a protective device
 
 | Release | Content |
 |---|---|
-| v2.0 | Value per kWh as the live merit order; tariff module (flat / zoned / dynamic); settlement module (net-billing, net-metering, feed-in); surplus routing; hourly-netting trajectory control |
+| v2.0 | Value per kWh as the live merit order; tariff module (flat / zoned / dynamic); settlement module (net-billing, net-metering, feed-in); surplus routing; hourly-netting trajectory control (specified in `docs/13-HOURLY-BALANCE.md`, first item, replaces the Node-RED heater flow) |
 | v3.0 | LP planner over 24–48 h, PV and load forecasts, deadline goals, battery arbitrage; optional interoperation with an external planner |
 | v4.0 | Jinja templates on every field, then sandboxed scripting only if users ask for it |
 

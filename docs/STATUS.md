@@ -1,6 +1,6 @@
 # Implementation status
 
-Single entry point for a new session. Updated 2026-10-25 at version 0.7.1 (git `main`). Read this, then `CLAUDE.md`, then `docs/DECISIONS.md` (binding, newest sections last).
+Single entry point for a new session. Updated 2026-10-26 at version 0.7.1 (git `main`). Read this, then `CLAUDE.md`, then `docs/DECISIONS.md` (binding, newest sections last).
 
 ## Where we are
 
@@ -36,6 +36,7 @@ Single entry point for a new session. Updated 2026-10-25 at version 0.7.1 (git `
 
 ## Next steps, in order
 
+0. **Phase 2 done 2026-10-26** (control on 09:14-09:45Z, now off; option still `active`, maintainer to decide on `shadow`): kill switch, go-e stop and restore, active phase test (grzalka_2 = L1 and grzalka_3 = L3 confirmed, grzalka_1 = L2 inconclusive but clean on). The heaters are still driven by the Node-RED flow; Switchboard replaces it via `input_boolean.force_cwu` once the hourly balance module (`docs/13-HOURLY-BALANCE.md`, BAL-01..08) exists and has run in shadow beside it. Next: verify the balance against the utility's own hourly data, then build BAL.
 1. **Phase 2: first supervised enable** (only when the maintainer says yes and is at home). Plan in the Control section of `DECISIONS.md` and the 0.7.0 workflow result; short form: set add-on option `mode: active`, open Status, flip "Sterowanie dozwolone", watch decisions with `commanded: true` (first effect: go-e setpoint lowered to fit the L1 reserve, accepted by the maintainer), then kill switch on/off, then the active phase test per heater (expect L2 for `switch.grzalka_1`, L1 for `_2`, L3 for `_3`, the last one first real proof), then control off (nothing sent, devices stay). Abort and switch control off on any call to an undeclared entity, any "not a declared actuator" refusal, unconfirmed device, or pending count stuck above 0.
 2. Mosquitto restart check (PKG-06), with control off.
 3. Finish the shadow week (VER-05), then decide on leaving control on.

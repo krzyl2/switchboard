@@ -65,6 +65,17 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **MODE-03**: Every decision records a machine-readable reason code and the inputs that produced it
 - [x] **MODE-04**: Decision log queryable in the UI and retained for a configurable period
 
+## Hourly balance (v2.0)
+
+- [ ] **BAL-01**: Balance of the running local hour computed from the meter's primary export and import counters (summed-phase), baseline persisted across restarts, unknown when it cannot be trusted
+- [ ] **BAL-02**: Projection of the balance at the next :00 from free power (grid net export plus own loads added back), with a configurable smoothing window
+- [ ] **BAL-03**: Target band (floor, ceiling, burn-down ramp) from configuration; no literals
+- [ ] **BAL-04**: Allowance rule start/stop from the projection, with merit order across devices; guard and envelope remain the gate
+- [ ] **BAL-05**: Unknown balance or free power means zero allowance (no balance-driven starts; Switchboard's own balance starts are stopped through lockouts)
+- [ ] **BAL-06**: Hour boundaries on the injected clock, correct on 23 and 25 hour days and after a clock step
+- [ ] **BAL-07**: Dashboard shows balance, projection, band and minutes to :00; decision inputs carry them
+- [ ] **BAL-08**: Heater cut-over: shadow comparison with the Node-RED flow, then switch-over through `input_boolean.force_cwu`
+
 ## Onboarding UI
 
 - [x] **UI-01**: Five-step wizard: meter → connection → sources and storage → loads → mode
