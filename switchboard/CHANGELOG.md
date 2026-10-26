@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.1
+
+### Fixed
+
+- With an `economics:` section, a device could be started once from energy its `sources` do not allow: when the allowance gate refused or lowered a device worth more, the headroom it freed let a device behind it rise on the redone allocation without being judged. The gate now judges again on every redone allocation. Seen live in shadow as one `headroom_available` start of a heater from the afternoon peak with the hour importing. Decisions without an `economics:` section are unchanged.
+
 ## 0.10.0
 
 Economic dispatch (v2.0 slices 1 to 6) and the command-path reason codes. Shadow stays the default and **Control allowed** stays off: the economics only shape the decisions that are logged, nothing is switched. Without an `economics:` section and without `sources` on a device the decisions are byte-identical to 0.9.0. Not a protective device; your breakers remain the protection.

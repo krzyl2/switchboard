@@ -379,7 +379,12 @@ public sealed partial class DispatchEngine
         // The hourly balance and the economics (sources, price test) decide whether energy is wanted; the guard's
         // envelope and the allocation above only decide whether it is allowed, so the gate narrows what a device
         // may take, never widens it.
-        if (ApplyAllowanceGate(plans, result, _balance, _devicePowers, setup, input))
+        // With an economics section a device the gate narrows frees headroom for the ones behind it, so the walk is redone and every
+        // device is judged again on the new result: a device that could not rise on the first read (its headroom was taken by one
+        // worth more) may rise on the next, and must not escape the gate. The gate only narrows, so the passes end (at most one per
+        // device). Without economics it is the 0.9 single pass, byte for byte (ECO-15).
+        var passes = _economics is null ? 1 : plans.Count + 1;
+        for (var pass = 0; pass < passes && ApplyAllowanceGate(plans, result, _balance, _devicePowers, setup, input); pass++)
         {
             result = Run(plans, available, setup);
         }
