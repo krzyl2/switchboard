@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -53,6 +54,9 @@ public static class DispatchSetupFactory
                 dispatch.MaxSimultaneousIncreases),
             new SettlingSetup(settling.HardTimeout, settling.VerificationTolerance, settling.VerificationSigmaMultiplier, settling.MismatchLimit, settling.UnresponsiveRetryAfter, control.Effector.ConfirmTimeout),
             new ForeignLoadSetup(foreign.BaselineTimeConstant, foreign.StepThreshold, foreign.RearmFraction),
-            loadSigma);
+            loadSigma)
+        {
+            Balance = new HourlyBalanceSetup(control.HourlyBalance, voltage),
+        };
     }
 }

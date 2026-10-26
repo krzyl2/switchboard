@@ -59,8 +59,21 @@ public sealed class DispatchSyntheticReplayRun
         }
     }
 
-    /// <summary>The same with start: headroom: these scenarios are Stage 3's dispatch, which starts devices within headroom.</summary>
-    internal static string HeadroomConfiguration => Configuration + "\ncontrol:\n  devices:\n    default_start: headroom\n";
+    /// <summary>
+    /// The same with start: headroom: these scenarios are Stage 3's dispatch, which starts devices within
+    /// headroom. The energy counters are left out, so the hourly balance is off: it gates start: headroom
+    /// devices only while counters are mapped, and a recording without them would mean zero allowance.
+    /// </summary>
+    internal static string HeadroomConfiguration => WithoutEnergyCounters(Configuration) + "\ncontrol:\n  devices:\n    default_start: headroom\n";
+
+    private static string WithoutEnergyCounters(string configuration)
+    {
+        const string Last = "    role: energy_import\n";
+        var start = configuration.IndexOf("  energy_export:\n", StringComparison.Ordinal);
+        var end = configuration.IndexOf(Last, StringComparison.Ordinal) + Last.Length;
+        Assert.True(start > 0 && end > start);
+        return configuration.Remove(start, end - start);
+    }
 
     internal ReplayData Data { get; }
 

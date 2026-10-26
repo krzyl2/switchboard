@@ -20,7 +20,7 @@ function decision(index: number, change?: (d: any) => void): Decision {
 // 04-ALGORITHMS §6: the UI renders a human sentence per reason code. A missing or shared sentence
 // would make two different reasons read the same in the log, or show a blank reason.
 describe('reason sentences', () => {
-  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 3', (_lang, t) => {
+  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 4', (_lang, t) => {
     const sentences = REASON_CODES.map((code) => reasonSentence(t, code));
 
     expect(sentences.every((s) => typeof s === 'string' && s.trim().length > 0)).toBe(true);

@@ -72,10 +72,10 @@ public sealed partial class GuardSpaContractTests
     }
 
     [Fact]
-    public void Spa_reason_codes_are_list_version_3_in_the_order_of_04()
+    public void Spa_reason_codes_are_list_version_4_in_the_order_of_04()
     {
-        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 3.
-        Assert.Equal(3, ReasonCodes.ListVersion);
+        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 4.
+        Assert.Equal(4, ReasonCodes.ListVersion);
         Assert.Equal(ReasonCodes.All.Select(ReasonCodes.Name), SpaList(DecisionsContract, "REASON_CODES"));
     }
 
@@ -137,7 +137,10 @@ public sealed partial class GuardSpaContractTests
             TimeSpan.Zero,
             TimeSpan.FromSeconds(42),
             at,
-            OverrideMode.Auto);
+            OverrideMode.Auto)
+        {
+            Balance = new BalanceDecisionInputs(240.5, 3100, 1650, 410.25, 150, 525, 1320, false),
+        };
         return new Decision(
             "contract-000000001", at, DecisionScope.Device, DeviceName.Parse("heater_l1"), null, Phase.L1, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive, null,
             OperatingMode.Shadow, false, null, DecisionInputs.None with { Dispatch = inputs }, DecisionOrigin.Dispatch, carport, DeviceLevel.Relay(false));

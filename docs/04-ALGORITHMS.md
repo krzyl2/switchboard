@@ -171,6 +171,8 @@ Every decision carries one. The list is closed and versioned; the UI renders a h
 
 **Version 3** (2026-10-25, maintainer survey): added `foreign_load` (a reduction, shed or refused increase whose cause is a foreign load detected under section 4, so the log tells "the house did this" from "the reserve is too small"; versions 1–2 used `reserve_threshold`) and `change_limit` (an increase deferred because another increase of this settling window is still in flight, section 3 "Simultaneous increases"; versions 1–2 used `settling_window_open`, which stays for a window that is open on the device itself).
 
+**Version 4** (2026-10-26, hourly balance, `13-HOURLY-BALANCE.md`): added `balance_projection_low` (a start refused because the balance projected to the next :00 is not above the band or would fall below the floor after the start, or a stop because it is below the floor), `balance_surplus` (a start or increase permitted because the projected balance is above the band) and `balance_unknown` (no allowance because the balance or the free power is not known, or the stop of a load Switchboard started for the balance). Versions 1–3 used `headroom_insufficient`, `headroom_available` and `guard_stale_signal`. A log line of version 2 or 3 stays readable.
+
 ```
 guard_tier_exceeded         guard_budget_low          guard_stale_signal
 reserve_threshold           headroom_insufficient     lockout_min_on
@@ -179,6 +181,7 @@ value_rank_below_cutoff     goal_met                  guard_expression_false
 device_unresponsive         manual_override           mode_shadow
 safe_state                  plan_slot_target          headroom_available
 kill_switch                 foreign_load              change_limit
+balance_projection_low      balance_surplus           balance_unknown
 ```
 
 ## 7. Default parameters
@@ -201,7 +204,7 @@ Carried over from the working Node-RED flow; they are starting values, not truth
 
 ## 7a. Hourly balance
 
-The balance netted per hour is the billing quantity; dispatch decides whether energy is wanted from its projection at the next :00 (band, burn-down, allowance rule). Specified in `13-HOURLY-BALANCE.md`; the guard is unaffected. The 'balance credit 0.25 kWh' row above is the Node-RED predecessor's value and is superseded by the band there.
+The balance netted per hour is the billing quantity; dispatch decides whether energy is wanted from its projection at the next :00 (band, burn-down, allowance rule). Specified in `13-HOURLY-BALANCE.md`; the guard is unaffected. Built as a gate in the dispatch walk (0.9): it narrows what a device that declares `start: headroom` may do while the energy counters are mapped, never widens it; the parameters are `control.hourly_balance` (`floor_wh`, `ceiling_wh`, `burn_window`, `smoothing_window`, `min_remaining`, `max_age`). The 'balance credit 0.25 kWh' row above is the Node-RED predecessor's value and is superseded by the band there.
 
 ## 8. Fail-safe table
 

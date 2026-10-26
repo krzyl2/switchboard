@@ -380,7 +380,7 @@ export const en = {
   foreignDetail: 'foreign load {measured} against a baseline of {baseline}',
   overrideDetail: 'override: {mode}',
 
-  // Reason codes, list version 3 (04-ALGORITHMS §6): one sentence per code.
+  // Reason codes, list version 4 (04-ALGORITHMS §6): one sentence per code.
   'reason.guard_tier_exceeded': 'Phase current above a tier of the breaker profile.',
   'reason.guard_budget_low': 'The overload budget of the phase is low.',
   'reason.guard_stale_signal': 'A signal the limits depend on is stale or unavailable.',
@@ -402,6 +402,9 @@ export const en = {
   'reason.headroom_available': 'Headroom is available again.',
   'reason.kill_switch': 'The kill switch is engaged.',
   'reason.change_limit': 'Another increase of this settling window is still in flight; one change at a time.',
+  'reason.balance_projection_low': 'The balance projected to the end of the hour leaves no room for this load.',
+  'reason.balance_surplus': 'The balance projected to the end of the hour is above the target band: there is surplus energy.',
+  'reason.balance_unknown': 'The hourly balance or the free power is not known, so no energy is wanted.',
   // The end of a condition is worded by its action: the reason code still names the condition that ended.
   'reason.kill_switch.released': 'The kill switch was released.',
   'reason.safe_state.exited': 'Valid data again; the safe state ended.',

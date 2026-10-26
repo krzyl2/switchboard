@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Guard;
@@ -267,6 +268,32 @@ internal static class ControlParametersBinder
                 string.Create(CultureInfo.InvariantCulture, $"confirm_timeout must be between {MinConfirmTimeout.TotalSeconds:0} s and {MaxConfirmTimeout.TotalMinutes:0} min."));
         }
 
+        var balanceSection = root.Child("hourly_balance");
+        var hourlyBalance = new HourlyBalanceParameters(
+            balanceSection.Number("floor_wh") ?? 0,
+            balanceSection.Number("ceiling_wh") ?? 0,
+            balanceSection.PositiveDuration("burn_window") ?? TimeSpan.Zero,
+            balanceSection.PositiveDuration("smoothing_window") ?? TimeSpan.Zero,
+            balanceSection.PositiveDuration("min_remaining") ?? TimeSpan.Zero,
+            balanceSection.PositiveDuration("max_age") ?? TimeSpan.Zero);
+        if (hourlyBalance.CeilingWh < hourlyBalance.FloorWh)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                ConfigRead.Join(balanceSection.Path, "ceiling_wh"),
+                balanceSection.Node("ceiling_wh"),
+                "hourly_balance.ceiling_wh may not be below floor_wh: the band would be upside down.");
+        }
+
+        if (hourlyBalance.MinRemaining > hourlyBalance.BurnWindow)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                ConfigRead.Join(balanceSection.Path, "min_remaining"),
+                balanceSection.Node("min_remaining"),
+                "hourly_balance.min_remaining may not exceed burn_window: the band would never reach its floor.");
+        }
+
         var limits = root.Child(LimitsKey);
         var envelope = new SafetyEnvelope(
             limits.Number("continuous_multiple_max", Range.Above(0)) ?? 0,
@@ -315,7 +342,8 @@ internal static class ControlParametersBinder
             envelope,
             foreignLoad,
             circuitGroups,
-            effector);
+            effector,
+            hourlyBalance);
     }
 
     private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)

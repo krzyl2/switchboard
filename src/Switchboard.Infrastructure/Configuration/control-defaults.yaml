@@ -156,6 +156,23 @@ effector:
   # starting value with no origin in 04 (DECISIONS 2026-10-25).
   confirm_timeout: 30s
 
+hourly_balance:
+  # The utility nets energy per local hour (docs/13-HOURLY-BALANCE.md). Dispatch asks whether energy is
+  # wanted from the balance projected to the next :00, against a band: floor_wh is flat, the ceiling
+  # collapses to it over the last burn_window (the burn-down of the surplus). Starting values carried
+  # over from the Node-RED predecessor, not truths.
+  floor_wh: 150
+  ceiling_wh: 525
+  burn_window: 15m
+  # Free power (grid net export + own loads added back) is the mean of this window; tune in shadow.
+  smoothing_window: 5m
+  # Time to the :00 is floored at this when projecting. A new starting value with no origin in the
+  # predecessor (DECISIONS 2026-10-26).
+  min_remaining: 1m
+  # The longest gap between two free-power samples the smoothing window bridges; a longer silence
+  # starts the window afresh. A new starting value with no origin in the predecessor.
+  max_age: 60s
+
 decision_log:
   # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.
   retention_days: 30

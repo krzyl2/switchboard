@@ -364,7 +364,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -433,7 +434,17 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": {
+            "balanceWh": 240.5,
+            "freeW": 3100,
+            "loadW": 1650,
+            "projectionWh": 410.25,
+            "loWh": 150,
+            "hiWh": 525,
+            "tRemS": 1320,
+            "burning": false
+          }
         }
       }
     },
@@ -506,7 +517,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "force_off",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -564,7 +576,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "force_off",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -628,7 +641,8 @@
           "minOffRemainingS": 42,
           "deferredSince": "2026-10-24T09:01:30.004+00:00",
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -697,7 +711,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -749,7 +764,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },
@@ -818,7 +834,8 @@
           "minOffRemainingS": 0,
           "deferredSince": null,
           "override": "auto",
-          "reasserted": false
+          "reasserted": false,
+          "balance": null
         }
       }
     },

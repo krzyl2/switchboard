@@ -36,7 +36,7 @@ public sealed class DecisionLogTests : IDisposable
         var lines = File.ReadAllLines(Path.Combine(_data.Decisions, "2026-10-24.jsonl"));
         var line = Assert.Single(lines);
         Assert.Contains("\"reason\":\"guard_tier_exceeded\"", line, StringComparison.Ordinal);
-        Assert.Contains("\"codes\":3", line, StringComparison.Ordinal);
+        Assert.Contains("\"codes\":4", line, StringComparison.Ordinal);
         Assert.Contains("\"refused_by\":\"mode_shadow\"", line, StringComparison.Ordinal);
         Assert.Contains("\"commanded\":false", line, StringComparison.Ordinal);
 
@@ -286,23 +286,33 @@ public sealed class DecisionLogTests : IDisposable
         Assert.Null(DecisionJson.TryParse(DecisionJson.Gap(3, Noon, Noon)));
         Assert.Null(DecisionJson.TryParse("""{"v":1,"codes":2,"id":"x","at":"2026-10-24T12:00:00.0000000Z","scope":"device","device":null,"stage":null,"phase":null,"action":"switch_off","reason":"guard_tier_exceeded","overridden":null,"mode":"shadow","commanded":false,"refused_by":null,"inputs":{}}"""));
         Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("guard_tier_exceeded", "made_up_code", StringComparison.Ordinal)));
-        Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("\"codes\":3", "\"codes\":1", StringComparison.Ordinal)));
+        Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("\"codes\":4", "\"codes\":1", StringComparison.Ordinal)));
         Assert.Null(DecisionJson.TryParse("[]"));
     }
 
     [Fact]
-    public void Lines_written_with_reason_list_version_2_still_read_after_the_upgrade()
+    public void Lines_written_with_older_reason_list_versions_still_read_after_the_upgrade()
     {
-        // 0.6.x wrote codes 2; the Log page, the API after a restart and the 30-day history must
-        // keep showing them (v3 only appended codes). A v2 line naming a v3 code is no decision of
-        // that version and is skipped.
-        var line = DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("\"codes\":3", "\"codes\":2", StringComparison.Ordinal);
-        Assert.Equal(ReasonCode.GuardTierExceeded, DecisionJson.TryParse(line)!.Reason);
+        // 0.6.x wrote codes 2 and 0.7.x/0.8.x codes 3; the Log page, the API after a restart and the
+        // 30-day history must keep showing them (each version only appended codes). A line naming a
+        // code of a later version is no decision of its own version and is skipped.
+        var current = DecisionJson.Serialize(TestDecisions.Shed(Noon));
+        foreach (var version in new[] { 2, 3 })
+        {
+            var line = current.Replace("\"codes\":4", $"\"codes\":{version}", StringComparison.Ordinal);
+            Assert.Equal(ReasonCode.GuardTierExceeded, DecisionJson.TryParse(line)!.Reason);
+        }
 
-        var foreign = line.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"foreign_load\"", StringComparison.Ordinal);
-        Assert.NotEqual(line, foreign);
-        Assert.Null(DecisionJson.TryParse(foreign));
-        Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign.Replace("\"codes\":2", "\"codes\":3", StringComparison.Ordinal))!.Reason);
+        var foreign = current.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"foreign_load\"", StringComparison.Ordinal);
+        Assert.NotEqual(current, foreign);
+        Assert.Null(DecisionJson.TryParse(foreign.Replace("\"codes\":4", "\"codes\":2", StringComparison.Ordinal)));
+        Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign.Replace("\"codes\":4", "\"codes\":3", StringComparison.Ordinal))!.Reason);
+        Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign)!.Reason);
+
+        var balance = current.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"balance_projection_low\"", StringComparison.Ordinal);
+        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":4", "\"codes\":3", StringComparison.Ordinal)));
+        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":4", "\"codes\":2", StringComparison.Ordinal)));
+        Assert.Equal(ReasonCode.BalanceProjectionLow, DecisionJson.TryParse(balance)!.Reason);
     }
 
     [Theory]

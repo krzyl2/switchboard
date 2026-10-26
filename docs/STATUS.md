@@ -1,15 +1,15 @@
 # Implementation status
 
-Single entry point for a new session. Updated 2026-10-26 at version 0.7.1 (git `main`). Read this, then `CLAUDE.md`, then `docs/DECISIONS.md` (binding, newest sections last).
+Single entry point for a new session. Updated 2026-10-26 at version 0.9.0 (git `main`). Read this, then `CLAUDE.md`, then `docs/DECISIONS.md` (binding, newest sections last).
 
 ## Where we are
 
 | Item | State |
 |---|---|
-| Released version | 0.8.1, image `ghcr.io/krzyl2/switchboard:0.8.1` (public), repo `github.com/krzyl2/switchboard` (public, MIT) |
+| Released version | 0.9.0, image `ghcr.io/krzyl2/switchboard:0.9.0` (public), repo `github.com/krzyl2/switchboard` (public, MIT) |
 | Live install | Maintainer's HA `http://192.168.10.21:55285`, add-on `fb9ed8c0_switchboard`, **option `mode: shadow`, control switch OFF** (phase 2 done 2026-10-26, then back to shadow) |
-| Tests | .NET 2047, web 1027, LiveReplay 22 (needs the gitignored recording), all green; build 0 warnings. One known flaky test: `ControlEndpointTests.Control_is_allowed_with_a_json_post_and_written_to_state_json_at_once` (about 1 full run in 3, also before 0.8) |
-| Requirements ticked | 64 of 74 in `docs/02-REQUIREMENTS.md` (BAL-01 done, BAL-02..08 open) |
+| Tests | .NET 2116 (one known flaky), web 1068, LiveReplay 22 (needs the gitignored recording), all green; build 0 warnings. One known flaky test: `ControlEndpointTests.Control_is_allowed_with_a_json_post_and_written_to_state_json_at_once` (about 1 full run in 3, also before 0.8) |
+| Requirements ticked | 69 of 74 in `docs/02-REQUIREMENTS.md` (BAL-01..05 and BAL-07 done in code, BAL-06 covered by the tracker tests but not ticked, BAL-08 open) |
 
 ## Stages
 
@@ -27,17 +27,17 @@ Single entry point for a new session. Updated 2026-10-26 at version 0.7.1 (git `
 | v2.0 tariffs, settlement, surplus routing, value per kWh | – | not started |
 | v3.0 planner, forecasts, deadline goals | – | not started |
 | EV module (`docs/12-EV-MODULE.md`) | – | spec only |
-| Hourly balance (`docs/13-HOURLY-BALANCE.md`, BAL-01..08; replaces the Node-RED heater flow) | 0.8.x | BAL-01 done and live (measurement only, `GET api/balance`); BAL-02 projection onward not started |
+| Hourly balance (`docs/13-HOURLY-BALANCE.md`, BAL-01..08; replaces the Node-RED heater flow) | 0.9.x | BAL-01 done and live (measurement only, `GET api/balance`); BAL-02..05 released in 0.9.0, tested on synthetic data and live in shadow only (projection, band, allowance gate on `start: headroom` devices, reason codes v4); BAL-07 released in 0.9.0 (api/balance with projection and band, decision inputs, dashboard card); BAL-08 cut-over open |
 
 ## Open requirements
 
 - **UI-12** device card: value per kWh, goal and command history (value/goal wait for v2/v3).
-- **PKG-06** survive HA and MQTT broker restarts. HA Core restart and Modbus outage verified live (2026-10-25, control off). Mosquitto restart not tried.
+- **PKG-06** survive HA and MQTT broker restarts. HA Core restart and Modbus outage verified live (2026-10-25, control off). Mosquitto add-on restart verified live (2026-10-26 14:45 local, shadow, control off): the link dropped, retried at 1, 2 and 4 s (Supervisor MQTT service answered HTTP 400 while the broker was down), reconnected at 14:45:08 and republished discovery when HA came online; no entity stayed unavailable, `api/status` mqtt connected.
 - **VER-05** one week of shadow observation. Running since 2026-10-24; the UI shows the day count (advice only).
 
 ## Next steps, in order
 
-0. **Phase 2 done 2026-10-26** (control on 09:14-09:45Z, now off; option still `active`, maintainer to decide on `shadow`): kill switch, go-e stop and restore, active phase test (grzalka_2 = L1 and grzalka_3 = L3 confirmed, grzalka_1 = L2 inconclusive but clean on). The heaters are still driven by the Node-RED flow; Switchboard replaces it via `input_boolean.force_cwu` once the hourly balance module (`docs/13-HOURLY-BALANCE.md`, BAL-01..08) exists and has run in shadow beside it. Next: BAL-02 (projection, band, allowance rule) after the live balance has matched `sensor.bilans_godzinowy_tauron` for a few hours (the first full hour on 0.8.1 is 14:00-15:00 local on 2026-10-26).
+0. **Phase 2 done 2026-10-26** (control on 09:14-09:45Z, now off; option still `active`, maintainer to decide on `shadow`): kill switch, go-e stop and restore, active phase test (grzalka_2 = L1 and grzalka_3 = L3 confirmed, grzalka_1 = L2 inconclusive but clean on). The heaters are still driven by the Node-RED flow; Switchboard replaces it via `input_boolean.force_cwu` once the hourly balance module (`docs/13-HOURLY-BALANCE.md`, BAL-01..08) exists and has run in shadow beside it. BAL-02..05 and BAL-07 shipped in 0.9.0 (the live balance matched `sensor.bilans_godzinowy_tauron` to 0 Wh at 14:44 and 15:52 local on 2026-10-26). Next: watch the gate in shadow on live data, then BAL-08 (comparison with the Node-RED flow, cut-over).
 1. **Phase 2: first supervised enable** (only when the maintainer says yes and is at home). Plan in the Control section of `DECISIONS.md` and the 0.7.0 workflow result; short form: set add-on option `mode: active`, open Status, flip "Sterowanie dozwolone", watch decisions with `commanded: true` (first effect: go-e setpoint lowered to fit the L1 reserve, accepted by the maintainer), then kill switch on/off, then the active phase test per heater (expect L2 for `switch.grzalka_1`, L1 for `_2`, L3 for `_3`, the last one first real proof), then control off (nothing sent, devices stay). Abort and switch control off on any call to an undeclared entity, any "not a declared actuator" refusal, unconfirmed device, or pending count stuck above 0.
 2. Mosquitto restart check (PKG-06), with control off.
 3. Finish the shadow week (VER-05), then decide on leaving control on.

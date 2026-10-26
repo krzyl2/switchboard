@@ -381,7 +381,7 @@ export const pl: Messages = {
   foreignDetail: 'obce obciążenie {measured} przy poziomie bazowym {baseline}',
   overrideDetail: 'nadpisanie: {mode}',
 
-  // Reason codes, list version 3 (04-ALGORITHMS §6): one sentence per code.
+  // Reason codes, list version 4 (04-ALGORITHMS §6): one sentence per code.
   'reason.guard_tier_exceeded': 'Prąd fazy powyżej progu z profilu bezpiecznika.',
   'reason.guard_budget_low': 'Budżet przeciążenia fazy jest niski.',
   'reason.guard_stale_signal': 'Sygnał, od którego zależą limity, jest przeterminowany lub niedostępny.',
@@ -403,6 +403,9 @@ export const pl: Messages = {
   'reason.headroom_available': 'Wolna moc znów dostępna.',
   'reason.kill_switch': 'Wstrzymanie sterowania jest włączone.',
   'reason.change_limit': 'Inne zwiększenie w tym oknie ustalania wciąż trwa; jedna zmiana naraz.',
+  'reason.balance_projection_low': 'Saldo prognozowane na koniec godziny nie zostawia miejsca na to obciążenie.',
+  'reason.balance_surplus': 'Saldo prognozowane na koniec godziny jest powyżej pasma docelowego: jest nadwyżka energii.',
+  'reason.balance_unknown': 'Saldo godzinowe lub wolna moc nie są znane, więc energia nie jest potrzebna.',
   'reason.kill_switch.released': 'Wstrzymanie sterowania zostało wyłączone.',
   'reason.safe_state.exited': 'Dane znów są poprawne; stan bezpieczny zakończony.',
   'reason.device_unresponsive.cleared': 'Próba się zgodziła: urządzenie znów reaguje i bierze udział w rozdziale mocy.',

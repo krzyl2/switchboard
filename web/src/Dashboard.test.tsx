@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/preact';
 import { App } from './App';
 import { balanceFigures, Dashboard, queueState, type QueueState } from './Dashboard';
 import dashboardCss from './dashboard.css?raw';
+import balanceSample from './api/balance.sample.json';
 import { parseDevices, type DeviceConfig } from './api/devices';
 import devicesSample from './api/devices.sample.json';
 import { parseDispatch, type DispatchDevice } from './api/dispatch';
@@ -24,6 +25,7 @@ const SAMPLES = {
   'api/dispatch': dispatchSample,
   'api/devices': devicesSample,
   'api/statistics': statisticsSample,
+  'api/balance': balanceSample,
 };
 
 function variant<T>(sample: T, change: (p: any) => void): unknown {
@@ -575,12 +577,15 @@ describe('dashboard: failed polls', () => {
   it('withdraws the bars, the balance and the banner when the power poll fails', async () => {
     await show();
     fetchMock.mockImplementation((input) =>
-      String(input) === 'api/power' ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(structuredClone(dispatchSample)) } as Response),
+      String(input) === 'api/power'
+        ? Promise.reject(new TypeError('Failed to fetch'))
+        : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(structuredClone(String(input) === 'api/balance' ? balanceSample : dispatchSample)) } as Response),
     );
     await advance(POWER_REFRESH_INTERVAL_MS);
 
     expect(document.querySelectorAll('.phasebar')).toHaveLength(0);
-    expect(document.querySelector('[data-row]')).toBeNull();
+    // The hourly balance has its own poll and stays.
+    expect(document.querySelector('[data-row]:not([data-row^="hb-"])')).toBeNull();
     expect(document.querySelector('[data-banner-phase]')).toBeNull();
     expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([expect.stringContaining('Unavailable — last update')]);
   });
@@ -594,5 +599,17 @@ describe('dashboard: failed polls', () => {
     expect(document.querySelector('.dash-queue')).toBeNull();
     const queue = screen.getByRole('heading', { name: 'Allocation' }).closest('section')!;
     expect(within(queue).getByRole('alert').textContent).toContain('Unavailable — last update');
+  });
+});
+
+// BAL-07: the hourly balance is part of the dashboard, not a page of its own.
+describe('dashboard: hourly balance (BAL-07)', () => {
+  it('shows the balance, projection, band and time to :00 beside the power balance', async () => {
+    await show();
+
+    expect(row('hb-projection').textContent).toBe('+410 Wh');
+    expect(row('hb-band').textContent).toBe('150 … 525 Wh');
+    expect(row('hb-remaining').textContent).toBe('22:00');
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain('api/balance');
   });
 });

@@ -1,0 +1,19 @@
+{
+  "configured": true,
+  "wh": 240.5,
+  "hourStart": "2026-10-26T12:00:00+00:00",
+  "secondsToNextHour": 1320,
+  "reason": "none",
+  "known": true,
+  "unknownReason": "none",
+  "freeW": 3100,
+  "loadW": 1650,
+  "projectionWh": 410.25,
+  "band": {
+    "loWh": 150,
+    "hiWh": 525,
+    "burning": false
+  },
+  "ruleSecondsToNextHour": 1320,
+  "ruleAt": "2026-10-26T12:38:00+00:00"
+}

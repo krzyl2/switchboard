@@ -7,7 +7,7 @@ import { bool, count, fail, field, instant, list, nullable, number, object, oneO
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
-/** The closed reason-code list, version 3 (04-ALGORITHMS §6); version 3 only appended foreign_load and change_limit. */
+/** The closed reason-code list, version 4 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes. */
 export const REASON_CODES = [
   'guard_tier_exceeded',
   'guard_budget_low',
@@ -30,6 +30,9 @@ export const REASON_CODES = [
   'kill_switch',
   'foreign_load',
   'change_limit',
+  'balance_projection_low',
+  'balance_surplus',
+  'balance_unknown',
 ] as const;
 /** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
 export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;
@@ -203,6 +206,22 @@ export interface DispatchInputs {
   override: OverrideMode;
   /** The command re-asserts a level after a reconnect or a state that did not follow (Stage C). */
   reasserted: boolean;
+  /** The hourly balance of the step (BAL-07); null on lines written before it and while no energy counters are mapped. */
+  balance: BalanceInputs | null;
+}
+
+/** The hourly balance a dispatch decision was made beside: Wh and W, positive = export; null = not known at the step. */
+export interface BalanceInputs {
+  balanceWh: number | null;
+  freeW: number | null;
+  loadW: number | null;
+  projectionWh: number | null;
+  loWh: number | null;
+  hiWh: number | null;
+  /** Seconds to the :00 the rule used; 0 when the balance was not of the running hour. */
+  tRemS: number;
+  /** Inside the burn window: the upper edge ramps down to the floor. */
+  burning: boolean;
 }
 
 /**
@@ -291,6 +310,21 @@ export function parseVerification(raw: unknown, path: string): Verification {
   };
 }
 
+function balanceInputs(raw: unknown, path: string): BalanceInputs {
+  const r = object(raw, path);
+  const n = (key: string) => nullable(field(r, key, path), `${path}.${key}`, number);
+  return {
+    balanceWh: n('balanceWh'),
+    freeW: n('freeW'),
+    loadW: n('loadW'),
+    projectionWh: n('projectionWh'),
+    loWh: n('loWh'),
+    hiWh: n('hiWh'),
+    tRemS: number(field(r, 'tRemS', path), `${path}.tRemS`),
+    burning: bool(field(r, 'burning', path), `${path}.burning`),
+  };
+}
+
 function dispatchInputs(raw: unknown, path: string): DispatchInputs {
   const r = object(raw, path);
   const n = (key: string) => number(field(r, key, path), `${path}.${key}`);
@@ -318,6 +352,7 @@ function dispatchInputs(raw: unknown, path: string): DispatchInputs {
     deferredSince: nullable(field(r, 'deferredSince', path), `${path}.deferredSince`, instant),
     override: oneOf(OVERRIDE_MODES, field(r, 'override', path), `${path}.override`),
     reasserted: bool(field(r, 'reasserted', path), `${path}.reasserted`),
+    balance: nullable(field(r, 'balance', path), `${path}.balance`, balanceInputs),
   };
 }
 

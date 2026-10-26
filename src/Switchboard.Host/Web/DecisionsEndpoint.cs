@@ -60,7 +60,12 @@ public sealed record DispatchInputsDto(
     double MinOffRemainingS,
     DateTimeOffset? DeferredSince,
     string Override,
-    bool Reasserted);
+    bool Reasserted,
+    BalanceInputsDto? Balance);
+
+/// <summary>The hourly balance of the step (BAL-07): Wh and W, positive = export; null values were not known.</summary>
+/// <param name="TRemS">Seconds to the :00 the rule used; zero when the balance was not of the running hour.</param>
+public sealed record BalanceInputsDto(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double TRemS, bool Burning);
 
 /// <param name="Group">The circuit group of the constraint; null for the main phase.</param>
 public sealed record HeadroomDto(string? Group, string Phase, double? EnvelopeA, double? RemainingA);
@@ -267,7 +272,8 @@ internal static class DecisionsEndpoint
         dispatch.MinOffRemaining.TotalSeconds,
         dispatch.DeferredSince,
         ApiText.Snake(dispatch.Override),
-        dispatch.Reasserted);
+        dispatch.Reasserted,
+        dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null);
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>

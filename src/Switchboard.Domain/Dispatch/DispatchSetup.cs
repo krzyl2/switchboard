@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
@@ -92,5 +93,8 @@ public sealed record DispatchSetup(
     ForeignLoadSetup ForeignLoad,
     ImmutableDictionary<Phase, Watts> LoadSigma)
 {
+    /// <summary>The hourly balance's parameters; it gates the devices that declare start: headroom while energy counters are mapped.</summary>
+    public HourlyBalanceSetup? Balance { get; init; }
+
     public DispatchDevice? Device(DeviceName name) => Devices.FirstOrDefault(d => d.Id == name);
 }

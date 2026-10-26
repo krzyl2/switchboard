@@ -28,7 +28,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// Reason-code list version 3 (0.7.0) only appended codes, so lines of version 2 still read; a
 /// version 2 line carrying a version 3 code is not a decision. 0.7.0 adds, inside the same format,
 /// the control switch to the mode inputs and <c>reasserted</c> to the dispatch inputs (both optional
-/// on read).
+/// on read). The dispatch inputs may carry <c>balance</c> (the hourly balance of the step, BAL-07; absent
+/// on older lines and while no energy counters are mapped).
 /// </para>
 /// </summary>
 public static class DecisionJson
@@ -99,7 +100,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -267,6 +268,20 @@ public static class DecisionJson
             writer.WriteBoolean("reasserted", true);
         }
 
+        if (dispatch.Balance is { } balance)
+        {
+            writer.WriteStartObject("balance");
+            WriteOptional(writer, "balance_wh", balance.BalanceWh);
+            WriteOptional(writer, "free_w", balance.FreeW);
+            WriteOptional(writer, "load_w", balance.LoadW);
+            WriteOptional(writer, "projection_wh", balance.ProjectionWh);
+            WriteOptional(writer, "lo_wh", balance.LoWh);
+            WriteOptional(writer, "hi_wh", balance.HiWh);
+            writer.WriteNumber("t_rem_s", balance.RemainingS);
+            writer.WriteBoolean("burning", balance.Burning);
+            writer.WriteEndObject();
+        }
+
         writer.WriteEndObject();
     }
 
@@ -385,8 +400,19 @@ public static class DecisionJson
             EnumValue<OverrideMode>(d, "override"))
         {
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
+            Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
         };
     }
+
+    private static BalanceDecisionInputs Balance(JsonElement b) => new(
+        OptionalDouble(b, "balance_wh"),
+        OptionalDouble(b, "free_w"),
+        OptionalDouble(b, "load_w"),
+        OptionalDouble(b, "projection_wh"),
+        OptionalDouble(b, "lo_wh"),
+        OptionalDouble(b, "hi_wh"),
+        Double(b, "t_rem_s"),
+        b.TryGetProperty("burning", out var burning) && burning.ValueKind == JsonValueKind.True);
 
     private static ConstraintKey Key(JsonElement element) =>
         new(

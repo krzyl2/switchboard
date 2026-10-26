@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
+using Switchboard.Application.Balance;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
@@ -8,6 +9,7 @@ using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
@@ -274,10 +276,17 @@ internal sealed class GuardScenario
             : new GroupProtection(key.Item1, phase, false, ProtectionInvalidReason.CurrentStale, null, false);
     }
 
+    /// <summary>The energy counters of the hourly balance as the signal layer would hand them over; null leaves the balance unmapped (and so off).</summary>
+    public EnergyInputs? Energy { get; set; }
+
+    /// <summary>The balance of the running hour as the monitor last published it; null before the first reading.</summary>
+    public HourlyBalanceStatus? Balance { get; set; }
+
     public DispatchInputs DispatchInputs() =>
         new(_sequence, Now, [.. Setup.Phases.Select(p => _power.TryGetValue(p, out var entry) ? entry : new PhaseDispatch(p, false, DispatchInvalidReason.PowerNotFresh, null, null, null, null))])
         {
             DevicePowers = [.. _powerDraws.Values.OrderBy(d => d.Device).ThenBy(d => d.Phase)],
+            Energy = Energy,
         };
 
     public GuardEvaluation Evaluate(GuardTrigger trigger = GuardTrigger.Snapshot, bool withInputs = true)
@@ -291,7 +300,7 @@ internal sealed class GuardScenario
         DispatchEvaluation? dispatch = null;
         if (_dispatch)
         {
-            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode), Now);
+            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode) { Balance = Balance }, Now);
             Dispatches.Add(dispatch);
         }
 

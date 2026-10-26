@@ -25,10 +25,10 @@ public sealed class DecisionTests
     }
 
     [Fact]
-    public void Reason_codes_are_exactly_list_version_3()
+    public void Reason_codes_are_exactly_list_version_4()
     {
-        // 04 §6, version 3 (2026-10-25): the UI renders a sentence per code, so the list is closed.
-        // Version 3 only appended, so a version-2 log line keeps its meaning.
+        // 04 §6, version 4 (2026-10-26): the UI renders a sentence per code, so the list is closed.
+        // Versions 3 and 4 only appended, so a log line of an older version keeps its meaning.
         string[] specification =
         [
             "guard_tier_exceeded", "guard_budget_low", "guard_stale_signal",
@@ -38,14 +38,19 @@ public sealed class DecisionTests
             "device_unresponsive", "manual_override", "mode_shadow",
             "safe_state", "plan_slot_target", "headroom_available",
             "kill_switch", "foreign_load", "change_limit",
+            "balance_projection_low", "balance_surplus", "balance_unknown",
         ];
 
-        Assert.Equal(3, ReasonCodes.ListVersion);
+        Assert.Equal(4, ReasonCodes.ListVersion);
         Assert.Equal(specification, ReasonCodes.All.Select(ReasonCodes.Name));
         Assert.False(ReasonCodes.IsDefined(default));
-        Assert.True(ReasonCodes.InVersion(ReasonCode.KillSwitch, ReasonCodes.PreviousListVersion));
-        Assert.False(ReasonCodes.InVersion(ReasonCode.ForeignLoad, ReasonCodes.PreviousListVersion));
-        Assert.False(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.PreviousListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.KillSwitch, ReasonCodes.OldestListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.ForeignLoad, ReasonCodes.OldestListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.OldestListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.PreviousListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceProjectionLow, ReasonCodes.PreviousListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceUnknown, ReasonCodes.OldestListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.BalanceSurplus, ReasonCodes.ListVersion));
     }
 
     [Fact]

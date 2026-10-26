@@ -1,8 +1,10 @@
 using System.Collections.Immutable;
+using Switchboard.Application.Balance;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
@@ -28,6 +30,9 @@ public sealed record DispatchInput(
 {
     /// <summary>The active phase self-test running now, if any: its device is left alone and every other increase waits (change_limit).</summary>
     public SelfTestTarget? SelfTest { get; init; }
+
+    /// <summary>The balance of the running hour as the monitor last saw it; null while no energy counters are mapped.</summary>
+    public HourlyBalanceStatus? Balance { get; init; }
 }
 
 public enum DispatchChange
@@ -102,9 +107,31 @@ public sealed record DispatchEvaluation(
     /// <summary>Read-only exposure: every declared device's power per phase, as this step counted it for foreign load.</summary>
     public ImmutableArray<DevicePhasePower> DevicePowers { get; init; } = [];
 
+    /// <summary>Read-only exposure: the hourly balance as the allowance rule saw it this step; null while no energy counters are mapped.</summary>
+    public BalanceView? Balance { get; init; }
+
     public static DispatchEvaluation Empty(DateTimeOffset at) => new(at, [], [], [], [], []);
 
     public DispatchWish? Wish(DeviceName device) => Wishes.FirstOrDefault(w => w.Device == device);
+}
+
+/// <summary>
+/// The hourly balance as the allowance rule read it in one step (BAL-02 … BAL-04): what it was given and
+/// what it concluded. Every Wh and W value is null while it is not known; with any of the three inputs
+/// unknown the allowance is zero.
+/// </summary>
+/// <param name="BalanceWh">The balance of the running hour, positive = net export.</param>
+/// <param name="Free">Free power: grid net export plus every own load added back, smoothed.</param>
+/// <param name="Load">What Switchboard's own devices draw now.</param>
+/// <param name="UntilNext">Time to the next local :00; zero when the balance is not of the running hour.</param>
+/// <param name="Band">The target band; null while the hour is not known.</param>
+/// <param name="ProjectionWh">The balance at the next :00 if the load stays as it is.</param>
+public sealed record BalanceView(double? BalanceWh, Watts? Free, Watts? Load, TimeSpan UntilNext, BalanceBand? Band, double? ProjectionWh)
+{
+    public bool Known => BalanceWh is not null && Free is not null && Load is not null && Band is not null;
+
+    /// <summary>What a decision records of this view (BAL-07).</summary>
+    public BalanceDecisionInputs ToDecisionInputs() => new(BalanceWh, Free?.Value, Load?.Value, ProjectionWh, Band?.LoWh, Band?.HiWh, UntilNext.TotalSeconds, Band?.Burning ?? false);
 }
 
 public enum SettlingStatus
@@ -187,6 +214,9 @@ public sealed record DispatchStatus(
     ImmutableArray<DispatchPhaseStatus> Phases,
     ImmutableArray<DispatchDeviceStatus> Devices)
 {
+    /// <summary>Read-only exposure: the hourly balance as the allowance rule read it in this step (BAL-07); null while no energy counters are mapped.</summary>
+    public BalanceView? Balance { get; init; }
+
     public static DispatchStatus Initial(DateTimeOffset at, ModeStatus mode) => new(at, mode, false, [], []);
 }
 

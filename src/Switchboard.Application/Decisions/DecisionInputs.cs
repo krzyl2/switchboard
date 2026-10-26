@@ -137,4 +137,14 @@ public sealed record DispatchDecisionInputs(
     /// back, or after its last command failed. It is a command of an earlier decision, not a new one.
     /// </summary>
     public bool Reasserted { get; init; }
+
+    /// <summary>The hourly balance as the allowance rule read it in the step (BAL-07); null while no energy counters are mapped, and on lines written before 0.9.</summary>
+    public BalanceDecisionInputs? Balance { get; init; }
 }
+
+/// <summary>
+/// The hourly balance a dispatch decision was made beside (BAL-07). Wh and W with positive = export; a
+/// value is null while it is not known. <paramref name="RemainingS"/> is the time to the :00 the rule used
+/// (zero when the balance was not of the running hour).
+/// </summary>
+public sealed record BalanceDecisionInputs(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double RemainingS, bool Burning);

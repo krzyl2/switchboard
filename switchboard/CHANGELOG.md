@@ -2,6 +2,21 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.9.0
+
+The hourly balance becomes a gate of dispatch. Shadow stays the default and **Control allowed** stays off: in shadow the gate only shapes the decisions that are logged, nothing is sent. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- A new `hourly_balance:` section in the control parameters: `floor_wh` 150, `ceiling_wh` 525, `burn_window` 15m, `smoothing_window` 5m, `min_remaining` 1m, `max_age` 60s.
+- The allowance rule for devices that declare `start: headroom`: the balance projected to the next :00 (balance plus free power minus the load, over the time left) must stay above a target band that narrows from 525 Wh to 150 Wh over the last 15 minutes of the hour. A start needs the projection above the band with the new load still above the floor; a stop comes when it falls below the floor, held back in the last minutes while the projection is not negative. Free power is the time-weighted mean over 5 minutes of the grid export with every own load added back.
+- Starts go to the most valuable device per kWh first; stops to the least valuable first, one stage at a time. It only ever narrows what dispatch may do, and it is active only while both energy counters are mapped.
+- With the balance or the free power unknown the allowance is zero: nothing rises, and a device Switchboard started itself is lowered one stage (through its lockouts).
+- Reason codes, list version 4: `balance_projection_low`, `balance_surplus`, `balance_unknown`. The decision log reads versions 4, 3 and 2.
+- The dashboard shows the hourly balance: the balance of the running hour, the projection at the next :00 for the load as it is, the target band, minutes and seconds to :00, free power and own load (Wh and W, positive = export), and why it is unknown when it is.
+- `GET api/balance` adds `known`, `unknownReason`, `freeW`, `loadW`, `projectionWh`, `band` and `ruleSecondsToNextHour`; the existing fields are unchanged.
+- Dispatch decisions record the balance they were made beside (`balance` in the decision inputs of the log and of `GET api/decisions`). Older log lines still read.
+
 ## 0.8.1
 
 A fix to the hourly balance of 0.8.0, found on the first live day. Still measurement only: nothing uses the balance yet.

@@ -35,7 +35,7 @@ namespace Switchboard.Application.Dispatch;
 /// Stage changes are limited to max_step_change_stages per cycle (07-PITFALLS). Lockouts are
 /// applied by the effector gate, which records a deferred intent.
 /// </summary>
-public sealed class DispatchEngine
+public sealed partial class DispatchEngine
 {
     private readonly Dictionary<DeviceName, DeviceState> _devices = [];
     private readonly PhaseRanking _ranking = new();
@@ -53,6 +53,7 @@ public sealed class DispatchEngine
         {
             // A backward clock step: report times from before it are not comparable with what comes after.
             _foreign.Reset();
+            _free.Reset();
         }
 
         _lastNow = now;
@@ -62,6 +63,8 @@ public sealed class DispatchEngine
             // Without a valid configuration dispatch wants nothing; protection holds the last devices off.
             _wishes = [];
             _states = [];
+            _balance = null;
+            _free.Reset();
             foreach (var state in _devices.Values)
             {
                 state.ConfirmStreak = 0;
@@ -76,6 +79,8 @@ public sealed class DispatchEngine
         var ours = new Dictionary<Phase, Watts?>();
         var devicePowers = ImmutableArray.CreateBuilder<DevicePhasePower>();
         ObserveForeignLoad(input, setup, events, ours, devicePowers);
+        _balance = ObserveBalance(input, setup, ours, now);
+        _devicePowers = devicePowers.ToImmutable();
 
         var overridesChanged = input.Overrides.Version != _overrideVersion;
         var changed = overridesChanged
@@ -114,7 +119,7 @@ public sealed class DispatchEngine
             var rank = _ranking.Adopted.IndexOf(p);
             return new PhaseDispatchState(p, foreign, baseline, rank < 0 ? null : rank + 1) { Ours = ours.GetValueOrDefault(p) };
         });
-        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = devicePowers.ToImmutable() };
+        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = _devicePowers, Balance = _balance };
     }
 
     /// <summary>Dispatch adds no deadline of its own: it acts at the guard's cycle boundaries.</summary>
@@ -344,6 +349,13 @@ public sealed class DispatchEngine
         var available = Available(envelope, plans, setup);
         var result = Run(plans, available, setup);
 
+        // The hourly balance decides whether energy is wanted; the guard's envelope and the allocation
+        // above only decide whether it is allowed, so the gate narrows what a device may take, never widens it.
+        if (_balance is { } balance && ApplyBalanceGate(plans, result, balance, _devicePowers, setup, input))
+        {
+            result = Run(plans, available, setup);
+        }
+
         // DISP-08: only as many increases as the limit leaves, in start order; the rest wait for
         // their own settling window, and the walk is redone without them. Holding a device back
         // frees what it had reserved, so the redone walk can turn another device's keep into an
@@ -415,7 +427,7 @@ public sealed class DispatchEngine
 
             if (atBoundary)
             {
-                state.ConfirmStreak = allocation.Uncapped > plan.BasisIndex && plan.Gates ? state.ConfirmStreak + 1 : 0;
+                state.ConfirmStreak = allocation.Uncapped > plan.BasisIndex && plan.Gates && plan.BalanceAllows ? state.ConfirmStreak + 1 : 0;
                 state.DecreaseStreak = allocation.Wish < plan.BasisIndex ? state.DecreaseStreak + 1 : 0;
             }
 
@@ -435,6 +447,7 @@ public sealed class DispatchEngine
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
                     : reduction ? reserve
+                    : plan.BalanceStop is { } balanceStop ? balanceStop
                     : preempted || allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
                     : reserve;
                 if (!applyNow)
@@ -445,13 +458,14 @@ public sealed class DispatchEngine
             }
             else if (change == DispatchChange.Increase)
             {
-                reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride : ReasonCode.HeadroomAvailable;
+                reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride : plan.BalanceGated ? ReasonCode.BalanceSurplus : ReasonCode.HeadroomAvailable;
                 increased.Add(plan);
             }
             else
             {
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
+                    : plan.BalanceReason is { } withheld && !plan.BalanceAllows && allocation.Uncapped > plan.BasisIndex ? withheld
                     : allocation.Limit == AllocationLimit.None ? ReasonCode.HeadroomAvailable
                     : allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
                     : plan.ForeignActive ? ReasonCode.ForeignLoad
@@ -477,7 +491,7 @@ public sealed class DispatchEngine
                 change,
                 blockedOverride ? plan.BlockedBy : null,
                 fresh,
-                Inputs(plan, allocation, guard, input, setup, now))
+                Inputs(plan, allocation, guard, input, setup, now, _balance))
             {
                 PendingLevel = blockedOverride ? DeviceLevels.Toward(spec, plan.Basis, plan.Levels[plan.CapIndex], setup.Timing.MaxStepChangeStages) : null,
             });
@@ -500,6 +514,7 @@ public sealed class DispatchEngine
     private static ReasonCode PendingReason(Plan plan, Guard.GuardEvaluation guard, DeviceState state, DispatchSetup setup) =>
         plan.Excluded ? ReasonCode.DeviceUnresponsive
         : !plan.DataValid ? ReasonCode.GuardStaleSignal
+        : plan.GuardAllows && plan.BalanceReason is { } withheld && !plan.BalanceAllows ? withheld
         : !plan.GuardAllows ? plan.Constraints.Any(k => guard.Envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.HeadroomInsufficient
         : plan.OwnWindow ? ReasonCode.SettlingWindowOpen
         : plan.IncreaseInFlight || plan.LimitWaiting || plan.TestWaiting ? ReasonCode.ChangeLimit
@@ -537,7 +552,7 @@ public sealed class DispatchEngine
         return Allocator.Allocate(request).Devices.ToDictionary(d => d.Device);
     }
 
-    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now)
+    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now, BalanceView? balance)
     {
         var spec = plan.Device.Spec;
         var load = guard.Envelope.Device(spec.Id);
@@ -554,7 +569,10 @@ public sealed class DispatchEngine
             spec.Stages.Select(s => input.Lockouts.MinOnRemaining(spec.Id, s.Index, now, LockoutTimeline.Target)).Max(),
             spec.Stages.Select(s => input.Lockouts.MinOffRemaining(spec.Id, s.Index, now, LockoutTimeline.Target)).Max(),
             ledger?.Deferred?.Since,
-            plan.Mode);
+            plan.Mode)
+        {
+            Balance = balance?.ToDecisionInputs(),
+        };
     }
 
     /// <summary>The main phases a device draws on and, as a group member, its group's phases.</summary>
@@ -706,5 +724,17 @@ public sealed class DispatchEngine
 
         /// <summary>The active phase self-test runs on another device: no increase until it ends.</summary>
         public bool TestWaiting { get; set; }
+
+        /// <summary>The device declares start: headroom and the hourly balance decides whether it may start or rise.</summary>
+        public bool BalanceGated { get; set; }
+
+        /// <summary>The balance leaves the device room to rise; false withholds every increase this cycle.</summary>
+        public bool BalanceAllows { get; set; } = true;
+
+        /// <summary>Why the balance withheld an increase (balance_projection_low, balance_unknown).</summary>
+        public ReasonCode? BalanceReason { get; set; }
+
+        /// <summary>The balance asked the device to come down one stage (balance_projection_low, balance_unknown).</summary>
+        public ReasonCode? BalanceStop { get; set; }
     }
 }

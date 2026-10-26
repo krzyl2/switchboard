@@ -1793,7 +1793,10 @@ public sealed class EffectorGate
             MaxRemaining(device, context.Now, on: true),
             MaxRemaining(device, context.Now, on: false),
             state.Deferred?.Since,
-            context.Overrides.For(device.Id).Mode);
+            context.Overrides.For(device.Id).Mode)
+        {
+            Balance = context.Dispatch?.Balance?.ToDecisionInputs(),
+        };
     }
 
     /// <param name="tickets">The commands the decision carries: it is recorded once each has an outcome; none records it at once.</param>

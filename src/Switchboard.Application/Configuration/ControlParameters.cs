@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Guard;
@@ -26,7 +27,8 @@ public sealed record ControlParameters(
     SafetyEnvelope Limits,
     ForeignLoadParameters ForeignLoad,
     CircuitGroupDefaults CircuitGroups,
-    EffectorParameters Effector);
+    EffectorParameters Effector,
+    HourlyBalanceParameters HourlyBalance);
 
 /// <summary>The command path's confirmation of acknowledged commands (0.7.0).</summary>
 /// <param name="ConfirmTimeout">After Home Assistant acknowledged a command, how long beyond the device's reaction time its reported state may take to show it before the device is flagged unconfirmed.</param>

@@ -7,6 +7,7 @@ import { DISPATCH_REFRESH_INTERVAL_MS, DISPATCH_REQUEST_TIMEOUT_MS } from './con
 import { formatAge, formatAmps, formatCountdown, formatFixed, formatKw, formatKwh, formatNumber, formatQuantity, roundTo } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { browserZone, localClock, localHourStart } from './localTime';
+import { HourlyBalanceCard } from './HourlyBalance';
 import { levelText, reasonSentence } from './reasons';
 import { Age, PhaseBar, PollStatus, QuantityText, StateBadge, StateLabel, unknownReason, type Tone } from './ui';
 import { useDevices } from './useDevices';
@@ -691,6 +692,7 @@ export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: s
       ))}
       <div class="dash-grid">
         <BalanceCard view={power} name={name} {...ctx} />
+        <HourlyBalanceCard lang={lang} />
         <QueueCard view={dispatch} power={live} configs={configs} name={name} {...ctx} />
       </div>
     </>

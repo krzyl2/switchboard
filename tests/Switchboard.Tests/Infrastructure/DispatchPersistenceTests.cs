@@ -100,6 +100,40 @@ public sealed class DispatchPersistenceTests : IDisposable
         Assert.Equal(decision.Inputs, DecisionJson.TryParse(line)!.Inputs);
     }
 
+    // BAL-07: the balance a decision was made beside is in the log line, so the shadow week can be
+    // read back hour by hour; lines written before it carry none and must still read.
+    [Fact]
+    public void The_balance_of_the_step_round_trips_with_unknown_values_kept_unknown()
+    {
+        var known = Start(new BalanceDecisionInputs(240.5, 3100, 1650, 410.25, 150, 300, 540, true));
+        var unknown = Start(new BalanceDecisionInputs(null, null, 1650, null, null, null, 0, false));
+
+        var line = DecisionJson.Serialize(known);
+
+        Assert.Contains("\"balance\":{\"balance_wh\":240.5,\"free_w\":3100,\"load_w\":1650,\"projection_wh\":410.25,\"lo_wh\":150,\"hi_wh\":300,\"t_rem_s\":540,\"burning\":true}", line, StringComparison.Ordinal);
+        Assert.Equal(known.Inputs.Dispatch!.Balance, DecisionJson.TryParse(line)!.Inputs.Dispatch!.Balance);
+        Assert.Equal(unknown.Inputs.Dispatch!.Balance, DecisionJson.TryParse(DecisionJson.Serialize(unknown))!.Inputs.Dispatch!.Balance);
+    }
+
+    [Fact]
+    public void A_line_written_before_the_balance_existed_still_reads_without_one()
+    {
+        var line = DecisionJson.Serialize(Start());
+
+        Assert.DoesNotContain("\"balance\"", line, StringComparison.Ordinal);
+        Assert.Null(DecisionJson.TryParse(line)!.Inputs.Dispatch!.Balance);
+    }
+
+    [Fact]
+    public void A_balance_that_is_not_what_the_writer_writes_is_no_decision()
+    {
+        var line = DecisionJson.Serialize(Start(new BalanceDecisionInputs(1, 2, 3, 4, 5, 6, 7, false)));
+
+        Assert.NotNull(DecisionJson.TryParse(line));
+        Assert.Null(DecisionJson.TryParse(line.Replace("\"t_rem_s\":7", "\"t_rem_s\":\"soon\"", StringComparison.Ordinal)));
+        Assert.Null(DecisionJson.TryParse(line.Replace("\"balance_wh\":1", "\"balance_wh\":\"1\"", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void Legacy_guard_line_still_parses_and_cannot_carry_stage_3_fields()
     {
@@ -277,7 +311,7 @@ public sealed class DispatchPersistenceTests : IDisposable
     };
 
     /// <summary>A dispatch start in shadow mode with every dispatch input filled.</summary>
-    private static Decision Start() => new(
+    private static Decision Start(BalanceDecisionInputs? balance = null) => new(
         "test-start",
         At,
         DecisionScope.Device,
@@ -304,7 +338,10 @@ public sealed class DispatchPersistenceTests : IDisposable
                 TimeSpan.FromMinutes(6),
                 TimeSpan.Zero,
                 At - TimeSpan.FromSeconds(30),
-                OverrideMode.Auto),
+                OverrideMode.Auto)
+            {
+                Balance = balance,
+            },
         },
         DecisionOrigin.Dispatch,
         GroupName.Parse("carport"),

@@ -1,3 +1,4 @@
+using Switchboard.Application.Configuration;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
 using Switchboard.Tests.Support;
@@ -29,6 +30,43 @@ public sealed class ControlDefaultsTests
         Assert.Equal(TimeSpan.FromSeconds(90), Control.Settling.HardTimeout);
         Assert.Equal(TimeSpan.FromSeconds(600), Control.Budget.RecoveryTime);
         Assert.Equal(2500, Control.Connection.DefaultReserve.Value);
+    }
+
+    [Fact]
+    public void Shipped_hourly_balance_defaults_match_13_hourly_balance()
+    {
+        var balance = Control.HourlyBalance;
+        Assert.Equal((150, 525), (balance.FloorWh, balance.CeilingWh));
+        Assert.Equal(TimeSpan.FromMinutes(15), balance.BurnWindow);
+        Assert.Equal(TimeSpan.FromMinutes(5), balance.SmoothingWindow);
+        Assert.Equal(TimeSpan.FromMinutes(1), balance.MinRemaining);
+        Assert.Equal(TimeSpan.FromSeconds(60), balance.MaxAge);
+    }
+
+    [Fact]
+    public void Hourly_balance_is_overridden_key_by_key_and_is_not_the_signal_layers_balance_check()
+    {
+        var parsed = TestConfigurations.Parse(TestConfigurations.ThreePhase(control: "  hourly_balance:\n    floor_wh: 100\n    burn_window: 10m\n"));
+
+        Assert.Equal(ConfigurationStatus.Valid, parsed.Status);
+        var control = parsed.Configuration!.Control;
+        Assert.Equal((100, 525), (control.HourlyBalance.FloorWh, control.HourlyBalance.CeilingWh));
+        Assert.Equal(TimeSpan.FromMinutes(10), control.HourlyBalance.BurnWindow);
+        Assert.Equal(300, control.Signals.Balance.ResidualThreshold.Value);
+    }
+
+    [Theory]
+    [InlineData("ceiling_wh: 100")]
+    [InlineData("burn_window: 0s")]
+    [InlineData("smoothing_window: 0s")]
+    [InlineData("min_remaining: 20m")]
+    [InlineData("max_age: 0s")]
+    [InlineData("bogus: 1")]
+    public void A_hourly_balance_override_that_makes_no_band_is_refused(string line)
+    {
+        var parsed = TestConfigurations.Parse(TestConfigurations.ThreePhase(control: $"  hourly_balance:\n    {line}\n"));
+
+        Assert.NotEqual(ConfigurationStatus.Valid, parsed.Status);
     }
 
     [Fact]

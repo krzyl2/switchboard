@@ -172,7 +172,7 @@ describe('parseDecisionsPage, dispatch decisions', () => {
     expect(() => parseDecisionsPage(payload((p) => change(at(p, 'mode_resolved').inputs.mode)))).toThrow();
   });
 
-  it('reads the reason codes of list version 3 and the self-test origin', () => {
+  it('reads the reason codes of list version 4 and the self-test origin', () => {
     const parsed = parseDecisionsPage(
       payload((p) => Object.assign(at(p, 'mode_resolved'), { reason: 'change_limit', refusedBy: 'foreign_load', origin: 'self_test' })),
     );
@@ -200,6 +200,39 @@ describe('parseDecisionsPage, decision kinds', () => {
   it.each([
     ['an unknown kind', (p: any) => (p.items[0].kind = 'guard')],
     ['a missing kind', (p: any) => delete p.items[0].kind],
+  ])('rejects %s', (_case, change) => {
+    expect(() => parseDecisionsPage(payload(change))).toThrow();
+  });
+});
+
+// BAL-07: a dispatch decision carries the hourly balance it was made beside; lines written before
+// it, and steps without energy counters, carry none.
+describe('parseDecisionsPage, hourly balance inputs', () => {
+  it('keeps the balance, free power, load, projection, band and time to :00 of the step', () => {
+    const parsed = parseDecisionsPage(payload());
+    const unresponsive = parsed.items.find((d) => d.action === 'marked_unresponsive');
+
+    expect(unresponsive?.inputs.dispatch?.balance).toEqual({ balanceWh: 240.5, freeW: 3100, loadW: 1650, projectionWh: 410.25, loWh: 150, hiWh: 525, tRemS: 1320, burning: false });
+  });
+
+  it('has no balance on a dispatch decision of a step without energy counters', () => {
+    const start = parseDecisionsPage(payload()).items.find((d) => d.action === 'switch_on');
+
+    expect(start?.inputs.dispatch?.balance).toBeNull();
+  });
+
+  it('keeps an unknown figure as null, never as zero', () => {
+    const parsed = parseDecisionsPage(payload((p) => Object.assign(at(p, 'marked_unresponsive').inputs.dispatch.balance, { balanceWh: null, projectionWh: null, loWh: null, hiWh: null, tRemS: 0 })));
+    const balance = parsed.items.find((d) => d.action === 'marked_unresponsive')?.inputs.dispatch?.balance;
+
+    expect(balance).toMatchObject({ balanceWh: null, projectionWh: null, loWh: null, hiWh: null, tRemS: 0 });
+  });
+
+  it.each([
+    ['a balance figure sent as text', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.balance.freeW = '3100')],
+    ['a missing time to :00', (p: any) => delete at(p, 'marked_unresponsive').inputs.dispatch.balance.tRemS],
+    ['a missing burning flag', (p: any) => delete at(p, 'marked_unresponsive').inputs.dispatch.balance.burning],
+    ['a missing balance key', (p: any) => delete at(p, 'marked_unresponsive').inputs.dispatch.balance],
   ])('rejects %s', (_case, change) => {
     expect(() => parseDecisionsPage(payload(change))).toThrow();
   });

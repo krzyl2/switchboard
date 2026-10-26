@@ -133,7 +133,7 @@ public static class DispatchStatusFactory
             };
         });
 
-        return new DispatchStatus(now, mode, mode.Commands, [.. phases], [.. devices]);
+        return new DispatchStatus(now, mode, mode.Commands, [.. phases], [.. devices]) { Balance = dispatch.Balance };
     }
 
     private static DrawStatus DrawOf(DeviceSpec spec, DispatchDevice device, List<Phase> phases, ControlInputs inputs)
