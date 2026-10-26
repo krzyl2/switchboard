@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Configuration;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Signals;
@@ -34,6 +35,12 @@ public sealed record ControlInputs(ProtectionInputs Protection, DispatchInputs D
     /// names), from the same store cycle. The guard, dispatch and the effector gate never read it.
     /// </summary>
     public PresentationInputs? Presentation { get; init; }
+
+    /// <summary>
+    /// The price signals of the same store cycle (dispatch's economics only; the guard never reads it). Beside
+    /// <see cref="Dispatch"/>, not inside it, and never in <see cref="Protection"/>: SIG-04 by type.
+    /// </summary>
+    public PriceInputs? Prices { get; init; }
 }
 
 /// <summary>The control port: both input views of one store cycle. The guard runner depends on this and on nothing wider.</summary>
@@ -122,5 +129,5 @@ public sealed class SignalSnapshotHolder : IProtectionInputSource, IDispatchInpu
     }
 
     private static ControlInputs Control(SignalDiagnostics diagnostics) =>
-        new(diagnostics.Snapshot.Protection, diagnostics.Snapshot.Dispatch, diagnostics.Snapshot.DispatchSetup) { Presentation = diagnostics.Snapshot.Presentation };
+        new(diagnostics.Snapshot.Protection, diagnostics.Snapshot.Dispatch, diagnostics.Snapshot.DispatchSetup) { Presentation = diagnostics.Snapshot.Presentation, Prices = diagnostics.Snapshot.Prices };
 }

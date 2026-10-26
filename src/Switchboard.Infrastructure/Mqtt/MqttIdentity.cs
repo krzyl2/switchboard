@@ -33,6 +33,26 @@ public static class MqttIdentity
 
     public static string DefaultEntityId(string component, string objectId) => $"{component}.{UniqueId(objectId)}";
 
+    /// <summary>
+    /// The discovery ledger key (<c>component/object_id</c>) of the object whose default entity ID
+    /// (<see cref="DefaultEntityId"/>) is <paramref name="entityId"/>, or null when the ID cannot be one of the
+    /// add-on's own (no <c>switchboard_</c> prefix on its object part).
+    /// </summary>
+    public static string? LedgerKeyOf(string entityId)
+    {
+        ArgumentNullException.ThrowIfNull(entityId);
+        var dot = entityId.IndexOf('.', StringComparison.Ordinal);
+        if (dot <= 0)
+        {
+            return null;
+        }
+
+        var name = entityId[(dot + 1)..];
+        return name.Length > UniqueIdPrefix.Length && name.StartsWith(UniqueIdPrefix, StringComparison.Ordinal)
+            ? $"{entityId[..dot]}/{name[UniqueIdPrefix.Length..]}"
+            : null;
+    }
+
     public static string DiscoveryTopic(string discoveryPrefix, string component, string baseTopic, string objectId) =>
         $"{discoveryPrefix}/{component}/{baseTopic}/{objectId}/config";
 

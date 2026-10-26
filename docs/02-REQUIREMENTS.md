@@ -76,6 +76,25 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **BAL-07**: Dashboard shows balance, projection, band and minutes to :00; decision inputs carry them
 - [ ] **BAL-08**: Heater cut-over: shadow comparison with the Node-RED flow, then switch-over through `input_boolean.force_cwu`
 
+## Economic dispatch (v2.0, `14-ECONOMICS.md`)
+
+- [x] **ECO-01**: Tariff module: flat and zoned time-of-use price schedule (days, months, hours, midnight wrap, dated holiday list) evaluated on the injected clock's local time, correct on 23- and 25-hour days, with the next zone change; G13 is configuration, never code
+- [x] **ECO-02**: `economics:` configuration section (currency label, tariff, settlement, holidays) parsed and validated with config issues, optional and additive (`schema_version` 1, a 0.9 file loads unchanged), preserved by the wizard, no currency symbol in code or defaults
+- [x] **ECO-03**: Settlement module interface (D6) with `hourly_netting` (wrapping the BAL rule) and `net_billing` (covers feed-in) shipped; `net_metering` deferred behind the same interface
+- [x] **ECO-04**: Effective value per kWh per device: static `value_per_kwh`, or `value_factor` times the import or export price; the static value is the fallback, never a last known value
+- [x] **ECO-05**: Dispatch start and stop order follows the live effective value (stability cycles and minimum gap, `shed_priority` pins); the guard's shed order stays static and sees no price; the order never overrides the guard, the envelope or the balance gate
+- [x] **ECO-06**: Device `sources` (`pv_only`, `pv_and_zone:<id>`, `any`; omitted keeps 0.9 behaviour) decide which energy class may start a device; surplus tied to the hourly balance (hourly netting) or to free power (net billing); an unusable declared source narrows the device, never widens it; no zone-class start inside `zone_end_margin` of the zone's end
+- [x] **ECO-07**: Economic cutoff: a class whose cost (zone price or forgone export) exceeds the device's value plus `min_margin` is not used; with no export price configured the PV test is off and says so
+- [x] **ECO-08**: Reason codes list version 6 (`zone_allowed`, `source_not_allowed`, `value_below_cost`, `surplus_available`, `surplus_low`); older versions stay readable; SPA list and en/pl sentences complete
+- [x] **ECO-09**: Decision inputs carry an optional `economics` block (zone, prices and basis, effective value, class, sources); absent on old lines, null without an `economics:` section
+- [x] **ECO-10**: Dynamic prices arrive from an HA entity mapped as a signal (roles `price_import`, `price_export`, kind `price`, `<currency>/kWh` or `/MWh`, conversion in the signal layer only); a stale or unavailable price falls back to the configured static price with basis `fallback`; the add-on fetches nothing
+- [x] **ECO-11**: Savings accounting: per settlement period, value gained minus the extra settlement cost against the devices-off counterfactual; statistics persist time-weighted prices and basis with a schema version bump and read the old file; never back-filled
+- [x] **ECO-12**: Savings metric and card and tariff status card live (replacing 'not available, needs a tariff'), currency label from configuration, en and pl, both themes, phone width
+- [x] **ECO-13**: Device card shows value per kWh (static and effective now), sources in words and the class open now with its reason (the value and source part of UI-12; goal and history stay with UI-12)
+- [x] **ECO-14**: Every economic input failure narrows or falls back to the configured static value, never widens and never guesses; protection is unaffected; each row of the failure table in `14-ECONOMICS.md` has a named test (slice 3 built the rows of the sources, balance, export price, followed price, clock, order and reload; slice 4 the dynamic-price rows (stale, unavailable, unknown, wrong unit, missing fallback, export price unknown); slice 5 the statistics row (an older schema reads with no price data); the ticks rely on those named tests, which slice 5 did not re-audit)
+- [x] **ECO-15**: Without an `economics:` section, dispatch decisions and the BAL tests are identical to 0.9 (golden replay)
+- [ ] **ECO-16**: Economics logic tested on the virtual clock including the 23- and 25-hour days and G13 boundary minutes; live shadow verification on the maintainer's installation, zones checked against the contract (the virtual-clock tests of the tariff, the dispatch allowance and the DST days are built in slices 1 to 3; the live verification is slice 6, so this stays open)
+
 ## Onboarding UI
 
 - [x] **UI-01**: Five-step wizard: meter → connection → sources and storage → loads → mode

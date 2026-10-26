@@ -52,14 +52,14 @@ public sealed class ControlGateTests
     }
 
     [Fact]
-    public void A_failed_protective_command_is_not_commanded_and_names_the_device_unresponsive()
+    public void A_failed_protective_command_is_not_commanded_and_names_the_command_failed()
     {
         var port = new RecordingDeviceCommandPort { Answer = _ => (CommandOutcome.Failed, null) };
         var (harness, _) = Overloaded(OperatingMode.Active, allowed: true, port);
 
         var sheds = Sheds(harness);
         Assert.NotEmpty(sheds);
-        Assert.All(sheds, d => Assert.Equal((false, ReasonCode.DeviceUnresponsive), (d.Commanded, d.RefusedBy)));
+        Assert.All(sheds, d => Assert.Equal((false, ReasonCode.CommandFailed), (d.Commanded, d.RefusedBy)));
     }
 
     [Fact]

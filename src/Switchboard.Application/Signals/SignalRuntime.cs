@@ -121,7 +121,8 @@ internal sealed class SignalRuntime(SignalDefinition definition)
         Definition.Entity == other.Entity
         && Definition.Kind == other.Kind
         && string.Equals(Definition.Unit, other.Unit, StringComparison.Ordinal)
-        && Definition.Sign == other.Sign;
+        && Definition.Sign == other.Sign
+        && string.Equals(Definition.PriceCurrency, other.PriceCurrency, StringComparison.Ordinal);
 
     public void MarkAbsent(Presence presence)
     {

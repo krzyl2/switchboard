@@ -70,7 +70,7 @@ Hours are as remembered by the maintainer; to be checked against the contract. Z
 
 ## Control
 
-The module outputs a target current or stop for the EV device; it never commands an entity itself. The declared go-e actuator (`number.goe_422752_amp`) and stop actuator (`select.goe_422752_frc`) apply, behind the global control switch and `mode: active`. Every decision carries a reason code, so the closed list gets EV codes (proposed: `ev_trip_deadline`, `ev_surplus`, `ev_cheap_zone`, `ev_floor_hold`, `ev_weekly_full`, `ev_not_plugged`, `ev_forecast_missing`, `ev_manual`; list version 4).
+The module outputs a target current or stop for the EV device; it never commands an entity itself. The declared go-e actuator (`number.goe_422752_amp`) and stop actuator (`select.goe_422752_frc`) apply, behind the global control switch and `mode: active`. Every decision carries a reason code, so the closed list gets EV codes (proposed: `ev_trip_deadline`, `ev_surplus`, `ev_cheap_zone`, `ev_floor_hold`, `ev_weekly_full`, `ev_not_plugged`, `ev_forecast_missing`, `ev_manual`; a later list version than 5).
 
 Manual control (HA entity and panel):
 

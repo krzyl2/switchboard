@@ -56,6 +56,7 @@ internal sealed class GuardScenario
     public GuardScenario(string yaml, DateTimeOffset? start = null, ModeStatus? mode = null, bool settledLockouts = true, bool dispatch = false, IDeviceCommandPort? port = null)
     {
         Time = new SteppableTime(start ?? Start);
+        DispatchEngine = new DispatchEngine(Time);
         Configuration = TestConfigurations.Valid(yaml).Configuration!;
         Setup = ProtectionSetupFactory.Build(Configuration);
         DispatchSetup = DispatchSetupFactory.Build(Configuration);
@@ -115,7 +116,7 @@ internal sealed class GuardScenario
 
     public GuardEngine Engine { get; }
 
-    public DispatchEngine DispatchEngine { get; } = new();
+    public DispatchEngine DispatchEngine { get; }
 
     public EffectorGate Gate { get; }
 
@@ -282,6 +283,9 @@ internal sealed class GuardScenario
     /// <summary>The balance of the running hour as the monitor last published it; null before the first reading.</summary>
     public HourlyBalanceStatus? Balance { get; set; }
 
+    /// <summary>The price signals of the store cycle as the signal layer would hand them over; null leaves a dynamic price at its fallback.</summary>
+    public Switchboard.Domain.Economics.PriceInputs? Prices { get; set; }
+
     public DispatchInputs DispatchInputs() =>
         new(_sequence, Now, [.. Setup.Phases.Select(p => _power.TryGetValue(p, out var entry) ? entry : new PhaseDispatch(p, false, DispatchInvalidReason.PowerNotFresh, null, null, null, null))])
         {
@@ -300,7 +304,7 @@ internal sealed class GuardScenario
         DispatchEvaluation? dispatch = null;
         if (_dispatch)
         {
-            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode) { Balance = Balance }, Now);
+            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode) { Balance = Balance, Prices = Prices }, Now);
             Dispatches.Add(dispatch);
         }
 

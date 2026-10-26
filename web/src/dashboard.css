@@ -45,6 +45,7 @@
 .dash-kv dt {
   color: var(--fg-dim);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dash-kv dd {
@@ -53,8 +54,14 @@
   overflow-wrap: anywhere;
 }
 
-.dash-kv dd .age {
+.dash-kv dd .age,
+.dash-kv dd .badge {
   margin-left: 8px;
+}
+
+/* Tariff and savings (ECO-12): a price and its basis pill on one line that wraps on a phone. */
+.dash-kv dd .sub {
+  display: block;
 }
 
 .dash-why {

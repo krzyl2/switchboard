@@ -16,20 +16,26 @@ public static class StartOrder
 {
     /// <param name="rotationGroup">The rotation group of a device, or null.</param>
     /// <param name="ranking">The adopted phase ranking, most headroom first.</param>
-    public static ImmutableArray<DeviceSpec> For(IEnumerable<DeviceSpec> devices, Func<DeviceName, GroupName?> rotationGroup, ImmutableArray<Phase> ranking)
+    /// <param name="key">
+    /// The shed key of a device, ascending = shed first (so started last). Null is the static key of the guard's shed order
+    /// (<see cref="DeviceSpec.ShedKey"/>); dispatch passes a live one when values follow prices (14-ECONOMICS). The guard
+    /// never calls this: its shed order stays <see cref="Guard.ShedOrder.Rank"/>.
+    /// </param>
+    public static ImmutableArray<DeviceSpec> For(IEnumerable<DeviceSpec> devices, Func<DeviceName, GroupName?> rotationGroup, ImmutableArray<Phase> ranking, Func<DeviceSpec, double>? key = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(rotationGroup);
+        var shedKey = key ?? (d => d.ShedKey);
         var list = devices.Where(d => !d.NoShed).ToList();
-        list.Sort((a, b) => ShedComparison(a, b, rotationGroup, ranking));
+        list.Sort((a, b) => ShedComparison(a, b, rotationGroup, ranking, shedKey));
         list.Reverse();
         return [.. list, .. devices.Where(d => d.NoShed).OrderBy(d => d.Id)];
     }
 
     /// <summary>The shed order of 04 §2 with the rotation tie-break: ascending value, faster first, then the phase ranked last first.</summary>
-    private static int ShedComparison(DeviceSpec a, DeviceSpec b, Func<DeviceName, GroupName?> rotationGroup, ImmutableArray<Phase> ranking)
+    private static int ShedComparison(DeviceSpec a, DeviceSpec b, Func<DeviceName, GroupName?> rotationGroup, ImmutableArray<Phase> ranking, Func<DeviceSpec, double> shedKey)
     {
-        var byKey = a.ShedKey.CompareTo(b.ShedKey);
+        var byKey = shedKey(a).CompareTo(shedKey(b));
         if (byKey != 0)
         {
             return byKey;
@@ -69,10 +75,9 @@ public static class StartOrder
 /// </summary>
 public sealed class PhaseRanking
 {
-    private ImmutableArray<Phase> _candidate = [];
-    private int _streak;
+    private readonly StableAdoption<ImmutableArray<Phase>> _adoption = new([], new RankingComparer(), ranking => ranking.IsEmpty);
 
-    public ImmutableArray<Phase> Adopted { get; private set; } = [];
+    public ImmutableArray<Phase> Adopted => _adoption.Adopted;
 
     /// <summary>Phases by descending headroom (E), phase order on a tie: the most loaded phase is relieved first.</summary>
     public static ImmutableArray<Phase> Propose(IReadOnlyDictionary<Phase, double> headroom)
@@ -82,39 +87,15 @@ public sealed class PhaseRanking
     }
 
     /// <summary>Counts one boundary's proposal; returns the ranking in force after it.</summary>
-    public ImmutableArray<Phase> Observe(ImmutableArray<Phase> proposed, int stabilityCycles)
-    {
-        if (Adopted.IsEmpty)
-        {
-            Adopted = proposed;
-            _candidate = proposed;
-            _streak = 0;
-            return Adopted;
-        }
-
-        if (proposed.SequenceEqual(Adopted))
-        {
-            _candidate = proposed;
-            _streak = 0;
-            return Adopted;
-        }
-
-        _streak = proposed.SequenceEqual(_candidate) ? _streak + 1 : 1;
-        _candidate = proposed;
-        if (_streak >= stabilityCycles)
-        {
-            Adopted = proposed;
-            _streak = 0;
-        }
-
-        return Adopted;
-    }
+    public ImmutableArray<Phase> Observe(ImmutableArray<Phase> proposed, int stabilityCycles) => _adoption.Observe(proposed, stabilityCycles);
 
     /// <summary>A new configuration or a restart: the next proposal is adopted at once.</summary>
-    public void Reset()
+    public void Reset() => _adoption.Reset();
+
+    private sealed class RankingComparer : IEqualityComparer<ImmutableArray<Phase>>
     {
-        Adopted = [];
-        _candidate = [];
-        _streak = 0;
+        public bool Equals(ImmutableArray<Phase> x, ImmutableArray<Phase> y) => x.SequenceEqual(y);
+
+        public int GetHashCode(ImmutableArray<Phase> obj) => obj.Length;
     }
 }

@@ -5,6 +5,7 @@ using Switchboard.Application.Options;
 using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 
 namespace Switchboard.Host.Web;
 
@@ -36,6 +37,7 @@ public sealed record BucketDto(DateTimeOffset Start, TotalsDto Totals);
 /// <param name="ObservedS">Time the whole power picture was known; energy is integrated over it only.</param>
 /// <param name="VoltageLosses">Phase-voltage losses on some phases while the others stayed up: possible breaker trips.</param>
 /// <param name="SupplyOutages">Losses on every mapped phase at once: a supply outage, not a trip.</param>
+/// <param name="Prices">The prices dispatch used (time-weighted over what was priced) and their basis; null when none was recorded: no <c>economics:</c> section, or buckets of an older statistics.json (no price data, never back-filled).</param>
 public sealed record TotalsDto(
     double ObservedS,
     double UnobservedS,
@@ -52,12 +54,26 @@ public sealed record TotalsDto(
     int WouldSheds,
     int VoltageLosses,
     int SupplyOutages,
-    double VoltageObservedS);
+    double VoltageObservedS,
+    PricesDto? Prices);
+
+/// <summary>
+/// The import and export price of a bucket or a range as dispatch had them each step, time-weighted: the mean of what was in force for as long
+/// as it was in force, never the price at the end. Currency is the label of <c>api/economics</c>; no symbol is ever written here.
+/// </summary>
+/// <param name="ControlledImportOffsetKwh">The part of the controlled energy that ran while the house imported (with the loads off it would have been imported less).</param>
+public sealed record PricesDto(PriceSeriesDto? Import, PriceSeriesDto? Export, double ControlledImportOffsetKwh);
+
+/// <param name="PerKwh">Time-weighted mean over the priced time, currency per kWh.</param>
+/// <param name="PricedS">Seconds a price was known; below the observed time when some of it had none.</param>
+/// <param name="Bases">Which bases the priced time had: flat, zone, live, fallback.</param>
+/// <param name="Fallback">Some of the time was at a dynamic price's static fallback (the entity was not usable): the bucket is flagged.</param>
+public sealed record PriceSeriesDto(double PerKwh, double PricedS, IReadOnlyList<string> Bases, bool Fallback);
 
 public sealed record PvDto(double HouseKwh, double StorageKwh, double ExportKwh, double UnattributedKwh);
 
 /// <param name="ModelKwh">From the rated model (a relay's rating while it reports on): an estimate.</param>
-/// <param name="Value">Its energy at its value per kWh (no currency; v1 has no tariff).</param>
+/// <param name="Value">Its energy at its value per kWh in force, time-weighted (the effective value when prices are configured); a number, the currency label is in api/economics.</param>
 public sealed record DeviceEnergyDto(string Id, double MeasuredKwh, double ModelKwh, double UnknownS, double PvKwh, double Value);
 
 /// <param name="From">The start of the range (the last hour: the start of the bucket an hour before now, "since HH:MM"; never after <paramref name="To"/>).</param>
@@ -165,7 +181,18 @@ internal static class StatisticsEndpoint
         b.WouldSheds,
         b.VoltageLosses,
         b.SupplyOutages,
-        b.VoltageObserved.TotalSeconds);
+        b.VoltageObserved.TotalSeconds,
+        b.Prices is { } prices ? new PricesDto(Series(prices.Import), Series(prices.Export), prices.ControlledOffsettingImport.Value) : null);
+
+    private static PriceSeriesDto? Series(PriceTrack track) =>
+        track.Mean is { } mean
+            ? new PriceSeriesDto(
+                mean,
+                track.Priced.TotalSeconds,
+                [.. new[] { (PriceBasis.Flat, track.Flat), (PriceBasis.Zone, track.Zone), (PriceBasis.Live, track.Live), (PriceBasis.Fallback, track.Fallback) }
+                    .Where(t => t.Item2 > TimeSpan.Zero).Select(t => ApiText.Snake(t.Item1))],
+                track.AnyFallback)
+            : null;
 
     private static DeviceEnergyDto Device(DeviceName id, DeviceEnergy e) =>
         new(id.Value, e.Measured.Value, e.Model.Value, e.Unknown.TotalSeconds, e.Pv.Value, e.Value);

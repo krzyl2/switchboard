@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -61,6 +62,21 @@ public sealed record DeviceDefinition(
 
     /// <summary>What dispatch may do beyond restoring what was shed (<c>start:</c>, default from devices.default_start); always set by the parser.</summary>
     public required StartPolicy Start { get; init; }
+
+    /// <summary>Which price the value follows (<c>value_follows</c>); static when it names a price the file has no spec for (warned at load).</summary>
+    public ValueFollows ValueFollows { get; init; } = ValueFollows.Static;
+
+    /// <summary><c>value_factor</c>, finite and above 0.</summary>
+    public double ValueFactor { get; init; } = ValueSpec.NeutralFactor;
+
+    /// <summary>The value model dispatch evaluates (slice 3); never part of the <see cref="DeviceSpec"/> protection sees.</summary>
+    public ValueSpec Value => new(ValuePerKwh, ValueFollows, ValueFactor);
+
+    /// <summary>The sources after narrowing to the zones <c>economics.tariff</c> has; null when the device declares none (0.9 behaviour).</summary>
+    public SourceSet? Sources { get; init; }
+
+    /// <summary>The sources as written; null when none declared.</summary>
+    public SourceSet? SourcesDeclared { get; init; }
 
     /// <summary>
     /// An opaque fingerprint of every entity that commands or reports this device (FNV-1a over the

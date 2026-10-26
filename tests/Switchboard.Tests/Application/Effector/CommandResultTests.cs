@@ -78,7 +78,7 @@ public sealed class CommandResultTests
         s.PollUntil(T0 + TimeSpan.FromMinutes(1), 3, 3, 3);
 
         var on = s.Decisions.First(d => d.Action == DecisionAction.SwitchOn);
-        Assert.Equal((false, ReasonCode.DeviceUnresponsive), (on.Commanded, on.RefusedBy));
+        Assert.Equal((false, ReasonCode.CommandFailed), (on.Commanded, on.RefusedBy));
         Assert.False(s.Ledger(on.Device!.Value.Value)!.Target?.Relays[0] ?? false);
     }
 
@@ -97,7 +97,7 @@ public sealed class CommandResultTests
         // L1 above In − reserve, below the breaker: dispatch (not the guard) switches heater_l1 off.
         s.PollUntil(T0 + TimeSpan.FromMinutes(3), 15.6, 3, 3);
         var off = s.DecisionsFor("heater_l1").First(d => d.Origin == DecisionOrigin.Dispatch && d.Action == DecisionAction.SwitchOff);
-        Assert.Equal((false, ReasonCode.DeviceUnresponsive), (off.Commanded, off.RefusedBy));
+        Assert.Equal((false, ReasonCode.CommandFailed), (off.Commanded, off.RefusedBy));
         var refused = port.Commands.Count(c => c == "heater_l1 relay 1 off");
 
         // The kettle goes on top: the guard must take heater_l1 off for real, and now it can.
@@ -183,7 +183,7 @@ public sealed class CommandResultTests
         var shed = s.DecisionsFor("heater_l1").First(d => d.Origin == DecisionOrigin.Guard && d.Action == DecisionAction.SwitchOff);
         Assert.False(shed.Commanded);
         Assert.NotEqual(ReasonCode.ChangeLimit, shed.RefusedBy);
-        Assert.Equal(ReasonCode.SafeState, shed.RefusedBy);
+        Assert.Equal(ReasonCode.CommandNotSent, shed.RefusedBy);
     }
 
     [Fact]
@@ -219,6 +219,6 @@ public sealed class CommandResultTests
         // The shed itself, and its resends recorded once (marked reasserted), however many there were.
         var sheds = s.DecisionsFor("heater_l1").Where(d => d.Origin == DecisionOrigin.Guard && d.Action == DecisionAction.SwitchOff).ToList();
         Assert.Equal([false, true], sheds.Select(d => d.Inputs.Dispatch?.Reasserted ?? false));
-        Assert.All(sheds, d => Assert.Equal((false, ReasonCode.DeviceUnresponsive), (d.Commanded, d.RefusedBy)));
+        Assert.All(sheds, d => Assert.Equal((false, ReasonCode.CommandFailed), (d.Commanded, d.RefusedBy)));
     }
 }

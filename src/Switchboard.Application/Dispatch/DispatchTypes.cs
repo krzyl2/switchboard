@@ -9,6 +9,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -33,6 +34,9 @@ public sealed record DispatchInput(
 
     /// <summary>The balance of the running hour as the monitor last saw it; null while no energy counters are mapped.</summary>
     public HourlyBalanceStatus? Balance { get; init; }
+
+    /// <summary>The price signals of the store cycle (economics only); null when none is mapped, and then a dynamic price is at its fallback.</summary>
+    public PriceInputs? Prices { get; init; }
 }
 
 public enum DispatchChange
@@ -110,10 +114,23 @@ public sealed record DispatchEvaluation(
     /// <summary>Read-only exposure: the hourly balance as the allowance rule saw it this step; null while no energy counters are mapped.</summary>
     public BalanceView? Balance { get; init; }
 
+    /// <summary>Read-only exposure: the prices, values and energy classes this step used; null without an <c>economics:</c> section.</summary>
+    public EconomicsView? Economics { get; init; }
+
+    /// <summary>
+    /// Read-only exposure: a dynamic price entered or left its fallback in this step (once per change, import and export apart);
+    /// no decision and no reason code (the basis is in the decision inputs), the runner writes a log line for each.
+    /// </summary>
+    public ImmutableArray<TariffFallbackChange> TariffFallback { get; init; } = [];
+
     public static DispatchEvaluation Empty(DateTimeOffset at) => new(at, [], [], [], [], []);
 
     public DispatchWish? Wish(DeviceName device) => Wishes.FirstOrDefault(w => w.Device == device);
 }
+
+/// <summary>A dynamic price entered (<paramref name="Entered"/>) or left its fallback; <paramref name="Signal"/> is the price signal's logical name.</summary>
+/// <param name="Price">import or export.</param>
+public sealed record TariffFallbackChange(string Price, string Signal, bool Entered);
 
 /// <summary>
 /// The hourly balance as the allowance rule read it in one step (BAL-02 … BAL-04): what it was given and
@@ -133,6 +150,16 @@ public sealed record BalanceView(double? BalanceWh, Watts? Free, Watts? Load, Ti
     /// <summary>What a decision records of this view (BAL-07).</summary>
     public BalanceDecisionInputs ToDecisionInputs() => new(BalanceWh, Free?.Value, Load?.Value, ProjectionWh, Band?.LoWh, Band?.HiWh, UntilNext.TotalSeconds, Band?.Burning ?? false);
 }
+
+/// <summary>
+/// The economics of one dispatch step as the allowance rule read it (ECO-09): the tariff zone and the prices in force on the
+/// injected clock's local time, and per device the effective value, the order key, the sources and the energy class that
+/// allowed it (null when none did, or when no allocation ran in this step).
+/// </summary>
+public sealed record EconomicsView(string? Zone, PricePoint? Import, PricePoint? Export, SettlementModelId Settlement, ImmutableArray<DeviceEconomicsView> Devices);
+
+/// <param name="Class">The energy class that allows the device now; null when neither the surplus nor the active zone does.</param>
+public sealed record DeviceEconomicsView(DeviceName Device, EffectiveValue VEff, double OrderKey, SourceSet? Sources, EnergyClass? Class);
 
 public enum SettlingStatus
 {
@@ -216,6 +243,12 @@ public sealed record DispatchStatus(
 {
     /// <summary>Read-only exposure: the hourly balance as the allowance rule read it in this step (BAL-07); null while no energy counters are mapped.</summary>
     public BalanceView? Balance { get; init; }
+
+    /// <summary>Read-only exposure: the prices, values and energy classes of this step (ECO-09); null without an <c>economics:</c> section.</summary>
+    public EconomicsView? Economics { get; init; }
+
+    /// <summary>The dynamic prices that entered or left their fallback in this step (an event for the log, never a decision).</summary>
+    public ImmutableArray<TariffFallbackChange> TariffFallback { get; init; } = [];
 
     public static DispatchStatus Initial(DateTimeOffset at, ModeStatus mode) => new(at, mode, false, [], []);
 }

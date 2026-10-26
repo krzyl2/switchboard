@@ -70,6 +70,46 @@ public sealed class ControlDefaultsTests
     }
 
     [Fact]
+    public void Shipped_economics_defaults_are_the_starting_values_of_14_economics()
+    {
+        // Slice 1 binds them and nothing reads them yet; pinning them here keeps a later edit of the YAML a visible decision.
+        var economics = Control.Economics;
+        Assert.Equal(0, economics.MinMargin);
+        Assert.Equal(3, economics.OrderStabilityCycles);
+        Assert.Equal(0.05, economics.OrderMinGapFraction);
+        Assert.Equal(TimeSpan.FromMinutes(6), economics.ZoneEndMargin);
+        Assert.Equal(TimeSpan.FromSeconds(60), economics.NetBillingWindow);
+    }
+
+    [Fact]
+    public void Economics_parameters_are_overridden_key_by_key_through_control()
+    {
+        var parsed = TestConfigurations.Parse(TestConfigurations.ThreePhase(control: "  economics:\n    min_margin: 0.05\n    zone_end_margin: 10m\n"));
+
+        Assert.Equal(ConfigurationStatus.Valid, parsed.Status);
+        var economics = parsed.Configuration!.Control.Economics;
+        Assert.Equal((0.05, TimeSpan.FromMinutes(10)), (economics.MinMargin, economics.ZoneEndMargin));
+        Assert.Equal((3, 0.05, TimeSpan.FromSeconds(60)), (economics.OrderStabilityCycles, economics.OrderMinGapFraction, economics.NetBillingWindow));
+    }
+
+    [Theory]
+    [InlineData("min_margin: -0.01")]
+    [InlineData("order_stability_cycles: 0")]
+    [InlineData("order_stability_cycles: 1.5")]
+    [InlineData("order_min_gap_fraction: 1.5")]
+    [InlineData("order_min_gap_fraction: -0.1")]
+    [InlineData("zone_end_margin: soon")]
+    [InlineData("net_billing_window: 0s")]
+    [InlineData("bogus: 1")]
+    public void An_economics_override_outside_its_range_is_refused(string line)
+    {
+        // A margin below zero would buy energy at a loss; zero cycles would reorder on every price tick.
+        var parsed = TestConfigurations.Parse(TestConfigurations.ThreePhase(control: $"  economics:\n    {line}\n"));
+
+        Assert.NotEqual(ConfigurationStatus.Valid, parsed.Status);
+    }
+
+    [Fact]
     public void Shipped_budget_thresholds_match_04_section_1()
     {
         Assert.Equal((0.5, 0.25, 0.0), (Control.Budget.StopIncreasesBelow, Control.Budget.ShedOneBelow, Control.Budget.TopTierAtOrBelow));

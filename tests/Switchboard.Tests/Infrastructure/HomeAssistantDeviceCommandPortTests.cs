@@ -63,6 +63,7 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
     private readonly ActuatorDirectoryHolder _directory = new();
     private readonly SwitchboardConfiguration _configuration = TestConfigurations.Valid(TestDevices.Document(Devices)).Configuration!;
     private readonly ControlSwitchState _control;
+    private readonly OwnEntities _own = new();
     private readonly HomeAssistantDeviceCommandPort _port;
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _run;
@@ -84,7 +85,8 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
             MsOptions.Create(TestOptions.HomeAssistant()),
             _time,
             NullLogger<HomeAssistantDeviceCommandPort>.Instance,
-            _control);
+            _control,
+            _own);
         _run = _port.RunAsync(_stop.Token);
     }
 
@@ -285,6 +287,46 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
         Assert.Contains("option '1' is not offered by select.charger_force", _port.Status.LastFailure!.Detail, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_command_to_one_of_Switchboards_own_entities_is_refused_before_it_is_sent_even_a_protective_off(bool on)
+    {
+        // A hand-written file may declare one of the add-on's own MQTT entities as an actuator (the
+        // wizard refuses it; the file only gets a warning). Commanding it would loop back into
+        // Switchboard, so nothing leaves and the answer says why, for an on and for a protective off.
+        var configuration = TestConfigurations.Valid(TestDevices.Document(Devices.Replace("switch.heater_1", "switch.switchboard_control_allowed", StringComparison.Ordinal))).Configuration!;
+        _directory.Observe(configuration);
+        _own.Entities.Add("switch.switchboard_control_allowed");
+
+        var ticket = _port.Submit(new DeviceCommand(DeviceName.Parse("heater_l1"), DeviceCommandKind.Relay, 1, on, null, on ? CommandPriority.Ordinary : CommandPriority.Protective) { Revision = configuration.Devices.Single(d => d.Id.Value == "heater_l1").ActuatorRevision, Decrease = !on });
+        await SendPassAsync();
+        await UntilAsync(() => Results().Count == 1);
+
+        Assert.Equal((CommandOutcome.NotSent, CommandNotSentReason.OwnEntity), Outcome(ticket));
+        Assert.Equal(0, _channel.Sent);
+        Assert.Contains("switch.switchboard_control_allowed is one of Switchboard's own MQTT entities", _port.Status.LastFailure!.Detail, StringComparison.Ordinal);
+        Assert.Equal(CommandNotSentReason.OwnEntity, _port.Status.LastFailure.NotSent);
+    }
+
+    [Fact]
+    public async Task An_entity_of_another_integration_with_a_similar_name_is_still_commanded()
+    {
+        // Only the exact entities the add-on announced are its own: another integration's switch
+        // named like one of them, or the same object under another domain, passes.
+        var configuration = TestConfigurations.Valid(TestDevices.Document(Devices.Replace("switch.heater_1", "switch.switchboard_control_allowed_2", StringComparison.Ordinal))).Configuration!;
+        _directory.Observe(configuration);
+        _own.Entities.Add("switch.switchboard_control_allowed");
+        _own.Entities.Add("sensor.switchboard_control_allowed_2");
+
+        _port.Submit(new DeviceCommand(DeviceName.Parse("heater_l1"), DeviceCommandKind.Relay, 1, false, null, CommandPriority.Protective) { Revision = configuration.Devices.Single(d => d.Id.Value == "heater_l1").ActuatorRevision, Decrease = true });
+        _port.Flush();
+
+        var sent = await _channel.NextAsync();
+        Assert.Equal(("switch.switchboard_control_allowed_2", ActuatorService.TurnOff), (sent.Call.Entity.Value, sent.Call.Service));
+        sent.Answer(CommandOutcome.Acknowledged);
+    }
+
     [Fact]
     public async Task A_call_the_allow_list_refuses_at_send_time_is_not_sent()
     {
@@ -398,6 +440,14 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
         public ModeStatus Current => forced() ?? real.Current;
 
         public ModeStatus For(bool configurationValid) => forced() ?? real.For(configurationValid);
+    }
+
+    /// <summary>The own MQTT entities the add-on has announced, as the test says.</summary>
+    private sealed class OwnEntities : IOwnEntityCheck
+    {
+        public HashSet<string> Entities { get; } = [];
+
+        public bool IsOwn(EntityId entity) => Entities.Contains(entity.Value);
     }
 
     /// <summary>A channel whose calls the test answers; it runs the same allow-list check as the client.</summary>

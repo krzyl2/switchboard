@@ -12,16 +12,21 @@ using static Switchboard.Infrastructure.Persistence.PresentationJson;
 namespace Switchboard.Infrastructure.Persistence;
 
 /// <summary>
-/// <c>/data/statistics.json</c>: the runtime UI's energy buckets and counters (schema 1). Untrusted
+/// <c>/data/statistics.json</c>: the runtime UI's energy buckets and counters (schema 2; schema 1, which has no price data, is still read). Untrusted
 /// on read: another schema or bucket length, a misaligned, repeated or out-of-order bucket, a
 /// bucket after the high-water mark, a non-finite or negative number, more observed and unobserved
 /// time than a bucket holds, a lifetime longer than a century, a bad device key, more devices or
-/// buckets than the bounds, or a file above MaxFileBytes sets it aside. A downgrade to 0.4.x ignores the file.
+/// buckets than the bounds, or a file above MaxFileBytes sets it aside, and so does a schema newer than this build knows. Schema 2 adds the
+/// time-weighted prices of each bucket (savings accounting, ECO-11); a schema 1 bucket reads as having no price data, which is never
+/// back-filled and is not a failure. A downgrade to 0.4.x ignores the file.
 /// </summary>
 public class StatisticsFile : PresentationFile<StatisticsState>
 {
     public const string Name = "statistics.json";
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
+
+    /// <summary>The oldest schema still read: it has no <c>prices</c> in its buckets.</summary>
+    internal const int OldestSchemaVersion = 1;
 
     // Bound on untrusted content, like state.json's: far above what a valid configuration declares (64 devices).
     internal const int MaxDevices = 256;
@@ -36,6 +41,9 @@ public class StatisticsFile : PresentationFile<StatisticsState>
     internal const double MaxBucketKwh = 1_000;
     internal const double MaxBucketValue = 1e12;
 
+    // A price per kWh far above any currency's tariff, so the price-weighted seconds of every retained bucket stay finite.
+    internal const double MaxPricePerKwh = 1e6;
+
     // Seconds written as doubles do not round-trip every tick; a bucket may be over by this much.
     private const double SecondsTolerance = 1e-3;
 
@@ -49,6 +57,9 @@ public class StatisticsFile : PresentationFile<StatisticsState>
         "storage_charge_kwh", "storage_discharge_kwh", "pv", "devices", "sheds", "would_sheds", "voltage_losses", "supply_outages", "voltage_observed_s",
     ];
 
+    private static readonly string[] BucketKeysWithPrices = [.. BucketKeys, "prices"];
+    private static readonly string[] PricesKeys = ["import", "export", "controlled_import_offset_kwh"];
+    private static readonly string[] TrackKeys = ["price_seconds", "flat_s", "zone_s", "live_s", "fallback_s"];
     private static readonly string[] PvKeys = ["house_kwh", "storage_kwh", "export_kwh", "unattributed_kwh"];
     private static readonly string[] DeviceKeys = ["measured_kwh", "model_kwh", "unknown_s", "pv_kwh", "value"];
     private static readonly string[] LifetimeKeys = ["since", "sheds", "would_sheds", "voltage_losses", "supply_outages", "voltage_observed_s"];
@@ -109,6 +120,19 @@ public class StatisticsFile : PresentationFile<StatisticsState>
                 writer.WriteNumber("voltage_losses", bucket.VoltageLosses);
                 writer.WriteNumber("supply_outages", bucket.SupplyOutages);
                 writer.WriteNumber("voltage_observed_s", bucket.VoltageObserved.TotalSeconds);
+                if (bucket.Prices is { } prices)
+                {
+                    writer.WriteStartObject("prices");
+                    WriteTrack(writer, "import", prices.Import);
+                    WriteTrack(writer, "export", prices.Export);
+                    writer.WriteNumber("controlled_import_offset_kwh", prices.ControlledOffsettingImport.Value);
+                    writer.WriteEndObject();
+                }
+                else
+                {
+                    writer.WriteNull("prices");
+                }
+
                 writer.WriteEndObject();
             }
 
@@ -127,6 +151,17 @@ public class StatisticsFile : PresentationFile<StatisticsState>
         return buffer.WrittenSpan.ToArray();
     }
 
+    private static void WriteTrack(Utf8JsonWriter writer, string name, PriceTrack track)
+    {
+        writer.WriteStartObject(name);
+        writer.WriteNumber("price_seconds", track.PriceSeconds);
+        writer.WriteNumber("flat_s", track.Flat.TotalSeconds);
+        writer.WriteNumber("zone_s", track.Zone.TotalSeconds);
+        writer.WriteNumber("live_s", track.Live.TotalSeconds);
+        writer.WriteNumber("fallback_s", track.Fallback.TotalSeconds);
+        writer.WriteEndObject();
+    }
+
     /// <summary>Drops the oldest buckets, keeping about <paramref name="ratio"/> of them (at least one fewer); the counters stay.</summary>
     protected override StatisticsState? Trim(StatisticsState state, double ratio)
     {
@@ -142,9 +177,9 @@ public class StatisticsFile : PresentationFile<StatisticsState>
     protected override StatisticsState Parse(JsonElement root)
     {
         var keys = Keys(root, "the document", RootKeys);
-        if (keys["schema_version"].ValueKind != JsonValueKind.Number || !keys["schema_version"].TryGetInt32(out var version) || version != SchemaVersion)
+        if (keys["schema_version"].ValueKind != JsonValueKind.Number || !keys["schema_version"].TryGetInt32(out var version) || version is < OldestSchemaVersion or > SchemaVersion)
         {
-            throw new InvalidPresentationFileException($"schema_version is not {SchemaVersion}");
+            throw new InvalidPresentationFileException($"schema_version is not {OldestSchemaVersion} or {SchemaVersion}");
         }
 
         var minutes = Number(keys["bucket_minutes"], "bucket_minutes");
@@ -162,7 +197,7 @@ public class StatisticsFile : PresentationFile<StatisticsState>
         var items = Array(keys["buckets"], "buckets", EnergyAccumulator.MaxBuckets(_options));
         for (var i = 0; i < items.Count; i++)
         {
-            var bucket = Bucket(items[i], $"buckets[{i}]", length);
+            var bucket = Bucket(items[i], $"buckets[{i}]", length, withPrices: version >= 2);
             if (EnergyAccumulator.BucketOf(bucket.Start, length) != bucket.Start)
             {
                 throw new InvalidPresentationFileException($"buckets[{i}].start is not aligned to the bucket length");
@@ -207,9 +242,9 @@ public class StatisticsFile : PresentationFile<StatisticsState>
             ? amount
             : throw new InvalidPresentationFileException($"{path} is more than one bucket can hold");
 
-    private static EnergyBucket Bucket(JsonElement element, string path, TimeSpan length)
+    private static EnergyBucket Bucket(JsonElement element, string path, TimeSpan length, bool withPrices)
     {
-        var keys = Keys(element, path, BucketKeys);
+        var keys = Keys(element, path, withPrices ? BucketKeysWithPrices : BucketKeys);
         var kwh = (string key) => new KilowattHours(Amount(keys[key], $"{path}.{key}"));
         var seconds = (string key) => NonNegative(keys[key], $"{path}.{key}");
         var observed = seconds("observed_s");
@@ -263,6 +298,46 @@ public class StatisticsFile : PresentationFile<StatisticsState>
             Count(keys["would_sheds"], $"{path}.would_sheds"),
             Count(keys["voltage_losses"], $"{path}.voltage_losses"),
             Count(keys["supply_outages"], $"{path}.supply_outages"),
-            TimeSpan.FromSeconds(voltage));
+            TimeSpan.FromSeconds(voltage),
+            withPrices ? Prices(keys["prices"], $"{path}.prices", observed) : null);
+    }
+
+    /// <summary>The prices of a bucket: null as written, or both price tracks and the offset, each within what one observed bucket can hold.</summary>
+    private static BucketPrices? Prices(JsonElement element, string path, double observed)
+    {
+        if (element.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        var keys = Keys(element, path, PricesKeys);
+        return new BucketPrices(
+            Track(keys["import"], $"{path}.import", observed),
+            Track(keys["export"], $"{path}.export", observed),
+            new KilowattHours(Amount(keys["controlled_import_offset_kwh"], $"{path}.controlled_import_offset_kwh")));
+    }
+
+    private static PriceTrack Track(JsonElement element, string path, double observed)
+    {
+        var keys = Keys(element, path, TrackKeys);
+        var seconds = (string key) => NonNegative(keys[key], $"{path}.{key}");
+        var flat = seconds("flat_s");
+        var zone = seconds("zone_s");
+        var live = seconds("live_s");
+        var fallback = seconds("fallback_s");
+        var priced = flat + zone + live + fallback;
+        if (priced > observed + SecondsTolerance)
+        {
+            // Prices are only taken in observed time: more priced time than observed time is not something the writer produces.
+            throw new InvalidPresentationFileException($"{path} holds more priced time than the bucket observed");
+        }
+
+        var weighted = NonNegative(keys["price_seconds"], $"{path}.price_seconds");
+        if (weighted > MaxPricePerKwh * (priced + SecondsTolerance))
+        {
+            throw new InvalidPresentationFileException($"{path}.price_seconds is more than any price can add up to");
+        }
+
+        return new PriceTrack(weighted, TimeSpan.FromSeconds(flat), TimeSpan.FromSeconds(zone), TimeSpan.FromSeconds(live), TimeSpan.FromSeconds(fallback));
     }
 }

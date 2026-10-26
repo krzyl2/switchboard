@@ -1,0 +1,45 @@
+# Snippet, not a complete file: paste the `economics:` block at the top level of switchboard.yaml.
+#
+# A two-zone-per-day time-of-use tariff of the kind sold as "G13" in Poland, written as configuration.
+# VERIFY AGAINST YOUR CONTRACT: the hours below are from memory of the usual scheme, and every price is a
+# PLACEHOLDER. Copy the zone hours and the all-in variable price per kWh (as you pay it, with VAT) from your
+# invoice or the distributor's tariff table. The add-on ships no price and no zone hours of its own.
+#
+# GET api/economics shows the zone and price in force now. Dispatch uses it for the devices that declare `sources:`
+# (pv_only | pv_and_zone:<id>[,<id>] | any) and for the value order (`value_follows`, `value_factor`); shadow mode only logs.
+# Zones are tried in listed order, the first match wins, `default_zone` takes every moment no zone claims.
+# Times are the local clock of the add-on's time zone (daylight saving time handled). A range whose start is
+# after its end wraps past midnight; "24:00" is allowed as an end. `workday` = Monday to Friday and not a holiday.
+
+economics:
+  currency: PLN                    # a label of up to 8 characters, shown as written
+  holidays: [2026-11-01, 2026-11-11, 2026-12-24, 2026-12-25, 2026-12-26]   # renew every year; a list without a date of the current year is warned about
+  tariff:
+    default_zone: offpeak          # nights, weekends and holidays
+    zones:
+      - id: morning_peak
+        price: 1.10                # placeholder
+        when:
+          - { days: [workday], hours: ["07:00-13:00"] }
+      - id: afternoon_peak
+        price: 1.60                # placeholder
+        when:
+          - { days: [workday], months: [apr, may, jun, jul, aug, sep], hours: ["19:00-22:00"] }
+          - { days: [workday], months: [oct, nov, dec, jan, feb, mar], hours: ["16:00-21:00"] }
+      - id: offpeak
+        price: 0.60                # placeholder
+        when: []
+  settlement:                      # decides when surplus is wanted (the hourly balance, or the instantaneous surplus)
+    model: hourly_netting          # hourly_netting | net_billing
+    export_price: 0.35             # placeholder; what a kWh you do not use earns
+
+# Per device (inside the devices: list), for example heaters that may only take surplus and a car that may also charge
+# in the off-peak zone, never in a peak zone. A device without `sources:` is judged as before (by the hourly balance).
+#   - id: heater_l1
+#     value_per_kwh: 0.35
+#     sources: pv_only
+#     start: headroom
+#   - id: ev_charger
+#     value_per_kwh: 2.03
+#     sources: pv_and_zone:offpeak
+#     start: headroom

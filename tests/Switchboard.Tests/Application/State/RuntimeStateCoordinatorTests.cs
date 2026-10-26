@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
+using Switchboard.Application.Modes;
 using Switchboard.Application.State;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
@@ -47,6 +48,39 @@ public sealed class RuntimeStateCoordinatorTests
 
         Assert.True(_store.Saved[^1].KillSwitch);
         Assert.Equal(_scenario.Now, _store.Saved[^1].KillSwitchChangedAt);
+    }
+
+    [Fact]
+    public async Task A_save_is_reported_with_the_state_written_and_a_failed_one_is_not()
+    {
+        // Observers (the control endpoint test) wait for this event instead of polling the file.
+        var coordinator = Coordinator();
+        var reported = new List<RuntimeState>();
+        coordinator.Saved += (_, written) => reported.Add(written);
+        Step(coordinator);
+
+        _store.Fail = true;
+        await coordinator.FlushAsync(CancellationToken.None);
+        Assert.Empty(reported);
+
+        _store.Fail = false;
+        coordinator.OnControlChanged(new ControlSwitchStatus(true, _scenario.Now, ControlSwitchSource.Api, false, null));
+        await coordinator.FlushAsync(CancellationToken.None);
+
+        Assert.True(Assert.Single(reported).Control.Allowed);
+        Assert.Equal(reported, _store.Saved);
+    }
+
+    [Fact]
+    public async Task A_failing_listener_of_the_saved_state_does_not_stop_the_writer()
+    {
+        var coordinator = Coordinator();
+        coordinator.Saved += (_, _) => throw new InvalidOperationException("listener");
+        Step(coordinator);
+
+        await coordinator.FlushAsync(CancellationToken.None);
+
+        Assert.Single(_store.Saved);
     }
 
     [Fact]

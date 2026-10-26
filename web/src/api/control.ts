@@ -12,7 +12,7 @@ import { bool, count, fail, field, instant, list, nullable, object, oneOf, text 
 /** Why control is locked off: state.json could not be trusted at start (the kill switch is on until confirmed). */
 export const CONTROL_LOCK_REASONS = ['state_file_corrupt'] as const;
 export const COMMAND_OUTCOMES = ['acknowledged', 'failed', 'timed_out', 'not_sent'] as const;
-export const COMMAND_NOT_SENT_REASONS = ['link_down', 'not_declared', 'superseded', 'control_off'] as const;
+export const COMMAND_NOT_SENT_REASONS = ['link_down', 'not_declared', 'superseded', 'control_off', 'own_entity'] as const;
 
 export type ControlLockReason = (typeof CONTROL_LOCK_REASONS)[number];
 export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];

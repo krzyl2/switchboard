@@ -61,11 +61,24 @@ public sealed record DispatchInputsDto(
     DateTimeOffset? DeferredSince,
     string Override,
     bool Reasserted,
-    BalanceInputsDto? Balance);
+    BalanceInputsDto? Balance,
+    EconomicsInputsDto? Economics = null);
 
 /// <summary>The hourly balance of the step (BAL-07): Wh and W, positive = export; null values were not known.</summary>
 /// <param name="TRemS">Seconds to the :00 the rule used; zero when the balance was not of the running hour.</param>
 public sealed record BalanceInputsDto(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double TRemS, bool Burning);
+
+/// <summary>
+/// The economics of the step (ECO-09): prices in currency per kWh of the user's label, the device's effective value and order key,
+/// and the energy class that allowed it. Null without an <c>economics:</c> section.
+/// </summary>
+/// <param name="Zone">The tariff zone now; null for a flat or absent tariff.</param>
+/// <param name="PriceBasis">flat, zone, live or fallback; null when there is no price.</param>
+/// <param name="ValueBasis">static, followed or fallback.</param>
+/// <param name="Class">pv, zone or none.</param>
+/// <param name="Sources">pv_only, pv_and_zone:&lt;id&gt;[,&lt;id&gt;] or any, as dispatch used them; null when the device declares none.</param>
+/// <param name="Settlement">hourly_netting or net_billing.</param>
+public sealed record EconomicsInputsDto(string? Zone, double? ImportPrice, double? ExportPrice, string? PriceBasis, double VEff, string ValueBasis, double OrderKey, string Class, string? Sources, string Settlement);
 
 /// <param name="Group">The circuit group of the constraint; null for the main phase.</param>
 public sealed record HeadroomDto(string? Group, string Phase, double? EnvelopeA, double? RemainingA);
@@ -273,7 +286,8 @@ internal static class DecisionsEndpoint
         dispatch.DeferredSince,
         ApiText.Snake(dispatch.Override),
         dispatch.Reasserted,
-        dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null);
+        dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null,
+        dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, ApiText.SnakeOrNull(e.Class) ?? "none", e.Sources, ApiText.Snake(e.Settlement)) : null);
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>

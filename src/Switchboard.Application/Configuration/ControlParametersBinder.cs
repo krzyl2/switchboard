@@ -4,6 +4,7 @@ using Switchboard.Application.Signals;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -294,6 +295,14 @@ internal static class ControlParametersBinder
                 "hourly_balance.min_remaining may not exceed burn_window: the band would never reach its floor.");
         }
 
+        var economicsSection = root.Child("economics");
+        var economics = new EconomicsParameters(
+            economicsSection.Number("min_margin", Range.AtLeast(0)) ?? 0,
+            economicsSection.Integer("order_stability_cycles", 1, int.MaxValue) ?? 0,
+            economicsSection.Number("order_min_gap_fraction", Range.Fraction) ?? 0,
+            economicsSection.NonNegativeDuration("zone_end_margin") ?? TimeSpan.Zero,
+            economicsSection.PositiveDuration("net_billing_window") ?? TimeSpan.Zero);
+
         var limits = root.Child(LimitsKey);
         var envelope = new SafetyEnvelope(
             limits.Number("continuous_multiple_max", Range.Above(0)) ?? 0,
@@ -343,7 +352,8 @@ internal static class ControlParametersBinder
             foreignLoad,
             circuitGroups,
             effector,
-            hourlyBalance);
+            hourlyBalance,
+            economics);
     }
 
     private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)

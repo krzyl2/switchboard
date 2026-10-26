@@ -9,6 +9,9 @@ public enum SignalKind
     EnergyCounter,
     State,
     Percentage,
+
+    /// <summary>A price in currency per kWh, from a Home Assistant entity (14-ECONOMICS, slice 4); dispatch only, never protection.</summary>
+    Price,
 }
 
 /// <summary>
@@ -72,6 +75,12 @@ public enum SignalRole
 
     /// <summary>The main meter's total imported energy counter (kWh, summed phases): the hourly balance input (BAL-01).</summary>
     EnergyImport,
+
+    /// <summary>The import price (what a kWh bought costs) from an entity: feeds <c>economics.tariff</c> through <c>signal:</c> (ECO-10).</summary>
+    PriceImport,
+
+    /// <summary>The export price (what a kWh not exported earns) from an entity: feeds <c>economics.settlement.export_price</c> through <c>signal:</c> (ECO-10).</summary>
+    PriceExport,
 }
 
 /// <summary>

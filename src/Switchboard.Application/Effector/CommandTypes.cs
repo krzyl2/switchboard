@@ -80,6 +80,9 @@ public enum CommandNotSentReason
 
     /// <summary>Control was switched off (or locked) before it was sent.</summary>
     ControlOff,
+
+    /// <summary>The entity is one of Switchboard's own MQTT entities: commanding it would loop back into Switchboard, so it is refused at send time whatever the configuration declares.</summary>
+    OwnEntity,
 }
 
 /// <param name="At">When the outcome was known (host clock of the command path).</param>

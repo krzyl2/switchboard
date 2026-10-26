@@ -6,6 +6,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -20,7 +21,9 @@ namespace Switchboard.Application.Dispatch;
 /// <list type="bullet">
 /// <item>Headroom A per main and group phase = E + the estimates of the devices on it; devices
 /// are walked in start order (the reverse of the shed order, DISP-03; rotation groups by phase
-/// ranking, DISP-10) and take what fits with start or stop hysteresis (<see cref="Allocator"/>).</item>
+/// ranking, DISP-10; by the live value order where values follow prices, ECO-05) and take what fits with
+/// start or stop hysteresis (<see cref="Allocator"/>); the allowance gate (balance, sources, price test)
+/// then only narrows what they may take.</item>
 /// <item>Increases need a boundary, persistence_up_cycles agreeing boundaries, the guard's
 /// permission on every constraint, no open settling window there, fewer open increase windows
 /// than max_simultaneous_increases (DISP-04, DISP-08), valid dispatch inputs and fresh draws, and a
@@ -54,6 +57,7 @@ public sealed partial class DispatchEngine
             // A backward clock step: report times from before it are not comparable with what comes after.
             _foreign.Reset();
             _free.Reset();
+            _freeNet.Reset();
         }
 
         _lastNow = now;
@@ -64,7 +68,13 @@ public sealed partial class DispatchEngine
             _wishes = [];
             _states = [];
             _balance = null;
+            _economics = null;
+            _fallbackChanges = [];
+            ResetFallbackTracking();
+            _classes.Clear();
             _free.Reset();
+            _freeNet.Reset();
+            _valueOrder.Reset();
             foreach (var state in _devices.Values)
             {
                 state.ConfirmStreak = 0;
@@ -79,7 +89,11 @@ public sealed partial class DispatchEngine
         var ours = new Dictionary<Phase, Watts?>();
         var devicePowers = ImmutableArray.CreateBuilder<DevicePhasePower>();
         ObserveForeignLoad(input, setup, events, ours, devicePowers);
-        _balance = ObserveBalance(input, setup, ours, now);
+        var (exportSample, ownLoad) = OwnFlows(input, setup, ours);
+        _balance = ObserveBalance(input, setup, exportSample, ownLoad, now);
+        _ownLoad = ownLoad;
+        _netFree = ObserveNetFree(setup, exportSample, now);
+        _economics = ObserveEconomics(setup, now, input.Prices);
         _devicePowers = devicePowers.ToImmutable();
 
         var overridesChanged = input.Overrides.Version != _overrideVersion;
@@ -96,6 +110,16 @@ public sealed partial class DispatchEngine
             if (headroom.Count > 0)
             {
                 _ranking.Observe(PhaseRanking.Propose(headroom), setup.Timing.PhaseRankingStabilityCycles);
+            }
+
+            // The value order follows prices only where a device's value does; its adoption is the phase ranking's rule.
+            if (_economics is { Setup.OrderFollowsPrices: true } economics)
+            {
+                _valueOrder.Observe(economics.Keys(), economics.Setup.Parameters.OrderMinGapFraction, economics.Setup.Parameters.OrderStabilityCycles);
+            }
+            else
+            {
+                _valueOrder.Reset();
             }
         }
 
@@ -119,7 +143,7 @@ public sealed partial class DispatchEngine
             var rank = _ranking.Adopted.IndexOf(p);
             return new PhaseDispatchState(p, foreign, baseline, rank < 0 ? null : rank + 1) { Ours = ours.GetValueOrDefault(p) };
         });
-        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = _devicePowers, Balance = _balance };
+        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = _devicePowers, Balance = _balance, Economics = _economics?.ToView(), TariffFallback = _fallbackChanges };
     }
 
     /// <summary>Dispatch adds no deadline of its own: it acts at the guard's cycle boundaries.</summary>
@@ -152,6 +176,9 @@ public sealed partial class DispatchEngine
             _foreign.Reset();
         }
 
+        // A configuration change adopts the next value order at once (14-ECONOMICS).
+        _valueOrder.Reset();
+        _classes.Clear();
         _setup = setup;
     }
 
@@ -230,7 +257,7 @@ public sealed partial class DispatchEngine
     {
         var guard = input.Guard;
         var envelope = guard.Envelope;
-        var order = StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted);
+        var order = StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted, OrderKey());
         var plans = new List<Plan>();
         var openWindows = setup.Devices
             .Select(d => (Device: d, Window: input.Ledger.Entry(d.Id)?.Window))
@@ -349,9 +376,10 @@ public sealed partial class DispatchEngine
         var available = Available(envelope, plans, setup);
         var result = Run(plans, available, setup);
 
-        // The hourly balance decides whether energy is wanted; the guard's envelope and the allocation
-        // above only decide whether it is allowed, so the gate narrows what a device may take, never widens it.
-        if (_balance is { } balance && ApplyBalanceGate(plans, result, balance, _devicePowers, setup, input))
+        // The hourly balance and the economics (sources, price test) decide whether energy is wanted; the guard's
+        // envelope and the allocation above only decide whether it is allowed, so the gate narrows what a device
+        // may take, never widens it.
+        if (ApplyAllowanceGate(plans, result, _balance, _devicePowers, setup, input))
         {
             result = Run(plans, available, setup);
         }
@@ -458,7 +486,7 @@ public sealed partial class DispatchEngine
             }
             else if (change == DispatchChange.Increase)
             {
-                reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride : plan.BalanceGated ? ReasonCode.BalanceSurplus : ReasonCode.HeadroomAvailable;
+                reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride : plan.GrantReason ?? ReasonCode.HeadroomAvailable;
                 increased.Add(plan);
             }
             else
@@ -481,6 +509,7 @@ public sealed partial class DispatchEngine
                 pending = blocked;
             }
 
+            _economics?.Classes[plan.Device.Id] = plan.EnergyClass;
             var fresh = atBoundary || overrideChanged.Contains(plan.Device.Id);
             var blockedOverride = plan.Mode == OverrideMode.ForceOn && plan.BlockedBy is not null;
             wishes.Add(new DispatchWish(
@@ -491,7 +520,7 @@ public sealed partial class DispatchEngine
                 change,
                 blockedOverride ? plan.BlockedBy : null,
                 fresh,
-                Inputs(plan, allocation, guard, input, setup, now, _balance))
+                Inputs(plan, allocation, guard, input, setup, now, _balance, _economics?.Block(plan.Device.Id, plan.EnergyClass)))
             {
                 PendingLevel = blockedOverride ? DeviceLevels.Toward(spec, plan.Basis, plan.Levels[plan.CapIndex], setup.Timing.MaxStepChangeStages) : null,
             });
@@ -552,7 +581,7 @@ public sealed partial class DispatchEngine
         return Allocator.Allocate(request).Devices.ToDictionary(d => d.Device);
     }
 
-    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now, BalanceView? balance)
+    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now, BalanceView? balance, EconomicsDecisionInputs? economics)
     {
         var spec = plan.Device.Spec;
         var load = guard.Envelope.Device(spec.Id);
@@ -572,6 +601,7 @@ public sealed partial class DispatchEngine
             plan.Mode)
         {
             Balance = balance?.ToDecisionInputs(),
+            Economics = economics,
         };
     }
 
@@ -725,16 +755,19 @@ public sealed partial class DispatchEngine
         /// <summary>The active phase self-test runs on another device: no increase until it ends.</summary>
         public bool TestWaiting { get; set; }
 
-        /// <summary>The device declares start: headroom and the hourly balance decides whether it may start or rise.</summary>
-        public bool BalanceGated { get; set; }
+        /// <summary>Why the allowance gate permitted an increase (balance_surplus, surplus_available, zone_allowed); null where it did not judge the device, and then headroom_available.</summary>
+        public ReasonCode? GrantReason { get; set; }
 
-        /// <summary>The balance leaves the device room to rise; false withholds every increase this cycle.</summary>
+        /// <summary>The energy class that allows the device in this step (the surplus or the active zone); null when neither does or it is not judged.</summary>
+        public EnergyClass? EnergyClass { get; set; }
+
+        /// <summary>The allowance gate (balance or sources) leaves the device room to rise; false withholds every increase this cycle.</summary>
         public bool BalanceAllows { get; set; } = true;
 
-        /// <summary>Why the balance withheld an increase (balance_projection_low, balance_unknown).</summary>
+        /// <summary>Why the allowance gate withheld an increase (balance_projection_low, balance_unknown, source_not_allowed, value_below_cost, surplus_low).</summary>
         public ReasonCode? BalanceReason { get; set; }
 
-        /// <summary>The balance asked the device to come down one stage (balance_projection_low, balance_unknown).</summary>
+        /// <summary>The allowance gate asked the device to come down one stage (balance_projection_low, balance_unknown, value_below_cost, surplus_low).</summary>
         public ReasonCode? BalanceStop { get; set; }
     }
 }

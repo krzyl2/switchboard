@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { App } from './App';
 import { elapsedOfDay, selfConsumption } from './DecisionLog';
 import decisionsSample from './api/decisions.sample.json';
+import economicsSample from './api/economics.sample.json';
 import signalsSample from './api/signals.sample.json';
 import statisticsSample from './api/statistics.sample.json';
 import { parseStatistics } from './api/statistics';
@@ -35,6 +36,7 @@ function history(page: typeof decisionsSample, extra: Record<string, unknown> = 
 }
 
 function serve({
+  economics = () => respond({}, 404),
   decisions = () => respond(history(copy(decisionsSample))),
   signals = () => respond(copy(signalsSample, (p) => Object.assign(p, { generatedAt: '2026-10-24T10:00:05.000+00:00', snapshotAt: '2026-10-24T09:59:51.449+00:00' }))),
   statistics = (asked: URLSearchParams) =>
@@ -44,11 +46,12 @@ function serve({
         else p.range = null;
       }),
     ),
-}: { decisions?: (asked: URLSearchParams) => Promise<Response>; signals?: () => Promise<Response>; statistics?: (asked: URLSearchParams) => Promise<Response> } = {}) {
+}: { economics?: () => Promise<Response>; decisions?: (asked: URLSearchParams) => Promise<Response>; signals?: () => Promise<Response>; statistics?: (asked: URLSearchParams) => Promise<Response> } = {}) {
   fetchMock.mockImplementation((input) => {
     const url = String(input).split('?')[0];
     if (url === 'api/decisions/history') return decisions(query(input));
     if (url === 'api/signals') return signals();
+    if (url === 'api/economics') return economics();
     if (url === 'api/statistics') return statistics(query(input));
     return respond({}, 404);
   });
@@ -116,9 +119,9 @@ describe('decision log', () => {
     serve();
     await open();
 
-    // Besides the shell's mode banner (api/mode, on every page: Shell.test).
+    // Besides the shell's mode banner (api/mode, on every page: Shell.test). api/economics is the daily summary's savings.
     const urls = fetchMock.mock.calls.map(([input]) => String(input).split('?')[0]).filter((url) => url !== 'api/mode');
-    expect(new Set(urls)).toEqual(new Set(['api/decisions/history', 'api/signals', 'api/statistics']));
+    expect(new Set(urls)).toEqual(new Set(['api/decisions/history', 'api/economics', 'api/signals', 'api/statistics']));
     const day = localDay(STATISTICS_AT);
     const ranged = fetchMock.mock.calls.map(([input]) => query(input)).find((q) => q.has('from'))!;
     expect([ranged.get('from'), ranged.get('to')]).toEqual([day.from.toISOString(), day.to.toISOString()]);
@@ -302,7 +305,7 @@ describe('daily summary', () => {
     expect(within(summary).getByText('Breaker trips', { selector: 'dt' })).toBeTruthy();
     expect(metric('breaker-trips').textContent).toBe('—');
     expect(within(summary).getByRole('alert').textContent).toContain('Unavailable');
-    expect(metric('savings').textContent).toBe('not available — savings need a tariff, which arrives in v2');
+    expect(metric('savings').textContent).toBe('not available — savings need a tariff, which arrives in v2' + 'Add an economics: section to switchboard.yaml to enable them.');
   });
 
   it('shows energy per device, self-consumption, sheds and the value delivered from the day’s sums', async () => {
@@ -316,7 +319,7 @@ describe('daily summary', () => {
     expect(within(card('Daily summary')).getByText('Energy: Ładowarka go-e', { selector: 'dt' })).toBeTruthy();
     expect(metric('sheds').textContent).toBe('0would-sheds recorded in shadow mode, nothing switched: 1');
     expect(metric('value').textContent).toBe('1.25at each device’s value_per_kwh, without a currency in this version');
-    expect(metric('savings').textContent).toBe('not available — savings need a tariff, which arrives in v2');
+    expect(metric('savings').textContent).toBe('not available — savings need a tariff, which arrives in v2' + 'Add an economics: section to switchboard.yaml to enable them.');
   });
 
   it('splits a device’s energy into measured and rated estimates, and names unknown time', async () => {
@@ -398,5 +401,52 @@ describe('decision log in Polish', () => {
     expect(metric('breaker-trips').textContent).toContain('możliwe zadziałania:');
     expect(metric('supply-outages').textContent).toContain('awaria sieci albo zadziałanie bezpiecznika wielobiegunowego, których nie da się odróżnić');
     expect(within(screen.getByRole('navigation')).getByText('Dziennik decyzji').getAttribute('aria-current')).toBe('page');
+  });
+});
+
+// ECO-12: the daily summary's savings replace "needs a tariff" only when an economics section yields
+// them; otherwise the old words stay, with the hint to add the section.
+describe('daily summary: savings (ECO-12)', () => {
+  it('keeps the old text and adds the hint while the add-on has no economics section', async () => {
+    serve({ economics: () => respond(copy(economicsSample, (p) => Object.assign(p, { configured: false, currency: null, tariff: null, settlement: null, devices: [], savings: null }))) });
+    await open();
+
+    expect(metric('savings').textContent).toBe('not available — savings need a tariff, which arrives in v2Add an economics: section to switchboard.yaml to enable them.');
+  });
+
+  it('keeps the old text when the economics answer cannot be read', async () => {
+    serve({ economics: () => respond({}, 500) });
+    await open();
+
+    expect(metric('savings').textContent).toContain('not available — savings need a tariff');
+  });
+
+  it('shows today’s savings with the currency label of the data, what it is measured against and since when', async () => {
+    serve({ economics: () => respond(copy(economicsSample)) });
+    await open();
+
+    const savings = metric('savings');
+    expect(savings.querySelector('[data-savings="today"]')?.textContent).toBe('2.82 EUR');
+    expect(savings.textContent).toContain('against the controlled loads being off');
+    expect(savings.textContent).toContain('since 10/26 10:00');
+    expect(savings.textContent).not.toContain('not available');
+    expect(savings.textContent).not.toMatch(/zł|PLN|[€$£]/);
+  });
+
+  it('puts the value delivered in the same currency label once the savings are real', async () => {
+    serve({ economics: () => respond(copy(economicsSample, (p) => Object.assign(p, { currency: 'kr', savings: { ...p.savings, currency: 'kr' } }))) });
+    await open();
+
+    expect(metric('value').textContent).toBe('1.25 kr' + 'at each device’s value per kWh at the time, in the currency label of the configuration; the savings below take the settlement into account');
+    expect(metric('savings').textContent).toContain('2.82 kr');
+  });
+
+  it('flags a total counted partly at the fallback price, and says it in Polish', async () => {
+    serve({ economics: () => respond(copy(economicsSample, (p) => Object.assign(p.savings.today, { fallback: true, fallbackPeriods: 1 }))) });
+    await open('pl');
+
+    expect(metric('savings').querySelector('[data-savings="fallback"]')?.textContent).toContain('cenie zapasowej');
+    expect(metric('savings').querySelector('[data-savings="today"]')?.textContent).toBe('2,82 EUR');
+    expect(metric('savings').textContent).toContain('względem wyłączonych sterowanych odbiorników');
   });
 });

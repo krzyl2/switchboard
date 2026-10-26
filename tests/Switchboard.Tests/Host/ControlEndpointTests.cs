@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Switchboard.Application.State;
 using Switchboard.Host.Hosting;
 using Switchboard.Tests.Support;
 
@@ -36,18 +37,22 @@ public sealed class ControlEndpointTests
         using var root = new TempWebRoot();
         using var factory = WithGuard(root, active: true);
         _ = factory.Server;
+        var coordinator = factory.Services.GetRequiredService<RuntimeStateCoordinator>();
 
+        // Subscribed before each change: the writer may finish before the request returns.
+        using var allowedSaved = new SaveWatch(coordinator, allowed: true);
         var allowed = await Send(factory, "POST", "/api/control", "application/json", """{"allowed":true}""");
 
         Assert.Equal(StatusCodes.Status200OK, allowed.Response.StatusCode);
         var body = Json(allowed);
         Assert.Equal((true, "api"), (body.GetProperty("controlAllowed").GetBoolean(), body.GetProperty("source").GetString()));
         Assert.Equal("active", body.GetProperty("mode").GetProperty("ceiling").GetString());
-        await StateShowsAsync(root, allowed: true);
+        await StateShowsAsync(root, allowedSaved, allowed: true);
 
+        using var offSaved = new SaveWatch(coordinator, allowed: false);
         var off = Json(await Send(factory, "POST", "/api/control", "application/json", """{"allowed":false}"""));
         Assert.False(off.GetProperty("controlAllowed").GetBoolean());
-        await StateShowsAsync(root, allowed: false);
+        await StateShowsAsync(root, offSaved, allowed: false);
     }
 
     [Theory]
@@ -127,43 +132,61 @@ public sealed class ControlEndpointTests
     }
 
     /// <summary>
-    /// The writer saves a control change without waiting for the save interval, on its own thread:
-    /// waits (hang-guarded) until state.json shows the switch.
+    /// The writer saves a control change without waiting for the save interval, on its own thread.
+    /// The save is awaited as an event (<see cref="RuntimeStateCoordinator.Saved"/>, hang-guarded),
+    /// not by polling the file: a reader opening state.json while the writer replaces it made the
+    /// writer's atomic replace fail on Windows, and its retry comes only after WriteRetryInterval,
+    /// which is longer than any polling bound (the flaky failure of 0.7.0 to 0.9.0). Once the save is
+    /// reported, the file is read exactly once.
     /// </summary>
-    private static async Task StateShowsAsync(TempWebRoot root, bool allowed)
+    private static async Task StateShowsAsync(TempWebRoot root, SaveWatch saved, bool allowed)
     {
+        await saved.Saved.Soon();
+
         var path = Path.Combine(root.Path, "data", "state.json");
-        for (var tries = 0; ; tries++)
+        for (var attempt = 0; ; attempt++)
         {
-            string? text = null;
             try
             {
-                // Shared for writing and deletion: a reader holding FileShare.Read makes the writer's
-                // atomic replace (File.Move over it) fail on Windows, and its retry comes only after
-                // WriteRetryInterval, longer than this wait (flaky in 0.7.0).
-                if (File.Exists(path))
-                {
-                    await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
-                    using var reader = new StreamReader(stream);
-                    text = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
-                }
+                // Shared for writing and deletion, so a later write of the same state is never held up.
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                using var reader = new StreamReader(stream);
+                using var state = JsonDocument.Parse(await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+                Assert.Equal(allowed, state.RootElement.GetProperty("control").GetProperty("allowed").GetBoolean());
+                return;
             }
-            catch (IOException)
+            catch (IOException) when (attempt < 100)
             {
-                // The writer is replacing the file right now (atomic rename): read it again.
+                // A later save is replacing the file right now (atomic rename): read it again at once.
+                await Task.Yield();
             }
+        }
+    }
 
-            if (text is not null)
+    /// <summary>Completes when a state with the control switch at <c>allowed</c> was written; subscribe before the change is made.</summary>
+    private sealed class SaveWatch : IDisposable
+    {
+        private readonly RuntimeStateCoordinator _state;
+        private readonly bool _allowed;
+        private readonly TaskCompletionSource _saved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public SaveWatch(RuntimeStateCoordinator state, bool allowed)
+        {
+            _state = state;
+            _allowed = allowed;
+            _state.Saved += OnSaved;
+        }
+
+        public Task Saved => _saved.Task;
+
+        public void Dispose() => _state.Saved -= OnSaved;
+
+        private void OnSaved(object? sender, RuntimeState written)
+        {
+            if (written.Control.Allowed == _allowed)
             {
-                using var state = JsonDocument.Parse(text);
-                if (state.RootElement.GetProperty("control").GetProperty("allowed").GetBoolean() == allowed)
-                {
-                    return;
-                }
+                _saved.TrySetResult();
             }
-
-            Assert.True(tries < 500, $"state.json never showed control allowed = {allowed}.");
-            await Task.Delay(TimeSpan.FromMilliseconds(10), TimeProvider.System, TestContext.Current.CancellationToken);
         }
     }
 

@@ -1,0 +1,46 @@
+# Snippet, not a complete file: a tariff whose price follows a Home Assistant entity (a market price: day-ahead, hourly, 15-minute).
+# Add the entry below under your existing `signals:` and replace the `economics:` block (or only its `tariff:` / `export_price:`).
+#
+# The add-on never fetches a price and has no outbound access: the price arrives only from a Home Assistant entity you map as a signal
+# (kind: price). Install and trust the integration yourself; Switchboard reads the entity like any other signal.
+#
+# VERIFY BEFORE YOU TRUST IT: the entity id, its unit (see its attributes in Home Assistant), the fallback price and the distribution zones
+# are PLACEHOLDERS. The unit must be exactly `<currency>/kWh` or `<currency>/MWh` with the currency written as in economics.currency;
+# a per-MWh price is converted to per kWh by the signal layer. A price in another currency, a missing unit or a unit that differs from what the
+# entity reports is not used (the signal is shown as rejected in the diagnostics).
+#
+# How the price is made: price = the entity's value + `add` (a static spec, usually the distribution zones) while the entity is fresh
+# (reported within `max_age`). While it is stale, unavailable, unknown or in the wrong unit the `fallback` (static, REQUIRED) is the price,
+# never the last known value; the decision log then says `price_basis: fallback` and the add-on log says `tariff_fallback` once on entering
+# and once on leaving it. A price that comes out negative is not used either (the fallback stands in).
+# GET api/economics shows the live price now, its basis, the signal's age and whether the fallback is in force.
+
+signals:
+  market_price:
+    entity: sensor.energy_market_price   # placeholder: your market price entity
+    kind: price
+    unit: PLN/MWh                        # <currency>/MWh or <currency>/kWh, the currency as in economics.currency
+    max_age: 90m                         # an hourly price that is still repeated is kept fresh by Home Assistant's last_reported
+    role: price_import                   # optional label for the diagnostics; a role that no price names is warned about
+
+economics:
+  currency: PLN
+  holidays: [2026-11-01, 2026-11-11, 2026-12-24, 2026-12-25, 2026-12-26]
+  tariff:
+    signal: market_price
+    fallback: 0.90                       # placeholder: what a kWh costs while the entity is not usable; a number or zones
+    add:                                 # placeholder: the distribution charge, added to the market price while it is live
+      default_zone: offpeak
+      zones:
+        - id: peak
+          price: 0.45
+          when:
+            - { days: [workday], hours: ["07:00-13:00", "16:00-21:00"] }
+        - id: offpeak
+          price: 0.10
+          when: []
+  settlement:
+    model: hourly_netting
+    export_price: 0.35                   # static, as in the G13 example; it may also follow an entity: { signal: <price signal>, fallback: 0.30 }
+
+# A zone of `add` (or of the fallback) is a source a device may name: `sources: pv_and_zone:offpeak`.

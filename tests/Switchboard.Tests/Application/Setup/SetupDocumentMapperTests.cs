@@ -444,4 +444,105 @@ public sealed class SetupDocumentMapperTests
         var fields = result.Errors.Select(e => SetupService.FromParser(e, mapped.Fields, IssueSeverity.Error).Field).ToList();
         Assert.Contains("meter.phases.L2.power.unit", fields);
     }
+
+    private static readonly string G13Snippet = File.ReadAllText(RepoPaths.Combine("deploy", "examples", "economics-g13.yaml"));
+
+    private static ConfigNode Section(ConfigNode root, string key) => ((ConfigMapping)root).Find(key)!.Value;
+
+    [Fact]
+    public void Economics_section_survives_a_wizard_save_unchanged_and_the_file_still_parses()
+    {
+        // ECO-02: the wizard has no economics step, so a save that dropped or rewrote the section would silently
+        // end the user's tariff the first time they touched a device.
+        var yaml = Rich.TrimEnd() + "\n\n" + G13Snippet;
+        var before = SetupFixtures.Tree(yaml);
+        var load = SetupDocumentMapper.Read(before);
+        Assert.Contains(load.Preserved, p => p.Path == "economics");
+
+        var draft = load.Draft with { Devices = [.. load.Draft.Devices.Select(d => d.Id == "ev_charger" ? d with { Name = "Garage charger" } : d)] };
+        var (text, result, _) = SetupFixtures.Apply(yaml, draft);
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        Assert.Equal(SetupFixtures.Canon(Section(before, "economics")), SetupFixtures.Canon(Section(SetupFixtures.Tree(text), "economics")));
+        Assert.Equal("PLN", result.Configuration!.Economics!.Currency);
+        Assert.Equal("Garage charger", result.Configuration.Devices.Single(d => d.Id.Value == "ev_charger").Name);
+    }
+
+    [Fact]
+    public void A_save_on_a_file_without_economics_does_not_invent_one()
+    {
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(Rich));
+
+        var (text, result, _) = SetupFixtures.Apply(Rich, load.Draft);
+
+        Assert.DoesNotContain("economics", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Economics);
+    }
+
+    [Fact]
+    public void Economics_is_removed_only_when_the_user_confirms_dropping_it()
+    {
+        var yaml = Rich.TrimEnd() + "\n\n" + G13Snippet;
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml));
+
+        var (text, result, _) = SetupFixtures.Apply(yaml, load.Draft with { DropPreserved = ["economics"] });
+
+        Assert.DoesNotContain("economics", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Economics);
+    }
+
+    [Fact]
+    public void Device_keys_the_wizard_does_not_know_survive_a_save()
+    {
+        // Slice 2 adds value_follows, value_factor and sources to a device. The wizard patches the parsed tree and keeps
+        // every key it does not own, so they must still be there after a save; checked on the tree because the runtime
+        // parser of this version does not read the first two yet.
+        var yaml = Rich.Replace(
+            "    value_per_kwh: 0.35\n",
+            "    value_per_kwh: 0.35\n    value_follows: import_price\n    value_factor: 3.2\n    sources: pv_only\n",
+            StringComparison.Ordinal);
+        Assert.Contains("value_follows: import_price", yaml, StringComparison.Ordinal);
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml));
+        var draft = load.Draft with { Devices = [.. load.Draft.Devices.Select(d => d.Id == "ev_charger" ? d with { Name = "Garage charger" } : d)] };
+
+        var mapped = SetupDocumentMapper.Apply(SetupFixtures.Tree(yaml), draft);
+
+        var devices = (ConfigSequence)Section(mapped.Root, "devices");
+        var withKeys = devices.Items.OfType<ConfigMapping>().Where(d => d.Find("value_follows") is not null).ToList();
+        Assert.Equal(Rich.Split("    value_per_kwh: 0.35\n").Length - 1, withKeys.Count);
+        Assert.All(withKeys, d =>
+        {
+            Assert.Equal("import_price", ((ConfigScalar)d.Find("value_follows")!.Value).Value);
+            Assert.Equal("3.2", ((ConfigScalar)d.Find("value_factor")!.Value).Value);
+            Assert.Equal("pv_only", ((ConfigScalar)d.Find("sources")!.Value).Value);
+        });
+    }
+
+    [Fact]
+    public void A_price_signal_and_a_dynamic_economics_section_survive_a_wizard_save_and_still_parse()
+    {
+        // ECO-10 with ECO-02: the wizard has no price step. A save that dropped the price signal or rewrote the dynamic spec would turn the user's
+        // live price into its fallback (or invalidate the file) the first time they touched a device.
+        var dynamic = File.ReadAllText(RepoPaths.Combine("deploy", "examples", "economics-dynamic.yaml")).ReplaceLineEndings("\n");
+        var signal = dynamic[(dynamic.IndexOf("\nsignals:\n", StringComparison.Ordinal) + "\nsignals:\n".Length)..dynamic.IndexOf("\neconomics:\n", StringComparison.Ordinal)].TrimEnd() + "\n";
+        var economics = dynamic[dynamic.IndexOf("\neconomics:\n", StringComparison.Ordinal)..];
+        var yaml = Rich.Replace("\nsignals:\n", "\nsignals:\n" + signal, StringComparison.Ordinal).TrimEnd() + "\n" + economics;
+        var before = SetupFixtures.Tree(yaml);
+        var load = SetupDocumentMapper.Read(before);
+        Assert.Contains(load.Preserved, p => p.Path == "economics");
+        Assert.Contains(load.Preserved, p => p.Path == "signals.market_price");
+
+        var draft = load.Draft with { Devices = [.. load.Draft.Devices.Select(d => d.Id == "ev_charger" ? d with { Name = "Garage charger" } : d)] };
+        var (text, result, _) = SetupFixtures.Apply(yaml, draft);
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        var after = SetupFixtures.Tree(text);
+        Assert.Equal(SetupFixtures.Canon(Section(before, "economics")), SetupFixtures.Canon(Section(after, "economics")));
+        Assert.Equal(
+            SetupFixtures.Canon(((ConfigMapping)Section(before, "signals")).Find("market_price")!.Value),
+            SetupFixtures.Canon(((ConfigMapping)Section(after, "signals")).Find("market_price")!.Value));
+        Assert.IsType<Switchboard.Domain.Economics.DynamicPrice>(result.Configuration!.Economics!.Tariff);
+        Assert.Equal("PLN", result.Configuration.Signals.Single(s => s.Name.Value == "market_price").PriceCurrency);
+        Assert.DoesNotContain(result.Warnings, w => w.Code is ConfigurationIssueCodes.UnitMismatch or ConfigurationIssueCodes.PriceSignalUnused);
+    }
 }

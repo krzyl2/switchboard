@@ -63,7 +63,8 @@ public sealed class StatisticsFileTests : IDisposable
     public static TheoryData<string, Func<JsonNode, JsonNode>> Corruptions() => new()
     {
         { "bad JSON", _ => JsonValue.Create("{not json")! },
-        { "another schema", n => Set(n, d => d["schema_version"] = 2) },
+        { "a schema newer than this build knows", n => Set(n, d => d["schema_version"] = 3) },
+        { "schema 0", n => Set(n, d => d["schema_version"] = 0) },
         { "another bucket length", n => Set(n, d => d["bucket_minutes"] = 15) },
         { "a misaligned bucket", n => Set(n, d => d["buckets"]![1]!["start"] = "2026-10-24T12:07:00.0000000Z") },
         { "buckets out of order", n => Set(n, d => d["buckets"]![1]!["start"] = "2026-10-24T11:55:00.0000000Z") },

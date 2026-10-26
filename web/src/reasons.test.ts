@@ -20,7 +20,7 @@ function decision(index: number, change?: (d: any) => void): Decision {
 // 04-ALGORITHMS §6: the UI renders a human sentence per reason code. A missing or shared sentence
 // would make two different reasons read the same in the log, or show a blank reason.
 describe('reason sentences', () => {
-  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 4', (_lang, t) => {
+  it.each(Object.entries(messages))('%s has a sentence of its own for every code of list version 6', (_lang, t) => {
     const sentences = REASON_CODES.map((code) => reasonSentence(t, code));
 
     expect(sentences.every((s) => typeof s === 'string' && s.trim().length > 0)).toBe(true);
@@ -283,6 +283,30 @@ describe('describeDecision, control stage', () => {
     }
     const deferred = describeDecision(decision(SWITCH_ON, (d) => Object.assign(d, { commanded: false, refusedBy: 'change_limit' })), messages.en, 'en');
     expect(deferred.command).toBe(`${messages.en.notCommanded}: ${messages.en['reason.change_limit']}`);
+  });
+
+  // List version 5: the three codes that replaced the nearest older ones, in both languages.
+  it('words the command codes of list version 5 apart from the codes older versions used', () => {
+    for (const t of [messages.en, messages.pl]) {
+      expect(reasonSentence(t, 'command_failed')).not.toBe(reasonSentence(t, 'device_unresponsive'));
+      expect(reasonSentence(t, 'command_not_sent')).not.toBe(reasonSentence(t, 'safe_state'));
+      expect(reasonSentence(t, 'mode_active')).not.toBe(reasonSentence(t, 'manual_override'));
+    }
+    const failed = describeDecision(decision(SWITCH_ON, (d) => Object.assign(d, { commanded: false, refusedBy: 'command_failed' })), messages.en, 'en');
+    expect(failed.command).toBe(`${messages.en.notCommanded}: ${messages.en['reason.command_failed']}`);
+  });
+
+  // List version 6: the economic codes say which energy a device may take, apart from the headroom codes older versions used.
+  it('words the economic codes of list version 6 apart from the codes older versions used, in both languages', () => {
+    for (const t of [messages.en, messages.pl]) {
+      expect(reasonSentence(t, 'zone_allowed')).not.toBe(reasonSentence(t, 'headroom_available'));
+      expect(reasonSentence(t, 'surplus_available')).not.toBe(reasonSentence(t, 'headroom_available'));
+      expect(reasonSentence(t, 'source_not_allowed')).not.toBe(reasonSentence(t, 'headroom_insufficient'));
+      expect(reasonSentence(t, 'value_below_cost')).not.toBe(reasonSentence(t, 'headroom_insufficient'));
+      expect(reasonSentence(t, 'surplus_low')).not.toBe(reasonSentence(t, 'balance_projection_low'));
+    }
+    const refused = describeDecision(decision(SWITCH_ON, (d) => Object.assign(d, { commanded: false, refusedBy: 'source_not_allowed' })), messages.en, 'en');
+    expect(refused.command).toBe(`${messages.en.notCommanded}: ${messages.en['reason.source_not_allowed']}`);
   });
 
   it('says a kill switch held after an untrusted state.json is held until confirmed', () => {

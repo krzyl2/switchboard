@@ -5,7 +5,7 @@ import { fill, type Lang, type Messages } from './i18n';
 // Human sentences for decisions (04-ALGORITHMS §6: the UI renders a sentence per reason code). Kept
 // apart from the page so the full decision log (Stage 4) words every decision the same way.
 
-/** The sentence for a reason code; every code of list version 4 has one in each language. */
+/** The sentence for a reason code; every code of list version 6 has one in each language. */
 export function reasonSentence(t: Messages, code: ReasonCode): string {
   return t[`reason.${code}`];
 }

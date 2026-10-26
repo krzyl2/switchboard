@@ -27,7 +27,7 @@ public static class SwitchboardDocumentParser
     private static readonly Range BreakerRatingRange = new(1, 250);
     private static readonly Range VoltageRange = new(100, 300);
 
-    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey];
+    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero"];
 
@@ -45,7 +45,8 @@ public static class SwitchboardDocumentParser
         ("voltage", SignalKind.Voltage),
         ("energy_counter", SignalKind.EnergyCounter),
         ("state", SignalKind.State),
-        ("percentage", SignalKind.Percentage));
+        ("percentage", SignalKind.Percentage),
+        ("price", SignalKind.Price));
 
     private static readonly ImmutableDictionary<string, SignConvention> Signs = Choices(
         ("positive_import", SignConvention.PositiveImport),
@@ -61,7 +62,9 @@ public static class SwitchboardDocumentParser
         ("total_current", SignalRole.TotalCurrent),
         ("total_power", SignalRole.TotalPower),
         ("energy_export", SignalRole.EnergyExport),
-        ("energy_import", SignalRole.EnergyImport));
+        ("energy_import", SignalRole.EnergyImport),
+        ("price_import", SignalRole.PriceImport),
+        ("price_export", SignalRole.PriceExport));
 
     /// <param name="document">The user's document, or null for an empty file.</param>
     /// <param name="defaults">The embedded control defaults; <c>control:</c> overrides them key by key.</param>
@@ -101,6 +104,8 @@ public static class SwitchboardDocumentParser
         }
 
         var (groups, groupSignals) = CircuitGroupSectionParser.Read(root, connection, control, issues);
+        var economics = EconomicsSectionParser.Read(root, loadedAt, userSignals, issues);
+        userSignals = EconomicsSectionParser.BindPriceSignals(root, userSignals, economics, issues);
         var (devices, deviceSignals) = DeviceSectionParser.Read(
             root,
             connection,
@@ -108,13 +113,14 @@ public static class SwitchboardDocumentParser
             signalEntities,
             groups.ToDictionary(g => g.Id),
             DeviceSectionParser.DeclaredGroupIds(root),
+            economics,
             issues);
         groups = [.. groups.Select(g => g with { Members = [.. devices.Where(d => d.CircuitGroup == g.Id).Select(d => d.Id)] })];
         var signals = userSignals.AddRange(groupSignals).AddRange(deviceSignals);
 
         var configuration = issues.HasErrors || connection is null || control is null
             ? null
-            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups };
+            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups, Economics = economics };
         return Finish(configuration, issues, path, loadedAt);
     }
 
@@ -374,9 +380,9 @@ public static class SwitchboardDocumentParser
         double? sigma = null;
         if (ConfigRead.Optional(mapping, "sigma") is { } sigmaNode)
         {
-            if (kind == SignalKind.State)
+            if (kind is SignalKind.State or SignalKind.Price)
             {
-                issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, "sigma"), sigmaNode, "A state signal has no measurement noise; remove sigma.");
+                issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, "sigma"), sigmaNode, $"A {KindName(kind.Value)} signal has no measurement noise; remove sigma.");
             }
             else if (ConfigRead.Number(sigmaNode, ConfigRead.Join(path, "sigma"), issues, Range.AtLeast(0)) is { } raw && unit is not null)
             {
@@ -430,6 +436,11 @@ public static class SwitchboardDocumentParser
     private static string? ReadUnit(ConfigMapping mapping, SignalKind kind, string path, ConfigIssues issues)
     {
         var unitPath = ConfigRead.Join(path, "unit");
+        if (kind == SignalKind.Price)
+        {
+            return ReadPriceUnit(mapping, path, unitPath, issues);
+        }
+
         var allowed = SignalUnits.AllowedFor(kind);
         if (allowed.IsEmpty)
         {
@@ -449,6 +460,23 @@ public static class SwitchboardDocumentParser
         if (!allowed.Contains(unit))
         {
             issues.Error(ConfigurationIssueCodes.UnitNotAllowedForKind, unitPath, node, $"'{unit}' is not a unit for a {KindName(kind)} signal; use one of: {string.Join(", ", allowed)}.");
+            return null;
+        }
+
+        return unit;
+    }
+
+    /// <summary>A price unit is <c>&lt;label&gt;/kWh</c> or <c>&lt;label&gt;/MWh</c>; that the label equals economics.currency is checked once the economics section is read.</summary>
+    private static string? ReadPriceUnit(ConfigMapping mapping, string path, string unitPath, ConfigIssues issues)
+    {
+        if (ConfigRead.Required(mapping, "unit", path, issues) is not { } node || ConfigRead.String(node, unitPath, issues) is not { } unit)
+        {
+            return null;
+        }
+
+        if (!SignalUnits.TryParsePrice(unit, out _, out _))
+        {
+            issues.Error(ConfigurationIssueCodes.UnitNotAllowedForKind, unitPath, node, $"'{unit}' is not a unit for a price signal; write <currency>/kWh or <currency>/MWh, the currency as in economics.currency.");
             return null;
         }
 
@@ -485,6 +513,7 @@ public static class SwitchboardDocumentParser
             SignalRole.PhaseCurrent or SignalRole.InverterPhaseCurrent or SignalRole.TotalCurrent => SignalKind.Current,
             SignalRole.PhasePower or SignalRole.InverterPower or SignalRole.TotalPower => SignalKind.Power,
             SignalRole.EnergyExport or SignalRole.EnergyImport => SignalKind.EnergyCounter,
+            SignalRole.PriceImport or SignalRole.PriceExport => SignalKind.Price,
             _ => SignalKind.Voltage,
         };
         if (kind is { } actual && actual != expected)

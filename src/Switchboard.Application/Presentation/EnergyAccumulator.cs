@@ -7,6 +7,7 @@ using Switchboard.Application.Signals;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -256,9 +257,14 @@ public sealed class EnergyAccumulator
             }
         }
 
+        // The prices dispatch used in this step (sample-and-hold, like every figure here): the effective value of a device and the two prices. Without an
+        // economics section there is no view and the value is the static one, as before.
+        var economics = held.Status?.Economics;
+        var controlled = 0.0;
         foreach (var device in view.Devices)
         {
-            var value = held.Setup?.Device(device.Device)?.Spec.ValuePerKwh ?? 0;
+            var value = economics?.Devices.FirstOrDefault(d => d.Device == device.Device)?.VEff.PerKwh
+                ?? held.Setup?.Device(device.Device)?.Spec.ValuePerKwh ?? 0;
             DeviceEnergy energy;
             if (device.Total is null)
             {
@@ -272,13 +278,28 @@ public sealed class EnergyAccumulator
                 var measuredKwh = kwh(Math.Max(0, measured));
                 var modelKwh = kwh(Math.Max(0, model));
                 energy = new DeviceEnergy(measuredKwh, modelKwh, TimeSpan.Zero, kwh(pvByDevice.GetValueOrDefault(device.Device)), (measuredKwh + modelKwh).Value * value);
+                controlled += (measuredKwh + modelKwh).Value;
             }
 
             devices = devices.SetItem(device.Device, devices.GetValueOrDefault(device.Device, DeviceEnergy.Zero).Add(energy));
         }
 
+        var prices = bucket.Prices;
+        if (economics is not null)
+        {
+            // What the controlled loads took while the house imported would have been imported less with them off; the rest exported
+            // (14-ECONOMICS, Savings; only net billing prices the two apart, but the split is the same fact for every model).
+            var offset = new KilowattHours(Math.Min(controlled, kwh(Math.Max(0, net)).Value));
+            var current = prices ?? BucketPrices.Empty;
+            prices = new BucketPrices(
+                economics.Import is { } importPrice ? current.Import.Held(importPrice, duration) : current.Import,
+                economics.Export is { } exportPrice ? current.Export.Held(exportPrice, duration) : current.Export,
+                current.ControlledOffsettingImport + offset);
+        }
+
         return bucket with
         {
+            Prices = prices,
             Observed = bucket.Observed + duration,
             GridImport = bucket.GridImport + kwh(Math.Max(0, net)),
             GridExport = bucket.GridExport + kwh(export),

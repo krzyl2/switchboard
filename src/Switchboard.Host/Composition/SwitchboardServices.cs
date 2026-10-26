@@ -162,6 +162,7 @@ public static class SwitchboardServices
         services.AddSingleton<IActuatorDirectory>(sp => sp.GetRequiredService<ActuatorDirectoryHolder>());
         services.AddSingleton<HomeAssistantCallServiceChannel>();
         services.AddSingleton(sp => DevPlant(sp));
+        services.AddSingleton<IOwnEntityCheck>(sp => new OwnMqttEntities(sp.GetRequiredService<IDiscoveryLedger>()));
         services.AddSingleton<ICallServiceChannel>(sp =>
         {
             // Resolved first, whatever the source: a development plant set as an add-on stops the start.
@@ -178,7 +179,8 @@ public static class SwitchboardServices
             sp.GetRequiredService<IOptions<HomeAssistantOptions>>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<HomeAssistantDeviceCommandPort>>(),
-            sp.GetRequiredService<ControlSwitchState>()));
+            sp.GetRequiredService<ControlSwitchState>(),
+            sp.GetRequiredService<IOwnEntityCheck>()));
         services.AddSingleton<ICommandPathStatus>(sp => sp.GetRequiredService<HomeAssistantDeviceCommandPort>());
         services.AddSingleton(sp => new EffectorSettings(sp.GetRequiredService<IOptions<GuardOptions>>().Value.DeviceHistoryLength));
         services.AddSingleton(sp => new EffectorGate(

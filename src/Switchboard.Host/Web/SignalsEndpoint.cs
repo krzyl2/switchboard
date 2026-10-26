@@ -169,7 +169,7 @@ internal static class SignalsEndpoint
                 StateValue state => state.State,
                 var value => SignalNormalizer.Magnitude(value),
             },
-            reading.Value is null or StateValue ? null : InternalUnit(reading.Kind),
+            reading.Value is null or StateValue ? null : reading.Kind == SignalKind.Price ? PriceUnit(diagnostics) : InternalUnit(reading.Kind),
             reading.RawState is { } raw ? new RawDto(raw, reading.RawUnit) : null,
             reading.LastReported,
             reading.LastReported is { } reported ? Math.Round((now - reported).TotalSeconds, 3) : null,
@@ -183,6 +183,10 @@ internal static class SignalsEndpoint
             reading.Dependents.IsDefault ? [] : [.. reading.Dependents.Select(d => d.Value)]);
 
     private static IssueDto Issue(ConfigurationIssue issue) => new(issue.Code, issue.Path, issue.Line, issue.Column, issue.Message);
+
+    /// <summary>A price travels in currency per kWh, the currency being the label of <c>economics.currency</c> (the add-on writes no symbol of its own).</summary>
+    private static string? PriceUnit(SignalDiagnostics diagnostics) =>
+        diagnostics.Configuration?.Configuration?.Economics?.Currency is { } currency ? $"{currency}/kWh" : null;
 
     private static string? InternalUnit(SignalKind kind) => kind switch
     {

@@ -46,6 +46,7 @@ internal static class WebPipeline
         app.MapSetupApi();
         app.MapModeApi();
         app.MapBalanceApi();
+        app.MapEconomicsApi();
         app.MapControlApi();
         app.MapDecisionHistoryApi();
 

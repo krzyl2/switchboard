@@ -12,6 +12,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -26,10 +27,14 @@ namespace Switchboard.Infrastructure.Persistence;
 /// Format 2 (Stage 3) adds <c>origin</c>, <c>group</c> and <c>target</c> on every line and the
 /// dispatch inputs; lines of format 1 (0.3.x, kept for the retention period) still read, without them.
 /// Reason-code list version 3 (0.7.0) only appended codes, so lines of version 2 still read; a
-/// version 2 line carrying a version 3 code is not a decision. 0.7.0 adds, inside the same format,
+/// version 2 line carrying a version 3 code is not a decision; the same holds for the codes of versions 4
+/// (balance), 5 (mode_active, command_failed, command_not_sent) and 6 (zone_allowed, source_not_allowed,
+/// value_below_cost, surplus_available, surplus_low). 0.7.0 adds, inside the same format,
 /// the control switch to the mode inputs and <c>reasserted</c> to the dispatch inputs (both optional
 /// on read). The dispatch inputs may carry <c>balance</c> (the hourly balance of the step, BAL-07; absent
-/// on older lines and while no energy counters are mapped).
+/// on older lines and while no energy counters are mapped) and <c>economics</c> (the zone, prices, effective value, order key,
+/// energy class and sources of the step, ECO-09; absent on older lines and without an <c>economics:</c> section; present but
+/// malformed makes the line no decision, as for <c>balance</c>).
 /// </para>
 /// </summary>
 public static class DecisionJson
@@ -100,7 +105,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.OldestListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -268,6 +273,22 @@ public static class DecisionJson
             writer.WriteBoolean("reasserted", true);
         }
 
+        if (dispatch.Economics is { } economics)
+        {
+            writer.WriteStartObject("economics");
+            WriteOptional(writer, "zone", economics.Zone);
+            WriteOptional(writer, "import_price", economics.ImportPrice);
+            WriteOptional(writer, "export_price", economics.ExportPrice);
+            WriteOptional(writer, "price_basis", economics.PriceBasis is { } basis ? Snake(basis) : null);
+            writer.WriteNumber("v_eff", economics.VEff);
+            writer.WriteString("value_basis", Snake(economics.ValueBasis));
+            writer.WriteNumber("order_key", economics.OrderKey);
+            writer.WriteString("class", economics.Class is { } energyClass ? Snake(energyClass) : NoEnergyClass);
+            WriteOptional(writer, "sources", economics.Sources);
+            writer.WriteString("settlement", Snake(economics.Settlement));
+            writer.WriteEndObject();
+        }
+
         if (dispatch.Balance is { } balance)
         {
             writer.WriteStartObject("balance");
@@ -401,7 +422,40 @@ public static class DecisionJson
         {
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
             Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
+            Economics = d.TryGetProperty("economics", out var economics) && economics.ValueKind != JsonValueKind.Null ? Economics(economics) : null,
         };
+    }
+
+    /// <summary>The class a decision was allowed on when neither the surplus nor the active zone allowed it.</summary>
+    private const string NoEnergyClass = "none";
+
+    /// <summary>The economics block, read strictly: a price is not negative, the sources are the grammar's, the class one of pv, zone, none.</summary>
+    private static EconomicsDecisionInputs Economics(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object)
+        {
+            throw new FormatException("economics");
+        }
+
+        double? Price(string name) => OptionalDouble(e, name) is { } value && value >= 0 ? value : IsNull(e, name) ? null : throw new FormatException(name);
+        var sources = OptionalString(e, "sources");
+        if (sources is not null && !SourceSet.TryParse(sources, out _, out _))
+        {
+            throw new FormatException("sources");
+        }
+
+        var energyClass = String(e, "class");
+        return new EconomicsDecisionInputs(
+            OptionalString(e, "zone"),
+            Price("import_price"),
+            Price("export_price"),
+            OptionalEnum<PriceBasis>(e, "price_basis"),
+            Double(e, "v_eff"),
+            EnumValue<ValueBasis>(e, "value_basis"),
+            Double(e, "order_key"),
+            energyClass == NoEnergyClass ? null : Parse<EnergyClass>(energyClass),
+            sources,
+            EnumValue<SettlementModelId>(e, "settlement"));
     }
 
     private static BalanceDecisionInputs Balance(JsonElement b) => new(

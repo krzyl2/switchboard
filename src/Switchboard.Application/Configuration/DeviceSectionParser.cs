@@ -3,6 +3,7 @@ using System.Globalization;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 using Range = Switchboard.Application.Configuration.ConfigRead.Range;
@@ -38,7 +39,7 @@ internal static class DeviceSectionParser
     private const int MaxNameLength = 40;
 
 
-    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start"];
+    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start", "value_follows", "value_factor", "sources"];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
     private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
     private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator", "stop_option", "resume_option"];
@@ -49,7 +50,7 @@ internal static class DeviceSectionParser
 
     // Keys of 03-ARCHITECTURE for later versions: accepted with a warning so a document written for
     // a later version still loads. A power range would duplicate the setpoint range, so it is refused.
-    private static readonly string[] LaterKeys = ["sources", "goal", "guards"];
+    private static readonly string[] LaterKeys = ["goal", "guards"];
     private static readonly string[] PowerRangeKeys = ["power_min", "power_max"];
 
     private static readonly ImmutableDictionary<string, DeviceType> Types = new Dictionary<string, DeviceType>
@@ -58,6 +59,13 @@ internal static class DeviceSectionParser
         ["stepped"] = DeviceType.Stepped,
         ["modulating"] = DeviceType.Modulating,
         ["storage"] = DeviceType.Storage,
+    }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    private static readonly ImmutableDictionary<string, ValueFollows> ValueFollowsNames = new Dictionary<string, ValueFollows>
+    {
+        ["static"] = ValueFollows.Static,
+        ["import_price"] = ValueFollows.ImportPrice,
+        ["export_price"] = ValueFollows.ExportPrice,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
     private static readonly ImmutableDictionary<string, StateFreshness> StateReports = new Dictionary<string, StateFreshness>
@@ -89,6 +97,7 @@ internal static class DeviceSectionParser
         IReadOnlyDictionary<EntityId, string> signalEntities,
         IReadOnlyDictionary<GroupName, CircuitGroupDefinition> groups,
         IReadOnlySet<GroupName> groupIds,
+        EconomicsDefinition? economics,
         ConfigIssues issues)
     {
         if (root.Find(Key) is not { } entry || ConfigRead.IsNull(entry.Value))
@@ -107,7 +116,7 @@ internal static class DeviceSectionParser
             issues.Error(ConfigurationIssueCodes.OutOfRange, Key, sequence, $"At most {MaxDevices} devices may be declared.");
         }
 
-        var context = new Context(connection, control, issues, groups, groupIds);
+        var context = new Context(connection, control, issues, groups, groupIds, economics);
         var drafts = new List<DeviceDraft>();
         for (var i = 0; i < sequence.Items.Length; i++)
         {
@@ -347,6 +356,11 @@ internal static class DeviceSectionParser
         var stateReports = ReadStateReports(mapping, path, issues);
         var stateMaxAge = ReadStateMaxAge(mapping, path, control, stateReports, issues);
         var name = ReadName(mapping, path, issues);
+        var valueFollows = ReadValueFollows(mapping, path, context.Economics, issues);
+        var valueFactor = ConfigRead.Optional(mapping, "value_factor") is { } factorNode
+            ? ConfigRead.Number(factorNode, ConfigRead.Join(path, "value_factor"), issues, Range.Above(0))
+            : ValueSpec.NeutralFactor;
+        var (sourcesDeclared, sources) = ReadSources(mapping, path, context.Economics, issues);
 
         var stages = new List<StageDraft>();
         ModulatingRange? range = null;
@@ -403,7 +417,83 @@ internal static class DeviceSectionParser
             ShedPriorityDeclared = shedPriority is not null,
             Name = name,
             Start = start,
+            ValueFollows = valueFollows,
+            ValueFactor = valueFactor ?? ValueSpec.NeutralFactor,
+            Sources = sources,
+            SourcesDeclared = sourcesDeclared,
         };
+    }
+
+    /// <summary>
+    /// <c>value_follows</c> (static, import_price, export_price). Naming a price that no spec provides is a warning and the
+    /// device stays static: a configuration problem only ever narrows, it never invents a price.
+    /// </summary>
+    private static ValueFollows ReadValueFollows(ConfigMapping mapping, string path, EconomicsDefinition? economics, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(mapping, "value_follows") is not { } node
+            || ConfigRead.Choice(node, ConfigRead.Join(path, "value_follows"), issues, ValueFollowsNames) is not { } follows)
+        {
+            return ValueFollows.Static;
+        }
+
+        var exists = follows switch
+        {
+            ValueFollows.ImportPrice => economics?.Tariff is not null,
+            ValueFollows.ExportPrice => economics?.Settlement?.ExportPrice is not null,
+            _ => true,
+        };
+        if (exists)
+        {
+            return follows;
+        }
+
+        issues.Warning(
+            ConfigurationIssueCodes.ValueFollowsWithoutPrice,
+            ConfigRead.Join(path, "value_follows"),
+            node,
+            follows == ValueFollows.ImportPrice
+                ? "value_follows: import_price needs economics.tariff; the device keeps its static value_per_kwh."
+                : "value_follows: export_price needs economics.settlement.export_price; the device keeps its static value_per_kwh.");
+        return ValueFollows.Static;
+    }
+
+    /// <summary>
+    /// <c>sources</c> (pv_only, pv_and_zone:&lt;id&gt;[,&lt;id&gt;], any); omitted means unspecified (null, 0.9 behaviour). A named zone
+    /// that economics.tariff does not have is a warning and is dropped, so the device is narrowed, never widened.
+    /// </summary>
+    private static (SourceSet? Declared, SourceSet? Effective) ReadSources(ConfigMapping mapping, string path, EconomicsDefinition? economics, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(mapping, "sources") is not { } node)
+        {
+            return (null, null);
+        }
+
+        var keyPath = ConfigRead.Join(path, "sources");
+        if (ConfigRead.String(node, keyPath, issues) is not { } text)
+        {
+            return (null, null);
+        }
+
+        if (!SourceSet.TryParse(text, out var declared, out var problem))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, keyPath, node, problem!);
+            return (null, null);
+        }
+
+        var known = PriceSpecs.ZoneIds(economics?.Tariff).ToHashSet(StringComparer.Ordinal);
+        var effective = declared!.Narrow(known, out var dropped);
+        foreach (var zone in dropped)
+        {
+            issues.Warning(
+                ConfigurationIssueCodes.SourcesUnusable,
+                keyPath,
+                node,
+                economics?.Tariff is null
+                    ? $"sources names zone '{zone}' but there is no economics.tariff; the zone is dropped and the device is narrowed to '{effective.ToText()}'."
+                    : $"sources names zone '{zone}', which economics.tariff does not have; the zone is dropped and the device is narrowed to '{effective.ToText()}'.");
+        }
+
+        return (declared, effective);
     }
 
     /// <summary>
@@ -1075,6 +1165,8 @@ internal static class DeviceSectionParser
                 : members.Count(m => m.Stages[0].Phases.SequenceEqual(d.Stages[0].Phases)) > 1 ? $"Two members of rotation group '{group.Key}' are on {d.Stages[0].Phases[0]}; one element per phase."
                 : d.Stages[0].RatedCurrent != first.Stages[0].RatedCurrent || d.Stages[0].RatedPower != first.Stages[0].RatedPower || d.ValuePerKwh != first.ValuePerKwh
                     ? $"Members of rotation group '{group.Key}' must have equal rated_current_a, rated_power_w and value_per_kwh."
+                : d.ValueFollows != first.ValueFollows || d.ValueFactor != first.ValueFactor || !Equals(d.SourcesDeclared, first.SourcesDeclared)
+                    ? $"Members of rotation group '{group.Key}' must have equal value_follows, value_factor and sources."
                 : d.ShedPriorityDeclared ? "A rotation group member takes no shed_priority: the phase ranking orders the elements."
                 : null;
             foreach (var member in members)
@@ -1093,7 +1185,8 @@ internal static class DeviceSectionParser
         ControlParameters? Control,
         ConfigIssues Issues,
         IReadOnlyDictionary<GroupName, CircuitGroupDefinition> Groups,
-        IReadOnlySet<GroupName> GroupIds);
+        IReadOnlySet<GroupName> GroupIds,
+        EconomicsDefinition? Economics);
 
     private static TimeSpan? OptionalDuration(ConfigMapping mapping, string key, string path, ConfigIssues issues, bool positive)
     {
@@ -1182,6 +1275,14 @@ internal static class DeviceSectionParser
 
         public StopOptions? StopOptions { get; init; }
 
+        public ValueFollows ValueFollows { get; init; }
+
+        public double ValueFactor { get; init; } = ValueSpec.NeutralFactor;
+
+        public SourceSet? Sources { get; init; }
+
+        public SourceSet? SourcesDeclared { get; init; }
+
         /// <summary>Null when the policy was unknown or no control parameters were read: such a draft is never built.</summary>
         public StartPolicy? Start { get; init; }
 
@@ -1223,6 +1324,10 @@ internal static class DeviceSectionParser
                 CircuitGroup = CircuitGroup,
                 Name = Name,
                 Start = start,
+                ValueFollows = ValueFollows,
+                ValueFactor = ValueFactor,
+                Sources = Sources,
+                SourcesDeclared = SourcesDeclared,
             };
         }
 

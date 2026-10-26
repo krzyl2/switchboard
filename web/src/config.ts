@@ -73,6 +73,10 @@ export const EXCURSIONS_REQUEST_TIMEOUT_MS = 8_000;
 export const STATISTICS_REFRESH_INTERVAL_MS = 30_000;
 export const STATISTICS_REQUEST_TIMEOUT_MS = 10_000;
 
+/** The tariff zone changes at most at a boundary and savings at most once a bucket: ten seconds is fresh enough. */
+export const ECONOMICS_REFRESH_INTERVAL_MS = 10_000;
+export const ECONOMICS_REQUEST_TIMEOUT_MS = 8_000;
+
 /** The decision log page. */
 export const DECISION_LOG_REFRESH_INTERVAL_MS = 5_000;
 export const DECISION_LOG_REQUEST_TIMEOUT_MS = 4_000;

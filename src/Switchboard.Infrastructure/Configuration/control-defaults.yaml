@@ -173,6 +173,19 @@ hourly_balance:
   # starts the window afresh. A new starting value with no origin in the predecessor.
   max_age: 60s
 
+economics:
+  # Parameters of the economic module (docs/14-ECONOMICS.md), read by dispatch. Every one is a starting value, no origin.
+  # Price units per kWh by which a device's value must exceed the cost of the energy; starting value, no origin.
+  min_margin: 0
+  # Boundaries a new value order must be proposed before it is adopted (as dispatch.phase_ranking_stability_cycles); starting value, no origin.
+  order_stability_cycles: 3
+  # Relative key difference below which two devices keep their order; starting value, no origin.
+  order_min_gap_fraction: 0.05
+  # No zone-class start this close to the end of a tariff zone (equals relay_min_on); starting value, no origin.
+  zone_end_margin: 6m
+  # Smoothing window of the instantaneous surplus under net billing; starting value, no origin.
+  net_billing_window: 60s
+
 decision_log:
   # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.
   retention_days: 30

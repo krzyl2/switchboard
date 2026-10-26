@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -95,6 +96,9 @@ public sealed record DispatchSetup(
 {
     /// <summary>The hourly balance's parameters; it gates the devices that declare start: headroom while energy counters are mapped.</summary>
     public HourlyBalanceSetup? Balance { get; init; }
+
+    /// <summary>The economics (prices, sources, settlement model, parameters); null without an <c>economics:</c> section, and then dispatch is exactly the 0.9 one.</summary>
+    public EconomicsSetup? Economics { get; init; }
 
     public DispatchDevice? Device(DeviceName name) => Devices.FirstOrDefault(d => d.Id == name);
 }

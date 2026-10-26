@@ -1,0 +1,166 @@
+{
+  "at": "2026-10-26T12:38:00+00:00",
+  "configured": true,
+  "currency": "EUR",
+  "tariff": {
+    "kind": "zoned",
+    "zone": "offpeak",
+    "importPrice": 0.6,
+    "priceBasis": "zone",
+    "nextChangeAt": "2026-10-26T15:00:00+00:00",
+    "nextZone": "afternoon_peak",
+    "signal": null,
+    "fallbackInForce": false
+  },
+  "settlement": {
+    "model": "hourly_netting",
+    "exportPrice": {
+      "kind": "flat",
+      "zone": null,
+      "perKwh": 0.35,
+      "priceBasis": "flat",
+      "signal": null,
+      "fallbackInForce": false
+    }
+  },
+  "holidaysListStale": false,
+  "issues": [],
+  "devices": [
+    {
+      "id": "heater_l1",
+      "valuePerKwh": 0.35,
+      "valueFollows": "static",
+      "valueFactor": 1,
+      "vEff": 0.35,
+      "valueBasis": "static",
+      "sources": "pv_only",
+      "sourcesDeclared": "pv_only",
+      "class": "none"
+    },
+    {
+      "id": "ev_charger",
+      "valuePerKwh": 2.03,
+      "valueFollows": "import_price",
+      "valueFactor": 3,
+      "vEff": 1.7999999999999998,
+      "valueBasis": "followed",
+      "sources": "pv_and_zone:offpeak",
+      "sourcesDeclared": "pv_and_zone:offpeak",
+      "class": "zone"
+    }
+  ],
+  "savings": {
+    "basis": "against the controlled loads being off",
+    "currency": "EUR",
+    "model": "hourly_netting",
+    "since": "2026-10-26T09:00:00+00:00",
+    "today": {
+      "from": "2026-10-25T23:00:00+00:00",
+      "to": "2026-10-26T23:00:00+00:00",
+      "periods": 3,
+      "fallbackPeriods": 0,
+      "unpricedPeriods": 0,
+      "incompletePeriods": 0,
+      "valueGained": 4.92,
+      "extraCost": 2.1000000000000005,
+      "savings": 2.8199999999999994,
+      "fallback": false,
+      "devices": [
+        {
+          "id": "ev_charger",
+          "energyKwh": 1.5,
+          "valueGained": 0.12,
+          "extraCost": 0.5250000000000001,
+          "savings": -0.40500000000000014
+        },
+        {
+          "id": "heater_l1",
+          "energyKwh": 4.5,
+          "valueGained": 4.800000000000001,
+          "extraCost": 1.5750000000000004,
+          "savings": 3.2250000000000005
+        }
+      ]
+    },
+    "range": {
+      "from": "2026-10-26T09:00:00+00:00",
+      "to": "2026-10-26T12:00:00+00:00",
+      "periods": 3,
+      "fallbackPeriods": 0,
+      "unpricedPeriods": 0,
+      "incompletePeriods": 0,
+      "valueGained": 4.92,
+      "extraCost": 2.1000000000000005,
+      "savings": 2.8199999999999994,
+      "fallback": false,
+      "devices": [
+        {
+          "id": "ev_charger",
+          "energyKwh": 1.5,
+          "valueGained": 0.12,
+          "extraCost": 0.5250000000000001,
+          "savings": -0.40500000000000014
+        },
+        {
+          "id": "heater_l1",
+          "energyKwh": 4.5,
+          "valueGained": 4.800000000000001,
+          "extraCost": 1.5750000000000004,
+          "savings": 3.2250000000000005
+        }
+      ]
+    },
+    "retained": {
+      "from": "2026-10-26T09:00:00+00:00",
+      "to": "2026-10-26T12:38:00+00:00",
+      "periods": 3,
+      "fallbackPeriods": 0,
+      "unpricedPeriods": 0,
+      "incompletePeriods": 0,
+      "valueGained": 4.92,
+      "extraCost": 2.1000000000000005,
+      "savings": 2.8199999999999994,
+      "fallback": false,
+      "devices": [
+        {
+          "id": "ev_charger",
+          "energyKwh": 1.5,
+          "valueGained": 0.12,
+          "extraCost": 0.5250000000000001,
+          "savings": -0.40500000000000014
+        },
+        {
+          "id": "heater_l1",
+          "energyKwh": 4.5,
+          "valueGained": 4.800000000000001,
+          "extraCost": 1.5750000000000004,
+          "savings": 3.2250000000000005
+        }
+      ]
+    },
+    "running": {
+      "start": "2026-10-26T12:00:00+00:00",
+      "end": "2026-10-26T13:00:00+00:00",
+      "valueGained": 0.8200000000000001,
+      "extraCost": 0.3500000000000001,
+      "savings": 0.47,
+      "fallback": false,
+      "devices": [
+        {
+          "id": "ev_charger",
+          "energyKwh": 0.25,
+          "valueGained": 0.02,
+          "extraCost": 0.08750000000000002,
+          "savings": -0.06750000000000002
+        },
+        {
+          "id": "heater_l1",
+          "energyKwh": 0.75,
+          "valueGained": 0.8,
+          "extraCost": 0.26250000000000007,
+          "savings": 0.5375
+        }
+      ]
+    }
+  }
+}

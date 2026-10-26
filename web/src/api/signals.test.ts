@@ -118,3 +118,51 @@ describe('parseSignals, configuration warnings', () => {
     expect(() => parseSignals(payload(change))).toThrow();
   });
 });
+
+// ECO-10: a price signal travels per kWh in the user's own currency label; its value is a number, never text, and a
+// price whose unit is not `<label>/kWh` could be a per-MWh number shown 1000x too large.
+describe('parseSignals, price signals', () => {
+  const withPrice = (change?: (s: any) => void) =>
+    payload((p) => {
+      const price = {
+        ...p.signals.find((s: any) => s.name === 'grid_power_l1'),
+        name: 'rce_price',
+        entity: 'sensor.rce_price',
+        kind: 'price',
+        role: 'price_import',
+        phase: null,
+        value: 0.45,
+        unit: 'PLN/kWh',
+        raw: { state: '450', unit: 'PLN/MWh' },
+        direction: null,
+        dependentDevices: [],
+      };
+      change?.(price);
+      p.signals.push(price);
+    });
+
+  it('keeps a price as a number per kWh with the user label, and both price roles', () => {
+    const parsed = parseSignals(withPrice());
+    const price = parsed.signals.find((s) => s.name === 'rce_price');
+    expect([price?.kind, price?.role, price?.value, price?.unit]).toEqual(['price', 'price_import', 0.45, 'PLN/kWh']);
+
+    const exported = parseSignals(withPrice((s) => (s.role = 'price_export')));
+    expect(exported.signals.find((s) => s.name === 'rce_price')?.role).toBe('price_export');
+  });
+
+  it('accepts a price that is not usable: no number and no unit', () => {
+    const parsed = parseSignals(withPrice((s) => Object.assign(s, { value: null, unit: null, state: 'stale', detail: 'max_age_exceeded' })));
+
+    expect(parsed.signals.find((s) => s.name === 'rce_price')?.value).toBeNull();
+  });
+
+  it.each([
+    ['a per-MWh unit (the add-on converts)', (s: any) => (s.unit = 'PLN/MWh')],
+    ['the energy unit of a counter', (s: any) => (s.unit = 'kWh')],
+    ['a price without a unit', (s: any) => (s.unit = null)],
+    ['a unit without a price', (s: any) => (s.value = null)],
+    ['a price sent as text', (s: any) => (s.value = '0.45')],
+  ])('rejects %s', (_case, change) => {
+    expect(() => parseSignals(withPrice(change))).toThrow();
+  });
+});

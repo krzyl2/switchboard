@@ -4,12 +4,15 @@ import { OVERRIDE_MODES } from './api/decisions';
 import type { OverrideMode, Verdict } from './api/decisions';
 import type { DeviceConfig } from './api/devices';
 import type { DispatchDevice, DispatchStatus, HistoryEntry, OverrideRefusal } from './api/dispatch';
+import type { Economics, EconomicsDevice } from './api/economics';
 import type { Power } from './api/power';
+import { economicsDevice, priceText, SourcesText } from './Economics';
 import { formatAmps, formatCountdown, formatKw, formatNumber, roundTo } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { levelText, reasonSentence } from './reasons';
 import { Age, PollStatus, StateBadge, StateLabel, type Tone } from './ui';
 import { useDevices } from './useDevices';
+import { useEconomics } from './useEconomics';
 import { useDispatch, type DispatchView } from './useDispatch';
 import type { PollView } from './usePoll';
 import { usePower } from './usePower';
@@ -228,14 +231,79 @@ function Connection({ device, ...props }: { device: DeviceConfig } & Props) {
   );
 }
 
-function Economics({ device, t, lang }: { device: DeviceConfig } & Props) {
+/** The value per kWh now, with what it follows and why (UI-12, ECO-13): only with an economics section, which gives the label and the prices. */
+function ValueNow({ eco, currency, t, lang }: { eco: EconomicsDevice; currency: string } & Props) {
+  const factor = formatNumber(eco.valueFactor, lang, 3);
+  return (
+    <>
+      <span class="line" data-value="static">
+        {t['device.eco.valueStatic']}: <span class="mono">{priceText(t, lang, eco.valuePerKwh, currency)}</span>
+      </span>
+      <span class="line" data-value="now">
+        {t['device.eco.valueNow']}: <span class="mono">{priceText(t, lang, eco.vEff, currency)}</span>
+      </span>
+      {eco.valueFollows !== 'static' && <span class="sub">{fill(t[eco.valueFollows === 'import_price' ? 'device.eco.followsImport' : 'device.eco.followsExport'], { factor })}</span>}
+      <span class="sub" data-value="basis">
+        {t[`device.eco.valueBasis.${eco.valueBasis}`]}
+      </span>
+    </>
+  );
+}
+
+/** The sources in words, what was declared when it differs (a dropped zone), or that none is declared. */
+function SourcesNow({ eco, t }: { eco: EconomicsDevice; t: Messages }) {
+  if (eco.sources === null) return <span class="sub-inline" data-sources="undeclared">{t['device.eco.sources.undeclared']}</span>;
+  return (
+    <>
+      <span class="line" data-sources={eco.sources}>
+        <SourcesText sources={eco.sources} t={t} />
+      </span>
+      {eco.sourcesDeclared !== null && eco.sourcesDeclared !== eco.sources && (
+        <span class="sub">
+          {t['device.eco.sources.declared']} <span class="mono">{eco.sourcesDeclared}</span>. {t['device.eco.sources.narrowed']}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Which energy class is open to the device in dispatch's last step, and the reason it gave (the same sentence the state card shows). */
+function AllowedNow({ eco, economics, state, t }: { eco: EconomicsDevice; economics: Economics; state: DispatchDevice | null; t: Messages }) {
+  const zone = economics.tariff?.zone ?? null;
+  return (
+    <>
+      <span class="line" data-allowed={eco.energyClass ?? 'unknown'}>
+        {eco.energyClass === null ? (
+          t['device.eco.class.unknown']
+        ) : eco.energyClass === 'zone' && zone !== null ? (
+          <>
+            {t['device.eco.class.zone']} <span class="mono">{zone}</span>
+          </>
+        ) : (
+          t[`device.eco.class.${eco.energyClass}`]
+        )}
+      </span>
+      {state !== null && state.reason !== null && <span class="sub">{reasonSentence(t, state.reason)}</span>}
+      <span class="sub">{t['device.eco.allowedNote']}</span>
+    </>
+  );
+}
+
+function Economics({ device, economics, state, t, lang }: { device: DeviceConfig; economics: Economics | null; state: DispatchDevice | null } & Props) {
+  const eco = economicsDevice(economics, device.id);
+  // Without an economics: section nothing prices a kWh: the 0.9 words stay, and say so.
+  const configured = economics !== null && economics.configured && economics.currency !== null && eco !== null;
   return (
     <section class="card" aria-labelledby="device-economics-title">
       <h2 id="device-economics-title">{t['device.economics.title']}</h2>
       <dl class="dc-fields">
         <Field name={t['device.value']}>
-          <span class="line">{fill(t['device.valueAmount'], { value: formatNumber(device.valuePerKwh, lang, 2) })}</span>
-          <span class="sub">{t['device.valueHint']}</span>
+          {configured ? (
+            <ValueNow eco={eco} currency={economics.currency!} t={t} lang={lang} />
+          ) : (
+            <span class="line">{fill(t['device.valueAmount'], { value: formatNumber(device.valuePerKwh, lang, 2) })}</span>
+          )}
+          <span class="sub">{t[configured ? 'device.eco.valueHint' : 'device.valueHint']}</span>
           {device.shedPriority !== null && <span class="sub">{fill(t['device.shedPriority'], { value: formatNumber(device.shedPriority, lang, 2) })}</span>}
           {device.noShed && <span class="sub">{t['device.noShed']}</span>}
         </Field>
@@ -245,10 +313,19 @@ function Economics({ device, t, lang }: { device: DeviceConfig } & Props) {
           </span>
         </Field>
         <Field name={t['device.sources']}>
-          <span class="sub-inline" data-unavailable="sources">
-            {t['device.sourcesNotAvailable']}
-          </span>
+          {configured ? (
+            <SourcesNow eco={eco} t={t} />
+          ) : (
+            <span class="sub-inline" data-unavailable="sources">
+              {t['device.sourcesNotAvailable']}
+            </span>
+          )}
         </Field>
+        {configured && eco.sources !== null && (
+          <Field name={t['device.eco.allowed']}>
+            <AllowedNow eco={eco} economics={economics} state={state} t={t} />
+          </Field>
+        )}
       </dl>
     </section>
   );
@@ -532,12 +609,13 @@ function HistoryCard({ device, view, state, ...props }: { device: DeviceConfig; 
 function DeviceDetail({ device, ...props }: { device: DeviceConfig } & Props) {
   const dispatch = useDispatch();
   const power = usePower();
+  const economics = useEconomics();
   const state = dispatch.view.kind === 'live' ? (dispatch.view.dispatch.devices.find((d) => d.id === device.id) ?? null) : null;
   return (
     <>
       <div class="dc-grid">
         <Connection device={device} {...props} />
-        <Economics device={device} {...props} />
+        <Economics device={device} economics={economics.kind === 'live' ? economics.data : null} state={state} {...props} />
       </div>
       <StateCard device={device} view={dispatch.view} state={state} power={power} setOverride={dispatch.setOverride} {...props} />
       <HistoryCard device={device} view={dispatch.view} state={state} {...props} />

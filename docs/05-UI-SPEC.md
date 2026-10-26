@@ -31,6 +31,7 @@ Rules that are easy to get wrong:
 - Stopped devices stay in the list with their blocking reason. Disappearing rows make the user think the configuration broke.
 - Controlled and foreign load never share a colour.
 - The reserve threshold is drawn, not only stated.
+- With an `economics:` section the dashboard also shows a Tariff card (zone, import and export price, basis, next change) and a Savings card (an estimate against the controlled loads being off, never a bill). Amounts carry the configured currency label; without the section both are absent (`14-ECONOMICS.md`, "As built (slice 6 UI)").
 
 ## 02 — Flows
 
@@ -64,7 +65,7 @@ Before continuing, validation runs: entities exist, values plausible, phases sum
 
 ## 04 — Device card
 
-Two columns: connection (entity, phase, min/max, reaction time) and economics (value per kWh with its derivation, goal, allowed sources). Below, the command history table: time, command, expected Δ, measured Δ, verdict.
+Two columns: connection (entity, phase, min/max, reaction time) and economics (value per kWh with its derivation, goal, allowed sources). With an `economics:` section the economics column shows the static value and the value now, the sources in words and what is allowed now (the goal row stays "not available" until v3.0). Below, the command history table: time, command, expected Δ, measured Δ, verdict.
 
 That table is the main diagnostic for "why isn't my car charging", and it is also where effector verification becomes visible to the user rather than being an internal mechanism.
 

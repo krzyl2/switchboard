@@ -4,12 +4,14 @@ import { DECISION_KINDS, type Decision, type DecisionKind } from './api/decision
 import { fetchSignals, type Signal, type SignalState, type Signals } from './api/signals';
 import type { Statistics, Totals } from './api/statistics';
 import { SIGNALS_REFRESH_INTERVAL_MS, SIGNALS_REQUEST_TIMEOUT_MS } from './config';
+import { amountText, SavingsBody, savingsOf } from './Economics';
 import { formatAge, formatFixed, formatKwh, formatPercent } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
-import { localClock, localDay } from './localTime';
+import { browserZone, localClock, localDay } from './localTime';
 import { describeDecision } from './reasons';
 import { PollStatus, StateLabel, Timestamp, type Tone } from './ui';
 import { useDecisionLog } from './useDecisionLog';
+import { useEconomics } from './useEconomics';
 import { usePoll, type PollView } from './usePoll';
 import { useStatistics } from './useStatistics';
 import './log.css';
@@ -312,6 +314,8 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
   const file = statistics?.stateFile ?? null;
   const share = totals === null ? null : selfConsumption(totals);
   const value = totals === null ? 0 : totals.devices.reduce((sum, d) => sum + d.value, 0);
+  // Savings replace the "needs a tariff" text only when an economics section yields them (14-ECONOMICS "UI").
+  const savings = savingsOf(useEconomics());
   return (
     <section class="card" aria-labelledby="summary-title">
       <header class="cardhead">
@@ -395,14 +399,21 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
             </dd>
             <dt>{t['log.summary.value']}</dt>
             <dd data-metric="value">
-              <span class="mono">{formatFixed(value, lang, 2)}</span>
-              <span class="sub">{t['log.summary.valueHow']}</span>
+              <span class="mono">{savings === null ? formatFixed(value, lang, 2) : amountText(t, lang, value, savings.currency)}</span>
+              <span class="sub">{t[savings === null ? 'log.summary.valueHow' : 'log.summary.valueHowPriced']}</span>
             </dd>
           </>
         )}
         <dt>{t['log.summary.savings']}</dt>
         <dd data-metric="savings">
-          <span class="sub-inline">{t['log.summary.savingsNotAvailable']}</span>
+          {savings === null ? (
+            <>
+              <span class="sub-inline">{t['log.summary.savingsNotAvailable']}</span>
+              <span class="sub">{t['log.summary.savingsHint']}</span>
+            </>
+          ) : (
+            <SavingsBody total={savings.savings.today} savings={savings.savings} currency={savings.currency} t={t} lang={lang} zone={browserZone()} />
+          )}
         </dd>
       </dl>
     </section>

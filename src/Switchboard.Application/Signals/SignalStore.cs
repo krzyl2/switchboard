@@ -5,6 +5,7 @@ using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -443,6 +444,7 @@ public sealed class SignalStore
             rejections)
         {
             DispatchSetup = _dispatchSetup,
+            Prices = Prices(now),
             Presentation = new PresentationInputs(
                 configuration.Connection.Voltage,
                 generation.State,
@@ -484,6 +486,27 @@ public sealed class SignalStore
         }
 
         return new EnergyInputs(new EnergyCounters(Value(export), Value(import), alive.Max()), maxAge);
+    }
+
+    /// <summary>
+    /// The price signals as dispatch may read them (ECO-10): the value only while the signal is fresh (a report within max_age of
+    /// <c>last_reported</c>), otherwise just its state, so an unavailable, unknown, stale or wrong-unit price is simply not usable and
+    /// the spec's fallback stands in. Kept apart from the dispatch inputs; null when no price signal is mapped.
+    /// </summary>
+    private PriceInputs? Prices(DateTimeOffset now)
+    {
+        var samples = ImmutableDictionary.CreateBuilder<SignalName, PriceSample>();
+        foreach (var signal in _signals.Where(s => s.Definition.Kind == SignalKind.Price))
+        {
+            var (state, detail) = Classify(signal, now);
+            samples[signal.Definition.Name] = new PriceSample(
+                state,
+                detail,
+                state == SignalState.Fresh && signal.Accepted is not null ? Value(signal) : null,
+                signal.Accepted?.Effective ?? signal.Raw?.Reported);
+        }
+
+        return samples.Count == 0 ? null : new PriceInputs(samples.ToImmutable());
     }
 
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;

@@ -13,6 +13,7 @@ using Switchboard.Application.State;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -62,6 +63,10 @@ public sealed partial class GuardSpaContractTests
         { DecisionsContract, "VERDICTS", Snake<Verdict>() },
         { DecisionsContract, "MEASURE_UNITS", Snake<MeasureUnit>() },
         { DecisionsContract, "OVERRIDE_MODES", Snake<OverrideMode>() },
+        { DecisionsContract, "PRICE_BASES", Snake<PriceBasis>() },
+        { DecisionsContract, "VALUE_BASES", Snake<ValueBasis>() },
+        { DecisionsContract, "ENERGY_CLASSES", [.. Snake<EnergyClass>(), "none"] },
+        { DecisionsContract, "SETTLEMENT_MODELS", Snake<SettlementModelId>() },
     };
 
     [Theory]
@@ -72,10 +77,10 @@ public sealed partial class GuardSpaContractTests
     }
 
     [Fact]
-    public void Spa_reason_codes_are_list_version_4_in_the_order_of_04()
+    public void Spa_reason_codes_are_list_version_6_in_the_order_of_04()
     {
-        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 4.
-        Assert.Equal(4, ReasonCodes.ListVersion);
+        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 6.
+        Assert.Equal(6, ReasonCodes.ListVersion);
         Assert.Equal(ReasonCodes.All.Select(ReasonCodes.Name), SpaList(DecisionsContract, "REASON_CODES"));
     }
 
@@ -140,6 +145,7 @@ public sealed partial class GuardSpaContractTests
             OverrideMode.Auto)
         {
             Balance = new BalanceDecisionInputs(240.5, 3100, 1650, 410.25, 150, 525, 1320, false),
+            Economics = new EconomicsDecisionInputs("offpeak", 0.6, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
         };
         return new Decision(
             "contract-000000001", at, DecisionScope.Device, DeviceName.Parse("heater_l1"), null, Phase.L1, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive, null,

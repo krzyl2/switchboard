@@ -74,6 +74,7 @@ const en = {
   'control.notSent.not_declared': 'not sent: not a declared actuator of the loaded configuration',
   'control.notSent.superseded': 'not sent: replaced by a newer command',
   'control.notSent.control_off': 'not sent: control was switched off',
+  'control.notSent.own_entity': 'not sent: one of Switchboard’s own entities, which it never commands',
   'control.unconfirmed.title': 'Accepted, but the device has not followed',
   'control.unconfirmed.text':
     'Home Assistant accepted the command, but the state the device reports has not changed. Check the device and its integration; it may not report a lost link as unavailable.',
@@ -151,6 +152,7 @@ export const control: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'control.notSent.not_declared': 'niewysłana: to nie jest zadeklarowana encja sterująca wczytanej konfiguracji',
     'control.notSent.superseded': 'niewysłana: zastąpiona nowszą komendą',
     'control.notSent.control_off': 'niewysłana: sterowanie zostało wyłączone',
+    'control.notSent.own_entity': 'niewysłana: to encja samego Switchboard, której nigdy nie steruje',
     'control.unconfirmed.title': 'Przyjęte, ale urządzenie nie zareagowało',
     'control.unconfirmed.text':
       'Home Assistant przyjął komendę, ale stan zgłaszany przez urządzenie się nie zmienił. Sprawdź urządzenie i jego integrację; utraty łączności może nie zgłaszać jako niedostępności.',

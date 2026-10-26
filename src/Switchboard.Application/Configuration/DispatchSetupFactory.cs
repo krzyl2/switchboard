@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -57,6 +58,34 @@ public static class DispatchSetupFactory
             loadSigma)
         {
             Balance = new HourlyBalanceSetup(control.HourlyBalance, voltage),
+            Economics = Economics(configuration),
         };
+    }
+
+    /// <summary>
+    /// The economics dispatch reads (slice 3): null without an <c>economics:</c> section, and then nothing here changes a decision.
+    /// The settlement model is the file's (hourly netting, the 0.9 balance rule, when it names none); net billing takes the
+    /// dispatch hysteresis and the economics window from the control parameters, so no number of it is written here.
+    /// </summary>
+    private static EconomicsSetup? Economics(SwitchboardConfiguration configuration)
+    {
+        if (configuration.Economics is not { } economics)
+        {
+            return null;
+        }
+
+        var control = configuration.Control;
+        ISettlementModel model = (economics.Settlement?.Model ?? SettlementModelId.HourlyNetting) switch
+        {
+            SettlementModelId.NetBilling => new NetBillingModel(control.Dispatch.StartHysteresis, control.Dispatch.StopHysteresis, control.Economics.NetBillingWindow),
+            _ => new HourlyNettingModel(control.HourlyBalance),
+        };
+        return new EconomicsSetup(
+            economics.Tariff,
+            economics.Settlement?.ExportPrice,
+            economics.Holidays,
+            model,
+            control.Economics,
+            [.. configuration.Devices.Select(d => new DeviceEconomics(d.Id, d.Value, d.Sources))]);
     }
 }

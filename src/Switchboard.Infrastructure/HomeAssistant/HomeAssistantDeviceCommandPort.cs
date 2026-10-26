@@ -7,6 +7,7 @@ using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
+using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
 
 namespace Switchboard.Infrastructure.HomeAssistant;
@@ -25,7 +26,9 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// <item>At send time, the mode is checked again (control off: nothing leaves; an invalid
 /// configuration: decreases only) and the command is resolved through the configuration loaded now;
 /// the serialized call is checked once more by the allow-list against the declared actuators. A
-/// device re-pointed at another entity since the command was decided is not redirected.</item>
+/// device re-pointed at another entity since the command was decided is not redirected. A command
+/// to one of Switchboard's own MQTT entities is refused (answered own_entity), before the call is
+/// built and again by the allow-list check, whatever the configuration declares.</item>
 /// <item>Switching control off drops every queued command at once (answered control_off), before
 /// the guard is woken.</item>
 /// </list>
@@ -36,6 +39,7 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
     private readonly ICallServiceChannel _channel;
     private readonly IActuatorDirectory _directory;
     private readonly IModeSource _mode;
+    private readonly IOwnEntityCheck? _ownEntities;
     private readonly GuardInbox _inbox;
     private readonly TimeSpan _timeout;
     private readonly TimeProvider _time;
@@ -60,7 +64,8 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
         IOptions<HomeAssistantOptions> options,
         TimeProvider time,
         ILogger<HomeAssistantDeviceCommandPort> logger,
-        ControlSwitchState? control = null)
+        ControlSwitchState? control = null,
+        IOwnEntityCheck? ownEntities = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _channel = channel;
@@ -70,6 +75,7 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
         _timeout = options.Value.CommandTimeout;
         _time = time;
         _logger = logger;
+        _ownEntities = ownEntities;
         if (control is not null)
         {
             control.Closing += (_, _) => Close();
@@ -247,6 +253,14 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
                     continue;
                 }
 
+                if (IsOwn(call.Entity))
+                {
+                    // Looping back into Switchboard instead of reaching the device: never sent.
+                    _logger.LogError("A command for {Device} was refused: {Entity} is one of Switchboard's own MQTT entities", command.Device, call.Entity);
+                    Complete(queued.Ticket, command.Device, CommandOutcome.NotSent, CommandNotSentReason.OwnEntity, $"{call.Entity} is one of Switchboard's own MQTT entities and is never commanded");
+                    continue;
+                }
+
                 _inFlight.Add(slot);
                 sending.Add((slot, queued, call));
             }
@@ -279,7 +293,7 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
         CallOutcome outcome;
         try
         {
-            outcome = await _channel.SendAsync(call, _directory.IsDeclared, _timeout, _stopping).ConfigureAwait(false);
+            outcome = await _channel.SendAsync(call, DeclaredAndNotOwn, _timeout, _stopping).ConfigureAwait(false);
         }
         catch (HomeAssistantCommandRefusedException ex)
         {
@@ -311,6 +325,12 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
         // The next queued command of this actuator (if any) may leave now.
         Flush();
     }
+
+    private bool IsOwn(EntityId entity) => _ownEntities?.IsOwn(entity) == true;
+
+    /// <summary>The allow-list's second check: a declared actuator of the configuration loaded now, and not one of Switchboard's own entities.</summary>
+    private bool DeclaredAndNotOwn(EntityId entity, string domain, ActuatorService service, double? value, string? option) =>
+        !IsOwn(entity) && _directory.IsDeclared(entity, domain, service, value, option);
 
     /// <summary>One outcome: queued for the gate, the status updated, the guard woken. Called under the lock.</summary>
     private void Complete(CommandTicket ticket, DeviceName device, CommandOutcome outcome, CommandNotSentReason? notSent, string? detail)

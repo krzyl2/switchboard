@@ -76,6 +76,14 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         }
     }
 
+    /// <summary>
+    /// Raised on the writer's thread after a state was written to the store, with the state written
+    /// (never on the guard thread, never under a lock). It lets an observer wait for a save without
+    /// polling the file or a clock: a test of "written at once", or a diagnostic. A failing handler is
+    /// logged and never stops the writer.
+    /// </summary>
+    public event EventHandler<RuntimeState>? Saved;
+
     public StateFileReport Report
     {
         get
@@ -311,6 +319,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
                         _writeError = null;
                     }
                 }
+
+                NotifySaved(pending.State);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -329,6 +339,21 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    private void NotifySaved(RuntimeState state)
+    {
+        foreach (var handler in Saved?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                ((EventHandler<RuntimeState>)handler)(this, state);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "A listener of the saved state failed");
+            }
         }
     }
 

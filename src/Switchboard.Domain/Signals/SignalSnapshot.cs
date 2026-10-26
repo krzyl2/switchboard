@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -75,4 +76,10 @@ public sealed record SignalSnapshot(
 
     /// <summary>What only the presentation reads, from the same cycle; null without a valid configuration.</summary>
     public PresentationInputs? Presentation { get; init; }
+
+    /// <summary>
+    /// The price signals (kind price) of the same cycle, for dispatch's economics only (14-ECONOMICS, slice 4); null without a valid
+    /// configuration. Apart from <see cref="Protection"/> and <see cref="Dispatch"/>: a price never reaches the guard.
+    /// </summary>
+    public PriceInputs? Prices { get; init; }
 }

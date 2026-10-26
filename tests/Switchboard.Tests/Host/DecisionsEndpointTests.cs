@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Modes;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Units;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
@@ -73,6 +74,36 @@ public sealed class DecisionsEndpointTests
         Assert.Equal(["balanceWh", "freeW", "loadW", "projectionWh", "loWh", "hiWh", "tRemS", "burning"], balance.EnumerateObject().Select(p => p.Name));
         Assert.Equal((240.5, 3100, 1650, JsonValueKind.Null, 1320), (balance.GetProperty("balanceWh").GetDouble(), balance.GetProperty("freeW").GetDouble(), balance.GetProperty("loadW").GetDouble(), balance.GetProperty("projectionWh").ValueKind, balance.GetProperty("tRemS").GetDouble()));
         Assert.Equal(JsonValueKind.Null, items.EnumerateArray().Single(i => i.GetProperty("device").GetString() == "heater_l2").GetProperty("inputs").GetProperty("dispatch").GetProperty("balance").ValueKind);
+    }
+
+    // ECO-09: the Log page can show which energy a dispatch decision was judged on; no economics section means null, and no class is written as none.
+    [Fact]
+    public async Task A_dispatch_decision_carries_the_economics_it_was_made_beside()
+    {
+        using var root = new TempWebRoot();
+        using var factory = new SwitchboardHostFactory(root.Path);
+        _ = factory.Server;
+        DecisionInputs Inputs(EconomicsDecisionInputs? economics) => DecisionInputs.None with
+        {
+            Dispatch = new DispatchDecisionInputs([], Amperes.Zero, Amperes.Zero, null, ImmutableDictionary<Phase, Amperes>.Empty, ImmutableDictionary<ConstraintKey, Amperes>.Empty, null, null, TimeSpan.Zero, TimeSpan.Zero, null, OverrideMode.Auto) { Economics = economics },
+        };
+        Decision Start(string id, DateTimeOffset at, string device, Phase phase, ReasonCode reason, EconomicsDecisionInputs? economics) =>
+            new(id, at, DecisionScope.Device, DeviceName.Parse(device), null, phase, DecisionAction.SwitchOn, reason, null, OperatingMode.Shadow, false, ReasonCode.ModeShadow, Inputs(economics), DecisionOrigin.Dispatch);
+        var zone = Start("zone", Noon, "ev_charger", Phase.L2, ReasonCode.ZoneAllowed, new EconomicsDecisionInputs("offpeak", 0.60, null, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting));
+        var refused = Start("none", Noon.AddSeconds(1), "heater_l1", Phase.L1, ReasonCode.SourceNotAllowed, new EconomicsDecisionInputs(null, null, null, null, 0.35, ValueBasis.Fallback, 0.35, null, null, SettlementModelId.NetBilling));
+        var without = Start("without", Noon.AddSeconds(2), "heater_l2", Phase.L2, ReasonCode.HeadroomAvailable, null);
+        factory.Services.GetRequiredService<IDecisionRecorder>().Record([zone, refused, without]);
+
+        var items = (await GetAsync(factory, "/api/decisions")).GetProperty("items").EnumerateArray().ToList();
+        JsonElement Economics(string device) => items.Single(i => i.GetProperty("device").GetString() == device).GetProperty("inputs").GetProperty("dispatch").GetProperty("economics");
+        var car = Economics("ev_charger");
+
+        Assert.Equal(["zone", "importPrice", "exportPrice", "priceBasis", "vEff", "valueBasis", "orderKey", "class", "sources", "settlement"], car.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(("offpeak", 0.60, JsonValueKind.Null, "zone", 2.03, "static", "zone", "pv_and_zone:offpeak", "hourly_netting"),
+            (car.GetProperty("zone").GetString(), car.GetProperty("importPrice").GetDouble(), car.GetProperty("exportPrice").ValueKind, car.GetProperty("priceBasis").GetString(), car.GetProperty("vEff").GetDouble(), car.GetProperty("valueBasis").GetString(), car.GetProperty("class").GetString(), car.GetProperty("sources").GetString(), car.GetProperty("settlement").GetString()));
+        var heater = Economics("heater_l1");
+        Assert.Equal(("none", "fallback", "net_billing", JsonValueKind.Null, JsonValueKind.Null), (heater.GetProperty("class").GetString(), heater.GetProperty("valueBasis").GetString(), heater.GetProperty("settlement").GetString(), heater.GetProperty("priceBasis").ValueKind, heater.GetProperty("sources").ValueKind));
+        Assert.Equal(JsonValueKind.Null, Economics("heater_l2").ValueKind);
     }
 
     [Theory]

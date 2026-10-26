@@ -7,10 +7,12 @@ import { DISPATCH_REFRESH_INTERVAL_MS, DISPATCH_REQUEST_TIMEOUT_MS } from './con
 import { formatAge, formatAmps, formatCountdown, formatFixed, formatKw, formatKwh, formatNumber, formatQuantity, roundTo } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { browserZone, localClock, localHourStart } from './localTime';
+import { SavingsCard, TariffCard } from './Economics';
 import { HourlyBalanceCard } from './HourlyBalance';
 import { levelText, reasonSentence } from './reasons';
 import { Age, PhaseBar, PollStatus, QuantityText, StateBadge, StateLabel, unknownReason, type Tone } from './ui';
 import { useDevices } from './useDevices';
+import { useEconomics } from './useEconomics';
 import { usePoll, type PollView } from './usePoll';
 import { usePower } from './usePower';
 import { useStatistics } from './useStatistics';
@@ -674,6 +676,7 @@ export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: s
   const power = usePower();
   const dispatch = usePoll(fetchDispatch, DISPATCH_REFRESH_INTERVAL_MS, DISPATCH_REQUEST_TIMEOUT_MS);
   const devices = useDevices();
+  const economics = useEconomics();
   const live = power.kind === 'live' ? power.data : null;
   const configs = devices.kind === 'live' ? devices.data.devices : null;
   const name: NameOf = (id) => deviceLabel(configs, id);
@@ -693,6 +696,8 @@ export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: s
       <div class="dash-grid">
         <BalanceCard view={power} name={name} {...ctx} />
         <HourlyBalanceCard lang={lang} />
+        <TariffCard view={economics} {...ctx} />
+        <SavingsCard view={economics} name={name} {...ctx} />
         <QueueCard view={dispatch} power={live} configs={configs} name={name} {...ctx} />
       </div>
     </>

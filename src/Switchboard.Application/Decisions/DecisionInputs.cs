@@ -5,6 +5,7 @@ using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -140,6 +141,9 @@ public sealed record DispatchDecisionInputs(
 
     /// <summary>The hourly balance as the allowance rule read it in the step (BAL-07); null while no energy counters are mapped, and on lines written before 0.9.</summary>
     public BalanceDecisionInputs? Balance { get; init; }
+
+    /// <summary>The prices, effective value, order key and energy class the step used (ECO-09); null without an <c>economics:</c> section, and on lines written before it.</summary>
+    public EconomicsDecisionInputs? Economics { get; init; }
 }
 
 /// <summary>
@@ -148,3 +152,30 @@ public sealed record DispatchDecisionInputs(
 /// (zero when the balance was not of the running hour).
 /// </summary>
 public sealed record BalanceDecisionInputs(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double RemainingS, bool Burning);
+
+/// <summary>
+/// What the economics of a dispatch decision were (ECO-09, 14-ECONOMICS): the tariff zone and the prices in force, the device's
+/// effective value and the key it was ordered by, the energy class that allowed it and its sources. A price is currency per kWh
+/// in the user's label, never a symbol of ours; a value is null where no such price exists.
+/// </summary>
+/// <param name="Zone">The tariff zone now; null for a flat or absent tariff.</param>
+/// <param name="ImportPrice">What a kWh bought costs now.</param>
+/// <param name="ExportPrice">What a kWh not exported earns now; null when none is configured (the surplus price test is then off).</param>
+/// <param name="PriceBasis">How the import price (else the export price) came about; fallback when either price is at its fallback, else live when either is live; null when there is none.</param>
+/// <param name="VEff">The device's effective value per kWh now.</param>
+/// <param name="ValueBasis">static, followed or fallback.</param>
+/// <param name="OrderKey">The key the device was ordered by: its shed priority where one is set, else the effective value.</param>
+/// <param name="Class">The energy class that allows the device now: surplus or the active zone; null (written <c>none</c>) when neither does.</param>
+/// <param name="Sources">The sources as dispatch used them (narrowed); null when the device declares none.</param>
+/// <param name="Settlement">The settlement model that judged the surplus.</param>
+public sealed record EconomicsDecisionInputs(
+    string? Zone,
+    double? ImportPrice,
+    double? ExportPrice,
+    PriceBasis? PriceBasis,
+    double VEff,
+    ValueBasis ValueBasis,
+    double OrderKey,
+    EnergyClass? Class,
+    string? Sources,
+    SettlementModelId Settlement);

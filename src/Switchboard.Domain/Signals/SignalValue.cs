@@ -15,4 +15,7 @@ public sealed record EnergyValue(KilowattHours Energy) : SignalValue;
 
 public sealed record PercentageValue(Percent Percentage) : SignalValue;
 
+/// <summary>A price in currency per kWh (the signal layer converted a <c>/MWh</c> unit); may be negative on a market, the consumer decides what that means.</summary>
+public sealed record PriceValue(double PerKwh) : SignalValue;
+
 public sealed record StateValue(string State) : SignalValue;

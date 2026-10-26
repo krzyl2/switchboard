@@ -10,6 +10,11 @@ internal sealed class SteppableTime(DateTimeOffset start) : TimeProvider
 
     public override DateTimeOffset GetUtcNow() => Now;
 
+    /// <summary>The local time zone this clock reports (a test that depends on local time, such as the tariff zones, sets it explicitly); the machine's by default.</summary>
+    public TimeZoneInfo Zone { get; set; } = TimeZoneInfo.Local;
+
+    public override TimeZoneInfo LocalTimeZone => Zone;
+
     public void Advance(TimeSpan by)
     {
         if (by < TimeSpan.Zero)

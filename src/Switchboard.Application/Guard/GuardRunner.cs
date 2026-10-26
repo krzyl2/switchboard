@@ -179,7 +179,7 @@ public sealed class GuardRunner : IDisposable
             _lockouts.Observe(protection.Setup ?? _engine.Setup, protection.DeviceStates, now);
             _gate.BeginStep(inputs, now);
             var evaluation = _engine.Evaluate(new GuardInput(trigger, protection, _killSwitch.Status, mode), now);
-            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current }, now);
+            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current, Prices = inputs.Prices }, now);
             decisions.AddRange(_gate.Apply(evaluation, dispatch, overrides, mode, inputs, now));
             Record(decisions.ToImmutable());
             _holder.Publish(evaluation.Status);

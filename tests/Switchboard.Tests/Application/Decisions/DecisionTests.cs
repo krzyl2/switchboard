@@ -25,10 +25,10 @@ public sealed class DecisionTests
     }
 
     [Fact]
-    public void Reason_codes_are_exactly_list_version_4()
+    public void Reason_codes_are_exactly_list_version_6()
     {
-        // 04 §6, version 4 (2026-10-26): the UI renders a sentence per code, so the list is closed.
-        // Versions 3 and 4 only appended, so a log line of an older version keeps its meaning.
+        // 04 §6, version 6 (2026-10-26): the UI renders a sentence per code, so the list is closed.
+        // Versions 3 to 6 only appended, so a log line of an older version keeps its meaning.
         string[] specification =
         [
             "guard_tier_exceeded", "guard_budget_low", "guard_stale_signal",
@@ -39,16 +39,39 @@ public sealed class DecisionTests
             "safe_state", "plan_slot_target", "headroom_available",
             "kill_switch", "foreign_load", "change_limit",
             "balance_projection_low", "balance_surplus", "balance_unknown",
+            "mode_active", "command_failed", "command_not_sent",
+            "zone_allowed", "source_not_allowed", "value_below_cost",
+            "surplus_available", "surplus_low",
         ];
 
-        Assert.Equal(4, ReasonCodes.ListVersion);
+        Assert.Equal(6, ReasonCodes.ListVersion);
+        Assert.Equal((5, 4, 3, 2), (ReasonCodes.PreviousListVersion, ReasonCodes.EarlierListVersion, ReasonCodes.OlderListVersion, ReasonCodes.OldestListVersion));
         Assert.Equal(specification, ReasonCodes.All.Select(ReasonCodes.Name));
         Assert.False(ReasonCodes.IsDefined(default));
         Assert.True(ReasonCodes.InVersion(ReasonCode.KillSwitch, ReasonCodes.OldestListVersion));
         Assert.False(ReasonCodes.InVersion(ReasonCode.ForeignLoad, ReasonCodes.OldestListVersion));
         Assert.False(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.OldestListVersion));
-        Assert.True(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.PreviousListVersion));
-        Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceProjectionLow, ReasonCodes.PreviousListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.ChangeLimit, ReasonCodes.OlderListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceProjectionLow, ReasonCodes.OlderListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.BalanceProjectionLow, ReasonCodes.EarlierListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.ModeActive, ReasonCodes.EarlierListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.CommandFailed, ReasonCodes.OlderListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.CommandNotSent, ReasonCodes.EarlierListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.CommandNotSent, ReasonCodes.PreviousListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.CommandNotSent, ReasonCodes.ListVersion));
+
+        // Version 6 appended the economic codes: no older version has them, and the last of version 5 is where version 5 ended.
+        foreach (var code in new[] { ReasonCode.ZoneAllowed, ReasonCode.SourceNotAllowed, ReasonCode.ValueBelowCost, ReasonCode.SurplusAvailable, ReasonCode.SurplusLow })
+        {
+            Assert.True(ReasonCodes.InVersion(code, ReasonCodes.ListVersion));
+            Assert.All(
+                new[] { ReasonCodes.PreviousListVersion, ReasonCodes.EarlierListVersion, ReasonCodes.OlderListVersion, ReasonCodes.OldestListVersion },
+                version => Assert.False(ReasonCodes.InVersion(code, version)));
+        }
+
+        Assert.True(ReasonCodes.InVersion(ReasonCode.CommandNotSent, ReasonCodes.PreviousListVersion));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.CommandNotSent, 7));
+        Assert.False(ReasonCodes.InVersion((ReasonCode)(int.MaxValue), ReasonCodes.ListVersion));
         Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceUnknown, ReasonCodes.OldestListVersion));
         Assert.True(ReasonCodes.InVersion(ReasonCode.BalanceSurplus, ReasonCodes.ListVersion));
     }

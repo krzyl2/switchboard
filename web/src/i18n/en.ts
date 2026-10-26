@@ -130,7 +130,7 @@ export const en = {
   'signalDetail.state_unavailable': 'Home Assistant reports unavailable',
   'signalDetail.state_unknown': 'Home Assistant reports unknown',
   'signalDetail.not_numeric': 'value is not a number',
-  'signalDetail.unit_mismatch': 'unit differs from the declared one',
+  'signalDetail.unit_mismatch': 'unit differs from the declared one (a price: or its currency is not economics.currency)',
   'signalDetail.sign_violation': 'negative value on an unsigned signal',
   'signalDetail.balance_residual': 'latest sample failed the balance check',
   'signalDetail.max_age_exceeded': 'no report within max_age',
@@ -148,6 +148,8 @@ export const en = {
   'role.group_current': 'circuit group current (sub-meter)',
   'role.energy_export': 'exported energy counter (hourly balance)',
   'role.energy_import': 'imported energy counter (hourly balance)',
+  'role.price_import': 'import price (from an entity)',
+  'role.price_export': 'export price (from an entity)',
   'directionSource.signed_signal': 'signed value',
   'directionSource.deadband': 'near zero, counted as import',
   'directionSource.pending': 'waiting for the power of the same reading, counted as import',
@@ -207,6 +209,15 @@ export const en = {
   'issue.rotation_group_mismatch':
     'A rotation group needs at least two identical on/off elements, one per phase, with equal ratings and value and no shed priority.',
   'issue.unknown_circuit_group': 'The device names a circuit group that is not declared under circuit_groups.',
+  'issue.duplicate_zone_id': 'Two tariff zones have the same id.',
+  'issue.dynamic_price_not_supported': 'A dynamic price is not allowed here: the fallback and the add are static (a number or zones).',
+  'issue.price_fallback_missing': 'A price that follows an entity needs a static fallback price (a number or zones).',
+  'issue.unit_mismatch': 'The currency in the price signal unit is not economics.currency; the signal is not used and the fallback price stands in.',
+  'issue.price_signal_unused': 'A price role is declared but no price names this signal (signal: in economics); it feeds nothing.',
+  'issue.zone_gap': 'Some moments are not claimed by any tariff zone.',
+  'issue.holidays_list_stale': 'The holiday list has no date of the current year; renew it.',
+  'issue.sources_unusable': 'The device names a tariff zone that is not configured; that source is dropped and the device is narrowed.',
+  'issue.value_follows_without_price': 'The device follows a price that is not configured; it keeps its static value per kWh.',
   'issue.reserved_key_ignored': 'This key is reserved for a later version and is ignored.',
   'issue.group_rating_above_main': 'The circuit group breaker is rated above the main breaker; the main limit binds first.',
   'issue.direction_unavailable_cautious': 'No direction source: the value always counts as import (cautious mode).',
@@ -380,7 +391,7 @@ export const en = {
   foreignDetail: 'foreign load {measured} against a baseline of {baseline}',
   overrideDetail: 'override: {mode}',
 
-  // Reason codes, list version 4 (04-ALGORITHMS §6): one sentence per code.
+  // Reason codes, list version 5 (04-ALGORITHMS §6): one sentence per code.
   'reason.guard_tier_exceeded': 'Phase current above a tier of the breaker profile.',
   'reason.guard_budget_low': 'The overload budget of the phase is low.',
   'reason.guard_stale_signal': 'A signal the limits depend on is stale or unavailable.',
@@ -405,6 +416,16 @@ export const en = {
   'reason.balance_projection_low': 'The balance projected to the end of the hour leaves no room for this load.',
   'reason.balance_surplus': 'The balance projected to the end of the hour is above the target band: there is surplus energy.',
   'reason.balance_unknown': 'The hourly balance or the free power is not known, so no energy is wanted.',
+  'reason.mode_active': 'Active mode: control is allowed and in force, so decisions go out as commands.',
+  'reason.command_failed': 'Home Assistant refused the command or did not answer in time; it may not have been carried out.',
+  'reason.command_not_sent':
+    'The command was not sent: no connection to Home Assistant, not a declared actuator (or one of Switchboard’s own entities), or a newer command replaced it.',
+  // List version 6: which energy a device may take (14-ECONOMICS); versions 1 to 5 used the headroom codes.
+  'reason.zone_allowed': 'The active tariff zone is one of the device’s sources and its value covers the price, so it may run.',
+  'reason.source_not_allowed': 'None of the energy available now (surplus, the active tariff zone) is among the device’s sources.',
+  'reason.value_below_cost': 'The energy costs more than the device’s value per kWh: the zone price, or the export income it would forgo.',
+  'reason.surplus_available': 'There is surplus power right now and it covers the device.',
+  'reason.surplus_low': 'There is not enough surplus power right now for the device.',
   // The end of a condition is worded by its action: the reason code still names the condition that ended.
   'reason.kill_switch.released': 'The kill switch was released.',
   'reason.safe_state.exited': 'Valid data again; the safe state ended.',

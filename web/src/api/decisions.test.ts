@@ -172,12 +172,58 @@ describe('parseDecisionsPage, dispatch decisions', () => {
     expect(() => parseDecisionsPage(payload((p) => change(at(p, 'mode_resolved').inputs.mode)))).toThrow();
   });
 
-  it('reads the reason codes of list version 4 and the self-test origin', () => {
+  it('reads the reason codes of list version 6 and the self-test origin', () => {
     const parsed = parseDecisionsPage(
       payload((p) => Object.assign(at(p, 'mode_resolved'), { reason: 'change_limit', refusedBy: 'foreign_load', origin: 'self_test' })),
     );
 
     expect(parsed.items.find((d) => d.action === 'mode_resolved')).toMatchObject({ reason: 'change_limit', refusedBy: 'foreign_load', origin: 'self_test' });
+  });
+
+  it.each(['zone_allowed', 'source_not_allowed', 'value_below_cost', 'surplus_available', 'surplus_low'])('reads the economic reason code %s as reason and as refusedBy', (code) => {
+    const parsed = parseDecisionsPage(payload((p) => Object.assign(at(p, 'mode_resolved'), { reason: code, refusedBy: code })));
+
+    expect(parsed.items.find((d) => d.action === 'mode_resolved')).toMatchObject({ reason: code, refusedBy: code });
+  });
+});
+
+// ECO-09: a dispatch decision carries the economics it was made beside; a decision of a step without an
+// economics section (and every line written before) has none, and a malformed block is refused, not guessed.
+describe('parseDecisionsPage, economics inputs', () => {
+  it('keeps the zone, prices, value, order key, class and sources of the step', () => {
+    const parsed = parseDecisionsPage(payload());
+    const unresponsive = parsed.items.find((d) => d.action === 'marked_unresponsive');
+
+    expect(unresponsive?.inputs.dispatch?.economics).toEqual({
+      zone: 'offpeak',
+      importPrice: 0.6,
+      exportPrice: 0.35,
+      priceBasis: 'zone',
+      vEff: 2.03,
+      valueBasis: 'static',
+      orderKey: 2.03,
+      class: 'zone',
+      sources: 'pv_and_zone:offpeak',
+      settlement: 'hourly_netting',
+    });
+  });
+
+  it('has no economics on a dispatch decision of a step without an economics section', () => {
+    const start = parseDecisionsPage(payload()).items.find((d) => d.action === 'switch_on');
+
+    expect(start?.inputs.dispatch?.economics).toBeNull();
+  });
+
+  it.each([
+    ['a class that is none of pv, zone, none', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.economics.class = 'grid')],
+    ['an unknown price basis', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.economics.priceBasis = 'spot')],
+    ['an unknown value basis', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.economics.valueBasis = 'live')],
+    ['an unknown settlement model', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.economics.settlement = 'net_metering')],
+    ['a price sent as text', (p: any) => (at(p, 'marked_unresponsive').inputs.dispatch.economics.importPrice = '0.6')],
+    ['a missing effective value', (p: any) => delete at(p, 'marked_unresponsive').inputs.dispatch.economics.vEff],
+    ['a missing economics key', (p: any) => delete at(p, 'marked_unresponsive').inputs.dispatch.economics],
+  ])('refuses %s', (_case, change) => {
+    expect(() => parseDecisionsPage(payload(change))).toThrow();
   });
 });
 

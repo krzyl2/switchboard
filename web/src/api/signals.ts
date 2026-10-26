@@ -54,9 +54,18 @@ export const ISSUE_CODES = [
   'sensor_domain_required',
   'rotation_group_mismatch',
   'unknown_circuit_group',
+  'duplicate_zone_id',
+  'dynamic_price_not_supported',
+  'zone_gap',
+  'price_fallback_missing',
   'reserved_key_ignored',
   'direction_unavailable_cautious',
   'group_rating_above_main',
+  'holidays_list_stale',
+  'sources_unusable',
+  'value_follows_without_price',
+  'unit_mismatch',
+  'price_signal_unused',
   'max_age_short_for_probe',
 ] as const;
 /** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
@@ -76,7 +85,7 @@ export const PROTECTION_INVALID_REASONS = [
 ] as const;
 export const FLOW_DIRECTIONS = ['import', 'export', 'unknown'] as const;
 export const DIRECTION_SOURCES = ['signed_signal', 'deadband', 'pending', 'unavailable', 'not_configured'] as const;
-export const SIGNAL_KINDS = ['current', 'power', 'voltage', 'energy_counter', 'state', 'percentage'] as const;
+export const SIGNAL_KINDS = ['current', 'power', 'voltage', 'energy_counter', 'state', 'percentage', 'price'] as const;
 export const SIGNAL_ROLES = [
   'none',
   'phase_current',
@@ -92,6 +101,8 @@ export const SIGNAL_ROLES = [
   'group_current',
   'energy_export',
   'energy_import',
+  'price_import',
+  'price_export',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [
@@ -123,14 +134,20 @@ export type SignalRole = (typeof SIGNAL_ROLES)[number];
 export type SignalState = (typeof SIGNAL_STATES)[number];
 export type SignalDetail = (typeof SIGNAL_DETAILS)[number];
 
-/** The unit the add-on normalizes each numeric kind to; a state signal has none. */
+/**
+ * The unit the add-on normalizes each numeric kind to; a state signal has none. A price has no fixed one: it travels as
+ * `<currency label>/kWh`, the label being the user's `economics.currency` (see PRICE_UNIT).
+ */
 export const INTERNAL_UNITS = {
   current: 'A',
   power: 'W',
   voltage: 'V',
   energy_counter: 'kWh',
   percentage: '%',
-} as const satisfies Record<Exclude<SignalKind, 'state'>, string>;
+} as const satisfies Record<Exclude<SignalKind, 'state' | 'price'>, string>;
+
+/** A price value always travels per kWh (the add-on converted a per-MWh unit); the label before the slash is the user's own. */
+export const PRICE_UNIT = /^[^/\s][^/]*\/kWh$/;
 
 export type Unit = (typeof INTERNAL_UNITS)[keyof typeof INTERNAL_UNITS];
 
@@ -202,7 +219,7 @@ export interface Signal {
   detail: SignalDetail;
   /** Text for a state signal, a number in `unit` otherwise. */
   value: number | string | null;
-  unit: Unit | null;
+  unit: Unit | string | null;
   raw: { state: string; unit: string | null } | null;
   lastReported: Date | null;
   /** Computed by the add-on when it answered. */
@@ -326,9 +343,16 @@ function signal(raw: unknown, path: string): Signal {
     if (unit !== null) fail(`${path}.unit`, 'null for a state signal');
   } else {
     value = nullable(rawValue, `${path}.value`, number);
-    // A number always travels in the kind's internal unit, and no number means no unit.
-    const expected = value === null ? null : INTERNAL_UNITS[kind];
-    if (unit !== expected) fail(`${path}.unit`, `${expected ?? 'null'} for this ${kind} value`);
+    if (kind === 'price') {
+      // A price travels per kWh in the user's currency label; no number means no unit.
+      if (value === null ? unit !== null : typeof unit !== 'string' || !PRICE_UNIT.test(unit)) {
+        fail(`${path}.unit`, value === null ? 'null for this price value' : '<currency>/kWh for this price value');
+      }
+    } else {
+      // A number always travels in the kind's internal unit, and no number means no unit.
+      const expected = value === null ? null : INTERNAL_UNITS[kind];
+      if (unit !== expected) fail(`${path}.unit`, `${expected ?? 'null'} for this ${kind} value`);
+    }
   }
   return {
     name: nullable(field(r, 'name', path), `${path}.name`, text),
@@ -339,7 +363,7 @@ function signal(raw: unknown, path: string): Signal {
     state: oneOf(SIGNAL_STATES, field(r, 'state', path), `${path}.state`),
     detail: oneOf(SIGNAL_DETAILS, field(r, 'detail', path), `${path}.detail`),
     value,
-    unit: unit as Unit | null,
+    unit: unit as Unit | string | null,
     raw: nullable(field(r, 'raw', path), `${path}.raw`, (v, p) => {
       const o = object(v, p);
       return {

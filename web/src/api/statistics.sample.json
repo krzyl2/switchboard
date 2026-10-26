@@ -87,7 +87,8 @@
         "wouldSheds": 1,
         "voltageLosses": 0,
         "supplyOutages": 0,
-        "voltageObservedS": 300
+        "voltageObservedS": 300,
+        "prices": null
       }
     },
     {
@@ -146,7 +147,8 @@
         "wouldSheds": 0,
         "voltageLosses": 0,
         "supplyOutages": 0,
-        "voltageObservedS": 300
+        "voltageObservedS": 300,
+        "prices": null
       }
     }
   ],
@@ -208,7 +210,8 @@
       "wouldSheds": 1,
       "voltageLosses": 0,
       "supplyOutages": 0,
-      "voltageObservedS": 600
+      "voltageObservedS": 600,
+      "prices": null
     }
   },
   "lastHour": {
@@ -269,7 +272,8 @@
       "wouldSheds": 1,
       "voltageLosses": 0,
       "supplyOutages": 0,
-      "voltageObservedS": 3600
+      "voltageObservedS": 3600,
+      "prices": null
     }
   },
   "lifetime": {

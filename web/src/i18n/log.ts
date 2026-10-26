@@ -49,6 +49,8 @@ const en = {
   'log.summary.valueHow': 'at each device’s value_per_kwh, without a currency in this version',
   'log.summary.savings': 'Savings',
   'log.summary.savingsNotAvailable': 'not available — savings need a tariff, which arrives in v2',
+  'log.summary.savingsHint': 'Add an economics: section to switchboard.yaml to enable them.',
+  'log.summary.valueHowPriced': 'at each device’s value per kWh at the time, in the currency label of the configuration; the savings below take the settlement into account',
   'log.file.reset': 'statistics.json could not be read and was set aside as statistics.json.corrupt; the statistics started fresh.',
   'log.file.writeError': 'statistics.json cannot be written: {error}',
 };
@@ -102,6 +104,8 @@ export const log: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'log.summary.valueHow': 'według value_per_kwh każdego urządzenia, w tej wersji bez waluty',
     'log.summary.savings': 'Oszczędność',
     'log.summary.savingsNotAvailable': 'niedostępne — oszczędność wymaga taryfy, która pojawi się w v2',
+    'log.summary.savingsHint': 'Dodaj sekcję economics: do switchboard.yaml, aby ją włączyć.',
+    'log.summary.valueHowPriced': 'po wartości kWh każdego urządzenia w danej chwili, w etykiecie waluty z konfiguracji; oszczędność poniżej uwzględnia rozliczenie',
     'log.file.reset':
       'Nie udało się odczytać statistics.json; plik odłożono jako statistics.json.corrupt, a statystyki zaczęły się od nowa.',
     'log.file.writeError': 'Nie można zapisać statistics.json: {error}',

@@ -18,7 +18,7 @@ namespace Switchboard.Tests.Host;
 /// is sent before the link closes. GuardService.StopAsync runs the shutdown step, waits (at most
 /// HomeAssistant:ShutdownCommandWait) for the command path to go idle, and only then records what
 /// came back: an off Home Assistant acknowledged is commanded, one it did not answer in time is
-/// recorded as not answered (device_unresponsive), never as commanded. Here the same order over the
+/// recorded as not answered (command_failed), never as commanded. Here the same order over the
 /// real command port, with a channel the test answers; the port's timers run on a fake clock.
 /// </summary>
 public sealed class ShutdownCommandTests
@@ -78,7 +78,7 @@ public sealed class ShutdownCommandTests
 
         var shutdown = harness.Recorder.Decisions.Where(d => d.Reason == ReasonCode.SafeState && d.Origin == DecisionOrigin.Guard && d.Device is not null).ToList();
         Assert.Equal(
-            [("ev_charger", true, (ReasonCode?)null), ("heater_l1", true, null), ("heater_l2", true, null), ("heater_l3", false, ReasonCode.DeviceUnresponsive)],
+            [("ev_charger", true, (ReasonCode?)null), ("heater_l1", true, null), ("heater_l2", true, null), ("heater_l3", false, ReasonCode.CommandFailed)],
             shutdown.Select(d => (d.Device!.Value.Value, d.Commanded, d.RefusedBy)).OrderBy(d => d.Value, StringComparer.Ordinal));
         Assert.All(shutdown, d => Assert.Equal(OperatingMode.Active, d.Mode));
 

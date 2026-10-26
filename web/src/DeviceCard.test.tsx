@@ -4,6 +4,7 @@ import { App } from './App';
 import type { HistoryEntry } from './api/dispatch';
 import devices from './api/devices.sample.json';
 import dispatch from './api/dispatch.sample.json';
+import economics from './api/economics.sample.json';
 import power from './api/power.sample.json';
 import { DISPATCH_REFRESH_INTERVAL_MS } from './config';
 import { measurement } from './DeviceCard';
@@ -435,5 +436,133 @@ describe('measurement', () => {
       expected: 'najwyżej 6,0 A',
       measured: '9,6 A',
     });
+  });
+});
+
+// UI-12 (value and source part, ECO-13): the value per kWh now, the sources in words and the energy
+// class open now with dispatch's own reason sentence. Zone ids are monospace like entity ids. The goal
+// and history rows stay what they were, and without an economics: section the old words stay.
+describe('device card: energy value, sources and what is allowed now (ECO-13)', () => {
+  const serveEconomics = (answer: unknown, dispatchChange?: (p: any) => void) =>
+    serveSamples(fetchMock, {
+      'api/devices': devices,
+      'api/dispatch': dispatchChange === undefined ? dispatch : changed(dispatch, dispatchChange),
+      'api/power': power,
+      'api/economics': answer,
+    });
+
+  async function openCard(id: string, lang: 'en' | 'pl' = 'en') {
+    window.location.hash = `#/devices/${id}`;
+    render(<App lang={lang} />);
+    await advance();
+    await advance();
+    await advance();
+    return card(lang === 'en' ? 'Energy value and goal' : 'Wartość energii i cel');
+  }
+
+  const VALUE = 'What 1 kWh is worth for this device';
+
+  it('shows the static value and the value now with what it follows, with the currency label of the data', async () => {
+    serveEconomics(economics);
+    const section = await openCard('ev_charger');
+
+    expect(field(section, VALUE).textContent).toContain('Static value: 2.03 EUR per kWh');
+    expect(field(section, VALUE).textContent).toContain('Value now: 1.80 EUR per kWh');
+    expect(field(section, VALUE).textContent).toContain('follows the import price × 3');
+    expect(field(section, VALUE).textContent).toContain('the followed price is in use');
+    // The 0.9 hint ("has no currency in this version") would now be untrue.
+    expect(section.textContent).not.toContain('no currency in this version');
+  });
+
+  it('says a followed price that is not available is not the followed value', async () => {
+    serveEconomics(changed(economics, (p) => Object.assign(p.devices[1], { valueBasis: 'fallback' })));
+    const section = await openCard('ev_charger');
+
+    expect(field(section, VALUE).textContent).toContain('the followed price is not available now, so the static value or the fallback price applies');
+  });
+
+  it('puts the sources in words: surplus only, surplus and named zones in monospace, any', async () => {
+    serveEconomics(economics);
+    const heater = await openCard('heater_l1');
+    expect(field(heater, 'Allowed sources').textContent).toBe('surplus only: never energy from the grid');
+    cleanup();
+
+    const car = await openCard('ev_charger');
+    expect(field(car, 'Allowed sources').textContent).toBe('surplus and these tariff zones: offpeak');
+    expect([...field(car, 'Allowed sources').querySelectorAll('.mono')].map((e) => e.textContent)).toEqual(['offpeak']);
+    cleanup();
+
+    serveEconomics(changed(economics, (p) => Object.assign(p.devices[1], { sources: 'any', sourcesDeclared: 'any' })));
+    expect(field(await openCard('ev_charger'), 'Allowed sources').textContent).toBe('any: surplus and every tariff zone');
+  });
+
+  it('says a declared zone that is not in the tariff was dropped, and shows what was declared', async () => {
+    serveEconomics(changed(economics, (p) => Object.assign(p.devices[1], { sources: 'pv_and_zone:offpeak', sourcesDeclared: 'pv_and_zone:ghost,offpeak' })));
+    const sources = field(await openCard('ev_charger'), 'Allowed sources');
+
+    expect(sources.textContent).toContain('Declared as pv_and_zone:ghost,offpeak.');
+    expect(sources.textContent).toContain('was dropped');
+    expect(sources.querySelector('.mono')).not.toBeNull();
+  });
+
+  it('says a device without declared sources is judged as before, and claims no class for it', async () => {
+    serveEconomics(changed(economics, (p) => Object.assign(p.devices[0], { sources: null, sourcesDeclared: null, class: 'none' })));
+    const section = await openCard('heater_l1');
+
+    expect(field(section, 'Allowed sources').textContent).toContain('Not declared: judged as before');
+    expect(within(section).queryByText('Allowed now', { selector: 'dt' })).toBeNull();
+  });
+
+  it('shows the open energy class and dispatch’s reason sentence as allowed now', async () => {
+    serveEconomics(economics, (p) => {
+      p.devices.find((d: any) => d.id === 'ev_charger').reason = 'zone_allowed';
+      p.devices.find((d: any) => d.id === 'heater_l1').reason = 'source_not_allowed';
+    });
+    const car = field(await openCard('ev_charger'), 'Allowed now');
+
+    expect(car.textContent).toContain('the active tariff zone offpeak');
+    expect(car.textContent).toContain('The active tariff zone is one of the device’s sources and its value covers the price, so it may run.');
+    expect(car.querySelector('.mono')?.textContent).toBe('offpeak');
+    cleanup();
+
+    const heater = field(await openCard('heater_l1'), 'Allowed now');
+    expect(heater.textContent).toContain('no energy class is open to this device now');
+    expect(heater.textContent).toContain('None of the energy available now (surplus, the active tariff zone) is among the device’s sources.');
+  });
+
+  it('names the surplus class, and says dispatch has not run a step when the class is not known yet', async () => {
+    serveEconomics(changed(economics, (p) => (p.devices[0].class = 'pv')));
+    expect(field(await openCard('heater_l1'), 'Allowed now').textContent).toContain('surplus: energy that would otherwise be exported');
+    cleanup();
+
+    serveEconomics(changed(economics, (p) => (p.devices[0].class = null)));
+    expect(field(await openCard('heater_l1'), 'Allowed now').textContent).toContain('dispatch has not evaluated a step yet');
+  });
+
+  it('says it all in Polish', async () => {
+    serveEconomics(economics, (p) => (p.devices.find((d: any) => d.id === 'ev_charger').reason = 'zone_allowed'));
+    const section = await openCard('ev_charger', 'pl');
+
+    expect(field(section, 'Ile warta jest 1 kWh dla tego urządzenia').textContent).toContain('Wartość teraz: 1,80 EUR za kWh');
+    expect(field(section, 'Dozwolone źródła').textContent).toBe('nadwyżka i te strefy taryfy: offpeak');
+    expect(field(section, 'Dozwolone teraz').textContent).toContain('obowiązująca strefa taryfy offpeak');
+  });
+
+  it('keeps the goal row not available (goal is v3.0), and the history card as it was', async () => {
+    serveEconomics(economics);
+    const section = await openCard('ev_charger');
+
+    expect(field(section, 'Goal').textContent).toContain('Not available in this version');
+    expect(card('Command verification')).toBeTruthy();
+  });
+
+  it('keeps the old words without an economics section: a static value without a currency, sources not available', async () => {
+    serveEconomics(changed(economics, (p) => Object.assign(p, { configured: false, currency: null, tariff: null, settlement: null, savings: null })));
+    const section = await openCard('ev_charger');
+
+    expect(field(section, VALUE).textContent).toContain('2.03 per kWh');
+    expect(field(section, VALUE).textContent).toContain('no currency in this version');
+    expect(field(section, 'Allowed sources').textContent).toContain('Not available in this version');
+    expect(within(section).queryByText('Allowed now', { selector: 'dt' })).toBeNull();
   });
 });

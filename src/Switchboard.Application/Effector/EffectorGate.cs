@@ -81,7 +81,7 @@ public sealed class EffectorGate
     public Decision ModeDecision(ModeStatus mode, ControlSwitchSource? source, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(mode);
-        var reason = mode.Effective == OperatingMode.Active ? ReasonCode.ManualOverride
+        var reason = mode.Effective == OperatingMode.Active ? ReasonCode.ModeActive
             : mode.DecreasesOnly ? ReasonCode.SafeState
             : mode.Missing.Contains(ModeCondition.StateUnconfirmed) ? ReasonCode.KillSwitch
             : ReasonCode.ModeShadow;
@@ -1641,10 +1641,10 @@ public sealed class EffectorGate
             return;
         }
 
-        if (result is { Outcome: CommandOutcome.NotSent, NotSent: CommandNotSentReason.NotDeclared })
+        if (result is { Outcome: CommandOutcome.NotSent, NotSent: CommandNotSentReason.NotDeclared or CommandNotSentReason.OwnEntity })
         {
-            // The detail says why: not a declared actuator of the configuration loaded now, or an
-            // option the entity does not offer.
+            // The detail says why: not a declared actuator of the configuration loaded now, an
+            // option the entity does not offer, or one of Switchboard's own entities.
             _logger.LogError("A command for {Device} was refused at send time: {Detail}", info.Device, result.Detail);
         }
         else if (result.Outcome != CommandOutcome.NotSent)
@@ -1705,13 +1705,16 @@ public sealed class EffectorGate
             ? null
             : results.First(r => r.Outcome != CommandOutcome.Acknowledged) switch
             {
-                { Outcome: CommandOutcome.Failed or CommandOutcome.TimedOut } => ReasonCode.DeviceUnresponsive,
+                // Home Assistant answered with an error or not at all (list version 5; versions 1 to 4
+                // used device_unresponsive, which now means only a device that does not react).
+                { Outcome: CommandOutcome.Failed or CommandOutcome.TimedOut } => ReasonCode.CommandFailed,
                 { NotSent: CommandNotSentReason.ControlOff } => ReasonCode.ModeShadow,
 
-                // Not declared at send time, a device re-pointed at another entity, or a command a
-                // newer one for the same actuator replaced: safe_state is the nearest code of the
-                // closed list (change_limit means an increase waiting for another in flight).
-                _ => ReasonCode.SafeState,
+                // The command never left: no link, not a declared actuator (or one of Switchboard's own),
+                // a device re-pointed at another entity, or a newer command for the same actuator replaced
+                // it (list version 5; versions 1 to 4 used safe_state, and change_limit means an increase
+                // waiting for another in flight).
+                _ => ReasonCode.CommandNotSent,
             };
         _ready.Add(pending.Draft.WithCommand(acknowledged, refusedBy));
         pending.Resolved?.Invoke(acknowledged);

@@ -699,7 +699,8 @@
           "deferredSince": null,
           "override": "auto",
           "reasserted": false,
-          "balance": null
+          "balance": null,
+          "economics": null
         }
       }
     },
@@ -778,6 +779,18 @@
             "hiWh": 525,
             "tRemS": 1320,
             "burning": false
+          },
+          "economics": {
+            "zone": "offpeak",
+            "importPrice": 0.6,
+            "exportPrice": 0.35,
+            "priceBasis": "zone",
+            "vEff": 2.03,
+            "valueBasis": "static",
+            "orderKey": 2.03,
+            "class": "zone",
+            "sources": "pv_and_zone:offpeak",
+            "settlement": "hourly_netting"
           }
         }
       }
@@ -852,7 +865,8 @@
           "deferredSince": null,
           "override": "force_off",
           "reasserted": false,
-          "balance": null
+          "balance": null,
+          "economics": null
         }
       }
     },

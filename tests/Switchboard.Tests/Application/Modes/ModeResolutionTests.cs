@@ -64,7 +64,7 @@ public sealed class ModeResolutionTests
 
         var records = loop.Recorder.Decisions.Where(d => d.Action == DecisionAction.ModeResolved).ToList();
         Assert.Equal(2, records.Count);
-        Assert.Equal((ReasonCode.ManualOverride, OperatingMode.Active, true), (records[1].Reason, records[1].Mode, records[1].Inputs.Mode!.ControlAllowed));
+        Assert.Equal((ReasonCode.ModeActive, OperatingMode.Active, true), (records[1].Reason, records[1].Mode, records[1].Inputs.Mode!.ControlAllowed));
         Assert.Empty(records[1].Inputs.Mode!.Missing);
         Assert.Equal(ControlSwitchSource.Api, records[1].Inputs.Mode!.Source);
         Assert.Equal(OperatingMode.Active, loop.Status.Current.Mode.Effective);
@@ -130,7 +130,7 @@ public sealed class ModeResolutionTests
 
         loop.Control!.Set(true, ControlSwitchSource.Mqtt);
 
-        Assert.Equal(ReasonCode.ManualOverride, (await recorded.Task.Soon()).Reason);
+        Assert.Equal(ReasonCode.ModeActive, (await recorded.Task.Soon()).Reason);
         await stop.CancelAsync();
         await run.Soon();
     }

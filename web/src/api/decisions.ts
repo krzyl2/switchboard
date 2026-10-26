@@ -3,11 +3,11 @@ import type { FlowDirection, PhaseName, ProtectionInvalidReason } from './signal
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
 
 // Contract of a decision as GET api/decisions and GET api/guard write it
-// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason codes 2 or 3). Every closed list mirrors a backend enum;
+// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason code lists 2 to 6). Every closed list mirrors a backend enum;
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
-/** The closed reason-code list, version 4 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes. */
+/** The closed reason-code list, version 6 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent, version 6 the five economic codes (zone_allowed to surplus_low). */
 export const REASON_CODES = [
   'guard_tier_exceeded',
   'guard_budget_low',
@@ -33,6 +33,14 @@ export const REASON_CODES = [
   'balance_projection_low',
   'balance_surplus',
   'balance_unknown',
+  'mode_active',
+  'command_failed',
+  'command_not_sent',
+  'zone_allowed',
+  'source_not_allowed',
+  'value_below_cost',
+  'surplus_available',
+  'surplus_low',
 ] as const;
 /** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
 export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;
@@ -103,6 +111,12 @@ export const DECISION_ORIGINS = ['guard', 'dispatch', 'override', 'self_test'] a
 /** A device's settling window at a dispatch decision (DISP-05). */
 export const SETTLING_STATES = ['open', 'closed', 'timed_out'] as const;
 /** The outcome of an effector verification (DISP-07). */
+/** How a price came about at the step (14-ECONOMICS); live and fallback arrive with dynamic prices. */
+export const PRICE_BASES = ['flat', 'zone', 'live', 'fallback'] as const;
+export const VALUE_BASES = ['static', 'followed', 'fallback'] as const;
+/** The energy class that allowed a decision: the surplus, the active tariff zone, or neither. */
+export const ENERGY_CLASSES = ['pv', 'zone', 'none'] as const;
+export const SETTLEMENT_MODELS = ['hourly_netting', 'net_billing'] as const;
 export const VERDICTS = ['match', 'mismatch', 'inconclusive', 'not_applied', 'unverifiable', 'timed_out'] as const;
 export const MEASURE_UNITS = ['amperes', 'watts'] as const;
 export const OVERRIDE_MODES = ['auto', 'force_on', 'force_off'] as const;
@@ -208,6 +222,22 @@ export interface DispatchInputs {
   reasserted: boolean;
   /** The hourly balance of the step (BAL-07); null on lines written before it and while no energy counters are mapped. */
   balance: BalanceInputs | null;
+  /** The prices, effective value and energy class of the step (ECO-09); null without an economics section and on lines written before it. */
+  economics: EconomicsInputs | null;
+}
+
+/** The economics a dispatch decision was made beside: prices in the user's currency label per kWh, never a symbol of ours. */
+export interface EconomicsInputs {
+  zone: string | null;
+  importPrice: number | null;
+  exportPrice: number | null;
+  priceBasis: (typeof PRICE_BASES)[number] | null;
+  vEff: number;
+  valueBasis: (typeof VALUE_BASES)[number];
+  orderKey: number;
+  class: (typeof ENERGY_CLASSES)[number];
+  sources: string | null;
+  settlement: (typeof SETTLEMENT_MODELS)[number];
 }
 
 /** The hourly balance a dispatch decision was made beside: Wh and W, positive = export; null = not known at the step. */
@@ -325,6 +355,23 @@ function balanceInputs(raw: unknown, path: string): BalanceInputs {
   };
 }
 
+function economicsInputs(raw: unknown, path: string): EconomicsInputs {
+  const r = object(raw, path);
+  const n = (key: string) => nullable(field(r, key, path), `${path}.${key}`, number);
+  return {
+    zone: nullable(field(r, 'zone', path), `${path}.zone`, text),
+    importPrice: n('importPrice'),
+    exportPrice: n('exportPrice'),
+    priceBasis: nullable(field(r, 'priceBasis', path), `${path}.priceBasis`, (v, p) => oneOf(PRICE_BASES, v, p)),
+    vEff: number(field(r, 'vEff', path), `${path}.vEff`),
+    valueBasis: oneOf(VALUE_BASES, field(r, 'valueBasis', path), `${path}.valueBasis`),
+    orderKey: number(field(r, 'orderKey', path), `${path}.orderKey`),
+    class: oneOf(ENERGY_CLASSES, field(r, 'class', path), `${path}.class`),
+    sources: nullable(field(r, 'sources', path), `${path}.sources`, text),
+    settlement: oneOf(SETTLEMENT_MODELS, field(r, 'settlement', path), `${path}.settlement`),
+  };
+}
+
 function dispatchInputs(raw: unknown, path: string): DispatchInputs {
   const r = object(raw, path);
   const n = (key: string) => number(field(r, key, path), `${path}.${key}`);
@@ -353,6 +400,7 @@ function dispatchInputs(raw: unknown, path: string): DispatchInputs {
     override: oneOf(OVERRIDE_MODES, field(r, 'override', path), `${path}.override`),
     reasserted: bool(field(r, 'reasserted', path), `${path}.reasserted`),
     balance: nullable(field(r, 'balance', path), `${path}.balance`, balanceInputs),
+    economics: nullable(field(r, 'economics', path), `${path}.economics`, economicsInputs),
   };
 }
 

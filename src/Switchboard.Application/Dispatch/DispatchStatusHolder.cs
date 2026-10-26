@@ -28,11 +28,31 @@ public sealed class DispatchStatusHolder : IDispatchStatusSource
 
     public DispatchStatus Current => Volatile.Read(ref _current);
 
+    /// <summary>
+    /// A dynamic price entering or leaving its fallback is an event, not a decision (14-ECONOMICS: no reason code, the basis is in the
+    /// decision inputs): one log line per change as the step publishes it, never one per step.
+    /// </summary>
+    private void LogFallbackChanges(DispatchStatus status)
+    {
+        foreach (var change in status.TariffFallback)
+        {
+            if (change.Entered)
+            {
+                _logger.LogWarning("tariff_fallback entered: the {Price} price follows signal {Signal}, which is not usable; the configured fallback price is in force.", change.Price, change.Signal);
+            }
+            else
+            {
+                _logger.LogInformation("tariff_fallback left: the {Price} price follows signal {Signal} again.", change.Price, change.Signal);
+            }
+        }
+    }
+
     /// <summary>Publishes on the guard runner's thread; a failing listener is logged and skipped.</summary>
     public void Publish(DispatchStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
         Volatile.Write(ref _current, status);
+        LogFallbackChanges(status);
         foreach (var handler in Published?.GetInvocationList() ?? [])
         {
             try
@@ -133,7 +153,7 @@ public static class DispatchStatusFactory
             };
         });
 
-        return new DispatchStatus(now, mode, mode.Commands, [.. phases], [.. devices]) { Balance = dispatch.Balance };
+        return new DispatchStatus(now, mode, mode.Commands, [.. phases], [.. devices]) { Balance = dispatch.Balance, Economics = dispatch.Economics, TariffFallback = dispatch.TariffFallback };
     }
 
     private static DrawStatus DrawOf(DeviceSpec spec, DispatchDevice device, List<Phase> phases, ControlInputs inputs)

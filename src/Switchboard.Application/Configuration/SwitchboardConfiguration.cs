@@ -48,6 +48,12 @@ public sealed record SignalDefinition(
             : value;
     }
 
+    /// <summary>
+    /// For a price signal: the currency label (<c>economics.currency</c>) its unit must carry, set once the economics section is read;
+    /// null when there is none, and then no sample of it is usable (the signal layer refuses it as a unit mismatch).
+    /// </summary>
+    public string? PriceCurrency { get; init; }
+
     /// <summary>The dotted path of the key that sets this signal's max_age.</summary>
     public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : MaxAgeKey ?? $"{Path}.state_max_age";
 
@@ -68,4 +74,7 @@ public sealed record SwitchboardConfiguration(
 {
     /// <summary>The circuit groups (CONN-03); empty when none is declared.</summary>
     public ImmutableArray<CircuitGroupDefinition> Groups { get; init; } = [];
+
+    /// <summary>The optional <c>economics:</c> section (ECO-02); null when the file has none, and then nothing changes.</summary>
+    public EconomicsDefinition? Economics { get; init; }
 }
