@@ -453,8 +453,12 @@ public sealed class SignalStore
     }
 
     /// <summary>
-    /// The hourly balance's counters (BAL-01): both fresh, or none. The report time is the older of the
-    /// two, so a baseline taken "at or before :00" holds for both. Null when the roles are not mapped.
+    /// The hourly balance's counters (BAL-01). A cumulative counter that does not change is not reported
+    /// again (the export counter stands still while the house imports, and the import counter while it
+    /// exports), so its age says nothing about whether it is right. The pair is therefore usable when
+    /// neither counter is unavailable or refused and the meter is demonstrably alive: a counter or a
+    /// phase power was reported within its max_age. The report time is the latest such report: the values
+    /// are valid as of then. Null when the roles are not mapped.
     /// </summary>
     private EnergyInputs? Energy(DateTimeOffset now)
     {
@@ -464,13 +468,22 @@ public sealed class SignalStore
         }
 
         var maxAge = export.Definition.MaxAge < import.Definition.MaxAge ? export.Definition.MaxAge : import.Definition.MaxAge;
-        if (Classify(export, now).State != SignalState.Fresh || Classify(import, now).State != SignalState.Fresh)
+        var counters = new[] { export, import };
+        if (counters.Any(c => Classify(c, now).State is SignalState.Unavailable or SignalState.Rejected || c.Accepted is null))
         {
             return new EnergyInputs(null, maxAge);
         }
 
-        var reported = export.Accepted!.Effective < import.Accepted!.Effective ? export.Accepted.Effective : import.Accepted.Effective;
-        return new EnergyInputs(new EnergyCounters(Value(export), Value(import), reported), maxAge);
+        var alive = counters.Concat(_signals.Where(s => s.Definition.Role is SignalRole.PhasePower or SignalRole.TotalPower))
+            .Where(s => s.Accepted is not null && Classify(s, now).State == SignalState.Fresh)
+            .Select(s => s.Accepted!.Effective)
+            .ToArray();
+        if (alive.Length == 0)
+        {
+            return new EnergyInputs(null, maxAge);
+        }
+
+        return new EnergyInputs(new EnergyCounters(Value(export), Value(import), alive.Max()), maxAge);
     }
 
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;

@@ -68,6 +68,27 @@ public sealed class HourlyBalanceMonitorTests
     }
 
     [Fact]
+    public void An_hour_of_pure_import_keeps_the_balance_known_although_the_export_counter_never_reports()
+    {
+        // Live 0.8.0: while the house imports, the export counter stands still and is not reported
+        // again, so it ages past max_age; the balance must not turn unknown because of it.
+        _store.Push("sensor.meter_exported_kwh", "100.000");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+        Cycle();
+        for (var step = 1; step <= 80; step++)
+        {
+            _store.Advance(TimeSpan.FromSeconds(30));
+            _store.Push("sensor.meter_imported_kwh", (200.000 + (step * 0.010)).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+            Cycle();
+        }
+
+        var response = BalanceEndpoint.Build(_monitor.Current);
+
+        Assert.Equal(-800, response.Wh!.Value, 3);
+        Assert.Equal("none", response.Reason);
+    }
+
+    [Fact]
     public void A_start_inside_the_hour_reports_no_baseline_never_a_zero()
     {
         _store.Advance(TimeSpan.FromMinutes(25));

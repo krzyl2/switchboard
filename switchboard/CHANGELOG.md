@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.1
+
+A fix to the hourly balance of 0.8.0, found on the first live day. Still measurement only: nothing uses the balance yet.
+
+### Fixed
+
+- The balance was unknown most of the day. A cumulative counter that does not change is not reported again, so the export counter stood still (and aged past `max_age`) while the house imported, and the import counter while it exported; 0.8.0 required both to be fresh. The pair is now usable while neither counter is unavailable or refused and the meter is alive (a counter or a phase power reported within its `max_age`); its report time is the latest of those reports.
+
 ## 0.8.0
 
 The balance of the running hour, read from the meter's own counters. Nothing is controlled differently: the balance is only measured and shown (`GET api/balance`); no decision uses it yet. Shadow stays the default and **Control allowed** stays off. Not a protective device; your breakers remain the protection.
