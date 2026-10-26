@@ -108,6 +108,108 @@ public sealed class HourlyBalanceMonitorTests
         Assert.Null(response.Wh);
     }
 
+    private sealed class MemoryFile : IBalanceBaselineFile
+    {
+        public HourBaseline? Stored { get; set; }
+
+        public bool Failing { get; set; }
+
+        public int Saves { get; private set; }
+
+        /// <summary>The thread that is inside Publish right now (0 outside it): a write on it would be file I/O on the publishing thread.</summary>
+        public int PublisherThread { get; set; }
+
+        public bool SavedOnPublisherThread { get; private set; }
+
+        /// <summary>Completed by the first write attempt, so a test waits on the signal, not on time.</summary>
+        public TaskCompletionSource Attempted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public HourBaseline? Load() => Stored;
+
+        public void Save(HourBaseline baseline)
+        {
+            Attempted.TrySetResult();
+            if (Failing)
+            {
+                throw new IOException("disk full");
+            }
+
+            Stored = baseline;
+            Saves++;
+            SavedOnPublisherThread |= Environment.CurrentManagedThreadId == PublisherThread;
+        }
+    }
+
+    private (HourlyBalanceMonitor Monitor, SignalSnapshotHolder Holder) Restarted(MemoryFile file)
+    {
+        var holder = new SignalSnapshotHolder(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+        return (new HourlyBalanceMonitor(holder, new SignalClock(_store.Time), NullLogger<HourlyBalanceMonitor>.Instance, file), holder);
+    }
+
+    [Fact]
+    public async Task A_restart_inside_the_hour_keeps_the_balance_through_the_written_baseline()
+    {
+        var file = new MemoryFile();
+        var (first, firstHolder) = Restarted(file);
+        using var stop = new CancellationTokenSource();
+        var writer = first.RunAsync(stop.Token);
+        _store.Push("sensor.meter_exported_kwh", "100.000");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+        file.PublisherThread = Environment.CurrentManagedThreadId;
+        firstHolder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+        file.PublisherThread = 0;
+        await file.Attempted.Task.Soon();
+        await stop.CancelAsync();
+        await writer;
+
+        // The add-on restarts 25 minutes into the hour: a new monitor over the same file.
+        _store.Advance(TimeSpan.FromMinutes(25));
+        var (second, secondHolder) = Restarted(file);
+        _store.Push("sensor.meter_exported_kwh", "100.450");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+        secondHolder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+
+        Assert.Equal(450, second.Current!.Reading.Wh!.Value, 3);
+        Assert.False(file.SavedOnPublisherThread);
+    }
+
+    [Fact]
+    public void A_baseline_of_an_earlier_hour_in_the_file_is_not_used()
+    {
+        var file = new MemoryFile { Stored = new HourBaseline(_store.Now.AddHours(-1), 0, 0) };
+        _store.Advance(TimeSpan.FromMinutes(25));
+        var (monitor, holder) = Restarted(file);
+        _store.Push("sensor.meter_exported_kwh", "100.450");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+
+        holder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+
+        Assert.Equal("no_baseline", BalanceEndpoint.Build(monitor.Current).Reason);
+    }
+
+    [Fact]
+    public async Task A_full_disk_never_stops_the_balance_and_the_writer_survives_it()
+    {
+        var file = new MemoryFile { Failing = true };
+        var (monitor, holder) = Restarted(file);
+        using var stop = new CancellationTokenSource();
+        var writer = monitor.RunAsync(stop.Token);
+        _store.Push("sensor.meter_exported_kwh", "100.000");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+        holder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+        _store.Advance(TimeSpan.FromMinutes(5));
+        _store.Push("sensor.meter_exported_kwh", "100.100");
+        _store.Push("sensor.meter_imported_kwh", "200.000");
+        holder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
+        await file.Attempted.Task.Soon();
+
+        Assert.Equal(100, monitor.Current!.Reading.Wh!.Value, 3);
+        Assert.False(writer.IsFaulted);
+        await stop.CancelAsync();
+        await writer;
+        Assert.Equal(0, file.Saves);
+    }
+
     [Fact]
     public void A_failure_in_the_monitor_never_reaches_the_publisher_and_keeps_the_last_value()
     {

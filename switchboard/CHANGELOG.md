@@ -2,6 +2,20 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.0
+
+The balance of the running hour, read from the meter's own counters. Nothing is controlled differently: the balance is only measured and shown (`GET api/balance`); no decision uses it yet. Shadow stays the default and **Control allowed** stays off. Not a protective device; your breakers remain the protection.
+
+### Added
+
+- Two signal roles, `energy_export` and `energy_import` (kind `energy_counter`, unit `Wh`, `kWh` or `MWh`): the main meter's total exported and imported energy, summed over the phases. Map both or neither; the example maps `sensor.solaredge_m1_exported_kwh` and `sensor.solaredge_m1_imported_kwh`. A helper or utility meter (such as an hourly balance sensor) is not an input and gets the derived-sensor warning. The wizard keeps these two signals as written.
+- `GET api/balance`: the balance of the running local hour in Wh (positive = net export), the start of the hour, the seconds to the next :00, and why it is unknown when it is (`unavailable`, `stale`, `no_baseline`, `counter_reset`, `clock_step_back`). The balance is the energy exported minus the energy imported since the last counter report at or before the local :00; it is never a guess: with no baseline it is unknown, not zero.
+- The baseline of each hour is kept in `/data/balance-baseline.json`, so a restart inside an hour keeps the balance. A corrupt file is set aside and the balance starts unknown until the next full hour. Hours follow the local clock, including the 23 and 25 hour days.
+
+### Changed
+
+- Dispatch inputs carry the two counters, and only when both are fresh. Protection reads nothing new.
+
 ## 0.7.1
 
 A charger that is stopped through a select. The go-e has no switch that stops charging; its force-state select does (`1` don't charge, `0` neutral). After this update Switchboard still controls nothing until you set the option `mode: active` **and** switch **Control allowed** on: shadow stays the default and the switch stays off. Not a protective device; your breakers remain the protection.

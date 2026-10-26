@@ -67,7 +67,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 
 ## Hourly balance (v2.0)
 
-- [ ] **BAL-01**: Balance of the running local hour computed from the meter's primary export and import counters (summed-phase), baseline persisted across restarts, unknown when it cannot be trusted (computation, signals, api/balance done; persistence of the baseline open)
+- [x] **BAL-01**: Balance of the running local hour computed from the meter's primary export and import counters (summed-phase), baseline persisted across restarts, unknown when it cannot be trusted
 - [ ] **BAL-02**: Projection of the balance at the next :00 from free power (grid net export plus own loads added back), with a configurable smoothing window
 - [ ] **BAL-03**: Target band (floor, ceiling, burn-down ramp) from configuration; no literals
 - [ ] **BAL-04**: Allowance rule start/stop from the projection, with merit order across devices; guard and envelope remain the gate

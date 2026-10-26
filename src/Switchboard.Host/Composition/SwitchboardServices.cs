@@ -344,6 +344,7 @@ public static class SwitchboardServices
         services.AddSingleton<IControlInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<ISignalDiagnosticsSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<SignalStoreRunner>();
+        services.AddSingleton<IBalanceBaselineFile>(sp => new BalanceBaselineFile(sp.GetRequiredService<RuntimeEnvironment>().DataPath, sp.GetRequiredService<ILogger<BalanceBaselineFile>>()));
         services.AddSingleton<HourlyBalanceMonitor>();
         services.AddSingleton<IBalanceSource>(sp => sp.GetRequiredService<HourlyBalanceMonitor>());
 
