@@ -101,7 +101,7 @@ Dashboard: balance of the running hour, projection at :00 for the current load, 
 
 - Floor 150 Wh, ceiling 525 Wh and burn window 15 min stay as starting values.
 - Smoothing window for free power: 5 min, a configuration parameter to tune in shadow.
-- The balance gates the heaters only; the car stays under the L1 limit and its merit order until the EV module.
+- The balance gates the heaters now. The car joins it with the EV module: its PV-surplus tier (first in its merit order, `12-EV-MODULE.md`) is defined by this same hourly balance, while its grid-zone tiers are scheduled by price and calendar and are not gated by the balance. Until the module exists the car stays under the L1 limit and its merit order only.
 - Equality with the utility's own hourly data is not pursued now; it stays an unverified assumption (a portal export would close it).
 
 ## Verification

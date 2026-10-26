@@ -4,7 +4,7 @@ Status: specification from the maintainer interview of 2026-10-25. Nothing built
 
 ## Goal
 
-Charge the car from PV surplus first, from the cheap G13 zones second, in the expensive zone only when the next trip needs it, and have it charged enough for every trip in the calendar.
+Charge the car from PV surplus first, then from the grid zones in order of price (cheap, middle, expensive), the dearest only for what the next trip still needs, and have it charged enough for every trip in the calendar.
 
 ## Inputs
 
@@ -45,9 +45,12 @@ After the trip at least 25 % remains, plus a 15-point reserve: target = trip SoC
 
 ## Merit order (cheapest source first)
 
-1. PV surplus.
-2. Off-peak G13 zones.
-3. Peak G13 zones: only for the part of a trip target that cheaper sources cannot deliver before departure. A trip target is a hard deadline: it is met in any zone, with no comparison against fuel cost.
+1. PV surplus (the hourly balance, see Surplus).
+2. The cheapest grid zone (G13 off-peak).
+3. The middle-priced zone (G13 morning peak).
+4. The most expensive zone (G13 afternoon peak): only for the part of a trip target that cheaper sources cannot deliver before departure. A trip target is a hard deadline: it is met in any zone, with no comparison against fuel cost.
+
+The order of the grid zones is by the price per kWh in configuration, not by their names, so another tariff with two or four zones works the same way. Every zone is filled as late as it can be and still meet the deadline only when a cheaper one cannot deliver; the planner works backwards from the departure.
 
 The planner looks at the 2-day PV forecast and does not take cheap-zone energy that forecast surplus before departure will cover. Weekends and holidays are off-peak all day.
 
@@ -93,3 +96,7 @@ Day plan screen (in the mockup, not yet built): next trips, target SoC and time,
 - Entity IDs for SoC, range, car state and calendar: chosen in the wizard.
 - No device_tracker for now; the go-e state decides presence.
 - Ready margin (30 min), charging losses (10 %) and the kWh/km fallback are starting values with no origin, for the maintainer to review after a week in shadow.
+
+## Always under the guard
+
+Whatever the plan says, the guard's phase limits and the dispatch envelope cap the charger (D2, D3); the plan proposes, protection disposes. The plan is automatic in the `Auto` mode: it uses the calendar, the tariff, the 2-day PV forecast and the hourly balance without any input from the user (maintainer 2026-10-26).
