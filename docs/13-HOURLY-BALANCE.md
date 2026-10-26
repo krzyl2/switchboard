@@ -33,7 +33,7 @@ balance_wh    = ((export_total - baseline.export) - (import_total - baseline.imp
 
 - The baseline is the last counter value reported **at or before** the boundary (the counters refresh about every 10 s), never the first one after it. It is persisted in `state.json` so a restart inside the hour keeps it.
 - A restart or an outage with no valid baseline for the running hour makes the balance **unknown until the next :00**. The Recorder is never read to recover it.
-- A counter that decreases, goes unavailable or older than `max_age` makes the balance unknown for the rest of the hour.
+- A counter that decreases, or a clock step back, makes the balance unknown for the rest of the hour. Counters that are unavailable or older than `max_age` make it unknown only while they are: the counters are cumulative, so the balance is right again with the next report.
 
 ## Free power and projection
 
