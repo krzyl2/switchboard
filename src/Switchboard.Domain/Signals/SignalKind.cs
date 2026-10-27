@@ -81,6 +81,18 @@ public enum SignalRole
 
     /// <summary>The export price (what a kWh not exported earns) from an entity: feeds <c>economics.settlement.export_price</c> through <c>signal:</c> (ECO-10).</summary>
     PriceExport,
+
+    /// <summary>A device's state of charge (percent), created from the device's goal (<c>goal.soc</c>); the planner's progress input, never protection.</summary>
+    DeviceSoc,
+
+    /// <summary>A goal's target (percent or kWh), created from the device's goal; the planner reads it, never protection.</summary>
+    GoalTarget,
+
+    /// <summary>A goal's deadline (a time or date and time as Home Assistant states it), created from the device's goal.</summary>
+    GoalDeadline,
+
+    /// <summary>A goal's want gate (on or off), created from the device's goal; off means the device has no goal now.</summary>
+    GoalWant,
 }
 
 /// <summary>

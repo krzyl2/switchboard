@@ -3,6 +3,7 @@ using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -77,6 +78,9 @@ public sealed record DeviceDefinition(
 
     /// <summary>The sources as written; null when none declared.</summary>
     public SourceSet? SourcesDeclared { get; init; }
+
+    /// <summary>The device's <c>goal:</c> (PLAN-01); null for a device without one, which stays an opportunist. Never part of the <see cref="DeviceSpec"/> protection sees.</summary>
+    public GoalSpec? Goal { get; init; }
 
     /// <summary>
     /// An opaque fingerprint of every entity that commands or reports this device (FNV-1a over the

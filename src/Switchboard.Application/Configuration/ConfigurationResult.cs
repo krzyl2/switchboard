@@ -77,6 +77,8 @@ public static class ConfigurationIssueCodes
     public const string ValueFollowsWithoutPrice = "value_follows_without_price";
     public const string UnitMismatch = "unit_mismatch";
     public const string PriceSignalUnused = "price_signal_unused";
+    public const string GoalWithoutStart = "goal_without_start";
+    public const string GoalDropped = "goal_dropped";
 
     /// <summary>Raised at run time, once a refresh interval is detected (see the signal store).</summary>
     public const string MaxAgeShortForProbe = "max_age_short_for_probe";

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Goals;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
@@ -40,6 +41,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private long _version;
     private long _savedVersion;
     private long _overridesVersion = -1;
+    private long _goalsVersion = -1;
     private string? _writeError;
 
     /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
@@ -221,6 +223,43 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         }
     }
 
+    /// <summary>Follows the goal ledger (PLAN-03). Call once, before the first step.</summary>
+    public void Attach(GoalLedger ledger)
+    {
+        ArgumentNullException.ThrowIfNull(ledger);
+        ledger.Changed += (_, snapshot) => OnGoalsChanged(snapshot);
+    }
+
+    /// <summary>
+    /// Called by the ledger after a change. A goal that began, ended or moved its deadline is written at once (a restart must not
+    /// forget a goal exists); progress alone goes to memory and is written with the next interval save, or at shutdown. A snapshot
+    /// older than the last one applied is ignored.
+    /// </summary>
+    public void OnGoalsChanged(GoalLedgerSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        lock (_gate)
+        {
+            if (snapshot.Version <= _goalsVersion)
+            {
+                return;
+            }
+
+            _goalsVersion = snapshot.Version;
+            var structural = !SameGoalShape(_current.Goals, snapshot.Entries);
+            _current = _current with { Goals = snapshot.Entries };
+            if (structural)
+            {
+                Enqueue(_current, _lastQueuedAt);
+            }
+        }
+    }
+
+    private static bool SameGoalShape(
+        ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.GoalLedgerEntry> a,
+        ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.GoalLedgerEntry> b) =>
+        a.Count == b.Count && a.All(x => b.TryGetValue(x.Key, out var y) && (x.Value.Kind, x.Value.Since, x.Value.Deadline) == (y.Kind, y.Since, y.Deadline));
+
     /// <summary>Called by the kill switch after it is already in force; the write is best effort.</summary>
     public void OnKillSwitchChanged(KillSwitchStatus status)
     {
@@ -273,7 +312,19 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     }
 
     /// <summary>Writes whatever is queued now, once; used at shutdown after the shutdown safe state.</summary>
-    public Task FlushAsync(CancellationToken cancellationToken) => WritePendingAsync(cancellationToken);
+    public Task FlushAsync(CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            // Goal progress moves every step but is saved on the interval: the last of it is queued here, so a clean stop loses none.
+            if (_lastQueued is { } queued && !ReferenceEquals(queued.Goals, _current.Goals))
+            {
+                Enqueue(_current, _lastQueuedAt);
+            }
+        }
+
+        return WritePendingAsync(cancellationToken);
+    }
 
     private bool WriteFailing
     {
@@ -413,7 +464,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         || before.Budgets.Count != after.Budgets.Count
         || after.Budgets.Any(p => !before.Budgets.TryGetValue(p.Key, out var saved) || saved.Budget != p.Value.Budget)
         || GroupBudgetsChanged(before, after)
-        || !ReferenceEquals(before.Devices, after.Devices);
+        || !ReferenceEquals(before.Devices, after.Devices)
+        || !ReferenceEquals(before.Goals, after.Goals);
 
     private static bool GroupBudgetsChanged(RuntimeState before, RuntimeState after) =>
         before.GroupBudgets.Count != after.GroupBudgets.Count

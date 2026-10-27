@@ -545,4 +545,76 @@ public sealed class SetupDocumentMapperTests
         Assert.Equal("PLN", result.Configuration.Signals.Single(s => s.Name.Value == "market_price").PriceCurrency);
         Assert.DoesNotContain(result.Warnings, w => w.Code is ConfigurationIssueCodes.UnitMismatch or ConfigurationIssueCodes.PriceSignalUnused);
     }
+
+    private static readonly string PlannerSnippet = File.ReadAllText(RepoPaths.Combine("deploy", "examples", "planner-goal.yaml")).ReplaceLineEndings("\n");
+
+    private const string ChargerGoal =
+        "    value_per_kwh: 2.03\n    goal:\n      kind: soc\n      hard: true\n      capacity_kwh: 18\n      loss_fraction: 0.10\n      soc: { entity: sensor.car_battery_level, max_age: 30m }\n      target: { value: 90 }\n      deadline: { entity: input_datetime.car_departure, margin: 30m }\n      want: { entity: input_boolean.car_charge_wanted }\n";
+
+    [Fact]
+    public void A_device_goal_and_the_planner_section_survive_a_wizard_save_unchanged_and_still_parse()
+    {
+        // PLAN-01 and PLAN-05: the wizard has no planner step and no goal field. A save that dropped the section, or the goal a user typed under
+        // a device (and the signals it creates), would silently end their planner the first time they touched a device name.
+        var yaml = Rich.Replace("    value_per_kwh: 2.03\n", ChargerGoal, StringComparison.Ordinal).TrimEnd() + "\n\n" + PlannerSnippet;
+        Assert.Contains("goal:", yaml, StringComparison.Ordinal);
+        var before = SetupFixtures.Tree(yaml);
+        var load = SetupDocumentMapper.Read(before);
+        Assert.Contains(load.Preserved, p => p.Path == "planner");
+        Assert.True(load.Draft.Devices.Single(d => d.Id == "ev_charger").Editable);
+
+        var draft = load.Draft with { Devices = [.. load.Draft.Devices.Select(d => d.Id == "ev_charger" ? d with { Name = "Garage charger" } : d)] };
+        var (text, result, _) = SetupFixtures.Apply(yaml, draft);
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        var after = SetupFixtures.Tree(text);
+        Assert.Equal(SetupFixtures.Canon(Section(before, "planner")), SetupFixtures.Canon(Section(after, "planner")));
+        Assert.Equal(Switchboard.Domain.Planning.PlannerDispatchMode.Off, result.Configuration!.Planner!.Dispatch);
+        var charger = result.Configuration.Devices.Single(d => d.Id.Value == "ev_charger");
+        Assert.Equal("Garage charger", charger.Name);
+        Assert.Equal(Switchboard.Domain.Goals.GoalKind.Soc, charger.Goal!.Kind);
+        Assert.Equal(
+            SetupFixtures.Canon(((ConfigMapping)((ConfigSequence)Section(before, "devices")).Items.OfType<ConfigMapping>().Single(d => ((ConfigScalar)d.Find("id")!.Value).Value == "ev_charger")).Find("goal")!.Value),
+            SetupFixtures.Canon(((ConfigMapping)((ConfigSequence)Section(after, "devices")).Items.OfType<ConfigMapping>().Single(d => ((ConfigScalar)d.Find("id")!.Value).Value == "ev_charger")).Find("goal")!.Value));
+        Assert.Equal(
+            ["device_ev_charger_goal_deadline", "device_ev_charger_goal_want", "device_ev_charger_soc"],
+            result.Configuration.Signals.Where(s => s.Name.Value.StartsWith("device_ev_charger_goal", StringComparison.Ordinal) || s.Name.Value == "device_ev_charger_soc").Select(s => s.Name.Value).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void A_save_on_a_file_without_a_planner_or_a_goal_does_not_invent_one()
+    {
+        // Why: a 0.10 file stays a 0.10 file through the wizard: no planner section appears and no device gains a goal.
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(Rich));
+
+        var (text, result, _) = SetupFixtures.Apply(Rich, load.Draft);
+
+        Assert.DoesNotContain("planner", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("goal:", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Planner);
+        Assert.All(result.Configuration.Devices, d => Assert.Null(d.Goal));
+    }
+
+    [Fact]
+    public void The_planner_section_is_removed_only_when_the_user_confirms_dropping_it()
+    {
+        var yaml = Rich.TrimEnd() + "\n\n" + PlannerSnippet;
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml));
+
+        var (text, result, _) = SetupFixtures.Apply(yaml, load.Draft with { DropPreserved = ["planner"] });
+
+        Assert.DoesNotContain("planner:", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Planner);
+    }
+
+    [Fact]
+    public void The_new_device_key_is_one_the_wizard_knows_it_does_not_own()
+    {
+        // Why: KeysFor feeds the wizard's templates; goal must be a key a device of every type may carry, and it stays out of the draft's
+        // owned fields (so a save never rewrites it).
+        foreach (var type in new[] { Switchboard.Domain.Devices.DeviceType.OnOff, Switchboard.Domain.Devices.DeviceType.Stepped, Switchboard.Domain.Devices.DeviceType.Modulating, Switchboard.Domain.Devices.DeviceType.Storage })
+        {
+            Assert.Contains("goal", DeviceSectionParser.KeysFor(type));
+        }
+    }
 }

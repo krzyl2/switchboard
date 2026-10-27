@@ -8,6 +8,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Balance;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Effector;
+using Switchboard.Application.Goals;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
 using Switchboard.Application.Modes;
@@ -296,6 +297,13 @@ public static class SwitchboardServices
             sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
             sp.GetRequiredService<ILogger<ExcursionFile>>()));
         services.AddSingleton<PresentationPersistence>();
+
+        // The goal ledger and tracker (PLAN-03, read-only): a listener of the guard runner like the hub, plus the sources the API merges.
+        services.AddSingleton<IGoalInputSource, DiagnosticsGoalInputSource>();
+        services.AddSingleton<GoalLedger>();
+        services.AddSingleton<IGoalSource, ConfigGoalSource>();
+        services.AddSingleton<GoalEvaluator>();
+        services.AddSingleton<GoalTracker>();
         return services;
     }
 

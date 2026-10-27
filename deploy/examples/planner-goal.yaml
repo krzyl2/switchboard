@@ -1,0 +1,30 @@
+# The planner section and a device goal (docs/15-PLANNER.md, 0.11 slice 1). Both are read, validated and shown (GET api/plan); nothing here
+# changes a decision yet: the plan reaches dispatch only in a later release, behind planner.dispatch.
+#
+# Append the section below to switchboard.yaml. `dispatch: off` is the default and the only value that does anything today: the plan is shown,
+# dispatch ignores it. `narrow` and `full` are accepted and echoed.
+planner:
+  dispatch: off
+
+# A goal belongs to the device that wants the energy: add it under that device in devices:, for example under ev_charger. Every input is a
+# literal or an entity; an entity becomes a signal of the device (so it is checked for freshness and units like a measurement), and a
+# missing, stale or out-of-range input makes the goal inactive with the reason, never guessed.
+#
+#   goal:
+#     kind: soc                  # soc: reach a percentage of capacity_kwh. energy: draw target_kwh (counted from the device's own energy)
+#     hard: true                 # a hard deadline must be met; soft (the default) only while it is worth its price
+#     capacity_kwh: 18           # soc only
+#     loss_fraction: 0.10        # energy drawn = needed x (1 + loss_fraction)
+#     soc:      { entity: sensor.car_battery_level, max_age: 30m }
+#     target:   { value: 90 }    # percent; or { entity: input_number.car_target_soc, max_age: 1h }
+#     deadline: { entity: input_datetime.car_departure, margin: 30m }   # or { at: "06:30" }, a recurring local time
+#     want:     { entity: input_boolean.car_charge_wanted }             # optional gate; off means no goal now
+#     sources: pv_and_zone:offpeak
+#     on_met: opportunistic
+#
+# An energy goal needs no sensor of its own:
+#
+#   goal:
+#     kind: energy
+#     target_kwh: 12
+#     deadline: { at: "06:30" }

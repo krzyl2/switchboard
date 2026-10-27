@@ -185,11 +185,11 @@ public sealed class DeviceSectionTests
     [Fact]
     public void Later_keys_warn_unknown_keys_fail()
     {
-        // goal / sources / guards belong to later versions and warn; circuit_group is read since
+        // guards belongs to a later version and warns (goal is read since 0.11); circuit_group is read since
         // Stage 3, so naming a group that is not declared is an error.
-        var later = TestConfigurations.Parse(TestDevices.Document(Heater + "\n    goal: { kind: none }"));
+        var later = TestConfigurations.Parse(TestDevices.Document(Heater + "\n    guards: []"));
         Assert.Equal(ConfigurationStatus.Valid, later.Status);
-        Assert.Equal(["devices[0].goal"], later.Warnings.Select(w => w.Path));
+        Assert.Equal(["devices[0].guards"], later.Warnings.Select(w => w.Path));
         Assert.All(later.Warnings, w => Assert.Equal("reserved_key_ignored", w.Code));
         AssertDeviceError(Heater + "\n    circuit_group: boiler", "unknown_circuit_group", "devices[0].circuit_group", 8);
 

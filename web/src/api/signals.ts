@@ -66,6 +66,8 @@ export const ISSUE_CODES = [
   'value_follows_without_price',
   'unit_mismatch',
   'price_signal_unused',
+  'goal_without_start',
+  'goal_dropped',
   'max_age_short_for_probe',
 ] as const;
 /** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
@@ -103,6 +105,10 @@ export const SIGNAL_ROLES = [
   'energy_import',
   'price_import',
   'price_export',
+  'device_soc',
+  'goal_target',
+  'goal_deadline',
+  'goal_want',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [

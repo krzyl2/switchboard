@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Configuration;
@@ -77,4 +78,7 @@ public sealed record SwitchboardConfiguration(
 
     /// <summary>The optional <c>economics:</c> section (ECO-02); null when the file has none, and then nothing changes.</summary>
     public EconomicsDefinition? Economics { get; init; }
+
+    /// <summary>The optional <c>planner:</c> section (PLAN-05); null when the file has none, and then the planner is off and nothing changes.</summary>
+    public PlannerDefinition? Planner { get; init; }
 }

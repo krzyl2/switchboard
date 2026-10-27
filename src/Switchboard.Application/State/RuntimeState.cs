@@ -5,6 +5,7 @@ using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.State;
@@ -20,8 +21,8 @@ public sealed record StageLastKnown(AppliedState Applied, DateTimeOffset At);
 public sealed record ObservationRecord(DateTimeOffset FirstStartedAt, int ConfigurationErrors, DateTimeOffset? LastConfigurationErrorAt);
 
 /// <summary>
-/// What survives a restart (/data/state.json, schema version 3; versions 1 and 2 of 0.3.x … 0.6.x
-/// read with the control switch off). Lockout timers are deliberately absent, and so are dispatch
+/// What survives a restart (/data/state.json, schema version 4; versions 1 and 2 of 0.3.x … 0.6.x
+/// read with the control switch off, version 3 of 0.7.x … 0.10.x reads with no goal ledger). Lockout timers are deliberately absent, and so are dispatch
 /// targets, deferred intents, settling windows and unresponsive flags: every lockout restarts from
 /// the restart instant, never from a persisted expiry (SAFE-07).
 /// </summary>
@@ -40,7 +41,10 @@ public sealed record RuntimeState(
     ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> Devices,
     ImmutableSortedSet<string> Discovered)
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
+
+    /// <summary>The 0.7.x … 0.10.x schema: still read (no goal ledger).</summary>
+    public const int GoalFreeSchemaVersion = 3;
 
     /// <summary>The 0.4.x … 0.6.x schema: still read (the control switch reads off).</summary>
     public const int PreviousSchemaVersion = 2;
@@ -77,6 +81,9 @@ public sealed record RuntimeState(
 
     /// <summary>The devices dispatch switched on under start: headroom (only these get a final off when removed).</summary>
     public ImmutableDictionary<DeviceName, DateTimeOffset> SelfStarted { get; init; } = ImmutableDictionary<DeviceName, DateTimeOffset>.Empty;
+
+    /// <summary>The goal ledger (PLAN-03): the energy each energy goal's device has drawn since the goal began; empty in a schema 3 file.</summary>
+    public ImmutableDictionary<DeviceName, GoalLedgerEntry> Goals { get; init; } = ImmutableDictionary<DeviceName, GoalLedgerEntry>.Empty;
 
     public GuardMemory GuardMemory => new(Budgets, CleanShutdown) { GroupBudgets = GroupBudgets };
 }

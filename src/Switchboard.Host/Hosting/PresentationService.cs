@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Switchboard.Application.Goals;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Options;
 using Switchboard.Application.Presentation;
@@ -14,6 +15,7 @@ namespace Switchboard.Host.Hosting;
 /// </summary>
 internal sealed class PresentationService(
     PresentationHub hub,
+    GoalTracker goals,
     PresentationPersistence persistence,
     GuardRunner runner,
     IOptions<PersistenceOptions> options,
@@ -27,6 +29,7 @@ internal sealed class PresentationService(
     {
         persistence.Load();
         hub.Attach(runner);
+        goals.Attach(runner, hub);
         var report = hub.Report;
         logger.LogInformation("Runtime UI statistics: statistics.json {Statistics}, excursions.json {Excursions}", report.Statistics, report.Excursions);
         _writer = persistence.RunAsync(_stop.Token);

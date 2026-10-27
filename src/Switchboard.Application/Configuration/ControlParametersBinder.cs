@@ -6,6 +6,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Guard;
+using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 using Range = Switchboard.Application.Configuration.ConfigRead.Range;
@@ -303,6 +304,8 @@ internal static class ControlParametersBinder
             economicsSection.NonNegativeDuration("zone_end_margin") ?? TimeSpan.Zero,
             economicsSection.PositiveDuration("net_billing_window") ?? TimeSpan.Zero);
 
+        var planner = BindPlanner(root.Child("planner"), issues);
+
         var limits = root.Child(LimitsKey);
         var envelope = new SafetyEnvelope(
             limits.Number("continuous_multiple_max", Range.Above(0)) ?? 0,
@@ -353,8 +356,80 @@ internal static class ControlParametersBinder
             circuitGroups,
             effector,
             hourlyBalance,
-            economics);
+            economics,
+            planner);
     }
+
+    /// <summary>The slot lengths the plan grid supports (15-PLANNER, The slot grid); a design bound, not a tuning parameter.</summary>
+    private static readonly TimeSpan[] PlannerSlots = [TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)];
+
+    private static readonly ImmutableDictionary<string, PvShape> PvShapes =
+        new Dictionary<string, PvShape> { ["half_sine"] = PvShape.HalfSine }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// <c>planner:</c> of the control parameters (15-PLANNER, Configuration): bound and range-checked, read by nothing before the
+    /// planner exists (slice 4). Every key is required, so no value is ever invented here.
+    /// </summary>
+    private static PlannerParameters BindPlanner(Section planner, ConfigIssues issues)
+    {
+        var hardGoal = planner.Child("hard_goal");
+        var load = planner.Child("load");
+        var storage = planner.Child("storage");
+        var goal = planner.Child("goal");
+
+        var cycle = planner.PositiveDuration("cycle") ?? TimeSpan.Zero;
+        var slot = planner.PositiveDuration("slot") ?? TimeSpan.Zero;
+        var horizon = planner.PositiveDuration("horizon") ?? TimeSpan.Zero;
+        var planMaxAge = planner.PositiveDuration("plan_max_age") ?? TimeSpan.Zero;
+        var parameters = new PlannerParameters(
+            cycle,
+            planner.PositiveDuration("min_replan_interval") ?? TimeSpan.Zero,
+            planMaxAge,
+            planner.PositiveDuration("max_solve_time") ?? TimeSpan.Zero,
+            planner.NonNegativeDuration("start_delay") ?? TimeSpan.Zero,
+            horizon,
+            slot,
+            planner.Number("pv_derate", new Range(0, 1, MinExclusive: true)) ?? 0,
+            planner.Choice("pv_shape", PvShapes) ?? PvShape.HalfSine,
+            planner.Integer("refine_passes", 0, MaxRefinePasses) ?? 0,
+            planner.Integer("adopt_cycles", 1, MaxAdoptCycles) ?? 0,
+            planner.Number("adopt_min_change_fraction", Range.Fraction) ?? 0,
+            planner.Number("progress_tolerance_fraction", Range.Fraction) ?? 0,
+            new HardGoalParameters(hardGoal.NonNegativeDuration("escalation_margin") ?? TimeSpan.Zero),
+            new LoadForecastParameters(
+                load.Number("halflife_days", Range.Above(0)) ?? 0,
+                load.Number("min_observed_fraction", new Range(0, 1, MinExclusive: true)) ?? 0,
+                load.Number("fallback_w", Range.AtLeast(0)) ?? 0),
+            new PlannerStorageParameters(
+                storage.Number("soc_step_kwh", Range.Above(0)) ?? 0,
+                storage.Number("min_spread", Range.AtLeast(0)) ?? 0,
+                storage.Number("degradation_per_kwh", Range.AtLeast(0)) ?? 0,
+                storage.Number("terminal_value", Range.AtLeast(0)) ?? 0),
+            new GoalParameters(
+                goal.PositiveDuration("input_max_age") ?? TimeSpan.Zero,
+                goal.Number("default_loss_fraction", new Range(0, 1, MaxExclusive: true)) ?? 0));
+
+        if (slot > TimeSpan.Zero && !PlannerSlots.Contains(slot))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "slot"), planner.Node("slot"), "planner.slot is one of 15m, 30m or 60m: the plan grid is cut on those local boundaries.");
+        }
+
+        if (slot > TimeSpan.Zero && horizon > TimeSpan.Zero && horizon < slot)
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "horizon"), planner.Node("horizon"), "planner.horizon may not be shorter than one slot.");
+        }
+
+        if (cycle > TimeSpan.Zero && planMaxAge > TimeSpan.Zero && planMaxAge < cycle)
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "plan_max_age"), planner.Node("plan_max_age"), "planner.plan_max_age may not be shorter than planner.cycle: every plan would be stale before the next one.");
+        }
+
+        return parameters;
+    }
+
+    // Schema bounds, not control parameters: more passes or agreeing replans than this is a typo.
+    private const int MaxRefinePasses = 100;
+    private const int MaxAdoptCycles = 100;
 
     private static void CheckBudgetFloor(Section budget, string key, double value, double floor, ConfigIssues issues)
     {

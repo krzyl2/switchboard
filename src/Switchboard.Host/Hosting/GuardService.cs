@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
+using Switchboard.Application.Goals;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
@@ -29,6 +30,7 @@ internal sealed class GuardService(
     KillSwitchState killSwitch,
     ControlSwitchState control,
     DeviceOverrides overrides,
+    GoalLedger goals,
     GuardStatusHolder status,
     ModeState mode,
     EffectorGate gate,
@@ -56,6 +58,7 @@ internal sealed class GuardService(
         var loaded = state.Loaded;
         state.Attach(runner, killSwitch);
         state.Attach(overrides);
+        state.Attach(goals);
         state.Attach(control);
         evidence.Attach(runner);
         activeTest.Attach(runner);
@@ -73,6 +76,7 @@ internal sealed class GuardService(
         }
 
         overrides.Restore(loaded.State.Overrides);
+        goals.Restore(loaded.State.Goals);
         var now = time.GetUtcNow();
         state.BeginObservation(log.OldestDay() is { } oldest && oldest < now ? oldest : now);
         status.Published += OnPublished;

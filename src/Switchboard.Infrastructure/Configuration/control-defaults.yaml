@@ -186,6 +186,49 @@ economics:
   # Smoothing window of the instantaneous surplus under net billing; starting value, no origin.
   net_billing_window: 60s
 
+planner:
+  # Parameters of the planner (docs/15-PLANNER.md). Bound and checked, read by nothing before the planner exists. Every one is a
+  # starting value, none has an origin unless it says so; review after the shadow week.
+  # Replanning period, aligned to :00 :15 :30 :45.
+  cycle: 15m
+  # At most one triggered replan per this interval.
+  min_replan_interval: 60s
+  # After this a plan is not used by dispatch (three cycles).
+  plan_max_age: 45m
+  max_solve_time: 2s
+  # No plan before the inputs had this long to arrive after a start.
+  start_delay: 60s
+  horizon: 48h
+  # 15m, 30m or 60m.
+  slot: 60m
+  # Factor on the PV forecast; the mockup says the price difference "covers the risk of worse weather".
+  pv_derate: 0.85
+  # How a daily PV total is spread over daylight: half_sine.
+  pv_shape: half_sine
+  refine_passes: 3
+  adopt_cycles: 2
+  adopt_min_change_fraction: 0.05
+  progress_tolerance_fraction: 0.10
+  hard_goal:
+    # A hard goal turns urgent this long before its latest grid start.
+    escalation_margin: 30m
+  load:
+    halflife_days: 14
+    min_observed_fraction: 0.8
+    # The house load with no profile at all (W).
+    fallback_w: 400
+  storage:
+    soc_step_kwh: 0.1
+    # Price units per kWh by which a charge and discharge pair must earn.
+    min_spread: 0.10
+    degradation_per_kwh: 0
+    terminal_value: 0
+  goal:
+    # max_age of a goal input entity (soc, target, deadline, want) that declares none; a helper entity reports rarely, so it is long.
+    input_max_age: 1h
+    # loss_fraction of a goal that declares none: energy drawn = needed x (1 + loss_fraction).
+    default_loss_fraction: 0
+
 decision_log:
   # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.
   retention_days: 30

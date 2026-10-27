@@ -11,6 +11,7 @@ using Switchboard.Application.Options;
 using Switchboard.Application.State;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -31,6 +32,9 @@ namespace Switchboard.Infrastructure.Persistence;
 /// (maintainer survey 2026-10-25). A rollback to 0.6.x sets a schema 3 file aside the same way.
 /// 0.7.1 adds an optional <c>option_before</c> to a restore baseline (a select stop's option before
 /// the stop), written only when known; 0.7.0 sets a file carrying it aside like any untrusted file.
+/// Schema 4 (0.11.0, planner slice 1) adds the goal ledger (<c>goals</c>: per device the energy an energy
+/// goal has drawn since it began, with its deadline); a schema 3 file reads as no goals, and a rollback to 0.10.x sets a
+/// schema 4 file aside like any untrusted file.
 /// </para>
 /// </summary>
 public sealed class RuntimeStateFile : IRuntimeStateStore
@@ -45,10 +49,14 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private const int MaxDiscovered = 2048;
     private const int MaxGroups = 64;
 
+    // Far above any energy a goal asks of one device; a larger number in the file is not a ledger.
+    private const double MaxGoalKwh = 1_000_000;
+
 
     private static readonly string[] Version1Keys = ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "ui_mode", "phases", "devices", "mqtt"];
     private static readonly string[] Version2Keys = [.. Version1Keys, "overrides", "group_budgets"];
     private static readonly string[] Version3Keys = [.. Version2Keys.Where(k => k != "ui_mode"), "control", "observation", "start_baselines", "self_started"];
+    private static readonly string[] Version4Keys = [.. Version3Keys, "goals"];
 
     private readonly string _directory;
     private readonly int _maxBytes;
@@ -272,6 +280,19 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             }
 
             writer.WriteEndObject();
+            writer.WriteStartObject("goals");
+            foreach (var (device, entry) in state.Goals.OrderBy(g => g.Key))
+            {
+                writer.WriteStartObject(device.Value);
+                writer.WriteString("kind", Snake(entry.Kind));
+                WriteTime(writer, "since", entry.Since);
+                WriteTime(writer, "deadline", entry.Deadline);
+                writer.WriteNumber("delivered_kwh", entry.DeliveredKwh);
+                WriteTime(writer, "updated_at", entry.UpdatedAt);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndObject();
             writer.WriteEndObject();
         }
 
@@ -425,20 +446,21 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             && declared.TryGetInt32(out var number)
                 ? number
                 : 0;
-        if (version is not (RuntimeState.SchemaVersion or RuntimeState.PreviousSchemaVersion or RuntimeState.LegacySchemaVersion))
+        if (version is not (RuntimeState.SchemaVersion or RuntimeState.GoalFreeSchemaVersion or RuntimeState.PreviousSchemaVersion or RuntimeState.LegacySchemaVersion))
         {
-            throw new InvalidStateException($"schema_version is not {RuntimeState.LegacySchemaVersion}, {RuntimeState.PreviousSchemaVersion} or {RuntimeState.SchemaVersion}");
+            throw new InvalidStateException($"schema_version is not {RuntimeState.LegacySchemaVersion}, {RuntimeState.PreviousSchemaVersion}, {RuntimeState.GoalFreeSchemaVersion} or {RuntimeState.SchemaVersion}");
         }
 
         var keys = Keys(root, "the document", version switch
         {
-            RuntimeState.SchemaVersion => Version3Keys,
+            RuntimeState.SchemaVersion => Version4Keys,
+            RuntimeState.GoalFreeSchemaVersion => Version3Keys,
             RuntimeState.PreviousSchemaVersion => Version2Keys,
             _ => Version1Keys,
         });
 
         // The UI choice of 0.6.x is read and ignored: the control switch replaced it and reads off after the upgrade.
-        var uiMode = version == RuntimeState.SchemaVersion ? "shadow" : keys["ui_mode"].ValueKind == JsonValueKind.String ? keys["ui_mode"].GetString() : null;
+        var uiMode = version >= RuntimeState.GoalFreeSchemaVersion ? "shadow" : keys["ui_mode"].ValueKind == JsonValueKind.String ? keys["ui_mode"].GetString() : null;
         if (uiMode is not ("shadow" or "active"))
         {
             throw new InvalidStateException("ui_mode is neither shadow nor active");
@@ -493,15 +515,55 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         }
 
         state = state with { Overrides = Overrides(keys["overrides"]), GroupBudgets = GroupBudgets(keys["group_budgets"]) };
-        return version == RuntimeState.PreviousSchemaVersion
-            ? state
-            : state with
+        if (version == RuntimeState.PreviousSchemaVersion)
+        {
+            return state;
+        }
+
+        state = state with
+        {
+            Control = Control(keys["control"]),
+            Observation = Observation(keys["observation"]),
+            StartBaselines = StartBaselines(keys["start_baselines"]),
+            SelfStarted = SelfStarted(keys["self_started"]),
+        };
+
+        // A schema 3 file has no ledger: it reads as no goals, and the goals begin again from the configuration.
+        return version == RuntimeState.SchemaVersion ? state with { Goals = Goals(keys["goals"]) } : state;
+    }
+
+    private static ImmutableDictionary<DeviceName, GoalLedgerEntry> Goals(JsonElement element)
+    {
+        var goals = ImmutableDictionary.CreateBuilder<DeviceName, GoalLedgerEntry>();
+        foreach (var property in Object(element, "goals", MaxDevices))
+        {
+            if (!DeviceName.TryParse(property.Name, out var device))
             {
-                Control = Control(keys["control"]),
-                Observation = Observation(keys["observation"]),
-                StartBaselines = StartBaselines(keys["start_baselines"]),
-                SelfStarted = SelfStarted(keys["self_started"]),
-            };
+                throw new InvalidStateException($"goals.{property.Name} is not a device name");
+            }
+
+            var path = $"goals.{property.Name}";
+            var entry = Keys(property.Value, path, "kind", "since", "deadline", "delivered_kwh", "updated_at");
+            var kindText = entry["kind"].ValueKind == JsonValueKind.String ? entry["kind"].GetString() : null;
+            var kind = Enum.GetValues<GoalKind>().Where(k => Snake(k) == kindText).Select(k => (GoalKind?)k).SingleOrDefault()
+                ?? throw new InvalidStateException($"{path}.kind is neither energy nor soc");
+            var delivered = Number(entry["delivered_kwh"], $"{path}.delivered_kwh");
+            if (delivered is < 0 or > MaxGoalKwh)
+            {
+                throw new InvalidStateException($"{path}.delivered_kwh is outside [0, {MaxGoalKwh.ToString("0", CultureInfo.InvariantCulture)}]");
+            }
+
+            goals.Add(
+                device.Value,
+                new GoalLedgerEntry(
+                    kind,
+                    Time(entry["since"], $"{path}.since")!.Value,
+                    Time(entry["deadline"], $"{path}.deadline", nullable: true),
+                    delivered,
+                    Time(entry["updated_at"], $"{path}.updated_at")!.Value));
+        }
+
+        return goals.ToImmutable();
     }
 
     private static ImmutableDictionary<Phase, BudgetMemory> Budgets(JsonElement element, string path)

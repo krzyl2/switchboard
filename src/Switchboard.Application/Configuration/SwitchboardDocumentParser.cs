@@ -27,7 +27,7 @@ public static class SwitchboardDocumentParser
     private static readonly Range BreakerRatingRange = new(1, 250);
     private static readonly Range VoltageRange = new(100, 300);
 
-    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key];
+    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key, PlannerSectionParser.Key];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero"];
 
@@ -105,6 +105,7 @@ public static class SwitchboardDocumentParser
 
         var (groups, groupSignals) = CircuitGroupSectionParser.Read(root, connection, control, issues);
         var economics = EconomicsSectionParser.Read(root, loadedAt, userSignals, issues);
+        var planner = PlannerSectionParser.Read(root, issues);
         userSignals = EconomicsSectionParser.BindPriceSignals(root, userSignals, economics, issues);
         var (devices, deviceSignals) = DeviceSectionParser.Read(
             root,
@@ -120,7 +121,7 @@ public static class SwitchboardDocumentParser
 
         var configuration = issues.HasErrors || connection is null || control is null
             ? null
-            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups, Economics = economics };
+            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups, Economics = economics, Planner = planner };
         return Finish(configuration, issues, path, loadedAt);
     }
 

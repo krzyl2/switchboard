@@ -4,6 +4,7 @@ using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 using Range = Switchboard.Application.Configuration.ConfigRead.Range;
@@ -39,7 +40,7 @@ internal static class DeviceSectionParser
     private const int MaxNameLength = 40;
 
 
-    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start", "value_follows", "value_factor", "sources"];
+    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start", "value_follows", "value_factor", "sources", GoalSectionParser.Key];
     private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
     private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
     private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator", "stop_option", "resume_option"];
@@ -50,7 +51,7 @@ internal static class DeviceSectionParser
 
     // Keys of 03-ARCHITECTURE for later versions: accepted with a warning so a document written for
     // a later version still loads. A power range would duplicate the setpoint range, so it is refused.
-    private static readonly string[] LaterKeys = ["goal", "guards"];
+    private static readonly string[] LaterKeys = ["guards"];
     private static readonly string[] PowerRangeKeys = ["power_min", "power_max"];
 
     private static readonly ImmutableDictionary<string, DeviceType> Types = new Dictionary<string, DeviceType>
@@ -150,6 +151,10 @@ internal static class DeviceSectionParser
             }
 
             signals.AddRange(draft.DrawSignals(definition, control));
+            if (draft.Goal is { } goalDraft)
+            {
+                signals.AddRange(goalDraft.Signals(definition.Id, definition.Path));
+            }
         }
 
         // Derived names can collide when one device's id extends another's (a_stage1 and a stepped a).
@@ -384,6 +389,7 @@ internal static class DeviceSectionParser
         var draw = ReadDraw(mapping, path, phases, context);
         var rotation = ReadGroupName(mapping, "rotation_group", path, issues);
         var circuit = ReadCircuitGroup(mapping, path, phases, context);
+        var goal = GoalSectionParser.Read(mapping, path, control, context.Economics, start, issues);
 
         var valid = issues.Errors.Count == errorsBefore
             && id is not null && valuePerKwh is not null && reactionTime is not null && noShed is not null
@@ -421,6 +427,7 @@ internal static class DeviceSectionParser
             ValueFactor = valueFactor ?? ValueSpec.NeutralFactor,
             Sources = sources,
             SourcesDeclared = sourcesDeclared,
+            Goal = goal,
         };
     }
 
@@ -461,7 +468,7 @@ internal static class DeviceSectionParser
     /// <c>sources</c> (pv_only, pv_and_zone:&lt;id&gt;[,&lt;id&gt;], any); omitted means unspecified (null, 0.9 behaviour). A named zone
     /// that economics.tariff does not have is a warning and is dropped, so the device is narrowed, never widened.
     /// </summary>
-    private static (SourceSet? Declared, SourceSet? Effective) ReadSources(ConfigMapping mapping, string path, EconomicsDefinition? economics, ConfigIssues issues)
+    internal static (SourceSet? Declared, SourceSet? Effective) ReadSources(ConfigMapping mapping, string path, EconomicsDefinition? economics, ConfigIssues issues)
     {
         if (ConfigRead.Optional(mapping, "sources") is not { } node)
         {
@@ -1145,6 +1152,14 @@ internal static class DeviceSectionParser
                     }
                 }
             }
+
+            if (draft.Goal is { } goal)
+            {
+                foreach (var input in goal.Entities)
+                {
+                    Read(draft, input.Entity, input.Path, input.Node, "a goal input");
+                }
+            }
         }
     }
 
@@ -1283,6 +1298,8 @@ internal static class DeviceSectionParser
 
         public SourceSet? SourcesDeclared { get; init; }
 
+        public GoalDraft? Goal { get; init; }
+
         /// <summary>Null when the policy was unknown or no control parameters were read: such a draft is never built.</summary>
         public StartPolicy? Start { get; init; }
 
@@ -1328,6 +1345,7 @@ internal static class DeviceSectionParser
                 ValueFactor = ValueFactor,
                 Sources = Sources,
                 SourcesDeclared = SourcesDeclared,
+                Goal = Goal?.Build(name),
             };
         }
 
