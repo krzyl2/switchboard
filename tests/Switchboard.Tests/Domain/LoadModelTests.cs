@@ -61,6 +61,31 @@ public sealed class LoadModelTests
         Assert.Equal(-10, LoadModel.InFlightDelta(MeasuredCharger, Phase.L1, DeviceLevel.At(new Amperes(6)), reported, drawing).Value, 9);
     }
 
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(0.95)]
+    [InlineData(0.8)]
+    public void A_current_derived_from_power_never_widens_a_limit_or_a_relief_whatever_the_power_factor(double powerFactor)
+    {
+        // The signal layer derives I = P / U. The real current is P / (U cos φ), never smaller, so the
+        // derived draw understates. Intent: every use of the understatement errs towards less: a smaller
+        // own share (limit = headroom + own share), a smaller relief on a decrease, a larger in-flight
+        // increase. A rated 14 A charger at 230 V drawing 3.22 kW at the given power factor.
+        const double Volts = 230;
+        const double Watts = 3220;
+        var real = Watts / (Volts * powerFactor);
+        var derived = Watts / Volts;
+        var reported = DeviceLevel.At(new Amperes(14));
+        var fromReal = LoadModel.Contribution(MeasuredCharger, Phase.L1, reported, new DeviceDrawSample(Charger.Id, Phase.L1, true, new Amperes(real), null));
+        var fromDerived = LoadModel.Contribution(MeasuredCharger, Phase.L1, reported, new DeviceDrawSample(Charger.Id, Phase.L1, true, new Amperes(derived), null));
+        var lower = DeviceLevel.At(new Amperes(6));
+        var higher = DeviceLevel.At(new Amperes(20));
+
+        Assert.True(fromDerived <= fromReal);
+        Assert.True(-LoadModel.InFlightDelta(MeasuredCharger, Phase.L1, lower, reported, fromDerived) <= -LoadModel.InFlightDelta(MeasuredCharger, Phase.L1, lower, reported, fromReal));
+        Assert.True(LoadModel.InFlightDelta(MeasuredCharger, Phase.L1, higher, reported, fromDerived) >= LoadModel.InFlightDelta(MeasuredCharger, Phase.L1, higher, reported, fromReal));
+    }
+
     [Fact]
     public void Ending_a_storage_discharge_counts_the_whole_step()
     {

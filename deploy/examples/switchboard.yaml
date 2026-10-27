@@ -242,6 +242,9 @@ devices:
   # judged by age: a draw silent after exactly 0 is an idle charger and counts as 0 W (0.5.1); a
   # draw silent at any other value is "not trusted" (no relief, no increases), because a frozen
   # old draw would claim relief the charger cannot give.
+  # 0.10.2: nrg_4 also stands still at a load (5.662 A for 11 minutes at a steady 6 A) and then
+  # counts as not trusted, while nrg_7 refreshes every 2 s. A modulating device may therefore
+  # declare only `power`: with the phase voltage mapped, its current is derived as power / voltage.
   - id: ev_charger
     name: Ładowarka go-e
     type: modulating

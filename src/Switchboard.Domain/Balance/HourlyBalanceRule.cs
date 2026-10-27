@@ -28,9 +28,13 @@ public enum BalanceWant
 /// <code>
 /// proj(L) = balance + (free − L) · t_rem
 /// lo = floor ;  hi = lo + (ceiling − lo) · clamp(t_rem / burn_window, 0, 1)
-/// start  if proj(L) &gt; hi and proj(L + P) ≥ lo
+/// start  if proj(L) &gt; hi and proj(L + P) − P · tail ≥ lo      tail = max(0, min_on − t_until_next)
 /// stop   if proj(L) &lt; lo (withheld in the burn window while proj(L) ≥ 0)
 /// </code>
+/// The tail is the energy a start commits beyond the :00: a min_on lockout keeps the load on for its whole
+/// duration, so a start late in the hour draws <c>P</c> for <c>min_on − t_until_next</c> in the next hour,
+/// where this hour's balance does not pay for it and no stop may undo it. It is charged to this hour's
+/// projection in full (no free-power credit: the next hour's flows are not known), so it can only narrow a start.
 /// It only says whether energy is wanted. Whether it is allowed stays with the guard and the dispatch envelope.
 /// </summary>
 public static class HourlyBalanceRule
@@ -57,11 +61,16 @@ public static class HourlyBalanceRule
             remaining <= parameters.BurnWindow);
     }
 
+    /// <summary>Energy a start commits beyond the :00 (Wh): the candidate's power for the part of its commitment that falls in the next hour.</summary>
+    public static double Tail(Watts candidate, TimeSpan commitment, TimeSpan untilNext) =>
+        commitment > untilNext ? candidate.Value * (commitment - untilNext).TotalHours : 0;
+
     /// <param name="balanceWh">The balance of the running hour (positive = net export); null when unknown.</param>
     /// <param name="free">Free power; null when unknown.</param>
     /// <param name="load">Power of the loads Switchboard runs now (Σ over the devices already running).</param>
     /// <param name="candidate">Power of the next device or stage in merit order.</param>
-    public static BalanceWant Decide(double? balanceWh, Watts? free, Watts load, Watts candidate, TimeSpan untilNext, HourlyBalanceParameters parameters)
+    /// <param name="commitment">How long a start of the candidate cannot be undone (its min_on); zero for an increase that turns nothing on.</param>
+    public static BalanceWant Decide(double? balanceWh, Watts? free, Watts load, Watts candidate, TimeSpan untilNext, HourlyBalanceParameters parameters, TimeSpan commitment = default)
     {
         if (balanceWh is not { } balance || free is not { } freePower || !double.IsFinite(balance) || !double.IsFinite(freePower.Value))
         {
@@ -70,7 +79,7 @@ public static class HourlyBalanceRule
 
         var band = Band(untilNext, parameters);
         var now = Project(balance, freePower, load, untilNext, parameters);
-        if (now > band.HiWh && Project(balance, freePower, load + candidate, untilNext, parameters) >= band.LoWh)
+        if (now > band.HiWh && Project(balance, freePower, load + candidate, untilNext, parameters) - Tail(candidate, commitment, untilNext) >= band.LoWh)
         {
             return BalanceWant.Start;
         }

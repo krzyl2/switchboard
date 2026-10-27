@@ -126,7 +126,26 @@ public sealed record DeviceDefinition(
         }
     }
 
-    public DeviceSpec ToSpec() => new(
+    /// <summary>
+    /// The phases on which a modulating device's current is derived from its power draw: it declares a
+    /// <c>draw.power</c> but no <c>draw.current</c> there, and the phase has a mapped voltage. A charger that
+    /// reports only changes leaves its current sensor frozen at a load while its power keeps refreshing
+    /// (go-e: nrg_4 against nrg_7), so the power is the better evidence of what it draws. Without a
+    /// voltage nothing is derived and the device behaves as before. Storage is left out on purpose: its
+    /// stale draw must keep falling back to the reported discharge.
+    /// </summary>
+    public ImmutableArray<Phase> DerivedCurrentPhases(IReadOnlyCollection<Phase> voltagePhases)
+    {
+        ArgumentNullException.ThrowIfNull(voltagePhases);
+        return Type == DeviceType.Modulating && Draw is not null
+            ? [.. Draw.Power.Keys.Where(p => !Draw.Current.ContainsKey(p) && voltagePhases.Contains(p)).Order()]
+            : [];
+    }
+
+    public DeviceSpec ToSpec() => ToSpec([]);
+
+    /// <summary>The spec with the phases whose draw current is derived from the draw power (see <see cref="DerivedCurrentPhases"/>).</summary>
+    public DeviceSpec ToSpec(IReadOnlyCollection<Phase> voltagePhases) => new(
         Id,
         Type,
         [.. Stages.Select(s => new StageSpec(s.Index, s.Phases, s.RatedCurrent))],
@@ -140,7 +159,7 @@ public sealed record DeviceDefinition(
     {
         HasStopActuator = StopActuator is not null,
         StopOptions = StopOptions,
-        CurrentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Order()],
+        CurrentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Concat(DerivedCurrentPhases(voltagePhases)).Distinct().Order()],
         CircuitGroup = CircuitGroup,
         Start = Start,
         ActuatorRevision = ActuatorRevision,

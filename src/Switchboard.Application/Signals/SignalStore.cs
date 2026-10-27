@@ -44,6 +44,9 @@ public sealed class SignalStore
     private ImmutableArray<(DeviceName Device, int Stage, SignalName Signal, bool Storage, StopOptions? Select)> _deviceStates = [];
     private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _currentDraws = [];
     private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _powerDraws = [];
+
+    /// <summary>The power draws that stand in for a current the device does not declare (see <see cref="DeviceDefinition.DerivedCurrentPhases"/>).</summary>
+    private ImmutableArray<(DeviceName Device, Phase Phase, SignalName Signal)> _derivedDraws = [];
     private ImmutableArray<(GroupName Group, Phase Phase, SignalName? Signal)> _groupPhases = [];
     private bool _trackedChanged;
     private bool _resyncPending;
@@ -87,6 +90,7 @@ public sealed class SignalStore
             _deviceStates = [];
             _currentDraws = [];
             _powerDraws = [];
+            _derivedDraws = [];
             _groupPhases = [];
             SetTracked([]);
             return;
@@ -127,6 +131,7 @@ public sealed class SignalStore
         ];
         _currentDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Current.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
         _powerDraws = [.. configuration.Devices.Where(d => d.Draw is not null).SelectMany(d => d.Draw!.Power.OrderBy(c => c.Key).Select(c => (d.Id, c.Key, c.Value)))];
+        _derivedDraws = [.. configuration.Devices.SelectMany(d => d.DerivedCurrentPhases(configuration.VoltagePhases).Select(p => (d.Id, p, d.Draw!.Power[p])))];
         _groupPhases = [.. configuration.Groups.SelectMany(g => g.Phases.Select(p => (g.Id, p, g.Current.TryGetValue(p, out var name) ? name : (SignalName?)null)))];
         _signals = runtimes.ToImmutable();
         _byEntity = _signals.ToDictionary(s => s.Definition.Entity);
@@ -839,7 +844,23 @@ public sealed class SignalStore
             var trusted = DrawTrusted(signal, now);
             return new DeviceDrawSample(d.Device, d.Phase, trusted, trusted ? new Amperes(Value(signal)) : null, signal.Accepted?.Effective);
         }),
+        .. _derivedDraws.Select(d => DerivedDraw(d.Device, d.Phase, _byName[d.Signal], now)),
     ];
+
+    /// <summary>
+    /// A device's current from its own power and the phase's voltage: I = P / U, the only place this
+    /// conversion happens. Both must be trusted now (the power by the draw rule, the voltage fresh),
+    /// else the sample carries no value and is no relief and no basis for an increase, exactly like a
+    /// stale draw current. The real current is P / (U·cos φ) and never smaller, so the derived one
+    /// understates and every use of it errs on the safe side (see LoadModel).
+    /// </summary>
+    private DeviceDrawSample DerivedDraw(DeviceName device, Phase phase, SignalRuntime power, DateTimeOffset now)
+    {
+        var voltageSignal = WithRole(SignalRole.PhaseVoltage, phase);
+        var voltage = voltageSignal is not null && Classify(voltageSignal, now).State == SignalState.Fresh ? Value(voltageSignal) : 0;
+        var current = DrawTrusted(power, now) && voltage > 0 ? new Amperes(Value(power) / voltage) : (Amperes?)null;
+        return new DeviceDrawSample(device, phase, current is not null, current, power.Accepted?.Effective);
+    }
 
     /// <summary>
     /// A draw is trusted while fresh, or while it is silent after reporting exactly 0: a device that

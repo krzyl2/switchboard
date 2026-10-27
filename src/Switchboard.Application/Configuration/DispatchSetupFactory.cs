@@ -26,11 +26,13 @@ public static class DispatchSetupFactory
         var phases = configuration.Connection.Phases;
 
         var devices = configuration.Devices.Select(d => new DispatchDevice(
-            d.ToSpec(),
+            d.ToSpec(configuration.VoltagePhases),
             [.. d.Stages.Select(s => s.RatedPower ?? Watts.Zero)],
             d.RotationGroup,
             d.Draw is null ? [] : [.. d.Draw.Power.Keys.Order()],
-            new Amperes(d.Draw?.Current.Values.Select(n => sigma[n]).DefaultIfEmpty(0).Max() ?? 0),
+            new Amperes(Math.Max(
+                d.Draw?.Current.Values.Select(n => sigma[n]).DefaultIfEmpty(0).Max() ?? 0,
+                d.DerivedCurrentPhases(configuration.VoltagePhases).IsEmpty ? 0 : SignalUnits.CurrentAt(new Watts(d.Draw!.Power.Values.Select(n => sigma[n]).DefaultIfEmpty(0).Max()), voltage).Value)),
             new Watts(d.Draw?.Power.Values.Select(n => sigma[n]).DefaultIfEmpty(0).Max() ?? 0)));
 
         // House load = phase power + generation share: both noises count.
