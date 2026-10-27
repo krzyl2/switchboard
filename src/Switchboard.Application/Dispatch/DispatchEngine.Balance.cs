@@ -272,6 +272,8 @@ public sealed partial class DispatchEngine
             changed |= Cap(plan, index);
         }
 
+        changed |= Displace(gated, kinds, settled, economics, surplus, load, config);
+
         // What each judged device runs on now, for the log: only the devices the loops above left as they are.
         foreach (var plan in gated.Where(p => kinds.TryGetValue(p, out var kind) && kind == GateKind.Sources && p.EnergyClass is null && p.BasisIndex > 0 && p.BalanceStop is null))
         {
@@ -282,6 +284,69 @@ public sealed partial class DispatchEngine
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// Displacement (14-ECONOMICS, "Displacement"): the most valuable gated device that the allocation lets rise but the projection refuses
+    /// takes the place of a running device worth less, when it would start with that device one stage lower. The cheaper device (lowest
+    /// value first) must be worth less by economics.min_margin and by economics.order_min_gap_fraction, must not be held by min_on (a
+    /// displacement never stops a device early) and must not run on the zone class. It is lowered with value_rank_below_cutoff; the
+    /// dearer one starts on a later step by the ordinary rule. One displacement per step, and only with an economics section (ECO-15).
+    /// It lowers a load and starts nothing, so it cannot raise anything above what the guard allows.
+    /// </summary>
+    private static bool Displace(List<Plan> gated, Dictionary<Plan, GateKind> kinds, HashSet<Plan> settled, EconomicsContext? economics, SurplusView surplus, double? load, HourlyBalanceSetup config)
+    {
+        if (economics is null || load is not { } running || gated.Any(p => p.BalanceStop == ReasonCode.ValueRankBelowCutoff))
+        {
+            return false;
+        }
+
+        var parameters = economics.Setup.Parameters;
+        foreach (var wanted in gated)
+        {
+            if (settled.Contains(wanted) || !kinds.ContainsKey(wanted) || wanted.BalanceAllows || wanted.BalanceReason != ReasonCode.BalanceProjectionLow
+                || wanted.BalanceStop is not null || !wanted.GuardAllows || !wanted.DataValid || wanted.BasisIndex + 1 >= wanted.Levels.Length
+                || economics.Device(wanted.Device.Id) is not { } high)
+            {
+                continue;
+            }
+
+            var candidate = PlannedPower(wanted, wanted.BasisIndex + 1, config) - PlannedPower(wanted, wanted.BasisIndex, config);
+            if (candidate <= 0)
+            {
+                continue;
+            }
+
+            var commitment = Commitment(wanted, wanted.BasisIndex);
+            foreach (var cheaper in gated
+                .Where(p => p != wanted && p.BasisIndex > 0 && p.BalanceStop is null && !settled.Contains(p) && kinds.ContainsKey(p))
+                .OrderBy(p => economics.Device(p.Device.Id)?.VEff.PerKwh ?? double.MaxValue))
+            {
+                if (economics.Device(cheaper.Device.Id) is not { } low
+                    || high.VEff.PerKwh - low.VEff.PerKwh < parameters.MinMargin
+                    || high.VEff.PerKwh <= low.VEff.PerKwh
+                    || (high.VEff.PerKwh - low.VEff.PerKwh) / high.VEff.PerKwh < parameters.OrderMinGapFraction
+                    || (low.Spec.Sources is not null && ZoneOf(economics, low).Ok(running: true)))
+                {
+                    continue;
+                }
+
+                var shed = PlannedPower(cheaper, cheaper.BasisIndex, config) - PlannedPower(cheaper, cheaper.BasisIndex - 1, config);
+                if (shed <= 0 || Math.Max(cheaper.MinAllowed, cheaper.BasisIndex - 1) >= cheaper.BasisIndex)
+                {
+                    continue;
+                }
+
+                var pv = PvOf(economics, high, surplus, running - shed, candidate, commitment);
+                if (pv.Allowance.Decision == AllowanceDecision.Start && (high.Spec.Sources is null || (high.Spec.Sources.Pv && pv.Worth))
+                    && LowerOneStage(cheaper, ReasonCode.ValueRankBelowCutoff))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -455,7 +520,6 @@ public sealed partial class DispatchEngine
         return true;
     }
 
-    /// <summary>The power a level draws in W: the rated power of its relay stages, or a setpoint's ceiling at the nominal voltage.</summary>
     /// <summary>
     /// How long the step from <paramref name="index"/> to the next level cannot be undone: the device's min_on when the step turns a
     /// relay stage on or takes a setpoint device out of off (a lockout holds it on for that long), nothing for a step that only changes
@@ -475,6 +539,7 @@ public sealed partial class DispatchEngine
         return turnsOn ? spec.MinOn : TimeSpan.Zero;
     }
 
+    /// <summary>The power a level draws in W: the rated power of its relay stages, or a setpoint's ceiling at the nominal voltage.</summary>
     private static double PlannedPower(Plan plan, int index, HourlyBalanceSetup config)
     {
         var spec = plan.Device.Spec;

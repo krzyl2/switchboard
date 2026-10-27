@@ -10,6 +10,10 @@ All notable changes to this add-on. Newest version first; format follows [Keep a
 - A start or increase of a device with `sources` that is withheld while the hourly balance's projection sits inside the band (the settlement rule says Hold) is now `balance_projection_low`, as it is for a device without `sources` and as 0.9 reports it, instead of `source_not_allowed` (which suggested the energy's source was not allowed). Only the reason of a refusal changes; which devices start does not.
 - A start late in the hour now pays for the energy its `relay_min_on` holds past the :00: seen live, a heater started 3 minutes before the :00 with a 6-minute lockout could not be stopped for 3 minutes of the next hour, which had no surplus for it. The projection after a start is reduced by the candidate's power for the part of its lockout that falls in the next hour (refused as `balance_projection_low`; it only withholds starts, nothing is shortened, no new setting). See `docs/13-HOURLY-BALANCE.md`.
 
+### Added
+
+- Displacement, with an `economics:` section: when a device worth more is refused only because the hourly projection is too low, but would start with a running cheaper device stopped, that cheaper device (lowest value first) is lowered one stage with reason `value_rank_below_cutoff`, and the dearer one starts on a later step by the ordinary rule. It needs a value gap of `economics.min_margin` and `economics.order_min_gap_fraction`, never stops a device before its `min_on`, never stops a zone-class device and displaces one device per step. Seen live: the car (2.03) could not start beside a running heater (0.35) with 2.4 kW free. No new setting, no new reason code. See `docs/14-ECONOMICS.md`.
+
 ## 0.10.1
 
 ### Fixed

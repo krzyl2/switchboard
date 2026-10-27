@@ -324,3 +324,24 @@ Each has a recommendation, and the design above already uses it.
 - Guard shed order stays static while dispatch order is live (above).
 - An omitted `sources` keeps the 0.9 behaviour; only a declared one is strict.
 - A zone-class device runs whenever its zone is active and the price test passes, until v3.0 goals exist.
+
+## Displacement: stop the cheaper device when a worth-more one fits (0.10.2)
+
+Found live on 0.10.1 (shadow report of the maintainer's run, 10:02:30 UTC): the car (value 2.03) was off, a heater (0.35) ran, and 2.4 kW of free power without the heater would have been enough for the car at 6 A (about 1.47 kW). The car could not start (the start would project to about -700 Wh, below the floor), and nothing stopped the heater (its own projection, 624 Wh, was above the floor). The value order only ever decides who gets headroom first; it never takes energy back from a device already running.
+
+**Rule.** In the allowance gate, after the starts are judged, take the most valuable device `V` that the allocation says could rise now but was refused by the projection (`balance_projection_low`). Look for the running gated device `R`, lowest effective value first, such that all of these hold:
+
+1. `v_eff(V) - v_eff(R) >= economics.min_margin` and `(v_eff(V) - v_eff(R)) / v_eff(V) >= economics.order_min_gap_fraction` (a worth-more device by a real gap, the same gap the value order uses before it swaps two devices; a price tick inside the gap displaces nothing).
+2. `R` may be lowered now: its `min_on` has elapsed (`LowerOneStage` already refuses a locked device). A displacement never stops a device before its `min_on`, and never forces a stop the lockout machinery would defer.
+3. `R` is not on the zone class (energy the tariff allows is not surplus; the zone class is never stopped by the balance).
+4. With `R` one stage lower, the allowance for `V` is Start: `proj(L - shed(R)) > hi` and `proj(L - shed(R) + P_V) - tail_V >= lo` (including the min_on tail of 13-HOURLY-BALANCE), and `V`'s value covers the price of the surplus as in the allowance gate. Nothing is displaced for a start that would not then happen.
+
+Then `R` is lowered one stage with reason `value_rank_below_cutoff` ("a higher-value device took the headroom", its existing meaning, so the list stays at version 6, no new code). One displacement per step; while a displacement is open (a device already lowered this step for it) no second one is chosen. `V` is not started in the same step: the load of `R` leaves the projection once its stop is the target, and `V` then starts by the ordinary rule (persistence, one stage per cycle, settling).
+
+**Why it does not oscillate.** After the swap `R` can only come back through the ordinary start rule, which now counts `V` in the load, so `R` cannot displace `V` (it is worth less), and cannot start on surplus `V` uses. `V` stopping on the balance frees the energy for `R` again, through the ordinary start, after `R`'s `min_off`. Every swap is bounded below by `R`'s `min_on` and `min_off` and by the gap of condition 1.
+
+**Protection.** Displacement only lowers a load or leaves things as they are; it adds nothing. `V` still has to pass the guard's envelope and the allocation before the gate sees it, so no phase limit can be exceeded because of it. It never runs without an `economics:` section (a file without one decides byte for byte as 0.9, ECO-15); there the value order is the static `value_per_kwh` and displacement would be a new behaviour for an old file.
+
+**Not done on purpose (for the maintainer).** (a) A displacement does not stop `R` before its `min_on` (the stop would be deferred anyway and the device is protected by the lockout); the cost is that the car waits for the heater's `min_on` (6 min) when the heater has just started. (b) The step-down of the car in the new hour before the heater, when the heater was still locked by `min_on` (live 10:00 to 10:03), is correct and unchanged: a device under `min_on` cannot be stopped, and the guard-and-balance stop of the car is what keeps the phase and the hour inside their limits; it is the symptom of the start of 09:57 that the min_on tail in `13-HOURLY-BALANCE.md` now prevents. (c) The reason code of the displacement is `value_rank_below_cutoff` and not a new code, because the meaning is the same and a new code would move the list to version 8 (the planner's slice 5 already takes version 7).
+
+Tests: `DisplacementTests`.
