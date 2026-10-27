@@ -59,7 +59,14 @@ public sealed record PlannerParameters(
     HardGoalParameters HardGoal,
     LoadForecastParameters Load,
     PlannerStorageParameters Storage,
-    GoalParameters Goal);
+    GoalParameters Goal)
+{
+    /// <summary>
+    /// The forecast side of these parameters. The binder has checked every range before a <see cref="PlannerParameters"/> reaches a
+    /// valid configuration, so this does not throw for one that came from there.
+    /// </summary>
+    public ForecastParameters Forecast() => new(Slot, PvDerate, TimeSpan.FromDays(Load.HalflifeDays), Load.MinObservedFraction, Load.FallbackW);
+}
 
 /// <param name="EscalationMargin">A hard goal turns urgent this long before its latest grid start.</param>
 public sealed record HardGoalParameters(TimeSpan EscalationMargin);

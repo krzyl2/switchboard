@@ -125,13 +125,15 @@ public sealed class PlanEndpointTests
     [Fact]
     public void The_answer_has_the_documented_keys_and_no_plan_field()
     {
-        // Why: slice 1 must not look like it plans: no slots, entries, cost or computedAt until a plan exists (slice 4).
+        // Why: until slice 4 the answer must not look like it plans: slots (the inputs per slot) exist, but no entries, cost or computedAt, and status stays
+        // absent. Without sources (as here) the forecast inputs are null, so nothing is shown that was not computed.
         var json = JsonSerializer.SerializeToElement(
             PlanEndpoint.Build(Config("planner:\n  dispatch: off\n"), new GoalBoard(Now, [Goal.Of(Request(), Now)], [], [])),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
-        Assert.Equal(["at", "devices", "dispatchMode", "enabled", "inputs", "issues", "notes", "status", "superseded"], json.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(["goalsActive", "goalsInactive"], json.GetProperty("inputs").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["at", "devices", "dispatchMode", "enabled", "inputs", "issues", "notes", "slots", "status", "superseded"], json.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["goalsActive", "goalsInactive", "loadForecast", "prices", "pvForecast"], json.GetProperty("inputs").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(0, json.GetProperty("slots").GetArrayLength());
         Assert.Equal(["device", "goal", "goals"], json.GetProperty("devices")[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     }
 

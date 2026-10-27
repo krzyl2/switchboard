@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Options;
+using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 
@@ -31,6 +32,8 @@ public sealed class PresentationPersistence
     private StatisticsMark? _savedMark;
     private long _savedExcursions = -1;
     private string? _error;
+    private readonly LoadProfileFeed? _loadProfile;
+    private bool _loadProfileFailing;
 
     public PresentationPersistence(
         PresentationHub hub,
@@ -39,10 +42,12 @@ public sealed class PresentationPersistence
         IOptions<StatisticsOptions> options,
         TimeProvider hostTime,
         SignalClock signalClock,
-        ILogger<PresentationPersistence> logger)
+        ILogger<PresentationPersistence> logger,
+        LoadProfileFeed? loadProfile = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(signalClock);
+        _loadProfile = loadProfile;
         _hub = hub;
         _statistics = statistics;
         _excursions = excursions;
@@ -141,6 +146,8 @@ public sealed class PresentationPersistence
                 error ??= failed;
             }
 
+            FeedLoadProfile(statistics, now);
+
             // Only a write that was tried can clear a failure: a pass with nothing to save proves nothing.
             if (attempted && error != _error)
             {
@@ -156,6 +163,36 @@ public sealed class PresentationPersistence
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// The planner's load profile learns from the buckets that are retained (15-PLANNER); it is its own file with its own failure streak, never
+    /// part of the statistics write result, and a no-op without a <c>planner:</c> section.
+    /// </summary>
+    private void FeedLoadProfile(StatisticsSnapshot statistics, DateTimeOffset now)
+    {
+        if (_loadProfile is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _loadProfile.Update(statistics, now);
+            if (_loadProfileFailing)
+            {
+                _loadProfileFailing = false;
+                _logger.LogInformation("load-profile.json is writable again");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!_loadProfileFailing)
+            {
+                _loadProfileFailing = true;
+                _logger.LogError("load-profile.json could not be written: {Reason}; the profile in memory stays current", ex.Message);
+            }
         }
     }
 

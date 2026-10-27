@@ -13,10 +13,12 @@ using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
+using Switchboard.Application.Planning;
 using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Planning;
 using Switchboard.Host.Hosting;
 using Switchboard.Host.Web;
 using Switchboard.Infrastructure.Configuration;
@@ -296,6 +298,18 @@ public static class SwitchboardServices
             sp.GetRequiredService<RuntimeEnvironment>().DataPath,
             sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
             sp.GetRequiredService<ILogger<ExcursionFile>>()));
+        // The planner's load profile: its own file, touched only while a planner: section exists (the feed is a no-op without one).
+        services.AddSingleton<IPresentationStore<LoadProfile>>(sp => new LoadProfileFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<ILogger<LoadProfileFile>>()));
+        services.AddSingleton(sp =>
+        {
+            var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();
+            return new LoadProfileFeed(
+                sp.GetRequiredService<IPresentationStore<LoadProfile>>(),
+                () => diagnostics.Current.Configuration?.Configuration,
+                sp.GetRequiredService<SignalClock>());
+        });
         services.AddSingleton<PresentationPersistence>();
 
         // The goal ledger and tracker (PLAN-03, read-only): a listener of the guard runner like the hub, plus the sources the API merges.

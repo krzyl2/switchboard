@@ -2,8 +2,12 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Goals;
+using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
+using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Planning;
+using Switchboard.Domain.Signals;
 
 namespace Switchboard.Host.Web;
 
@@ -29,11 +33,53 @@ public sealed record PlanResponse(
     IReadOnlyList<PlanDeviceDto> Devices,
     IReadOnlyList<GoalDto> Superseded,
     IReadOnlyList<string> Notes,
-    IReadOnlyList<ConfigurationIssue> Issues);
+    IReadOnlyList<ConfigurationIssue> Issues)
+{
+    /// <summary>The slots from now to the horizon with their inputs; empty without a <c>planner:</c> section. There is no plan on them yet.</summary>
+    public IReadOnlyList<PlanSlotDto> Slots { get; init; } = [];
+}
 
+/// <param name="PvForecast">The PV forecast the slots stand on; null without a <c>planner:</c> section.</param>
+/// <param name="LoadForecast">The house load forecast; null without a <c>planner:</c> section.</param>
+/// <param name="Prices">The import price basis; null without a <c>planner:</c> section.</param>
 /// <param name="GoalsActive">Goals that could be evaluated now (met and expired ones included).</param>
 /// <param name="GoalsInactive">Goals that could not, with the input and why; never guessed.</param>
-public sealed record PlanInputsDto(int GoalsActive, IReadOnlyList<GoalInactiveDto> GoalsInactive);
+public sealed record PlanInputsDto(
+    PvForecastDto? PvForecast,
+    LoadForecastDto? LoadForecast,
+    PlanPricesDto? Prices,
+    int GoalsActive,
+    IReadOnlyList<GoalInactiveDto> GoalsInactive);
+
+/// <param name="State">The signal's state as the signal layer reports it (fresh, stale, unavailable, rejected), or absent when no PV forecast signal is mapped.</param>
+/// <param name="AgeS">Seconds since the forecast was reported (last_reported); null when none arrived.</param>
+/// <param name="CoversUntil">Where the forecast ends; null when there is none. Coverage is not freshness.</param>
+/// <param name="Basis">series, totals or none (no usable forecast: zero PV).</param>
+/// <param name="Derate">The factor the PV energy is multiplied by.</param>
+public sealed record PvForecastDto(string State, double? AgeS, DateTimeOffset? CoversUntil, string Basis, double Derate);
+
+/// <param name="Basis">profile (every bin filled), partial (the mean of the filled ones stands in) or fallback (no bin filled yet).</param>
+/// <param name="DaysFilled">Whole days of 24 filled bins.</param>
+public sealed record LoadForecastDto(string Basis, int DaysFilled);
+
+/// <param name="Basis">tariff (no curve), curve (it prices every slot) or partial (the tariff prices the rest).</param>
+/// <param name="CoversUntil">Where the import curve ends; null without one.</param>
+public sealed record PlanPricesDto(string Basis, DateTimeOffset? CoversUntil);
+
+/// <summary>One planning slot: local boundaries (with the offset in force, so a DST day shows 23 or 25 hours), prices, derated PV and house load.</summary>
+/// <param name="Zone">The import tariff's zone when one zone holds the whole slot, else null.</param>
+/// <param name="ImportPrice">Currency per kWh, time-weighted over the slot; null where no price exists.</param>
+/// <param name="ExportPrice">Currency per kWh; null where none is configured.</param>
+/// <param name="SurplusKwh">PV energy left after the house load.</param>
+public sealed record PlanSlotDto(
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    string? Zone,
+    double? ImportPrice,
+    double? ExportPrice,
+    double PvKwh,
+    double BaseKwh,
+    double SurplusKwh);
 
 /// <param name="Reason">want_off, input_missing, input_stale, input_unavailable, input_invalid or input_out_of_range.</param>
 /// <param name="Input">soc, target, deadline or want.</param>
@@ -84,17 +130,28 @@ internal static partial class PlanEndpoint
         endpoints.MapGet("/api/plan", (
             [FromServices] ISignalDiagnosticsSource diagnostics,
             [FromServices] SignalClock clock,
-            [FromServices] GoalTracker goals) =>
+            [FromServices] GoalTracker goals,
+            [FromServices] LoadProfileFeed loadProfile) =>
         {
             var now = clock.Time.GetUtcNow();
-            return Results.Json(Build(diagnostics.Current.Configuration, goals.Evaluate(now)));
+            var current = diagnostics.Current;
+            var sources = current.Configuration?.Configuration is { Planner: not null } configuration
+                ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone)
+                : null;
+            return Results.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast));
         });
         return endpoints;
     }
 
-    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board)
+    /// <param name="sources">The plan's sources (see <see cref="PlanSourceMapper"/>); null leaves the inputs and slots out, as without a planner.</param>
+    /// <param name="forecast">The forecast signals of the latest store cycle, for the PV forecast's state and age.</param>
+    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board, PlanInputSources? sources = null, ForecastInputs? forecast = null)
     {
         var planner = result?.Configuration?.Planner;
+        var parameters = result?.Configuration?.Control.Planner;
+        var planInputs = planner is not null && sources is not null && parameters is not null
+            ? PlanInputs.Build(board.At, board.At + parameters.Horizon, null, parameters.Forecast(), sources)
+            : null;
         var devices = new SortedDictionary<string, List<GoalDto>>(StringComparer.Ordinal);
         foreach (var goal in board.Goals)
         {
@@ -111,12 +168,31 @@ internal static partial class PlanEndpoint
             planner is not null,
             planner is { } p ? ApiText.Snake(p.Dispatch) : null,
             "absent",
-            new PlanInputsDto(board.Goals.Length, [.. board.Inactive.Select(i => new GoalInactiveDto(i.Device.Value, ApiText.Snake(i.Reason), ApiText.Snake(i.Input)))]),
+            new PlanInputsDto(
+                planInputs is null ? null : PvForecast(planInputs, parameters!, forecast?.ForRole(SignalRole.PvForecast), board.At),
+                planInputs is null ? null : new LoadForecastDto(ApiText.Snake(planInputs.LoadBasis), planInputs.LoadDaysFilled),
+                planInputs is null ? null : new PlanPricesDto(ApiText.Snake(planInputs.ImportPriceBasis), planInputs.ImportCurveCoversUntil),
+                board.Goals.Length,
+                [.. board.Inactive.Select(i => new GoalInactiveDto(i.Device.Value, ApiText.Snake(i.Reason), ApiText.Snake(i.Input)))]),
             [.. devices.Select(d => new PlanDeviceDto(d.Key, d.Value.FirstOrDefault(), d.Value))],
             [.. board.Superseded.Select(r => Applied(new Goal(r, GoalStatus.OnTrack)) with { Status = "superseded" })],
-            [],
-            Issues(result));
+            planInputs is null ? [] : [.. planInputs.Notes.Select(n => ApiText.Snake(n))],
+            Issues(result))
+        {
+            Slots = planInputs is null ? [] : [.. planInputs.Slots.Select(Slot)],
+        };
     }
+
+    private static PvForecastDto PvForecast(PlanInputs inputs, PlannerParameters parameters, ForecastSample? sample, DateTimeOffset now) =>
+        new(
+            sample is null ? "absent" : ApiText.Snake(sample.State),
+            sample?.ReportedAt is { } reported ? (now - reported).TotalSeconds : null,
+            inputs.PvCoversUntil,
+            ApiText.Snake(inputs.PvBasis),
+            parameters.PvDerate);
+
+    private static PlanSlotDto Slot(PlanInputSlot s) =>
+        new(s.Slot.Start, s.Slot.End, s.Zone, s.Import?.PerKwh, s.Export?.PerKwh, s.PvKwh, s.BaseKwh, s.SurplusKwh);
 
     private static List<GoalDto> Of(SortedDictionary<string, List<GoalDto>> devices, string device)
     {

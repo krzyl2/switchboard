@@ -397,7 +397,7 @@ internal static class ControlParametersBinder
             planner.Number("progress_tolerance_fraction", Range.Fraction) ?? 0,
             new HardGoalParameters(hardGoal.NonNegativeDuration("escalation_margin") ?? TimeSpan.Zero),
             new LoadForecastParameters(
-                load.Number("halflife_days", Range.Above(0)) ?? 0,
+                load.Number("halflife_days", new Range(0, MaxHalflifeDays, MinExclusive: true)) ?? 0,
                 load.Number("min_observed_fraction", new Range(0, 1, MinExclusive: true)) ?? 0,
                 load.Number("fallback_w", Range.AtLeast(0)) ?? 0),
             new PlannerStorageParameters(
@@ -419,13 +419,28 @@ internal static class ControlParametersBinder
             issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "horizon"), planner.Node("horizon"), "planner.horizon may not be shorter than one slot.");
         }
 
+        // The grid refuses more than SlotGrid.MaxSlots; two slots of margin for the cut first and last slots and a DST step.
+        if (slot > TimeSpan.Zero && horizon > (SlotGrid.MaxSlots - 3) * slot)
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "horizon"), planner.Node("horizon"), $"planner.horizon may not need more than {SlotGrid.MaxSlots - 3} slots of planner.slot.");
+        }
+
         if (cycle > TimeSpan.Zero && planMaxAge > TimeSpan.Zero && planMaxAge < cycle)
         {
             issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(planner.Path, "plan_max_age"), planner.Node("plan_max_age"), "planner.plan_max_age may not be shorter than planner.cycle: every plan would be stale before the next one.");
         }
 
+        // A half-life so small it is no whole tick of time would pass the range and still make the forecast parameters refuse it.
+        if (parameters.Load.HalflifeDays > 0 && TimeSpan.FromDays(parameters.Load.HalflifeDays) <= TimeSpan.Zero)
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(load.Path, "halflife_days"), load.Node("halflife_days"), "planner.load.halflife_days is too small to be a time span.");
+        }
+
         return parameters;
     }
+
+    // Schema bounds, not control parameters: a half-life beyond ten years is a typo (and a 14-day default is nowhere near it).
+    private const double MaxHalflifeDays = 3650;
 
     // Schema bounds, not control parameters: more passes or agreeing replans than this is a typo.
     private const int MaxRefinePasses = 100;

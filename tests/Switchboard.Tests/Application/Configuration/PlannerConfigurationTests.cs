@@ -96,6 +96,13 @@ public sealed class PlannerConfigurationTests
     [InlineData("horizon: 30m", "control.planner.horizon")]
     [InlineData("pv_shape: flat", "control.planner.pv_shape")]
     [InlineData("colour: red", "control.planner.colour")]
+    [InlineData("load:\n      halflife_days: 0", "control.planner.load.halflife_days")]
+    [InlineData("load:\n      halflife_days: -3", "control.planner.load.halflife_days")]
+    [InlineData("load:\n      halflife_days: 100000", "control.planner.load.halflife_days")]
+    [InlineData("load:\n      min_observed_fraction: 0", "control.planner.load.min_observed_fraction")]
+    [InlineData("load:\n      min_observed_fraction: 1.5", "control.planner.load.min_observed_fraction")]
+    [InlineData("load:\n      fallback_w: -1", "control.planner.load.fallback_w")]
+    [InlineData("horizon: 100000h", "control.planner.horizon")]
     public void A_parameter_out_of_range_is_an_error_naming_the_key(string line, string path)
     {
         // Why: an override must not be able to produce a nonsensical planner (a slot the grid cannot cut, a plan that is stale before the
@@ -104,6 +111,28 @@ public sealed class PlannerConfigurationTests
 
         Assert.Equal(ConfigurationStatus.Invalid, result.Status);
         Assert.Contains(result.Errors, e => e.Path == path);
+    }
+
+    [Fact]
+    public void Every_configuration_the_binder_accepts_gives_forecast_parameters_without_throwing()
+    {
+        // Why: ForecastParameters throws on a bad value, and the endpoint and the load-profile feed build it from the configuration at run time. The binder must
+        // therefore refuse first (with an issue naming the key) whatever the constructor would refuse, at the edges too: the largest slot, the smallest derate
+        // above zero, a fraction of exactly 1, a fallback of exactly 0.
+        var edge = TestConfigurations.Valid(TestConfigurations.ThreePhase(control: "  planner:\n    slot: 15m\n    pv_derate: 0.01\n    load:\n      halflife_days: 0.5\n      min_observed_fraction: 1\n      fallback_w: 0\n")).Configuration!.Control.Planner;
+
+        var forecast = edge.Forecast();
+
+        Assert.Equal((TimeSpan.FromMinutes(15), 0.01, TimeSpan.FromHours(12), 1.0, 0.0), (forecast.Slot, forecast.PvDerate, forecast.LoadHalfLife, forecast.LoadMinObservedFraction, forecast.LoadFallbackW));
+    }
+
+    [Fact]
+    public void The_shipped_defaults_are_the_forecast_parameters_of_15_planner()
+    {
+        // Why: no literal in code: the planner's slot, derate and load parameters reach the forecast from control-defaults.yaml only.
+        var forecast = TestConfigurations.Valid(Base).Configuration!.Control.Planner.Forecast();
+
+        Assert.Equal((TimeSpan.FromMinutes(60), 0.85, TimeSpan.FromDays(14), 0.8, 400.0), (forecast.Slot, forecast.PvDerate, forecast.LoadHalfLife, forecast.LoadMinObservedFraction, forecast.LoadFallbackW));
     }
 
     [Fact]

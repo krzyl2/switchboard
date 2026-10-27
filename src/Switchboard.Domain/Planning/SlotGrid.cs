@@ -19,7 +19,7 @@ public readonly record struct Slot(DateTimeOffset Start, DateTimeOffset End)
 public sealed class SlotGrid
 {
     // Structural safety bound (48 h of 15-minute slots is 192): a grid is never built from an absurd horizon.
-    internal const int MaxSlots = 4096;
+    public const int MaxSlots = 4096;
 
     private SlotGrid(ImmutableArray<Slot> slots, DateTimeOffset from, DateTimeOffset to, TimeSpan slotLength, TimeZoneInfo zone)
     {
