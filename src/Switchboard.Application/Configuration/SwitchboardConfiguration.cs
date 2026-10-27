@@ -87,4 +87,7 @@ public sealed record SwitchboardConfiguration(
 
     /// <summary>The optional <c>planner:</c> section (PLAN-05); null when the file has none, and then the planner is off and nothing changes.</summary>
     public PlannerDefinition? Planner { get; init; }
+
+    /// <summary>The phases that have a mapped phase-voltage signal: where a power-only draw can be turned into a current.</summary>
+    public ImmutableArray<Phase> VoltagePhases => [.. Signals.Where(s => s.Role == SignalRole.PhaseVoltage && s.Phase is not null).Select(s => s.Phase!.Value).Distinct().Order()];
 }

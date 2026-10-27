@@ -38,7 +38,7 @@ public static class ProtectionSetupFactory
             maxAge,
             control.Budget,
             new GuardTiming(control.Dispatch.Cycle, control.Dispatch.PersistenceDownCycles, control.Dispatch.PersistenceUpCycles, control.Dispatch.MaxStepChangeStages),
-            [.. configuration.Devices.Select(d => d.ToSpec())])
+            [.. configuration.Devices.Select(d => d.ToSpec(configuration.VoltagePhases))])
         {
             Groups = [.. configuration.Groups.Select(g => Group(g, configuration, maxAge))],
         };

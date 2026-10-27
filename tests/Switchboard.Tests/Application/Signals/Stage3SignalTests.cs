@@ -135,6 +135,91 @@ public sealed class Stage3SignalTests
         Assert.Null(Assert.Single(store.Snapshot().Dispatch.DevicePowers).Power);
     }
 
+    private const string PowerOnlyCharger = """
+          - id: ev_charger
+            type: modulating
+            actuator: number.charger_current
+            phase: L1
+            min: 6
+            max: 20
+            step: 1
+            value_per_kwh: 2.03
+            draw: { power: sensor.charger_draw_power, max_age: 60s }
+        """;
+
+    [Fact]
+    public void A_setpoint_device_with_only_a_power_draw_gets_its_current_from_power_and_phase_voltage()
+    {
+        // Live 0.10.1: the go-e's current sensor stands still at a load, its power refreshes every 2 s.
+        // The conversion is a unit matter and lives here: 1.4 kW at 230 V is the current dispatch counts.
+        var store = new StoreHarness(TestDevices.Document(PowerOnlyCharger));
+        store.Push("sensor.meter_voltage_a", "230");
+        store.Push("sensor.charger_draw_power", "1380");
+
+        var draw = Assert.Single(store.Snapshot().Protection.DeviceDraws);
+
+        Assert.Equal((Phase.L1, true, 6.0), (draw.Phase, draw.Fresh, draw.Current!.Value.Value));
+        Assert.True(Assert.Single(store.Configuration.Configuration!.Devices).ToSpec(store.Configuration.Configuration.VoltagePhases).HasCurrentDraw(Phase.L1));
+    }
+
+    [Theory]
+    [InlineData("power")]
+    [InlineData("voltage")]
+    public void A_derived_current_needs_a_fresh_power_and_a_fresh_voltage(string stale)
+    {
+        // Intent: a stale input is no knowledge, so no relief and no basis for an increase, exactly like
+        // a stale draw current. Either one going stale takes the derived current away.
+        var store = new StoreHarness(TestDevices.Document(PowerOnlyCharger));
+        store.Push("sensor.meter_voltage_a", "230");
+        store.Push("sensor.charger_draw_power", "1380");
+        store.Advance(TimeSpan.FromSeconds(50));
+        store.Push(stale == "power" ? "sensor.meter_voltage_a" : "sensor.charger_draw_power", stale == "power" ? "230" : "1380");
+        store.Advance(TimeSpan.FromSeconds(50));
+
+        var draw = Assert.Single(store.Snapshot().Protection.DeviceDraws);
+
+        Assert.Equal((false, (Amperes?)null), (draw.Fresh, draw.Current));
+    }
+
+    [Fact]
+    public void A_derived_current_follows_the_trust_rule_of_the_power_draw()
+    {
+        // The draw rule is not changed: silent after exactly 0 is an idle device (0 A), silent after a
+        // load is not trusted. A frozen power would otherwise claim relief the device cannot give.
+        var idle = new StoreHarness(TestDevices.Document(PowerOnlyCharger));
+        idle.Push("sensor.meter_voltage_a", "230");
+        idle.Push("sensor.charger_draw_power", "0");
+        var frozen = new StoreHarness(TestDevices.Document(PowerOnlyCharger));
+        frozen.Push("sensor.meter_voltage_a", "230");
+        frozen.Push("sensor.charger_draw_power", "1380");
+
+        for (var i = 0; i < 4; i++)
+        {
+            idle.Advance(TimeSpan.FromSeconds(50));
+            idle.Push("sensor.meter_voltage_a", "230");
+            frozen.Advance(TimeSpan.FromSeconds(50));
+            frozen.Push("sensor.meter_voltage_a", "230");
+        }
+
+        Assert.Equal((true, 0.0), (Assert.Single(idle.Snapshot().Protection.DeviceDraws).Fresh, Assert.Single(idle.Snapshot().Protection.DeviceDraws).Current!.Value.Value));
+        Assert.False(Assert.Single(frozen.Snapshot().Protection.DeviceDraws).Fresh);
+    }
+
+    [Fact]
+    public void Without_a_mapped_voltage_nothing_is_derived_and_a_declared_current_is_never_replaced()
+    {
+        // A phase with no voltage signal keeps the old behaviour (no draw current, no blocked increases);
+        // a device that declares its current keeps that single sample.
+        var configuration = TestConfigurations.Valid(TestDevices.Document(PowerOnlyCharger)).Configuration!;
+        var charger = Assert.Single(configuration.Devices);
+        Assert.Equal([Phase.L1], charger.DerivedCurrentPhases([Phase.L1, Phase.L2]));
+        Assert.Empty(charger.DerivedCurrentPhases([Phase.L2]));
+        Assert.False(charger.ToSpec([Phase.L2]).HasCurrentDraw(Phase.L1));
+
+        var declared = TestConfigurations.Valid(TestDevices.Document(DrawnCharger)).Configuration!;
+        Assert.Empty(Assert.Single(declared.Devices).DerivedCurrentPhases(declared.VoltagePhases));
+    }
+
     [Fact]
     public void Balance_subtracts_measured_controlled_loads()
     {
