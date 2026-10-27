@@ -394,7 +394,7 @@ public sealed partial class DispatchEngine
     /// Why a start or increase is withheld: the first energy class in the device's sources that is open now says (surplus, then the
     /// active zone); the surplus is open when its inputs are unknown (the reason is then that nothing can be told), when the
     /// settlement says energy is wanted but the value does not cover the price, or when there is surplus that the candidate does
-    /// not fit in. With no such class open the reason is source_not_allowed: what is available now is not among the sources.
+    /// not fit in, or while the settlement says Hold (the projection sits inside the band, as in 0.9). With no such class open the reason is source_not_allowed: what is available now is not among the sources.
     /// </summary>
     private static ReasonCode Refusal(EconomicsContext economics, DeviceEcon device, PvState pv, bool surplusPresent, ZoneState zone)
     {
@@ -410,7 +410,7 @@ public sealed partial class DispatchEngine
                 return ReasonCode.ValueBelowCost;
             }
 
-            if (surplusPresent)
+            if (surplusPresent || pv.Allowance.Decision == AllowanceDecision.Hold)
             {
                 return economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow;
             }

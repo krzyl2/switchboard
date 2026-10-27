@@ -7,6 +7,7 @@ All notable changes to this add-on. Newest version first; format follows [Keep a
 ### Fixed
 
 - A charger that declares only `draw.power` was counted as drawing nothing, so its limit was the bare headroom and a 6 A go-e never rose although the phase had room (seen live on 0.10.1: the go-e's `nrg_4` current stood still at 5.662 A for 11 minutes and went stale, `nrg_7` power refreshed every 2 s). For a `modulating` device that declares a `draw.power` and no `draw.current` on a phase with a mapped `phase_voltage`, the signal layer now derives the current as power / voltage, from a fresh power (or one silent after exactly 0) and a fresh voltage; otherwise the device is not trusted as before (no relief, no increases). The freshness rule of a draw is unchanged. The derived current is never above the real one (power factor at most 1), so every use of it errs towards less: a smaller limit, a smaller relief, a larger in-flight increase. A setpoint device with a power draw is now also verified against its setpoint, in amperes, like one with a current draw. Declare only `power` for a go-e (see `DOCS.md`).
+- A start or increase of a device with `sources` that is withheld while the hourly balance's projection sits inside the band (the settlement rule says Hold) is now `balance_projection_low`, as it is for a device without `sources` and as 0.9 reports it, instead of `source_not_allowed` (which suggested the energy's source was not allowed). Only the reason of a refusal changes; which devices start does not.
 
 ## 0.10.1
 
