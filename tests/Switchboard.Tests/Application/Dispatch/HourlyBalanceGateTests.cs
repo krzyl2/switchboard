@@ -98,6 +98,28 @@ public sealed class HourlyBalanceGateTests
         Assert.Contains(s.Dispatches.Last().Devices, d => d.Pending == ReasonCode.BalanceProjectionLow);
     }
 
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("    relay_min_on: 0s\n", true)]
+    public void A_start_in_the_burn_window_pays_for_what_min_on_holds_past_the_hour(string lockout, bool starts)
+    {
+        // Live 0.10.1: heater_l2 started 3 min before the :00 with min_on 6 min, so it was bound to draw
+        // 3 min into the next hour, where nothing could stop it. 3 min before the :00: 120 Wh and 2.4 kW
+        // free. The start leaves 165 Wh at the :00, above the 150 Wh floor, but its 3-minute tail of 1.5 kW
+        // (75 Wh) is not this hour's surplus to burn: 90 Wh is below the floor, so it is not made. Without
+        // a min_on there is no tail and the same start is made, so the tail is the only reason.
+        var s = Heaters(AllHeaters, OneBoundary + lockout);
+        Export(s, 2400);
+
+        Run(s, Feed(s, 120, T0 - TimeSpan.FromMinutes(57)), TimeSpan.FromSeconds(90));
+
+        Assert.Equal(starts, Starts(s).Any());
+        if (!starts)
+        {
+            Assert.Contains(s.Dispatches.Last().Devices, d => d.Pending == ReasonCode.BalanceProjectionLow);
+        }
+    }
+
     [Fact]
     public void A_projection_inside_the_band_neither_starts_nor_stops()
     {

@@ -125,5 +125,24 @@ Domain, pure and tested on explicit times: `FreePowerWindow` (smoothed free powe
 
 With economics (slice 3 of `14-ECONOMICS.md`) this gate generalises to an allowance gate (`DispatchEngine.Balance.cs`): the rule above is its surplus branch under `hourly_netting`, unchanged, and it is the whole gate for every device that declares no `sources`. Devices that declare `sources` may also be allowed by the active tariff zone, are stopped by this rule only while they run on surplus, and report the economic reason codes (`04-ALGORITHMS.md`, section 6, version 6).
 
+### A start late in the hour pays for its min_on tail (0.10.2)
+
+Found live on 0.10.1: `heater_l2` started at 09:57:00 with 180 s to the :00 and `relay_min_on` 360 s. The projection stopped at the :00, but the lockout kept the heater on until 10:03, and in the new hour (balance 0, 5.3 kW of own load against 2.4 kW free) nothing was allowed to stop it, so the car came down instead.
+
+The rule now charges what a start commits beyond the :00 to the hour it is made in:
+
+```
+tail     = candidate_power * max(0, min_on - t_until_next)          Wh, min_on of the device (the step turns a relay stage or a setpoint device on)
+start    if proj(L) > hi  and  proj(L + P) - tail >= lo
+```
+
+- **Refuse, not shorten.** The lockout is a hard rule (relay protection), so a start cannot be made shorter; the only choice is to make it or not. A refused start reports the existing `balance_projection_low` (the projection is too low for what the start commits); no new code, list version unchanged.
+- **Full charge, no credit.** The next hour's free power and loads are not known, so the tail is subtracted in full. This only narrows starts: it never starts, raises or keeps anything the old rule would not, and never asks for a stop. The stop branch and the burn-window stop hold are unchanged.
+- **No new parameter.** It uses the device's own `min_on` and the existing floor. A tail that falls in the next hour is zero when `min_on <= t_until_next` (every start earlier than `min_on` before the :00) and for an increase that turns nothing on (a setpoint raised while on).
+- **Scope.** Hourly netting only (`HourlyBalanceRule`, and `HourlyNettingModel` for devices with `sources`). Net billing has no hour and ignores it; the zone class is not balance-gated.
+- **Not covered.** A heater started earlier than `min_on` before the :00 can still be on while the next hour's projection turns negative; that is the displacement problem below (see "Displacement" in `14-ECONOMICS.md`).
+
+Tests: `HourlyBalanceProjectionTests.A_start_is_charged_for_the_energy_its_min_on_holds_past_the_next_hour`, `HourlyBalanceGateTests.A_start_in_the_burn_window_pays_for_what_min_on_holds_past_the_hour`.
+
 Known edges, left open: the gate does not look at the heaters' thermal state (maintainer: the tank has its own thermostat); the first start of an hour waits `persistence_up_cycles` (3 min) after the projection turns favourable; the rule is applied per device stage, so a stepped device rises one stage per cycle.
 

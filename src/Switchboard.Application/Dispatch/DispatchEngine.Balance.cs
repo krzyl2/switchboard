@@ -248,7 +248,7 @@ public sealed partial class DispatchEngine
                 {
                     var candidate = PlannedPower(plan, index + 1, config) - PlannedPower(plan, index, config);
                     if (candidate <= 0
-                        || HourlyBalanceRule.Decide(view!.BalanceWh, view.Free, new Watts(load!.Value), new Watts(candidate), view.UntilNext, parameters) != BalanceWant.Start)
+                        || HourlyBalanceRule.Decide(view!.BalanceWh, view.Free, new Watts(load!.Value), new Watts(candidate), view.UntilNext, parameters, Commitment(plan, index)) != BalanceWant.Start)
                     {
                         break;
                     }
@@ -322,7 +322,7 @@ public sealed partial class DispatchEngine
                 break;
             }
 
-            var pv = PvOf(economics, device, surplus, load, candidate);
+            var pv = PvOf(economics, device, surplus, load, candidate, Commitment(plan, index));
             var zone = ZoneOf(economics, device);
             var pvOk = device.Spec.Sources!.Pv && pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth;
             if (!pvOk && !zone.Ok(running: index > 0))
@@ -344,7 +344,7 @@ public sealed partial class DispatchEngine
         {
             // Nothing was judged (the cap leaves no stage): say why the next stage would not be given, as 0.9 says it with the balance.
             var next = plan.BasisIndex + 1 < plan.Levels.Length ? Math.Max(0, PlannedPower(plan, plan.BasisIndex + 1, config) - PlannedPower(plan, plan.BasisIndex, config)) : 0;
-            var pv = PvOf(economics, device, surplus, load, next);
+            var pv = PvOf(economics, device, surplus, load, next, Commitment(plan, plan.BasisIndex));
             refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, ZoneOf(economics, device));
         }
 
@@ -363,10 +363,10 @@ public sealed partial class DispatchEngine
     /// <summary>What the surplus class says for a candidate: the settlement model's allowance, and whether the value covers the forgone export (the test is off while no export price exists).</summary>
     private readonly record struct PvState(Allowance Allowance, bool Worth);
 
-    private static PvState PvOf(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, double candidate)
+    private static PvState PvOf(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, double candidate, TimeSpan commitment = default)
     {
         var allowance = load is { } running
-            ? economics.Setup.Settlement.Decide(surplus, new Watts(running), new Watts(candidate))
+            ? economics.Setup.Settlement.Decide(surplus, new Watts(running), new Watts(candidate), commitment)
             : new Allowance(AllowanceDecision.Unknown, AllowanceReason.InputUnknown);
         var cost = EnergyCost.Pv(economics.Setup.Settlement, economics.Now, economics.Prices);
         return new PvState(allowance, cost is not { } price || ValueTest.Worth(device.VEff, price, economics.Setup.Parameters.MinMargin));
@@ -456,6 +456,25 @@ public sealed partial class DispatchEngine
     }
 
     /// <summary>The power a level draws in W: the rated power of its relay stages, or a setpoint's ceiling at the nominal voltage.</summary>
+    /// <summary>
+    /// How long the step from <paramref name="index"/> to the next level cannot be undone: the device's min_on when the step turns a
+    /// relay stage on or takes a setpoint device out of off (a lockout holds it on for that long), nothing for a step that only changes
+    /// what already runs. The rule charges what this commits beyond the :00 to the hour.
+    /// </summary>
+    private static TimeSpan Commitment(Plan plan, int index)
+    {
+        if (index + 1 >= plan.Levels.Length)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var spec = plan.Device.Spec;
+        var from = plan.Levels[index];
+        var to = plan.Levels[index + 1];
+        var turnsOn = spec.IsSetpoint ? DeviceLevels.IsOff(spec, from) && !DeviceLevels.IsOff(spec, to) : to.StagesOn > from.StagesOn;
+        return turnsOn ? spec.MinOn : TimeSpan.Zero;
+    }
+
     private static double PlannedPower(Plan plan, int index, HourlyBalanceSetup config)
     {
         var spec = plan.Device.Spec;

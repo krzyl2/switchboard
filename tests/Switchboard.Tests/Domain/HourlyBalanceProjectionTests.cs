@@ -26,6 +26,31 @@ public sealed class HourlyBalanceProjectionTests
 
     private static Watts W(double value) => new(value);
 
+    [Theory]
+    [InlineData(3, 6, BalanceWant.Hold)]   // 3 min left, min_on 6 min: 3 min (75 Wh at 1.5 kW) fall in the next hour
+    [InlineData(3, 3, BalanceWant.Start)]  // min_on ends exactly at the :00: no tail
+    [InlineData(3, 0, BalanceWant.Start)]  // no lockout: no tail
+    [InlineData(8, 6, BalanceWant.Start)]  // min_on ends before the :00: no tail
+    public void A_start_is_charged_for_the_energy_its_min_on_holds_past_the_next_hour(double minutesLeft, double minOnMinutes, BalanceWant expected)
+    {
+        // The live 09:57 start: 120 Wh, 2.4 kW free, 1.5 kW candidate. Projection after it: 165 Wh at 3 min left
+        // (above the 150 Wh floor) and 150 Wh at 8 min left. The tail is a charge on the start only, never a reason to stop.
+        var want = HourlyBalanceRule.Decide(120, W(2400), W(0), W(1500), Min(minutesLeft), Parameters, Min(minOnMinutes));
+
+        Assert.Equal(expected, want);
+    }
+
+    [Fact]
+    public void The_tail_never_asks_for_a_stop_and_never_helps_a_start()
+    {
+        // A tail can only withhold: with the projection inside the band the answer stays Hold, and a start that
+        // already fails without a tail fails with one.
+        Assert.Equal(BalanceWant.Hold, HourlyBalanceRule.Decide(300, W(0), W(0), W(1500), Min(30), Parameters, Min(6)));
+        Assert.Equal(BalanceWant.Hold, HourlyBalanceRule.Decide(0, W(1500), W(0), W(1500), Min(30), Parameters, Min(6)));
+        Assert.Equal(0, HourlyBalanceRule.Tail(W(1500), Min(6), Min(30)));
+        Assert.Equal(75, HourlyBalanceRule.Tail(W(1500), Min(6), Min(3)), 9);
+    }
+
     [Fact]
     public void Projection_adds_the_free_power_not_taken_by_the_load_over_the_time_left()
     {

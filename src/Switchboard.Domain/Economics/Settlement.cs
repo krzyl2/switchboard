@@ -72,7 +72,8 @@ public interface ISettlementModel
     /// <param name="surplus">The balance, free power and time to the :00.</param>
     /// <param name="load">Power of the loads Switchboard runs now.</param>
     /// <param name="candidate">Power of the next device or stage in merit order.</param>
-    Allowance Decide(SurplusView surplus, Watts load, Watts candidate);
+    /// <param name="commitment">How long a start of the candidate cannot be undone (its min_on). Hourly netting charges what falls past the :00 to the hour; a model without an hour ignores it.</param>
+    Allowance Decide(SurplusView surplus, Watts load, Watts candidate, TimeSpan commitment = default);
 
     /// <summary>What a kWh not exported earns at <paramref name="t"/>; null only when no export price exists.</summary>
     PricePoint? ExportValue(DateTimeOffset t, PriceBook prices);
@@ -88,8 +89,8 @@ public sealed class HourlyNettingModel(HourlyBalanceParameters parameters) : ISe
 
     public NettingPeriod NettingPeriod => NettingPeriod.Hour;
 
-    public Allowance Decide(SurplusView surplus, Watts load, Watts candidate) =>
-        HourlyBalanceRule.Decide(surplus.BalanceWh, surplus.Free, load, candidate, surplus.UntilNextHour, parameters) switch
+    public Allowance Decide(SurplusView surplus, Watts load, Watts candidate, TimeSpan commitment = default) =>
+        HourlyBalanceRule.Decide(surplus.BalanceWh, surplus.Free, load, candidate, surplus.UntilNextHour, parameters, commitment) switch
         {
             BalanceWant.Start => new Allowance(AllowanceDecision.Start, AllowanceReason.BalanceSurplus),
             BalanceWant.Stop => new Allowance(AllowanceDecision.Stop, AllowanceReason.BalanceProjectionLow),
@@ -125,7 +126,7 @@ public sealed record NetBillingModel(Watts StartHysteresis, Watts StopHysteresis
 
     public NettingPeriod NettingPeriod => NettingPeriod.Step;
 
-    public Allowance Decide(SurplusView surplus, Watts load, Watts candidate)
+    public Allowance Decide(SurplusView surplus, Watts load, Watts candidate, TimeSpan commitment = default)
     {
         if (surplus.Free is not { } free || !double.IsFinite(free.Value))
         {
