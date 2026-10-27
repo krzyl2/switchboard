@@ -54,6 +54,12 @@ public sealed record SignalDefinition(
     /// </summary>
     public string? PriceCurrency { get; init; }
 
+    /// <summary>For a series signal (15-PLANNER, slice 2): the one attribute kept and how it is laid out; null for every other signal.</summary>
+    public SeriesSpec? Series { get; init; }
+
+    /// <summary>For a series signal: what its numbers mean (power W, period energy Wh, or a price); null otherwise.</summary>
+    public SeriesValueKind? SeriesMeaning { get; init; }
+
     /// <summary>The dotted path of the key that sets this signal's max_age.</summary>
     public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : MaxAgeKey ?? $"{Path}.state_max_age";
 

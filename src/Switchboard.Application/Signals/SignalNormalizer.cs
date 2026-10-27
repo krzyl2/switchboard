@@ -32,6 +32,7 @@ public static class SignalUnits
         SignalKind.Voltage => ["V"],
         SignalKind.EnergyCounter => ["Wh", "kWh", "MWh"],
         SignalKind.Percentage => ["%"],
+        SignalKind.EnergyForecast => ["Wh", "kWh", "MWh"],
         _ => [],
     };
 
@@ -103,7 +104,8 @@ public static class SignalNormalizer
     public const string UnavailableState = "unavailable";
     public const string UnknownState = "unknown";
 
-    public static Normalization Normalize(SignalDefinition definition, string state, string? unit)
+    /// <param name="series">The whitelisted attribute of a series signal as the transport parsed it; null for every other signal and for a probe answer.</param>
+    public static Normalization Normalize(SignalDefinition definition, string state, string? unit, ParsedSeries? series = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(state);
@@ -119,6 +121,18 @@ public static class SignalNormalizer
         if (definition.Kind == SignalKind.State)
         {
             return Accept(new StateValue(state));
+        }
+
+        if (definition.Kind == SignalKind.Timestamp)
+        {
+            return IsoInstant.TryParse(state, out var at) ? Accept(new TimestampValue(at)) : Reject(SignalDetail.NotTimestamp);
+        }
+
+        // A series has no unit of its own: the state of the entity says nothing about the attribute, and the declaration
+        // (power_w, energy_wh_period, or a price unit) is the contract.
+        if (definition.Kind == SignalKind.Series)
+        {
+            return NormalizeSeries(definition, series);
         }
 
         // A unit that differs from the declaration (or is missing) is a 1000× error waiting to happen
@@ -140,6 +154,11 @@ public static class SignalNormalizer
         }
 
         var value = raw * SignalUnits.Factor(declared);
+        if (definition.Kind == SignalKind.EnergyForecast)
+        {
+            return value < 0 ? Reject(SignalDetail.SignViolation) : Accept(new EnergyForecastValue(new KilowattHours(value)));
+        }
+
         switch (definition.Sign)
         {
             case SignConvention.PositiveExport:
@@ -181,6 +200,54 @@ public static class SignalNormalizer
         return double.IsFinite(perKwh) ? Accept(new PriceValue(perKwh)) : Reject(SignalDetail.NotNumeric);
     }
 
+    /// <summary>
+    /// A series: the transport's problem is the signal's detail; a power or energy series must not be negative (a forecast of less than
+    /// nothing is a broken source); a price curve takes the currency label and the per-MWh division exactly as a single price does, here and nowhere else.
+    /// </summary>
+    private static Normalization NormalizeSeries(SignalDefinition definition, ParsedSeries? series)
+    {
+        if (series is null)
+        {
+            return Reject(SignalDetail.SeriesMissing);
+        }
+
+        if (series.Problem != SeriesProblem.None)
+        {
+            return Reject(series.Problem switch
+            {
+                SeriesProblem.TooLarge => SignalDetail.SeriesTooLarge,
+                SeriesProblem.Malformed => SignalDetail.SeriesMalformed,
+                _ => SignalDetail.SeriesMissing,
+            });
+        }
+
+        if (definition.SeriesMeaning is not { } meaning)
+        {
+            return Reject(SignalDetail.SeriesMalformed);
+        }
+
+        var perMwh = false;
+        if (meaning == SeriesValueKind.PricePerKwh
+            && (!SignalUnits.TryParsePrice(definition.Unit, out var label, out perMwh) || !string.Equals(label, definition.PriceCurrency, StringComparison.Ordinal)))
+        {
+            return Reject(SignalDetail.UnitMismatch);
+        }
+
+        var points = ImmutableArray.CreateBuilder<SeriesPoint>(series.Points.Length);
+        foreach (var point in series.Points)
+        {
+            var value = meaning == SeriesValueKind.PricePerKwh ? SignalUnits.PriceToKwh(point.Value, perMwh) : point.Value;
+            if (!double.IsFinite(value) || (meaning != SeriesValueKind.PricePerKwh && value < 0))
+            {
+                return Reject(SignalDetail.SeriesMalformed);
+            }
+
+            points.Add(point with { Value = value });
+        }
+
+        return Accept(new SeriesValue(new TimeSeries(points.MoveToImmutable(), meaning)));
+    }
+
     /// <summary>The number in the internal unit, or null for a state value.</summary>
     public static double? Magnitude(SignalValue? value) => value switch
     {
@@ -189,6 +256,7 @@ public static class SignalNormalizer
         VoltageValue v => v.Voltage.Value,
         EnergyValue e => e.Energy.Value,
         PriceValue p => p.PerKwh,
+        EnergyForecastValue f => f.Energy.Value,
         PercentageValue p => p.Percentage.Value,
         _ => null,
     };

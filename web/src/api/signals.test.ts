@@ -166,3 +166,72 @@ describe('parseSignals, price signals', () => {
     expect(() => parseSignals(withPrice(change))).toThrow();
   });
 });
+
+// PLAN-06, 07: forecast and curve signals. A series has no single value and no unit (its content is summarized with points and coverage,
+// which is separate from freshness); a day total is a number in kWh; a sun time travels as the instant's text.
+describe('parseSignals, forecast and curve signals', () => {
+  const base = (p: any) => p.signals.find((s: any) => s.name === 'grid_power_l1');
+  const withSignal = (extra: Record<string, unknown>) =>
+    payload((p) => {
+      p.signals.push({
+        ...base(p),
+        name: 'forecast',
+        entity: 'sensor.forecast',
+        phase: null,
+        value: null,
+        unit: null,
+        raw: { state: '3412', unit: null },
+        direction: null,
+        dependentDevices: [],
+        series: null,
+        ...extra,
+      });
+    });
+  const series = { valueKind: 'power_w', points: 34, from: '2026-10-23T05:00:00Z', coversUntil: '2026-10-24T14:00:00Z' };
+
+  it('keeps a series with its points and coverage, and no value or unit', () => {
+    const parsed = parseSignals(withSignal({ kind: 'series', role: 'pv_forecast', series }));
+    const signal = parsed.signals.find((s) => s.name === 'forecast');
+
+    expect([signal?.kind, signal?.role, signal?.value, signal?.unit, signal?.series?.points, signal?.series?.valueKind]).toEqual([
+      'series',
+      'pv_forecast',
+      null,
+      null,
+      34,
+      'power_w',
+    ]);
+    expect(signal?.series?.coversUntil).toEqual(new Date('2026-10-24T14:00:00Z'));
+  });
+
+  it('accepts a series that is not usable: no summary', () => {
+    const parsed = parseSignals(withSignal({ kind: 'series', role: 'price_curve_import', state: 'rejected', detail: 'series_too_large' }));
+
+    expect(parsed.signals.find((s) => s.name === 'forecast')?.series).toBeNull();
+  });
+
+  it('keeps a day total as kWh and a sun time as text with no unit', () => {
+    const total = parseSignals(withSignal({ kind: 'energy_forecast', role: 'pv_forecast_today', value: 4.2, unit: 'kWh' }));
+    const sun = parseSignals(withSignal({ kind: 'timestamp', role: 'sun_setting', value: '2026-10-23T15:41:10+00:00' }));
+
+    expect(total.signals.find((s) => s.name === 'forecast')?.value).toBe(4.2);
+    expect(sun.signals.find((s) => s.name === 'forecast')?.value).toBe('2026-10-23T15:41:10+00:00');
+  });
+
+  it.each([
+    ['a series with a number', { kind: 'series', role: 'pv_forecast', value: 1 }],
+    ['a series with a unit', { kind: 'series', role: 'pv_forecast', unit: 'W' }],
+    ['a series with an unknown value kind', { kind: 'series', role: 'pv_forecast', series: { ...series, valueKind: 'kw' } }],
+    ['a series with a negative point count', { kind: 'series', role: 'pv_forecast', series: { ...series, points: -1 } }],
+    ['a day total in W', { kind: 'energy_forecast', role: 'pv_forecast_today', value: 4.2, unit: 'W' }],
+    ['a sun time with a unit', { kind: 'timestamp', role: 'sun_setting', value: 'x', unit: 's' }],
+    ['an unknown role', { kind: 'series', role: 'weather_forecast' }],
+    ['an unknown detail', { kind: 'series', role: 'pv_forecast', detail: 'series_half_read' }],
+  ])('rejects %s', (_case, extra) => {
+    expect(() => parseSignals(withSignal(extra))).toThrow();
+  });
+
+  it('requires the series key on every signal', () => {
+    expect(() => parseSignals(payload((p) => delete base(p).series))).toThrow();
+  });
+});

@@ -40,6 +40,10 @@ internal sealed class StoreHarness
     public void Push(string entity, string state, DateTimeOffset? at = null, string? unit = Declared, BatchOrigin origin = BatchOrigin.Change) =>
         Store.Apply(EntityUpdateBatch.Of(origin, Update(entity, state, at ?? Now, at ?? Now, unit)), Now);
 
+    /// <summary>A pushed state of a series entity: the whitelisted attribute as the transport parsed it travels with the state.</summary>
+    public void PushSeries(string entity, string state, ParsedSeries series, DateTimeOffset? at = null, string? unit = null) =>
+        Store.Apply(EntityUpdateBatch.Of(BatchOrigin.Change, new EntityUpdate(EntityId.Parse(entity), state, unit, at ?? Now, at ?? Now) { Series = series }), Now);
+
     /// <summary>A probe answer: the state identified by <paramref name="lastUpdated"/>, confirmed at <paramref name="reported"/>.</summary>
     public void ProbeAnswer(string entity, string state, DateTimeOffset lastUpdated, DateTimeOffset reported, string? unit = Declared) =>
         Store.Apply(EntityUpdateBatch.Of(BatchOrigin.Probe, Update(entity, state, lastUpdated, reported, unit)), Now);

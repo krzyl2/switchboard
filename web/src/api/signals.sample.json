@@ -121,7 +121,8 @@
         "from": null
       },
       "rejectedCount": 0,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": "grid_current_l1",
@@ -151,7 +152,8 @@
       "dependentDevices": [
         "ev_charger",
         "heater_l1"
-      ]
+      ],
+      "series": null
     },
     {
       "name": "grid_current_l2",
@@ -180,7 +182,8 @@
       "rejectedCount": 0,
       "dependentDevices": [
         "heater_l2"
-      ]
+      ],
+      "series": null
     },
     {
       "name": "grid_current_l3",
@@ -209,7 +212,8 @@
       "rejectedCount": 0,
       "dependentDevices": [
         "heater_l3"
-      ]
+      ],
+      "series": null
     },
     {
       "name": "grid_power_l3",
@@ -236,7 +240,8 @@
         "from": null
       },
       "rejectedCount": 2,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": null,
@@ -256,7 +261,8 @@
       "refreshIntervals": 0,
       "direction": null,
       "rejectedCount": 0,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": "grid_voltage_l1",
@@ -279,7 +285,8 @@
       "refreshIntervals": 0,
       "direction": null,
       "rejectedCount": 0,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": "car_connected",
@@ -302,7 +309,8 @@
       "refreshIntervals": 64,
       "direction": null,
       "rejectedCount": 0,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": "grid_voltage_l2",
@@ -325,7 +333,8 @@
       "refreshIntervals": 12,
       "direction": null,
       "rejectedCount": 1,
-      "dependentDevices": []
+      "dependentDevices": [],
+      "series": null
     },
     {
       "name": "device_heater_l2",
@@ -350,7 +359,61 @@
       "rejectedCount": 0,
       "dependentDevices": [
         "heater_l2"
-      ]
+      ],
+      "series": null
+    },
+    {
+      "name": "pv_forecast",
+      "entity": "sensor.pv_forecast_watts",
+      "kind": "series",
+      "role": "pv_forecast",
+      "phase": null,
+      "state": "fresh",
+      "detail": "none",
+      "value": null,
+      "unit": null,
+      "raw": {
+        "state": "3412",
+        "unit": null
+      },
+      "lastReported": "2026-10-21T10:21:07.464+00:00",
+      "ageS": 13.555,
+      "maxAgeS": 90,
+      "refreshS": null,
+      "refreshIntervals": 0,
+      "direction": null,
+      "rejectedCount": 0,
+      "dependentDevices": [],
+      "series": {
+        "valueKind": "power_w",
+        "points": 34,
+        "from": "2026-10-23T05:00:00Z",
+        "coversUntil": "2026-10-24T14:00:00Z"
+      }
+    },
+    {
+      "name": "sun_setting",
+      "entity": "sensor.sun_next_setting",
+      "kind": "timestamp",
+      "role": "sun_setting",
+      "phase": null,
+      "state": "fresh",
+      "detail": "none",
+      "value": "2026-10-23T15:41:10+00:00",
+      "unit": null,
+      "raw": {
+        "state": "2026-10-23T15:41:10+00:00",
+        "unit": null
+      },
+      "lastReported": "2026-10-21T10:21:07.464+00:00",
+      "ageS": 13.555,
+      "maxAgeS": 90,
+      "refreshS": null,
+      "refreshIntervals": 0,
+      "direction": null,
+      "rejectedCount": 0,
+      "dependentDevices": [],
+      "series": null
     }
   ],
   "rejections": {

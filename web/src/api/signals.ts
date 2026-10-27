@@ -58,6 +58,7 @@ export const ISSUE_CODES = [
   'dynamic_price_not_supported',
   'zone_gap',
   'price_fallback_missing',
+  'series_value_required',
   'reserved_key_ignored',
   'direction_unavailable_cautious',
   'group_rating_above_main',
@@ -66,6 +67,8 @@ export const ISSUE_CODES = [
   'value_follows_without_price',
   'unit_mismatch',
   'price_signal_unused',
+  'forecast_signal_unused',
+  'curve_without_signal',
   'max_age_short_for_probe',
 ] as const;
 /** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
@@ -85,7 +88,7 @@ export const PROTECTION_INVALID_REASONS = [
 ] as const;
 export const FLOW_DIRECTIONS = ['import', 'export', 'unknown'] as const;
 export const DIRECTION_SOURCES = ['signed_signal', 'deadband', 'pending', 'unavailable', 'not_configured'] as const;
-export const SIGNAL_KINDS = ['current', 'power', 'voltage', 'energy_counter', 'state', 'percentage', 'price'] as const;
+export const SIGNAL_KINDS = ['current', 'power', 'voltage', 'energy_counter', 'state', 'percentage', 'price', 'series', 'energy_forecast', 'timestamp'] as const;
 export const SIGNAL_ROLES = [
   'none',
   'phase_current',
@@ -103,6 +106,13 @@ export const SIGNAL_ROLES = [
   'energy_import',
   'price_import',
   'price_export',
+  'pv_forecast',
+  'pv_forecast_today',
+  'pv_forecast_tomorrow',
+  'sun_rising',
+  'sun_setting',
+  'price_curve_import',
+  'price_curve_export',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [
@@ -117,7 +127,12 @@ export const SIGNAL_DETAILS = [
   'sign_violation',
   'balance_residual',
   'max_age_exceeded',
+  'series_missing',
+  'series_malformed',
+  'series_too_large',
+  'not_timestamp',
 ] as const;
+export const SERIES_VALUE_KINDS = ['power_w', 'energy_wh_period', 'price_per_kwh'] as const;
 
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
@@ -133,6 +148,7 @@ export type SignalKind = (typeof SIGNAL_KINDS)[number];
 export type SignalRole = (typeof SIGNAL_ROLES)[number];
 export type SignalState = (typeof SIGNAL_STATES)[number];
 export type SignalDetail = (typeof SIGNAL_DETAILS)[number];
+export type SeriesValueKind = (typeof SERIES_VALUE_KINDS)[number];
 
 /**
  * The unit the add-on normalizes each numeric kind to; a state signal has none. A price has no fixed one: it travels as
@@ -144,7 +160,8 @@ export const INTERNAL_UNITS = {
   voltage: 'V',
   energy_counter: 'kWh',
   percentage: '%',
-} as const satisfies Record<Exclude<SignalKind, 'state' | 'price'>, string>;
+  energy_forecast: 'kWh',
+} as const satisfies Record<Exclude<SignalKind, 'state' | 'price' | 'series' | 'timestamp'>, string>;
 
 /** A price value always travels per kWh (the add-on converted a per-MWh unit); the label before the slash is the user's own. */
 export const PRICE_UNIT = /^[^/\s][^/]*\/kWh$/;
@@ -231,6 +248,15 @@ export interface Signal {
   rejectedCount: number;
   /** Devices held as unsafe while this signal is not fresh (SIG-05). */
   dependentDevices: string[];
+  /** What a series signal (a forecast or a price curve) holds, once it has a value; coverage is separate from freshness. */
+  series: SeriesInfo | null;
+}
+
+export interface SeriesInfo {
+  valueKind: SeriesValueKind;
+  points: number;
+  from: Date | null;
+  coversUntil: Date | null;
 }
 
 export interface Signals {
@@ -338,9 +364,15 @@ function signal(raw: unknown, path: string): Signal {
   const rawValue = field(r, 'value', path);
   const unit = field(r, 'unit', path);
   let value: number | string | null;
-  if (kind === 'state') {
+  if (kind === 'state' || kind === 'timestamp') {
+    // A timestamp travels as the instant's text (ISO 8601 with its offset), like a state.
     value = nullable(rawValue, `${path}.value`, text);
-    if (unit !== null) fail(`${path}.unit`, 'null for a state signal');
+    if (unit !== null) fail(`${path}.unit`, `null for a ${kind} signal`);
+  } else if (kind === 'series') {
+    // A series has no single value and no unit; its content is summarized in `series`.
+    if (rawValue !== null) fail(`${path}.value`, 'null for a series signal');
+    if (unit !== null) fail(`${path}.unit`, 'null for a series signal');
+    value = null;
   } else {
     value = nullable(rawValue, `${path}.value`, number);
     if (kind === 'price') {
@@ -388,6 +420,15 @@ function signal(raw: unknown, path: string): Signal {
     dependentDevices: array(field(r, 'dependentDevices', path), `${path}.dependentDevices`).map((d, i) =>
       text(d, `${path}.dependentDevices[${i}]`),
     ),
+    series: nullable(field(r, 'series', path), `${path}.series`, (v, p) => {
+      const o = object(v, p);
+      return {
+        valueKind: oneOf(SERIES_VALUE_KINDS, field(o, 'valueKind', p), `${p}.valueKind`),
+        points: count(field(o, 'points', p), `${p}.points`),
+        from: nullable(field(o, 'from', p), `${p}.from`, instant),
+        coversUntil: nullable(field(o, 'coversUntil', p), `${p}.coversUntil`, instant),
+      };
+    }),
   };
 }
 

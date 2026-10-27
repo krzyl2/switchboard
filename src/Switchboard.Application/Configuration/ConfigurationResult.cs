@@ -67,6 +67,7 @@ public static class ConfigurationIssueCodes
     public const string DynamicPriceNotSupported = "dynamic_price_not_supported";
     public const string ZoneGap = "zone_gap";
     public const string PriceFallbackMissing = "price_fallback_missing";
+    public const string SeriesValueRequired = "series_value_required";
 
     // Warnings: the document is still valid.
     public const string ReservedKeyIgnored = "reserved_key_ignored";
@@ -77,6 +78,8 @@ public static class ConfigurationIssueCodes
     public const string ValueFollowsWithoutPrice = "value_follows_without_price";
     public const string UnitMismatch = "unit_mismatch";
     public const string PriceSignalUnused = "price_signal_unused";
+    public const string ForecastSignalUnused = "forecast_signal_unused";
+    public const string CurveWithoutSignal = "curve_without_signal";
 
     /// <summary>Raised at run time, once a refresh interval is detected (see the signal store).</summary>
     public const string MaxAgeShortForProbe = "max_age_short_for_probe";

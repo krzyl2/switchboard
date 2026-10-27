@@ -97,6 +97,16 @@ public sealed partial class SignalsSpaContractTests
         ConfigurationWarning[] warnings = [new(ConfigurationWarningCodes.DerivedMeasurementInput, SignalName.Parse("grid_current_l1"), EntityId.Parse("sensor.meter_current_a"), "template", harness.Now, "Derived.")];
         yield return SignalsEndpoint.Build(running, harness.Now, Live, TestConfigurations.Path, warnings);
 
+        // A PV forecast series with content, so the series object (points, coverage) appears too.
+        var forecast = new StoreHarness(TestConfigurations.ThreePhase(Switchboard.Tests.Application.Signals.ForecastSignalTests.PvSeries()));
+        forecast.PushSeries(Switchboard.Tests.Application.Signals.ForecastSignalTests.PvEntity, "3412", Switchboard.Tests.Application.Signals.ForecastSignalTests.Hourly(forecast.Now, 6));
+        var forecastConfiguration = forecast.Configuration.Configuration!;
+        yield return SignalsEndpoint.Build(
+            new SignalDiagnostics(forecast.Snapshot(), forecast.Configuration, forecastConfiguration.Signals.ToDictionary(s => s.Name, s => s.Entity).ToImmutableDictionary(), []),
+            forecast.Now,
+            Live,
+            TestConfigurations.Path);
+
         // A broken document: errors with line and column.
         var store = new SignalStore(new SignalStoreSettings(TimeSpan.FromSeconds(5)));
         var broken = TestConfigurations.Parse(TestConfigurations.ThreePhase().Replace("max_age: 90s", "max_agee: 90s", StringComparison.Ordinal));

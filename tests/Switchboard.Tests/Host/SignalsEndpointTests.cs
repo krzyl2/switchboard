@@ -46,7 +46,7 @@ public sealed class SignalsEndpointTests
         Assert.Equal(["configuredW", "minimumSafeW", "belowMinimum", "refreshS", "refreshDetected", "blindTimeS", "tierMultiple"], Names(phase.GetProperty("reserve")));
         var signal = body.GetProperty("signals").EnumerateArray().First(s => s.GetProperty("name").GetString() == "grid_current_l1");
         Assert.Equal(
-            ["name", "entity", "kind", "role", "phase", "state", "detail", "value", "unit", "raw", "lastReported", "ageS", "maxAgeS", "refreshS", "refreshIntervals", "direction", "rejectedCount", "dependentDevices"],
+            ["name", "entity", "kind", "role", "phase", "state", "detail", "value", "unit", "raw", "lastReported", "ageS", "maxAgeS", "refreshS", "refreshIntervals", "direction", "rejectedCount", "dependentDevices", "series"],
             Names(signal));
         Assert.Equal(["state", "unit"], Names(signal.GetProperty("raw")));
         Assert.Equal(["source", "direction", "from"], Names(signal.GetProperty("direction")));

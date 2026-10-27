@@ -87,7 +87,8 @@ public sealed record ZonedPrice(ImmutableArray<TariffZone> Zones, string? Defaul
 /// <param name="Signal">The price signal in currency per kWh (the signal layer already converted a per-MWh unit).</param>
 /// <param name="Fallback">Required, static (a number or zones): what the price is while the signal is not usable.</param>
 /// <param name="Add">Optional, static, added to the signal's value while it is live (usually the distribution zones); null adds nothing.</param>
-public sealed record DynamicPrice(SignalName Signal, PriceSpec Fallback, PriceSpec? Add) : PriceSpec;
+/// <param name="Curve">Optional: a series signal with the forward prices (15-PLANNER, PLAN-07), read by the planner only. Dispatch never reads it, so it changes no price now.</param>
+public sealed record DynamicPrice(SignalName Signal, PriceSpec Fallback, PriceSpec? Add, SignalName? Curve = null) : PriceSpec;
 
 /// <summary>The zone schedules a price spec holds, wherever they are (the spec, or the fallback and the add of a dynamic one).</summary>
 public static class PriceSpecs
@@ -104,6 +105,9 @@ public static class PriceSpecs
 
     /// <summary>The signal names a spec reads (empty for a static one).</summary>
     public static IEnumerable<SignalName> Signals(PriceSpec? spec) => spec is DynamicPrice dynamic ? [dynamic.Signal] : [];
+
+    /// <summary>The forward-curve signal names a spec names (empty for a static one and for a dynamic one without a curve).</summary>
+    public static IEnumerable<SignalName> Curves(PriceSpec? spec) => spec is DynamicPrice { Curve: { } curve } ? [curve] : [];
 }
 
 /// <summary>A moment no zone claims: a month (1 to 12), a weekday, whether the day was a holiday, and the minute of the day.</summary>

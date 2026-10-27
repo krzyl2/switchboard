@@ -29,7 +29,8 @@ public static class SwitchboardDocumentParser
 
     private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
-    private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero"];
+    private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero", "attribute", "series"];
+    private static readonly string[] SeriesKeys = ["shape", "value", "start_key", "end_key", "value_key"];
 
     private static readonly ImmutableDictionary<string, Topology> Topologies = Choices(
         ("three_phase", Topology.ThreePhase), ("three_phase_summed", Topology.ThreePhaseSummed), ("single_phase", Topology.SinglePhase));
@@ -46,7 +47,16 @@ public static class SwitchboardDocumentParser
         ("energy_counter", SignalKind.EnergyCounter),
         ("state", SignalKind.State),
         ("percentage", SignalKind.Percentage),
-        ("price", SignalKind.Price));
+        ("price", SignalKind.Price),
+        ("series", SignalKind.Series),
+        ("energy_forecast", SignalKind.EnergyForecast),
+        ("timestamp", SignalKind.Timestamp));
+
+    private static readonly ImmutableDictionary<string, SeriesShape> SeriesShapes = Choices(
+        ("auto", SeriesShape.Auto), ("list", SeriesShape.List), ("dict", SeriesShape.Dict));
+
+    private static readonly ImmutableDictionary<string, SeriesValueKind> SeriesValues = Choices(
+        ("power_w", SeriesValueKind.PowerW), ("energy_wh_period", SeriesValueKind.EnergyWhPeriod));
 
     private static readonly ImmutableDictionary<string, SignConvention> Signs = Choices(
         ("positive_import", SignConvention.PositiveImport),
@@ -64,7 +74,14 @@ public static class SwitchboardDocumentParser
         ("energy_export", SignalRole.EnergyExport),
         ("energy_import", SignalRole.EnergyImport),
         ("price_import", SignalRole.PriceImport),
-        ("price_export", SignalRole.PriceExport));
+        ("price_export", SignalRole.PriceExport),
+        ("pv_forecast", SignalRole.PvForecast),
+        ("pv_forecast_today", SignalRole.PvForecastToday),
+        ("pv_forecast_tomorrow", SignalRole.PvForecastTomorrow),
+        ("sun_rising", SignalRole.SunRising),
+        ("sun_setting", SignalRole.SunSetting),
+        ("price_curve_import", SignalRole.PriceCurveImport),
+        ("price_curve_export", SignalRole.PriceCurveExport));
 
     /// <param name="document">The user's document, or null for an empty file.</param>
     /// <param name="defaults">The embedded control defaults; <c>control:</c> overrides them key by key.</param>
@@ -380,7 +397,7 @@ public static class SwitchboardDocumentParser
         double? sigma = null;
         if (ConfigRead.Optional(mapping, "sigma") is { } sigmaNode)
         {
-            if (kind is SignalKind.State or SignalKind.Price)
+            if (kind is SignalKind.State or SignalKind.Price or SignalKind.Series or SignalKind.EnergyForecast or SignalKind.Timestamp)
             {
                 issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, "sigma"), sigmaNode, $"A {KindName(kind.Value)} signal has no measurement noise; remove sigma.");
             }
@@ -405,6 +422,8 @@ public static class SwitchboardDocumentParser
             }
         }
 
+        var (seriesSpec, seriesMeaning) = ReadSeries(mapping, kind, role, unit, path, issues);
+
         var phase = ReadPhase(mapping, role, topology, path, issues);
 
         var unavailableAsZero = false;
@@ -426,7 +445,11 @@ public static class SwitchboardDocumentParser
         }
 
         return new SignalDraft(
-            new SignalDefinition(name!.Value, entity.Value, kind.Value, unit, sign, null, false, maxAge.Value, sigma, role, phase, unavailableAsZero),
+            new SignalDefinition(name!.Value, entity.Value, kind.Value, unit, sign, null, false, maxAge.Value, sigma, role, phase, unavailableAsZero)
+            {
+                Series = seriesSpec,
+                SeriesMeaning = seriesMeaning,
+            },
             directionText,
             directionNode,
             entityNode!,
@@ -439,6 +462,12 @@ public static class SwitchboardDocumentParser
         if (kind == SignalKind.Price)
         {
             return ReadPriceUnit(mapping, path, unitPath, issues);
+        }
+
+        if (kind == SignalKind.Series)
+        {
+            // A price curve declares its price unit; a PV forecast has none (series.value says what its numbers are).
+            return ConfigRead.Optional(mapping, "unit") is null ? null : ReadPriceUnit(mapping, path, unitPath, issues);
         }
 
         var allowed = SignalUnits.AllowedFor(kind);
@@ -483,6 +512,127 @@ public static class SwitchboardDocumentParser
         return unit;
     }
 
+    /// <summary>
+    /// <c>attribute:</c> and <c>series:</c> of a series signal (15-PLANNER, slice 2): which one attribute is kept and how it is laid out. Only a
+    /// signal of kind series has them, and the numbers' meaning comes from the declaration, never from the data: a PV forecast says
+    /// <c>series.value</c> (power_w or energy_wh_period), a price curve its price unit.
+    /// </summary>
+    private static (SeriesSpec? Spec, SeriesValueKind? Meaning) ReadSeries(ConfigMapping mapping, SignalKind? kind, SignalRole role, string? unit, string path, ConfigIssues issues)
+    {
+        var attributeNode = ConfigRead.Optional(mapping, "attribute");
+        var seriesNode = ConfigRead.Optional(mapping, "series");
+        if (kind != SignalKind.Series)
+        {
+            foreach (var (key, node) in new[] { ("attribute", attributeNode), ("series", seriesNode) })
+            {
+                if (node is not null && kind is not null)
+                {
+                    issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, key), node, $"{key} applies only to a series signal.");
+                }
+            }
+
+            return (null, null);
+        }
+
+        var errorsBefore = issues.Errors.Count;
+        string? attribute = null;
+        if (ConfigRead.Required(mapping, "attribute", path, issues) is { } required && ConfigRead.String(required, ConfigRead.Join(path, "attribute"), issues) is { } text)
+        {
+            if (text.Length is 0 or > 64 || text.Any(char.IsControl) || text.Trim() != text)
+            {
+                issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(path, "attribute"), required, "attribute is the name of one attribute of the entity (1 to 64 characters).");
+            }
+            else
+            {
+                attribute = text;
+            }
+        }
+
+        var shape = SeriesShape.Auto;
+        var startKey = SeriesSpec.DefaultStartKey;
+        var valueKey = SeriesSpec.DefaultValueKey;
+        string? endKey = SeriesSpec.DefaultEndKey;
+        SeriesValueKind? declared = null;
+        ConfigNode? declaredNode = null;
+        if (seriesNode is not null && ConfigRead.Mapping(seriesNode, ConfigRead.Join(path, "series"), issues) is { } series)
+        {
+            var seriesPath = ConfigRead.Join(path, "series");
+            ConfigRead.CheckKeys(series, seriesPath, SeriesKeys, issues);
+            if (ConfigRead.Optional(series, "shape") is { } shapeNode && ConfigRead.Choice(shapeNode, ConfigRead.Join(seriesPath, "shape"), issues, SeriesShapes) is { } chosen)
+            {
+                shape = chosen;
+            }
+
+            declaredNode = ConfigRead.Optional(series, "value");
+            if (declaredNode is not null && ConfigRead.Choice(declaredNode, ConfigRead.Join(seriesPath, "value"), issues, SeriesValues) is { } meaning)
+            {
+                declared = meaning;
+            }
+
+            startKey = ReadKey(series, "start_key", seriesPath, startKey, issues) ?? startKey;
+            valueKey = ReadKey(series, "value_key", seriesPath, valueKey, issues) ?? valueKey;
+            endKey = ReadKey(series, "end_key", seriesPath, endKey, issues);
+        }
+
+        SeriesValueKind? resolved = null;
+        if (unit is not null)
+        {
+            resolved = SeriesValueKind.PricePerKwh;
+            if (declaredNode is not null)
+            {
+                issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, "series.value"), declaredNode, "A series with a price unit is a price curve; series.value applies to a PV forecast only.");
+            }
+        }
+        else if (declared is { } value)
+        {
+            resolved = value;
+        }
+        else if (declaredNode is null)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.SeriesValueRequired,
+                ConfigRead.Join(path, "series.value"),
+                mapping,
+                "A series signal needs series.value (power_w or energy_wh_period) for a PV forecast, or a price unit (<currency>/kWh or <currency>/MWh) for a price curve.");
+        }
+
+        var isCurve = role is SignalRole.PriceCurveImport or SignalRole.PriceCurveExport;
+        if (resolved is { } meaningOfSeries && ((role == SignalRole.PvForecast && meaningOfSeries == SeriesValueKind.PricePerKwh) || (isCurve && meaningOfSeries != SeriesValueKind.PricePerKwh)))
+        {
+            issues.Error(
+                ConfigurationIssueCodes.RoleKindMismatch,
+                ConfigRead.Join(path, "role"),
+                mapping.Find("role")?.Value,
+                $"Role {RoleName(role)} needs {(role == SignalRole.PvForecast ? "a power or energy series (series.value, no price unit)" : "a price curve (a price unit, no series.value)")}.");
+        }
+
+        return issues.Errors.Count > errorsBefore || attribute is null || resolved is null
+            ? (null, null)
+            : (new SeriesSpec(attribute, shape, startKey, endKey, valueKey), resolved);
+    }
+
+    private static string? ReadKey(ConfigMapping series, string key, string path, string? fallback, ConfigIssues issues)
+    {
+        if (ConfigRead.Optional(series, key) is not { } node)
+        {
+            return fallback;
+        }
+
+        var keyPath = ConfigRead.Join(path, key);
+        if (ConfigRead.String(node, keyPath, issues) is not { } text)
+        {
+            return fallback;
+        }
+
+        if (text.Length is 0 or > 64 || text.Any(char.IsControl))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, keyPath, node, $"{key} is the name of a key in each item (1 to 64 characters).");
+            return fallback;
+        }
+
+        return text;
+    }
+
     private static SignConvention? ReadSign(ConfigMapping mapping, SignalKind kind, string path, ConfigIssues issues)
     {
         var signPath = ConfigRead.Join(path, "sign");
@@ -514,6 +664,9 @@ public static class SwitchboardDocumentParser
             SignalRole.PhasePower or SignalRole.InverterPower or SignalRole.TotalPower => SignalKind.Power,
             SignalRole.EnergyExport or SignalRole.EnergyImport => SignalKind.EnergyCounter,
             SignalRole.PriceImport or SignalRole.PriceExport => SignalKind.Price,
+            SignalRole.PvForecast or SignalRole.PriceCurveImport or SignalRole.PriceCurveExport => SignalKind.Series,
+            SignalRole.PvForecastToday or SignalRole.PvForecastTomorrow => SignalKind.EnergyForecast,
+            SignalRole.SunRising or SignalRole.SunSetting => SignalKind.Timestamp,
             _ => SignalKind.Voltage,
         };
         if (kind is { } actual && actual != expected)

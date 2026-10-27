@@ -12,6 +12,12 @@ public interface IEntitySubscriptionSink
     /// <summary>The entities to subscribe to, sorted and distinct; empty means no subscription.</summary>
     IReadOnlyList<EntityId> Tracked { get; }
 
+    /// <summary>
+    /// The one series attribute kept per entity (15-PLANNER, slice 2), for the entities that have a series signal; nothing else of
+    /// any attribute is ever kept. Empty for a sink that tracks none.
+    /// </summary>
+    IReadOnlyDictionary<EntityId, SeriesSpec> SeriesSpecs => System.Collections.Immutable.ImmutableDictionary<EntityId, SeriesSpec>.Empty;
+
     event EventHandler? TrackedChanged;
 
     /// <summary>Authenticated; the subscription (if any) is about to be requested.</summary>

@@ -328,7 +328,20 @@ function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
         <span class="sub">{signal.phase === null ? role : `${role} · ${signal.phase}`}</span>
       </td>
       <td>{signal.entity === null ? NO_VALUE : <span class="mono">{signal.entity}</span>}</td>
-      <td class="num">{value}</td>
+      <td class="num">
+        {signal.series === null ? (
+          value
+        ) : (
+          <>
+            {signal.series.points} {t.seriesPoints}
+            {signal.series.coversUntil !== null && (
+              <span class="sub">
+                {t.seriesCovers} <Timestamp at={signal.series.coversUntil} lang={lang} />
+              </span>
+            )}
+          </>
+        )}
+      </td>
       <td class="num">
         {signal.raw === null ? NO_VALUE : signal.raw.unit === null ? signal.raw.state : `${signal.raw.state} ${signal.raw.unit}`}
       </td>
