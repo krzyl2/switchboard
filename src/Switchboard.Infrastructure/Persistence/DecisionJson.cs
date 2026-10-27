@@ -34,7 +34,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// on read). The dispatch inputs may carry <c>balance</c> (the hourly balance of the step, BAL-07; absent
 /// on older lines and while no energy counters are mapped) and <c>economics</c> (the zone, prices, effective value, order key,
 /// energy class and sources of the step, ECO-09; absent on older lines and without an <c>economics:</c> section; present but
-/// malformed makes the line no decision, as for <c>balance</c>).
+/// malformed makes the line no decision, as for <c>balance</c>) and, from list version 7, <c>plan</c> (the plan entry dispatch used, PLAN-15; absent
+/// on older lines and whenever <c>planner.dispatch</c> is off; present on a line of an older list version, or malformed, makes the line no decision).
 /// </para>
 /// </summary>
 public static class DecisionJson
@@ -105,7 +106,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -127,7 +128,7 @@ public static class DecisionJson
                 EnumValue<OperatingMode>(root, "mode"),
                 Bool(root, "commanded"),
                 OptionalString(root, "refused_by") is { } refused ? Code(refused) : null,
-                Inputs(Property(root, "inputs", JsonValueKind.Object), current),
+                Inputs(Property(root, "inputs", JsonValueKind.Object), current, codes),
                 current ? OptionalEnum<DecisionOrigin>(root, "origin") : null,
                 current && OptionalString(root, "group") is { } group ? GroupName.Parse(group) : null,
                 current ? Level(root, "target") : null);
@@ -289,6 +290,23 @@ public static class DecisionJson
             writer.WriteEndObject();
         }
 
+        if (dispatch.Plan is { } plan)
+        {
+            writer.WriteStartObject("plan");
+            writer.WriteString("status", PlanDecisionInputs.FreshStatus);
+            writer.WriteString("plan_id", plan.PlanId);
+            writer.WriteString("computed_at", FormatTime(plan.ComputedAt));
+            writer.WriteString("slot_start", FormatTime(plan.SlotStart));
+            writer.WriteString("slot_end", FormatTime(plan.SlotEnd));
+            writer.WriteString("want", plan.Want);
+            WriteOptional(writer, "class", plan.Class);
+            writer.WriteNumber("energy_kwh", plan.EnergyKwh);
+            writer.WriteNumber("delivered_kwh", plan.DeliveredKwh);
+            writer.WriteNumber("max_power_w", plan.MaxPowerW);
+            writer.WriteString("mode", plan.Mode);
+            writer.WriteEndObject();
+        }
+
         if (dispatch.Balance is { } balance)
         {
             writer.WriteStartObject("balance");
@@ -376,7 +394,7 @@ public static class DecisionJson
         })]);
     }
 
-    private static DispatchDecisionInputs Dispatch(JsonElement d)
+    private static DispatchDecisionInputs Dispatch(JsonElement d, int codes)
     {
         if (d.ValueKind != JsonValueKind.Object)
         {
@@ -423,7 +441,40 @@ public static class DecisionJson
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
             Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
             Economics = d.TryGetProperty("economics", out var economics) && economics.ValueKind != JsonValueKind.Null ? Economics(economics) : null,
+            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes == ReasonCodes.ListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
         };
+    }
+
+    /// <summary>The plan block, read strictly: times round-trip, energy and power are finite and not negative, want and mode are the closed lists.</summary>
+    private static PlanDecisionInputs Plan(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object)
+        {
+            throw new FormatException("plan");
+        }
+
+        double NonNegative(string name) => Double(e, name) is var value && value >= 0 ? value : throw new FormatException(name);
+        var want = String(e, "want");
+        var mode = String(e, "mode");
+        var status = String(e, "status");
+        var energyClass = OptionalString(e, "class");
+        if (!PlanDecisionInputs.Wants.Contains(want) || !PlanDecisionInputs.Modes.Contains(mode) || status != PlanDecisionInputs.FreshStatus
+            || (energyClass is not null && energyClass != "pv" && energyClass != "zone" && !energyClass.StartsWith("zone:", StringComparison.Ordinal)))
+        {
+            throw new FormatException("plan");
+        }
+
+        return new PlanDecisionInputs(
+            String(e, "plan_id"),
+            Time(e, "computed_at"),
+            Time(e, "slot_start"),
+            Time(e, "slot_end"),
+            want,
+            energyClass,
+            NonNegative("energy_kwh"),
+            NonNegative("delivered_kwh"),
+            NonNegative("max_power_w"),
+            mode);
     }
 
     /// <summary>The class a decision was allowed on when neither the surplus nor the active zone allowed it.</summary>
@@ -479,7 +530,7 @@ public static class DecisionJson
         return double.IsFinite(value) ? value : throw new FormatException(path);
     }
 
-    private static DecisionInputs Inputs(JsonElement element, bool current)
+    private static DecisionInputs Inputs(JsonElement element, bool current, int codes)
     {
         DispatchDecisionInputs? dispatch = null;
         PhaseDecisionInputs? phase = null;
@@ -553,7 +604,7 @@ public static class DecisionJson
                     cause = Parse<SafeStateCause>(property.Value.GetString());
                     break;
                 case "dispatch" when dispatch is null && current:
-                    dispatch = Dispatch(property.Value);
+                    dispatch = Dispatch(property.Value, codes);
                     break;
                 default:
                     throw new FormatException($"inputs.{property.Name}");

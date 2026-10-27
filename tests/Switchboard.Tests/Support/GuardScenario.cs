@@ -8,6 +8,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
+using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Decisions;
@@ -53,10 +54,11 @@ internal sealed class GuardScenario
     /// </param>
     /// <param name="dispatch">Run dispatch in every step (Stage 3); false keeps the guard alone.</param>
     /// <param name="port">A recording command port: the gate is then built through its test-only constructor.</param>
-    public GuardScenario(string yaml, DateTimeOffset? start = null, ModeStatus? mode = null, bool settledLockouts = true, bool dispatch = false, IDeviceCommandPort? port = null)
+    /// <param name="plan">The plan dispatch reads (15-PLANNER); none is exactly the v2 dispatch.</param>
+    public GuardScenario(string yaml, DateTimeOffset? start = null, ModeStatus? mode = null, bool settledLockouts = true, bool dispatch = false, IDeviceCommandPort? port = null, IPlanView? plan = null)
     {
         Time = new SteppableTime(start ?? Start);
-        DispatchEngine = new DispatchEngine(Time);
+        DispatchEngine = new DispatchEngine(Time, plan);
         Configuration = TestConfigurations.Valid(yaml).Configuration!;
         Setup = ProtectionSetupFactory.Build(Configuration);
         DispatchSetup = DispatchSetupFactory.Build(Configuration);

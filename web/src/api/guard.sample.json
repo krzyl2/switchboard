@@ -700,7 +700,8 @@
           "override": "auto",
           "reasserted": false,
           "balance": null,
-          "economics": null
+          "economics": null,
+          "plan": null
         }
       }
     },
@@ -791,7 +792,8 @@
             "class": "zone",
             "sources": "pv_and_zone:offpeak",
             "settlement": "hourly_netting"
-          }
+          },
+          "plan": null
         }
       }
     },
@@ -866,7 +868,8 @@
           "override": "force_off",
           "reasserted": false,
           "balance": null,
-          "economics": null
+          "economics": null,
+          "plan": null
         }
       }
     },

@@ -21,8 +21,8 @@ public sealed record StageLastKnown(AppliedState Applied, DateTimeOffset At);
 public sealed record ObservationRecord(DateTimeOffset FirstStartedAt, int ConfigurationErrors, DateTimeOffset? LastConfigurationErrorAt);
 
 /// <summary>
-/// What survives a restart (/data/state.json, schema version 4; versions 1 and 2 of 0.3.x … 0.6.x
-/// read with the control switch off, version 3 of 0.7.x … 0.10.x reads with no goal ledger). Lockout timers are deliberately absent, and so are dispatch
+/// What survives a restart (/data/state.json, schema version 5; versions 1 and 2 of 0.3.x … 0.6.x
+/// read with the control switch off, version 3 of 0.7.x … 0.10.x reads with no goal ledger, version 4 reads with no manual goals). Lockout timers are deliberately absent, and so are dispatch
 /// targets, deferred intents, settling windows and unresponsive flags: every lockout restarts from
 /// the restart instant, never from a persisted expiry (SAFE-07).
 /// </summary>
@@ -41,7 +41,10 @@ public sealed record RuntimeState(
     ImmutableDictionary<DeviceName, ImmutableArray<StageLastKnown?>> Devices,
     ImmutableSortedSet<string> Discovered)
 {
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 5;
+
+    /// <summary>The schema of the goal ledger without manual goals (planner slices 1 to 6, unreleased): still read, no manual goals.</summary>
+    public const int LedgerSchemaVersion = 4;
 
     /// <summary>The 0.7.x … 0.10.x schema: still read (no goal ledger).</summary>
     public const int GoalFreeSchemaVersion = 3;
@@ -84,6 +87,9 @@ public sealed record RuntimeState(
 
     /// <summary>The goal ledger (PLAN-03): the energy each energy goal's device has drawn since the goal began; empty in a schema 3 file.</summary>
     public ImmutableDictionary<DeviceName, GoalLedgerEntry> Goals { get; init; } = ImmutableDictionary<DeviceName, GoalLedgerEntry>.Empty;
+
+    /// <summary>The manual goals (PLAN-19, "want now"): per device what the user asked for and how much has been delivered; empty in a schema 3 or 4 file.</summary>
+    public ImmutableDictionary<DeviceName, ManualGoal> ManualGoals { get; init; } = ImmutableDictionary<DeviceName, ManualGoal>.Empty;
 
     public GuardMemory GuardMemory => new(Budgets, CleanShutdown) { GroupBudgets = GroupBudgets };
 }

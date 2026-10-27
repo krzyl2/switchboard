@@ -6,6 +6,7 @@ import { device } from './device';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
+import { plan } from './plan';
 import enSource from './en.ts?raw';
 import { setup } from './setup';
 import { setupConnection } from './setupConnection';
@@ -73,7 +74,7 @@ describe('fill', () => {
 // file. A key defined twice would be silently overwritten by the later spread, so the files must not
 // overlap, and every key of a screen file starts with that screen's own prefix.
 describe('per-screen translation files', () => {
-  const files = { shell, dashboard, flows, device, limits, log, setup, setupMeter, setupConnection, setupSources, setupLoads, setupMode, control };
+  const files = { shell, dashboard, flows, device, limits, log, setup, setupMeter, setupConnection, setupSources, setupLoads, setupMode, control, plan };
   const prefixes: Record<string, string[]> = {
     shell: ['shell.', 'nav.', 'theme.', 'common.', 'age.', 'poll.', 'powerUnknown.', 'generationNote.', 'segment.', 'source.', 'bar.'],
     dashboard: ['dashboard.'],
@@ -88,6 +89,7 @@ describe('per-screen translation files', () => {
     setupLoads: ['setupLoads.'],
     setupMode: ['setupMode.'],
     control: ['control.'],
+    plan: ['plan.'],
   };
 
   it.each(Object.entries(files))('%s: en and pl define exactly the same keys, each with its prefix', (name, file) => {

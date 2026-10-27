@@ -14,6 +14,27 @@ public enum PlanNote
 
     /// <summary>A price curve was supplied but does not cover the horizon: the tariff schedule prices the rest.</summary>
     PriceCurvePartial,
+
+    /// <summary>A goal's need could not be placed (a soft goal not worth its price, a hard goal beyond capacity).</summary>
+    GoalShortfall,
+
+    /// <summary>A hard goal cannot be met by its deadline even at full power: the plan delivers the most it can.</summary>
+    GoalInfeasible,
+
+    /// <summary>A hard goal is urgent: its latest safe start has come (or its sources fell short and a zone was added).</summary>
+    GoalUrgent,
+
+    /// <summary>A hard goal's deadline passed with the need unmet; still pursued.</summary>
+    GoalMissed,
+
+    /// <summary>A goal input is stale or unavailable, the goal is inactive.</summary>
+    GoalInputStale,
+
+    /// <summary>The solver exceeded <c>planner.max_solve_time</c>; the last plan stays.</summary>
+    SolverTimeout,
+
+    /// <summary>The solver's result failed the verifier or the solver threw; the last plan stays.</summary>
+    PlanInvalid,
 }
 
 /// <summary>Where the import prices of the plan stand: the tariff alone, the curve over the whole horizon, or the curve with the tariff for the rest.</summary>

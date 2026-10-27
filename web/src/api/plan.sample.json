@@ -1,0 +1,1473 @@
+{
+  "at": "2026-10-26T18:02:00+01:00",
+  "enabled": true,
+  "dispatchMode": "off",
+  "status": "fresh",
+  "inputs": {
+    "pvForecast": {
+      "state": "absent",
+      "ageS": null,
+      "coversUntil": "2026-10-27T17:00:00+01:00",
+      "basis": "series",
+      "derate": 0.85
+    },
+    "loadForecast": {
+      "basis": "fallback",
+      "daysFilled": 0
+    },
+    "prices": {
+      "basis": "tariff",
+      "coversUntil": null
+    },
+    "goalsActive": 1,
+    "goalsInactive": [
+      {
+        "device": "heater_l1",
+        "reason": "want_off",
+        "input": "want"
+      }
+    ]
+  },
+  "devices": [
+    {
+      "device": "ev_charger",
+      "goal": {
+        "kind": "soc",
+        "hard": true,
+        "source": "entity",
+        "targetKwh": null,
+        "targetSoc": 90,
+        "currentSoc": 40,
+        "deadline": "2026-10-28T07:00:00+01:00",
+        "marginS": 1800,
+        "remainingKwh": 9.9,
+        "deliveredKwh": null,
+        "status": "on_track",
+        "inactiveReason": null,
+        "inactiveInput": null,
+        "onMet": "opportunistic",
+        "escalate": true,
+        "sources": "pv_and_zone:offpeak",
+        "since": null,
+        "plannedKwh": 9.9,
+        "shortfallKwh": 0,
+        "latestGridStart": "2026-10-28T03:11:20.2675586+01:00",
+        "urgent": false,
+        "device": null
+      },
+      "goals": [
+        {
+          "kind": "soc",
+          "hard": true,
+          "source": "entity",
+          "targetKwh": null,
+          "targetSoc": 90,
+          "currentSoc": 40,
+          "deadline": "2026-10-28T07:00:00+01:00",
+          "marginS": 1800,
+          "remainingKwh": 9.9,
+          "deliveredKwh": null,
+          "status": "on_track",
+          "inactiveReason": null,
+          "inactiveInput": null,
+          "onMet": "opportunistic",
+          "escalate": true,
+          "sources": "pv_and_zone:offpeak",
+          "since": null,
+          "plannedKwh": 9.9,
+          "shortfallKwh": 0,
+          "latestGridStart": "2026-10-28T03:11:20.2675586+01:00",
+          "urgent": false,
+          "device": null
+        }
+      ],
+      "entries": [
+        {
+          "start": "2026-10-26T18:00:00+01:00",
+          "end": "2026-10-26T19:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T19:00:00+01:00",
+          "end": "2026-10-26T20:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T20:00:00+01:00",
+          "end": "2026-10-26T21:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T21:00:00+01:00",
+          "end": "2026-10-26T22:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T22:00:00+01:00",
+          "end": "2026-10-26T23:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T23:00:00+01:00",
+          "end": "2026-10-27T00:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T00:00:00+01:00",
+          "end": "2026-10-27T01:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T01:00:00+01:00",
+          "end": "2026-10-27T02:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T02:00:00+01:00",
+          "end": "2026-10-27T03:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T03:00:00+01:00",
+          "end": "2026-10-27T04:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T04:00:00+01:00",
+          "end": "2026-10-27T05:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T05:00:00+01:00",
+          "end": "2026-10-27T06:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T06:00:00+01:00",
+          "end": "2026-10-27T07:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T07:00:00+01:00",
+          "end": "2026-10-27T08:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T08:00:00+01:00",
+          "end": "2026-10-27T09:00:00+01:00",
+          "want": "defer",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T09:00:00+01:00",
+          "end": "2026-10-27T10:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 0.5700000000000001,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T10:00:00+01:00",
+          "end": "2026-10-27T11:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 1.59,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T11:00:00+01:00",
+          "end": "2026-10-27T12:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 2.3549999999999995,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T12:00:00+01:00",
+          "end": "2026-10-27T13:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 2.61,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T13:00:00+01:00",
+          "end": "2026-10-27T14:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 2.27,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T14:00:00+01:00",
+          "end": "2026-10-27T15:00:00+01:00",
+          "want": "run",
+          "class": "pv",
+          "energyKwh": 0.5050000000000008,
+          "maxPowerW": 2990
+        },
+        {
+          "start": "2026-10-27T15:00:00+01:00",
+          "end": "2026-10-27T16:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T16:00:00+01:00",
+          "end": "2026-10-27T17:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T17:00:00+01:00",
+          "end": "2026-10-27T18:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T18:00:00+01:00",
+          "end": "2026-10-27T19:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T19:00:00+01:00",
+          "end": "2026-10-27T20:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T20:00:00+01:00",
+          "end": "2026-10-27T21:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T21:00:00+01:00",
+          "end": "2026-10-27T22:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T22:00:00+01:00",
+          "end": "2026-10-27T23:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T23:00:00+01:00",
+          "end": "2026-10-28T00:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T00:00:00+01:00",
+          "end": "2026-10-28T01:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T01:00:00+01:00",
+          "end": "2026-10-28T02:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T02:00:00+01:00",
+          "end": "2026-10-28T03:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T03:00:00+01:00",
+          "end": "2026-10-28T04:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T04:00:00+01:00",
+          "end": "2026-10-28T05:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T05:00:00+01:00",
+          "end": "2026-10-28T06:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T06:00:00+01:00",
+          "end": "2026-10-28T06:30:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T06:30:00+01:00",
+          "end": "2026-10-28T07:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T07:00:00+01:00",
+          "end": "2026-10-28T08:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T08:00:00+01:00",
+          "end": "2026-10-28T09:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T09:00:00+01:00",
+          "end": "2026-10-28T10:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T10:00:00+01:00",
+          "end": "2026-10-28T11:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T11:00:00+01:00",
+          "end": "2026-10-28T12:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T12:00:00+01:00",
+          "end": "2026-10-28T13:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T13:00:00+01:00",
+          "end": "2026-10-28T14:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T14:00:00+01:00",
+          "end": "2026-10-28T15:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T15:00:00+01:00",
+          "end": "2026-10-28T16:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T16:00:00+01:00",
+          "end": "2026-10-28T17:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T17:00:00+01:00",
+          "end": "2026-10-28T18:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        }
+      ],
+      "shortfallKwh": 0,
+      "predictedCompletion": "2026-10-27T14:10:08.0267558+01:00"
+    },
+    {
+      "device": "heater_l1",
+      "goal": {
+        "kind": "energy",
+        "hard": false,
+        "source": "entity",
+        "targetKwh": null,
+        "targetSoc": null,
+        "currentSoc": null,
+        "deadline": null,
+        "marginS": 0,
+        "remainingKwh": null,
+        "deliveredKwh": null,
+        "status": "inactive",
+        "inactiveReason": "want_off",
+        "inactiveInput": "want",
+        "onMet": null,
+        "escalate": false,
+        "sources": null,
+        "since": null,
+        "plannedKwh": null,
+        "shortfallKwh": null,
+        "latestGridStart": null,
+        "urgent": null,
+        "device": null
+      },
+      "goals": [
+        {
+          "kind": "energy",
+          "hard": false,
+          "source": "entity",
+          "targetKwh": null,
+          "targetSoc": null,
+          "currentSoc": null,
+          "deadline": null,
+          "marginS": 0,
+          "remainingKwh": null,
+          "deliveredKwh": null,
+          "status": "inactive",
+          "inactiveReason": "want_off",
+          "inactiveInput": "want",
+          "onMet": null,
+          "escalate": false,
+          "sources": null,
+          "since": null,
+          "plannedKwh": null,
+          "shortfallKwh": null,
+          "latestGridStart": null,
+          "urgent": null,
+          "device": null
+        }
+      ],
+      "entries": [
+        {
+          "start": "2026-10-26T18:00:00+01:00",
+          "end": "2026-10-26T19:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T19:00:00+01:00",
+          "end": "2026-10-26T20:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T20:00:00+01:00",
+          "end": "2026-10-26T21:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T21:00:00+01:00",
+          "end": "2026-10-26T22:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T22:00:00+01:00",
+          "end": "2026-10-26T23:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-26T23:00:00+01:00",
+          "end": "2026-10-27T00:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T00:00:00+01:00",
+          "end": "2026-10-27T01:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T01:00:00+01:00",
+          "end": "2026-10-27T02:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T02:00:00+01:00",
+          "end": "2026-10-27T03:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T03:00:00+01:00",
+          "end": "2026-10-27T04:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T04:00:00+01:00",
+          "end": "2026-10-27T05:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T05:00:00+01:00",
+          "end": "2026-10-27T06:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T06:00:00+01:00",
+          "end": "2026-10-27T07:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T07:00:00+01:00",
+          "end": "2026-10-27T08:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T08:00:00+01:00",
+          "end": "2026-10-27T09:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T09:00:00+01:00",
+          "end": "2026-10-27T10:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T10:00:00+01:00",
+          "end": "2026-10-27T11:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T11:00:00+01:00",
+          "end": "2026-10-27T12:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T12:00:00+01:00",
+          "end": "2026-10-27T13:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T13:00:00+01:00",
+          "end": "2026-10-27T14:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T14:00:00+01:00",
+          "end": "2026-10-27T15:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T15:00:00+01:00",
+          "end": "2026-10-27T16:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T16:00:00+01:00",
+          "end": "2026-10-27T17:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T17:00:00+01:00",
+          "end": "2026-10-27T18:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T18:00:00+01:00",
+          "end": "2026-10-27T19:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T19:00:00+01:00",
+          "end": "2026-10-27T20:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T20:00:00+01:00",
+          "end": "2026-10-27T21:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T21:00:00+01:00",
+          "end": "2026-10-27T22:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T22:00:00+01:00",
+          "end": "2026-10-27T23:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-27T23:00:00+01:00",
+          "end": "2026-10-28T00:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T00:00:00+01:00",
+          "end": "2026-10-28T01:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T01:00:00+01:00",
+          "end": "2026-10-28T02:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T02:00:00+01:00",
+          "end": "2026-10-28T03:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T03:00:00+01:00",
+          "end": "2026-10-28T04:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T04:00:00+01:00",
+          "end": "2026-10-28T05:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T05:00:00+01:00",
+          "end": "2026-10-28T06:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T06:00:00+01:00",
+          "end": "2026-10-28T06:30:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T06:30:00+01:00",
+          "end": "2026-10-28T07:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T07:00:00+01:00",
+          "end": "2026-10-28T08:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T08:00:00+01:00",
+          "end": "2026-10-28T09:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T09:00:00+01:00",
+          "end": "2026-10-28T10:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T10:00:00+01:00",
+          "end": "2026-10-28T11:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T11:00:00+01:00",
+          "end": "2026-10-28T12:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T12:00:00+01:00",
+          "end": "2026-10-28T13:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T13:00:00+01:00",
+          "end": "2026-10-28T14:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T14:00:00+01:00",
+          "end": "2026-10-28T15:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T15:00:00+01:00",
+          "end": "2026-10-28T16:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T16:00:00+01:00",
+          "end": "2026-10-28T17:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        },
+        {
+          "start": "2026-10-28T17:00:00+01:00",
+          "end": "2026-10-28T18:00:00+01:00",
+          "want": "none",
+          "class": null,
+          "energyKwh": 0,
+          "maxPowerW": 0
+        }
+      ],
+      "shortfallKwh": 0,
+      "predictedCompletion": null
+    }
+  ],
+  "superseded": [
+    {
+      "kind": "soc",
+      "hard": true,
+      "source": "config",
+      "targetKwh": null,
+      "targetSoc": 90,
+      "currentSoc": 40,
+      "deadline": "2026-10-28T07:00:00+01:00",
+      "marginS": 1800,
+      "remainingKwh": 4.4,
+      "deliveredKwh": null,
+      "status": "superseded",
+      "inactiveReason": null,
+      "inactiveInput": null,
+      "onMet": "opportunistic",
+      "escalate": true,
+      "sources": "pv_and_zone:offpeak",
+      "since": null,
+      "plannedKwh": null,
+      "shortfallKwh": null,
+      "latestGridStart": null,
+      "urgent": null,
+      "device": "ev_charger"
+    }
+  ],
+  "notes": [
+    "pv_forecast_partial"
+  ],
+  "issues": [],
+  "slots": [
+    {
+      "start": "2026-10-26T18:00:00+01:00",
+      "end": "2026-10-26T19:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-26T19:00:00+01:00",
+      "end": "2026-10-26T20:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-26T20:00:00+01:00",
+      "end": "2026-10-26T21:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-26T21:00:00+01:00",
+      "end": "2026-10-26T22:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-26T22:00:00+01:00",
+      "end": "2026-10-26T23:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-26T23:00:00+01:00",
+      "end": "2026-10-27T00:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T00:00:00+01:00",
+      "end": "2026-10-27T01:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T01:00:00+01:00",
+      "end": "2026-10-27T02:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T02:00:00+01:00",
+      "end": "2026-10-27T03:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T03:00:00+01:00",
+      "end": "2026-10-27T04:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T04:00:00+01:00",
+      "end": "2026-10-27T05:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T05:00:00+01:00",
+      "end": "2026-10-27T06:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T06:00:00+01:00",
+      "end": "2026-10-27T07:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T07:00:00+01:00",
+      "end": "2026-10-27T08:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T08:00:00+01:00",
+      "end": "2026-10-27T09:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0.255,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T09:00:00+01:00",
+      "end": "2026-10-27T10:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 1.02,
+      "baseKwh": 0.45,
+      "surplusKwh": 0.5700000000000001
+    },
+    {
+      "start": "2026-10-27T10:00:00+01:00",
+      "end": "2026-10-27T11:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 2.04,
+      "baseKwh": 0.45,
+      "surplusKwh": 1.59
+    },
+    {
+      "start": "2026-10-27T11:00:00+01:00",
+      "end": "2026-10-27T12:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 2.8049999999999997,
+      "baseKwh": 0.45,
+      "surplusKwh": 2.3549999999999995
+    },
+    {
+      "start": "2026-10-27T12:00:00+01:00",
+      "end": "2026-10-27T13:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 3.06,
+      "baseKwh": 0.45,
+      "surplusKwh": 2.61
+    },
+    {
+      "start": "2026-10-27T13:00:00+01:00",
+      "end": "2026-10-27T14:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 2.72,
+      "baseKwh": 0.45,
+      "surplusKwh": 2.27
+    },
+    {
+      "start": "2026-10-27T14:00:00+01:00",
+      "end": "2026-10-27T15:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 1.9549999999999998,
+      "baseKwh": 0.45,
+      "surplusKwh": 1.505
+    },
+    {
+      "start": "2026-10-27T15:00:00+01:00",
+      "end": "2026-10-27T16:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 1.02,
+      "baseKwh": 0.45,
+      "surplusKwh": 0.5700000000000001
+    },
+    {
+      "start": "2026-10-27T16:00:00+01:00",
+      "end": "2026-10-27T17:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0.255,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T17:00:00+01:00",
+      "end": "2026-10-27T18:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T18:00:00+01:00",
+      "end": "2026-10-27T19:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T19:00:00+01:00",
+      "end": "2026-10-27T20:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T20:00:00+01:00",
+      "end": "2026-10-27T21:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T21:00:00+01:00",
+      "end": "2026-10-27T22:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T22:00:00+01:00",
+      "end": "2026-10-27T23:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-27T23:00:00+01:00",
+      "end": "2026-10-28T00:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T00:00:00+01:00",
+      "end": "2026-10-28T01:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T01:00:00+01:00",
+      "end": "2026-10-28T02:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T02:00:00+01:00",
+      "end": "2026-10-28T03:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T03:00:00+01:00",
+      "end": "2026-10-28T04:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T04:00:00+01:00",
+      "end": "2026-10-28T05:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T05:00:00+01:00",
+      "end": "2026-10-28T06:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T06:00:00+01:00",
+      "end": "2026-10-28T06:30:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.225,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T06:30:00+01:00",
+      "end": "2026-10-28T07:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.225,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T07:00:00+01:00",
+      "end": "2026-10-28T08:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T08:00:00+01:00",
+      "end": "2026-10-28T09:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T09:00:00+01:00",
+      "end": "2026-10-28T10:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T10:00:00+01:00",
+      "end": "2026-10-28T11:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T11:00:00+01:00",
+      "end": "2026-10-28T12:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T12:00:00+01:00",
+      "end": "2026-10-28T13:00:00+01:00",
+      "zone": "morning_peak",
+      "importPrice": 1.1,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T13:00:00+01:00",
+      "end": "2026-10-28T14:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T14:00:00+01:00",
+      "end": "2026-10-28T15:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T15:00:00+01:00",
+      "end": "2026-10-28T16:00:00+01:00",
+      "zone": "offpeak",
+      "importPrice": 0.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T16:00:00+01:00",
+      "end": "2026-10-28T17:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    },
+    {
+      "start": "2026-10-28T17:00:00+01:00",
+      "end": "2026-10-28T18:00:00+01:00",
+      "zone": "afternoon_peak",
+      "importPrice": 1.6,
+      "exportPrice": 0.35,
+      "pvKwh": 0,
+      "baseKwh": 0.45,
+      "surplusKwh": 0
+    }
+  ],
+  "id": "a3536012a16f93dc",
+  "computedAt": "2026-10-26T18:00:00+01:00",
+  "validUntil": "2026-10-26T18:45:00+01:00",
+  "horizonEnd": "2026-10-28T18:00:00+01:00",
+  "slotMinutes": 60,
+  "configRevision": 1,
+  "suspended": false,
+  "cost": {
+    "planned": 3.465,
+    "referenceV2": 5.9399999999999995,
+    "referenceAsap": 14.910000000000002,
+    "currency": "PLN"
+  },
+  "lastSolve": {
+    "at": "2026-10-26T18:00:00+01:00",
+    "durationMs": 3,
+    "result": "computed",
+    "reason": "first",
+    "violations": []
+  }
+}

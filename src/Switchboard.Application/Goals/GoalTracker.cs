@@ -60,6 +60,7 @@ public sealed class GoalTracker
     private readonly SignalClock _clock;
     private readonly StatisticsOptions _options;
     private readonly ILogger<GoalTracker> _logger;
+    private readonly ManualGoalStore? _manual;
     private readonly object _gate = new();
     private (DateTimeOffset At, ImmutableDictionary<DeviceName, double> Watts)? _held;
     private bool _failing;
@@ -70,7 +71,8 @@ public sealed class GoalTracker
         GoalLedger ledger,
         SignalClock clock,
         IOptions<StatisticsOptions> options,
-        ILogger<GoalTracker> logger)
+        ILogger<GoalTracker> logger,
+        ManualGoalStore? manual = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _inputs = inputs;
@@ -79,6 +81,7 @@ public sealed class GoalTracker
         _clock = clock;
         _options = options.Value;
         _logger = logger;
+        _manual = manual;
     }
 
     /// <summary>Follows the control loop; the presentation hub (attached first) has published this step's power by the time this runs. Call once, before the first step.</summary>
@@ -111,6 +114,7 @@ public sealed class GoalTracker
             lock (_gate)
             {
                 var at = view.EvaluatedAt;
+                _manual?.Expire(at);
                 Integrate(at);
                 _held = (at, view.Devices.ToImmutableDictionary(d => d.Device, d => Math.Max(0, d.Total?.Value ?? 0)));
                 Follow(at);
@@ -146,6 +150,15 @@ public sealed class GoalTracker
                 _ledger.AddDelivered(device, SignalUnits.EnergyOf(new Watts(watts), duration).Value, at);
             }
         }
+
+        // A manual goal counts its own progress: it is not the ledger's (a device may have a goal in the file as well).
+        foreach (var device in _manual?.Current.Goals.Keys ?? [])
+        {
+            if (held.Watts.TryGetValue(device, out var watts) && watts > 0)
+            {
+                _manual!.AddDelivered(device, SignalUnits.EnergyOf(new Watts(watts), duration).Value, at);
+            }
+        }
     }
 
     private void Follow(DateTimeOffset at)
@@ -170,7 +183,8 @@ public sealed class GoalTracker
         }
 
         var board = Evaluate(at);
-        foreach (var goal in board.Goals.Where(g => g.Request.Kind == GoalKind.Energy))
+        // A manual goal keeps its own progress (ManualGoalStore): it must not begin, move or end the file goal's ledger entry.
+        foreach (var goal in board.Goals.Where(g => g.Request.Kind == GoalKind.Energy && g.Request.Origin != GoalOrigin.Manual))
         {
             var request = goal.Request;
             if (_ledger.Entry(request.Device) is { } entry && entry.Continues(request.Kind, request.Deadline, at))

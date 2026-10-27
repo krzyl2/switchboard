@@ -1,0 +1,254 @@
+/* Screen 06 — Day plan, and the goal row of the device card. Colours come only from the tokens in styles.css, so both
+   themes apply. The chart scrolls inside its own box (the page never scrolls sideways); the SVG's colours are set here
+   by class, not as attributes, so the tokens reach it. */
+.plan-kv dd .sub {
+  display: block;
+}
+
+.plan-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.plan-chart {
+  display: block;
+  max-width: none;
+  font-family: var(--font-body);
+}
+
+.plan-axis {
+  fill: var(--fg-dim);
+  font-size: 9px;
+}
+
+.plan-device-label {
+  font-family: var(--font-mono);
+}
+
+.plan-pv {
+  stroke: var(--pv);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.plan-now {
+  stroke: var(--fg);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* The tariff zone by price rank: cheap, middle, dear (never by the zone's name). Used by the band, the legend and the table. */
+.plan-zone[data-tone='cheap'] {
+  fill: var(--ok);
+  background: var(--ok);
+}
+
+.plan-zone[data-tone='middle'] {
+  fill: var(--warn);
+  background: var(--warn);
+}
+
+.plan-zone[data-tone='dear'] {
+  fill: var(--crit);
+  background: var(--crit);
+}
+
+.plan-zone[data-tone='flat'],
+.plan-zone[data-tone='unknown'] {
+  fill: var(--fg-dim);
+  background: var(--fg-dim);
+}
+
+rect.plan-zone {
+  fill-opacity: 0.3;
+}
+
+.plan-bar[data-class='pv'] {
+  fill: var(--pv);
+  background: var(--pv);
+}
+
+.plan-bar[data-class='zone'] {
+  fill: var(--accent);
+  background: var(--accent);
+}
+
+.plan-bar[data-class='urgent'] {
+  fill: var(--crit);
+  background: var(--crit);
+}
+
+.plan-legend {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.plan-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: baseline;
+  margin: 0 4px;
+}
+
+span.plan-zone {
+  opacity: 0.45;
+}
+
+.plan-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 16px 24px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.plan-h3 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+.plan-device + .plan-device {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-device h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.plan-runs-title {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.plan-slots {
+  margin-top: 14px;
+}
+
+.plan-slots summary {
+  cursor: pointer;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+}
+
+.plan-table {
+  min-width: 520px;
+}
+
+/* A goal inside a field of the device card or a device block of the plan: lines that wrap, pills on one wrapping line. */
+.plan-goal {
+  display: block;
+  min-width: 0;
+}
+
+.plan-goal + .plan-goal {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 3px 0;
+}
+
+.plan-wish {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-wish label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.plan-wish label > span {
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+
+.plan-wish label.plan-check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.plan-wish label.plan-check > span {
+  font-size: 0.85rem;
+  color: var(--fg);
+}
+
+.plan-wish input[type='text'],
+.plan-wish input[type='datetime-local'] {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.plan-wish button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.plan-wish button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-wish [role='status'][data-tone='warn'] {
+  color: var(--warn);
+}
+
+.plan-wish [role='status'][data-tone='ok'] {
+  color: var(--ok);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-chart * {
+    transition: none;
+    animation: none;
+  }
+}

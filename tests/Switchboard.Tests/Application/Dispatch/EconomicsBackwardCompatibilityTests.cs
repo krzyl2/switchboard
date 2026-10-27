@@ -42,7 +42,9 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
     {
         foreach (var decision in decisions)
         {
-            text.Append(DecisionJson.Serialize(decision)).Append('\n');
+            // The digests are of what dispatch decided, not of the list version the log line is stamped with: version 7 (the planner codes) changed that one
+            // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows.
+            text.Append(DecisionJson.Serialize(decision).Replace("\"codes\":7", "\"codes\":6", StringComparison.Ordinal)).Append('\n');
         }
 
         if (dispatch is null)
@@ -97,8 +99,8 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
         }
     }
 
-    /// <summary>The worlds of HourlyBalanceGateTests, systematically: devices x balance x export x hour x counters mapped or not.</summary>
-    private static string BalanceWorldsDigest()
+    /// <summary>The worlds of HourlyBalanceGateTests, systematically: devices x balance x export x hour x counters mapped or not (with a plan view, PlannerDispatchDigestTests runs them beside a plan).</summary>
+    internal static string BalanceWorldsDigest(Switchboard.Application.Planning.IPlanView? plan = null)
     {
         var text = new StringBuilder();
         const string OneBoundary = "  dispatch:\n    persistence_up_cycles: 1\n    persistence_down_cycles: 1\n";
@@ -118,7 +120,7 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
                     {
                         foreach (var counters in new[] { true, false })
                         {
-                            var s = DispatchScenario.Create(devices, off, OneBoundary);
+                            var s = DispatchScenario.Create(devices, off, OneBoundary, plan: plan);
                             Export(s, export);
                             var feed = counters ? Feed(s, wh, T0 + hourOffset) : null;
                             feed?.Invoke();
@@ -138,7 +140,7 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
 
         // The command path: a heater started for the balance and stopped through its lockout when the balance goes away.
         var port = new RecordingDeviceCommandPort();
-        var active = DispatchScenario.Create(DispatchDevices.Heaters, ["heater_l1", "heater_l2", "heater_l3"], OneBoundary, mode: DispatchScenario.Active, port: port);
+        var active = DispatchScenario.Create(DispatchDevices.Heaters, ["heater_l1", "heater_l2", "heater_l3"], OneBoundary, mode: DispatchScenario.Active, port: port, plan: plan);
         active.Follow(port);
         Export(active, 3000);
         var on = Feed(active, 600, T0);

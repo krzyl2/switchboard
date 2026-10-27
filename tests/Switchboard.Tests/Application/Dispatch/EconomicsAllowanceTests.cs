@@ -60,6 +60,7 @@ public sealed class EconomicsAllowanceTests
         Off("pv_only at 11:00 without surplus: the morning peak is not its source", "pv_only", Morning, -100, -500, 0.35, nameof(Outcome.Refused), null, "source_not_allowed"),
         Off("pv_only at 23:00 without surplus: the off-peak zone is not its source", "pv_only", Night, -100, -500, 0.35, nameof(Outcome.Refused), null, "source_not_allowed"),
         Off("pv_only with surplus the candidate would use up", "pv_only", Morning, 0, 1500, 0.35, nameof(Outcome.Refused), null, "balance_projection_low"),
+        Off("pv_only with a positive balance still inside the band: the surplus is a source, it is just not enough yet", "pv_only", Morning, 250, 100, 0.35, nameof(Outcome.Refused), null, "balance_projection_low"),
         Off("pv_only whose value is below the export price does not burn surplus worth more sold", "pv_only", Morning, 600, 3000, 0.35, nameof(Outcome.Refused), null, "value_below_cost", "0.50"),
         Off("pv_only with a value equal to the export price starts (margin 0)", "pv_only", Morning, 600, 3000, 0.35, nameof(Outcome.Start), "pv", "balance_surplus"),
         Off("pv_only with no export price configured: the price test is off", "pv_only", Morning, 600, 3000, 0.01, nameof(Outcome.Start), "pv", "balance_surplus", exportPrice: null),

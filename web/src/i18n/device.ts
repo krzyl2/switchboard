@@ -53,7 +53,6 @@ const en = {
   'device.shedPriority': 'Shed priority {value} replaces the value in the shed and start order.',
   'device.noShed': 'Never shed (no_shed): protection never picks it, and dispatch starts it after every other device.',
   'device.goal': 'Goal',
-  'device.goalNotAvailable': 'Not available in this version: dispatch shares the free capacity of the connection, it does not work towards a goal.',
   'device.sources': 'Allowed sources',
   'device.sourcesNotAvailable':
     'Not available in this version: dispatch does not tell PV power from grid power, so it may start this device on grid power, at night too.',
@@ -186,7 +185,6 @@ export const device: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'device.shedPriority': 'Priorytet zrzutu {value} zastępuje wartość w kolejności zrzutu i startu.',
     'device.noShed': 'Nigdy nie zrzucane (no_shed): ochrona go nie wybiera, a rozdział mocy uruchamia je po wszystkich innych urządzeniach.',
     'device.goal': 'Cel',
-    'device.goalNotAvailable': 'Niedostępne w tej wersji: rozdział mocy dzieli wolną moc przyłącza, nie realizuje celu.',
     'device.sources': 'Dozwolone źródła',
     'device.sourcesNotAvailable':
       'Niedostępne w tej wersji: rozdział mocy nie odróżnia energii z PV od energii z sieci, więc może uruchomić to urządzenie z sieci, także w nocy.',

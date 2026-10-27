@@ -97,3 +97,13 @@ export const SETUP_REQUEST_TIMEOUT_MS = 30_000;
 /** A watching self-test: as often as the readouts. */
 export const SETUP_SELF_TEST_REFRESH_INTERVAL_MS = 2_000;
 export const SETUP_SELF_TEST_REQUEST_TIMEOUT_MS = 1_800;
+
+/**
+ * GET api/plan: the plan changes at most every planning cycle, the goals' progress every control step; ten seconds follows both without
+ * asking for the plan's slots and entries (about 40 KB) more often than a person can read them.
+ */
+export const PLAN_REFRESH_INTERVAL_MS = 10_000;
+export const PLAN_REQUEST_TIMEOUT_MS = 8_000;
+
+/** POST and DELETE api/goals only store or drop the add-on's own state and wake the planner: they answer at once. */
+export const GOAL_REQUEST_TIMEOUT_MS = 5_000;

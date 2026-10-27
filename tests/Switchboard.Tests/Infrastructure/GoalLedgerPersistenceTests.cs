@@ -9,7 +9,7 @@ using Switchboard.Tests.Support;
 namespace Switchboard.Tests.Infrastructure;
 
 /// <summary>
-/// PLAN-03: the goal ledger in state.json (schema 4). A file of 0.10 (schema 3) must still read, as "no goals"; a file a person edited or a
+/// PLAN-03: the goal ledger in state.json (schema 4, since schema 5). A file of 0.10 (schema 3) must still read, as "no goals"; a file a person edited or a
 /// crash cut must be set aside as a whole, like every other part of state.json, never half trusted.
 /// </summary>
 public sealed class GoalLedgerPersistenceTests : IDisposable
@@ -33,7 +33,7 @@ public sealed class GoalLedgerPersistenceTests : IDisposable
     };
 
     [Fact]
-    public void The_ledger_round_trips_with_its_deadline_or_none_and_the_file_is_schema_4()
+    public void The_ledger_round_trips_with_its_deadline_or_none_and_the_file_is_schema_5()
     {
         var file = File();
 
@@ -43,7 +43,7 @@ public sealed class GoalLedgerPersistenceTests : IDisposable
         Assert.Equal(StateFileStatus.Loaded, load.Status);
         Assert.Equal(WithGoals().Goals.OrderBy(g => g.Key), load.State.Goals.OrderBy(g => g.Key));
         using var json = JsonDocument.Parse(System.IO.File.ReadAllText(file.FilePath));
-        Assert.Equal(4, json.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(5, json.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal(["kind", "since", "deadline", "delivered_kwh", "updated_at"], json.RootElement.GetProperty("goals").GetProperty("ev_charger").EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("goals").GetProperty("boiler").GetProperty("deadline").ValueKind);
     }
@@ -55,7 +55,7 @@ public sealed class GoalLedgerPersistenceTests : IDisposable
         var file = File();
         file.Save(RuntimeState.Fresh with { KillSwitch = true, SavedAt = At });
         var text = System.IO.File.ReadAllText(file.FilePath);
-        var schema3 = System.Text.RegularExpressions.Regex.Replace(text.Replace("\"schema_version\":4", "\"schema_version\":3", StringComparison.Ordinal), ",\"goals\":\\{\\}", string.Empty);
+        var schema3 = System.Text.RegularExpressions.Regex.Replace(text.Replace("\"schema_version\":5", "\"schema_version\":3", StringComparison.Ordinal), ",\"(goals|manual_goals)\":\\{\\}", string.Empty);
         Assert.DoesNotContain("goals", schema3, StringComparison.Ordinal);
         System.IO.File.WriteAllText(file.FilePath, schema3);
 
@@ -72,7 +72,7 @@ public sealed class GoalLedgerPersistenceTests : IDisposable
         // Why: the key set of each schema is exact; a goals key in an old-schema file is an edited file, not a ledger.
         var file = File();
         file.Save(WithGoals());
-        System.IO.File.WriteAllText(file.FilePath, System.IO.File.ReadAllText(file.FilePath).Replace("\"schema_version\":4", "\"schema_version\":3", StringComparison.Ordinal));
+        System.IO.File.WriteAllText(file.FilePath, System.IO.File.ReadAllText(file.FilePath).Replace("\"schema_version\":5", "\"schema_version\":3", StringComparison.Ordinal));
 
         var load = file.Load();
 

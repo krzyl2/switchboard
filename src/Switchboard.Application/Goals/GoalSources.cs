@@ -145,7 +145,7 @@ public sealed class ConfigGoalSource : IGoalSource
         return (new GoalRequest(spec.Device, spec.Kind, left, targetValue, null, null, delivered, deadline, spec.Deadline?.Margin ?? TimeSpan.Zero, spec.Hard, spec.Sources, spec.Escalate, spec.OnMet, entry?.Since ?? context.Now, spec.Origin, spec.Revision), null);
     }
 
-    private static (double? Value, GoalInactiveReason? Failure) Number(GoalNumber number, ImmutableDictionary<SignalName, GoalInputSample> readings)
+    internal static (double? Value, GoalInactiveReason? Failure) Number(GoalNumber number, ImmutableDictionary<SignalName, GoalInputSample> readings)
     {
         if (number.Literal is { } literal)
         {

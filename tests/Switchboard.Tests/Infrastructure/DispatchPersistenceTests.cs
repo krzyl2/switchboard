@@ -164,7 +164,7 @@ public sealed class DispatchPersistenceTests : IDisposable
 
         Assert.Equal(StateFileStatus.Loaded, load.Status);
         using var json = JsonDocument.Parse(System.IO.File.ReadAllText(file.FilePath));
-        Assert.Equal(4, json.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(5, json.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal(state.Overrides.OrderBy(o => o.Key), load.State.Overrides.OrderBy(o => o.Key));
         var carport = load.State.GroupBudgets[GroupName.Parse("carport")];
         Assert.Equal(state.GroupBudgets[GroupName.Parse("carport")].OrderBy(b => b.Key), carport.OrderBy(b => b.Key));
@@ -180,7 +180,7 @@ public sealed class DispatchPersistenceTests : IDisposable
         file.Save(RuntimeState.Fresh with { KillSwitch = true });
 
         using var json = JsonDocument.Parse(System.IO.File.ReadAllText(file.FilePath));
-        Assert.Equal(4, json.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(5, json.RootElement.GetProperty("schema_version").GetInt32());
         Assert.False(json.RootElement.TryGetProperty("ui_mode", out _));
         Assert.True(file.Load().State.KillSwitch);
     }
@@ -225,7 +225,7 @@ public sealed class DispatchPersistenceTests : IDisposable
     [InlineData("\"heater_l1\":{\"mode\"", "\"switch.heater_1\":{\"mode\"")]
     [InlineData("\"carport\":{", "\"Car Port\":{")]
     [InlineData("\"budget\":0.6", "\"budget\":1.6")]
-    [InlineData("\"schema_version\":4", "\"schema_version\":5")]
+    [InlineData("\"schema_version\":5", "\"schema_version\":6")]
     [InlineData(",\"group_budgets\":{", ",\"extra\":{},\"group_budgets\":{")]
     public void Untrusted_stage_3_content_is_refused_as_a_whole(string valid, string tampered)
     {
@@ -249,7 +249,7 @@ public sealed class DispatchPersistenceTests : IDisposable
         // The override keys belong to schema 2 and 3 only; a version-1 file with them is not a 0.3.x file.
         var file = File();
         file.Save(WithStage3(RuntimeState.Fresh));
-        System.IO.File.WriteAllText(file.FilePath, System.IO.File.ReadAllText(file.FilePath).Replace("\"schema_version\":4", "\"schema_version\":1", StringComparison.Ordinal));
+        System.IO.File.WriteAllText(file.FilePath, System.IO.File.ReadAllText(file.FilePath).Replace("\"schema_version\":5", "\"schema_version\":1", StringComparison.Ordinal));
 
         Assert.Equal(StateFileStatus.ResetCorrupt, file.Load().Status);
     }
@@ -281,7 +281,7 @@ public sealed class DispatchPersistenceTests : IDisposable
         again.OnOverridesChanged(restarted.Current);
         await again.FlushAsync(CancellationToken.None);
         Assert.Empty(File().Load().State.Overrides);
-        Assert.Contains("\"schema_version\":4", System.IO.File.ReadAllText(file.FilePath), StringComparison.Ordinal);
+        Assert.Contains("\"schema_version\":5", System.IO.File.ReadAllText(file.FilePath), StringComparison.Ordinal);
     }
 
     [Fact]

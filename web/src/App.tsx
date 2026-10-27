@@ -8,6 +8,7 @@ import { DeviceCard } from './DeviceCard';
 import { Flows } from './Flows';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { Limits } from './Limits';
+import { PlanPage } from './Plan';
 import { parseSetupStep, Setup } from './Setup';
 import type { StepName } from './setupDraft';
 import { SignalsPage } from './Signals';
@@ -100,6 +101,7 @@ export type Route =
   | { page: 'flows' }
   | { page: 'device'; id: string | null }
   | { page: 'limits' }
+  | { page: 'plan' }
   | { page: 'setup'; step: StepName }
   | { page: 'log' }
   | { page: 'signals' }
@@ -112,6 +114,7 @@ const HREF: Record<Route['page'], string> = {
   flows: '#/flows',
   device: '#/devices',
   limits: '#/guard',
+  plan: '#/plan',
   setup: '#/setup',
   log: '#/log',
   signals: '#/signals',
@@ -121,6 +124,7 @@ const HREF: Record<Route['page'], string> = {
 export function parseRoute(hash: string): Route {
   if (hash === HREF.flows) return { page: 'flows' };
   if (hash === HREF.limits) return { page: 'limits' };
+  if (hash === HREF.plan) return { page: 'plan' };
   if (hash === HREF.log) return { page: 'log' };
   if (hash === HREF.signals) return { page: 'signals' };
   if (hash === HREF.status) return { page: 'status' };
@@ -149,15 +153,15 @@ function useRoute(): Route {
 
 type NavItem = { index: string; page: Route['page'] | null; label: keyof Messages };
 
-// The mockup's rail (docs/mockups/index.html): seven numbered screens. The day plan (06, v3.0) is
-// not built: listed, clearly disabled, never a link.
+// The mockup's rail (docs/mockups/index.html): seven numbered screens. An item without a page would be
+// listed, clearly disabled, never a link (none is left since the day plan, 06, was built).
 const SCREENS: readonly NavItem[] = [
   { index: '01', page: 'dashboard', label: 'nav.dashboard' },
   { index: '02', page: 'flows', label: 'nav.flows' },
   { index: '03', page: 'setup', label: 'nav.setup' },
   { index: '04', page: 'device', label: 'nav.device' },
   { index: '05', page: 'limits', label: 'nav.limits' },
-  { index: '06', page: null, label: 'nav.plan' },
+  { index: '06', page: 'plan', label: 'nav.plan' },
   { index: '07', page: 'log', label: 'nav.log' },
 ];
 
@@ -269,6 +273,7 @@ export function App({ lang }: { lang: Lang }) {
           {route.page === 'flows' && <Flows lang={lang} />}
           {route.page === 'device' && <DeviceCard lang={lang} id={route.id} />}
           {route.page === 'limits' && <Limits lang={lang} />}
+          {route.page === 'plan' && <PlanPage lang={lang} />}
           {route.page === 'setup' && <Setup lang={lang} step={route.step} />}
           {route.page === 'log' && <DecisionLog lang={lang} />}
           {route.page === 'signals' && <SignalsPage lang={lang} />}

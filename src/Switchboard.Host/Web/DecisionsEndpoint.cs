@@ -62,7 +62,8 @@ public sealed record DispatchInputsDto(
     string Override,
     bool Reasserted,
     BalanceInputsDto? Balance,
-    EconomicsInputsDto? Economics = null);
+    EconomicsInputsDto? Economics = null,
+    DecisionPlanDto? Plan = null);
 
 /// <summary>The hourly balance of the step (BAL-07): Wh and W, positive = export; null values were not known.</summary>
 /// <param name="TRemS">Seconds to the :00 the rule used; zero when the balance was not of the running hour.</param>
@@ -79,6 +80,16 @@ public sealed record BalanceInputsDto(double? BalanceWh, double? FreeW, double? 
 /// <param name="Sources">pv_only, pv_and_zone:&lt;id&gt;[,&lt;id&gt;] or any, as dispatch used them; null when the device declares none.</param>
 /// <param name="Settlement">hourly_netting or net_billing.</param>
 public sealed record EconomicsInputsDto(string? Zone, double? ImportPrice, double? ExportPrice, string? PriceBasis, double VEff, string ValueBasis, double OrderKey, string Class, string? Sources, string Settlement);
+
+/// <summary>
+/// The plan entry the step used (PLAN-15): present only while <c>planner.dispatch</c> is narrow or full and a valid, fresh entry applied to the device.
+/// </summary>
+/// <param name="Status">Always fresh: an entry of a plan that is not fresh is not used.</param>
+/// <param name="Want">run, defer, done or urgent.</param>
+/// <param name="Class">pv or zone:&lt;id&gt;; null for a want that carries none.</param>
+/// <param name="DeliveredKwh">What dispatch counted the device drawing in the slot (an estimate that can only fall short).</param>
+/// <param name="Mode">narrow or full.</param>
+public sealed record DecisionPlanDto(string Status, string PlanId, DateTimeOffset ComputedAt, DateTimeOffset SlotStart, DateTimeOffset SlotEnd, string Want, string? Class, double EnergyKwh, double DeliveredKwh, double MaxPowerW, string Mode);
 
 /// <param name="Group">The circuit group of the constraint; null for the main phase.</param>
 public sealed record HeadroomDto(string? Group, string Phase, double? EnvelopeA, double? RemainingA);
@@ -287,7 +298,8 @@ internal static class DecisionsEndpoint
         ApiText.Snake(dispatch.Override),
         dispatch.Reasserted,
         dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null,
-        dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, ApiText.SnakeOrNull(e.Class) ?? "none", e.Sources, ApiText.Snake(e.Settlement)) : null);
+        dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, ApiText.SnakeOrNull(e.Class) ?? "none", e.Sources, ApiText.Snake(e.Settlement)) : null,
+        dispatch.Plan is { } p ? new DecisionPlanDto(PlanDecisionInputs.FreshStatus, p.PlanId, p.ComputedAt, p.SlotStart, p.SlotEnd, p.Want, p.Class, p.EnergyKwh, p.DeliveredKwh, p.MaxPowerW, p.Mode) : null);
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>

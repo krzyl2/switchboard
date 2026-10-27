@@ -28,7 +28,7 @@ internal sealed class GuardReplayHarness
     /// value it was set to), which the recording cannot do; relays still never follow (an unresponsive effector).
     /// </param>
     /// <param name="selfTest">The self-test slot the gate and the runner share (the active phase self-test).</param>
-    public GuardReplayHarness(ReplayData data, string yaml, bool dispatch = true, IModeSource? mode = null, IDeviceCommandPort? port = null, bool followSetpoints = false, SelfTestSlot? selfTest = null)
+    public GuardReplayHarness(ReplayData data, string yaml, bool dispatch = true, IModeSource? mode = null, IDeviceCommandPort? port = null, bool followSetpoints = false, SelfTestSlot? selfTest = null, Switchboard.Application.Planning.IPlanView? plan = null)
     {
         Replay = new ReplayHarness(data, yaml);
         var clock = new SignalClock(Replay.Time);
@@ -37,7 +37,7 @@ internal sealed class GuardReplayHarness
         Observations.Add(protection.Current);
 
         var inputs = (IControlInputSource)Replay.Holder;
-        Loop = new ControlLoop(dispatch ? inputs : new GuardOnlyInputs(inputs), clock, mode ?? TestModes.State(OperatingMode.Shadow, false), "replay", port, selfTest: selfTest);
+        Loop = new ControlLoop(dispatch ? inputs : new GuardOnlyInputs(inputs), clock, mode ?? TestModes.State(OperatingMode.Shadow, false), "replay", port, selfTest: selfTest, plan: plan);
         Runner.Stepped += (_, step) => Steps.Add(step);
         if (followSetpoints && port is RecordingDeviceCommandPort recording)
         {

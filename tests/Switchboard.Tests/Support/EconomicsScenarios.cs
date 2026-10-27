@@ -75,9 +75,9 @@ internal static class EconomicsScenarios
         TestDevices.Document(devices, control, extra: "\n" + (economics ?? Economics()) + extra);
 
     /// <param name="off">The devices reported off; the rest start on.</param>
-    public static GuardScenario Create(string devices, DateTimeOffset at, string[] off, string? economics = null, string control = OneBoundary, string extra = "")
+    public static GuardScenario Create(string devices, DateTimeOffset at, string[] off, string? economics = null, string control = OneBoundary, string extra = "", Switchboard.Application.Planning.IPlanView? plan = null)
     {
-        var s = DispatchScenario.Create(devices, off, control, start: at, extra: "\n" + (economics ?? Economics()) + extra);
+        var s = DispatchScenario.Create(devices, off, control, start: at, extra: "\n" + (economics ?? Economics()) + extra, plan: plan);
         s.Time.Zone = Warsaw;
         return s;
     }

@@ -35,7 +35,7 @@ public sealed class CompositionTests
         Assert.NotNull(provider.GetRequiredService<GuardRunner>());
         Assert.NotNull(provider.GetRequiredService<JsonlDecisionLog>());
         Assert.NotNull(provider.GetRequiredService<Switchboard.Application.Presentation.PresentationPersistence>());
-        Assert.Equal(13, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(14, provider.GetServices<IHostedService>().Count());
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class CompositionTests
                 typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
                 typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
                 typeof(PresentationService), typeof(SetupLinkService), typeof(RuntimeDerivedCheckService),
-                typeof(PhaseEvidenceService), typeof(HourlyBalanceService), typeof(CommandPathService), typeof(GuardService),
+                typeof(PhaseEvidenceService), typeof(HourlyBalanceService), typeof(PlannerHostedService), typeof(CommandPathService), typeof(GuardService),
             ],
             provider.GetServices<IHostedService>().Select(s => s.GetType()));
     }
@@ -81,6 +81,39 @@ public sealed class CompositionTests
         using var provider = Build();
 
         Assert.Same(provider.GetRequiredService<MqttLink>(), provider.GetRequiredService<IHealthPublisher>());
+    }
+
+    [Fact]
+    public async Task The_planner_is_idle_without_a_planner_section_and_stands_aside_until_the_guard_has_evaluated()
+    {
+        // Why: no planner: section is v2.0 exactly (idle service, empty holder, no timer to wait for); and before the guard's first evaluation (its status is the
+        // initial safe state) the planner is suspended, so it can never plan from inputs the guard has not yet vetted.
+        using var provider = Build();
+        var service = provider.GetRequiredService<Switchboard.Application.Planning.PlannerService>();
+        var holder = provider.GetRequiredService<Switchboard.Application.Planning.PlanHolder>();
+
+        var wait = await service.StepAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(Timeout.InfiniteTimeSpan, wait);
+        Assert.Equal(Switchboard.Application.Planning.PlanState.Empty, holder.Current);
+        Assert.True(provider.GetRequiredService<Switchboard.Application.Planning.IPlannerSuspension>().Suspended);
+        Assert.Contains(provider.GetServices<IHostedService>(), s => s is PlannerHostedService);
+    }
+
+    [Fact]
+    public void Dispatch_reads_the_plan_only_through_a_view_that_is_off_without_a_planner_section()
+    {
+        // Why: PLAN-13/14. The engine is built with the plan view (its one door to the plan), and without a planner: section the view says off and hands out no entry, so
+        // a 0.10 file decides as v2 whatever the holder contains; the view and the planner share one holder and one configuration revision (the host's edge).
+        using var provider = Build();
+
+        var view = provider.GetRequiredService<Switchboard.Application.Planning.IPlanView>();
+
+        Assert.IsType<Switchboard.Application.Planning.PlanView>(view);
+        Assert.Equal(Switchboard.Domain.Planning.PlannerDispatchMode.Off, view.Mode);
+        Assert.Null(view.For(Switchboard.Domain.Devices.DeviceName.Parse("ev_charger"), DateTimeOffset.UnixEpoch));
+        Assert.NotNull(provider.GetRequiredService<Switchboard.Application.Dispatch.DispatchEngine>());
+        Assert.Same(provider.GetRequiredService<Switchboard.Host.Composition.DiagnosticsPlannerSource>(), provider.GetRequiredService<Switchboard.Application.Planning.IPlannerSource>());
     }
 
     private static ServiceProvider Build()

@@ -153,6 +153,12 @@ public sealed partial class DispatchEngine
         var parameters = config.Parameters;
         var changed = false;
         var settled = new HashSet<Plan>();
+        foreach (var plan in gated.Where(p => kinds.TryGetValue(p, out var kind) && kind == GateKind.Sources))
+        {
+            // Full mode only: a device the plan runs on a grid slot, or urgently, stays on that class (the price test and the sources are not asked again).
+            plan.PlanKeeps = GateFor(plan).Opens is not null;
+        }
+
         foreach (var plan in gated.Where(p => kinds.TryGetValue(p, out var kind) && kind == GateKind.Balance))
         {
             plan.GrantReason = ReasonCode.BalanceSurplus;
@@ -209,7 +215,7 @@ public sealed partial class DispatchEngine
                     stop = ReasonCode.BalanceProjectionLow;
                 }
             }
-            else
+            else if (!plan.PlanKeeps)
             {
                 stop = StopReason(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan, input);
             }
@@ -266,7 +272,7 @@ public sealed partial class DispatchEngine
             }
             else
             {
-                index = GrantWithSources(economics!, economics!.Device(plan.Device.Id)!, plan, surplus, ref load, top, config);
+                index = GrantWithSources(economics!, economics!.Device(plan.Device.Id)!, plan, surplus, ref load, top, config, GateFor(plan));
             }
 
             changed |= Cap(plan, index);
@@ -276,7 +282,7 @@ public sealed partial class DispatchEngine
         foreach (var plan in gated.Where(p => kinds.TryGetValue(p, out var kind) && kind == GateKind.Sources && p.EnergyClass is null && p.BasisIndex > 0 && p.BalanceStop is null))
         {
             var device = economics!.Device(plan.Device.Id)!;
-            plan.EnergyClass = ZoneOf(economics, device).Ok(running: true) ? EnergyClass.Zone
+            plan.EnergyClass = plan.PlanKeeps || ZoneOf(economics, device).Ok(running: true) ? EnergyClass.Zone
                 : PvOf(economics, device, surplus, load, 0) is { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold } ? EnergyClass.Pv
                 : null;
         }
@@ -309,11 +315,12 @@ public sealed partial class DispatchEngine
     /// The stages a device with sources may rise by, from its level, with the load of each granted stage added before the next
     /// is judged; sets the reason and the class the increase is made for, or why it is withheld.
     /// </summary>
-    private static int GrantWithSources(EconomicsContext economics, DeviceEcon device, Plan plan, SurplusView surplus, ref double? load, int top, HourlyBalanceSetup config)
+    private static int GrantWithSources(EconomicsContext economics, DeviceEcon device, Plan plan, SurplusView surplus, ref double? load, int top, HourlyBalanceSetup config, PlanGate planGate)
     {
         var index = plan.BasisIndex;
         EnergyClass? granted = null;
         ReasonCode? refusal = null;
+        ReasonCode? opened = null;
         while (index < top)
         {
             var candidate = PlannedPower(plan, index + 1, config) - PlannedPower(plan, index, config);
@@ -325,7 +332,29 @@ public sealed partial class DispatchEngine
             var pv = PvOf(economics, device, surplus, load, candidate);
             var zone = ZoneOf(economics, device);
             var pvOk = device.Spec.Sources!.Pv && pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth;
-            if (!pvOk && !zone.Ok(running: index > 0))
+            var zoneOk = zone.Ok(running: index > 0);
+            if (!pvOk && zoneOk && planGate.Defers)
+            {
+                // The plan places this device's energy in a later slot: the zone class is not used now (the surplus class is not the plan's to refuse).
+                refusal = ReasonCode.PlanDeferred;
+                break;
+            }
+
+            if (!pvOk && !zoneOk && planGate.Opens is { } opening)
+            {
+                // The class the plan adds, behind everything above (guard, envelope, persistence, lockouts): its slot, or an urgent goal. No price test, no zone-end margin.
+                opened ??= opening;
+                granted ??= EnergyClass.Zone;
+                if (load is { } drawing)
+                {
+                    load = drawing + candidate;
+                }
+
+                index++;
+                continue;
+            }
+
+            if (!pvOk && !zoneOk)
             {
                 refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
                 break;
@@ -351,7 +380,7 @@ public sealed partial class DispatchEngine
         plan.BalanceAllows = index > plan.BasisIndex;
         plan.BalanceReason = refusal;
         plan.EnergyClass = granted;
-        plan.GrantReason = granted switch
+        plan.GrantReason = opened is { } byPlan && index > plan.BasisIndex ? byPlan : granted switch
         {
             EnergyClass.Pv => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusAvailable : ReasonCode.BalanceSurplus,
             EnergyClass.Zone => ReasonCode.ZoneAllowed,
@@ -410,7 +439,7 @@ public sealed partial class DispatchEngine
                 return ReasonCode.ValueBelowCost;
             }
 
-            if (surplusPresent)
+            if (surplusPresent || pv.Allowance.Decision == AllowanceDecision.Hold)
             {
                 return economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow;
             }

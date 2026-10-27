@@ -125,16 +125,24 @@ public sealed class PlanEndpointTests
     [Fact]
     public void The_answer_has_the_documented_keys_and_no_plan_field()
     {
-        // Why: until slice 4 the answer must not look like it plans: slots (the inputs per slot) exist, but no entries, cost or computedAt, and status stays
-        // absent. Without sources (as here) the forecast inputs are null, so nothing is shown that was not computed.
+        // Why: the answer must not look like it plans when there is no plan: the keys of slices 1 to 3 are all still there (nothing was removed or renamed), the
+        // plan fields slice 4 added (id, computedAt, cost, lastSolve) are present but null, no device has an entry, and status stays absent. Without sources (as
+        // here) the forecast inputs are null, so nothing is shown that was not computed.
         var json = JsonSerializer.SerializeToElement(
             PlanEndpoint.Build(Config("planner:\n  dispatch: off\n"), new GoalBoard(Now, [Goal.Of(Request(), Now)], [], [])),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
-        Assert.Equal(["at", "devices", "dispatchMode", "enabled", "inputs", "issues", "notes", "slots", "status", "superseded"], json.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        var keys = json.EnumerateObject().Select(p => p.Name).ToList();
+        Assert.All(["at", "devices", "dispatchMode", "enabled", "inputs", "issues", "notes", "slots", "status", "superseded"], key => Assert.Contains(key, keys));
+        Assert.All(["id", "computedAt", "validUntil", "horizonEnd", "slotMinutes", "configRevision", "suspended", "cost", "lastSolve"], key => Assert.Contains(key, keys));
+        Assert.All(["id", "computedAt", "validUntil", "horizonEnd", "configRevision", "cost"], key => Assert.Equal(JsonValueKind.Null, json.GetProperty(key).ValueKind));
+        Assert.False(json.GetProperty("suspended").GetBoolean());
+        Assert.Equal("absent", json.GetProperty("status").GetString());
         Assert.Equal(["goalsActive", "goalsInactive", "loadForecast", "prices", "pvForecast"], json.GetProperty("inputs").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal(0, json.GetProperty("slots").GetArrayLength());
-        Assert.Equal(["device", "goal", "goals"], json.GetProperty("devices")[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        var device = json.GetProperty("devices")[0];
+        Assert.All(["device", "goal", "goals"], key => Assert.Contains(key, device.EnumerateObject().Select(p => p.Name)));
+        Assert.Equal(0, device.GetProperty("entries").GetArrayLength());
     }
 
     [Fact]

@@ -115,6 +115,7 @@ public static class SwitchboardServices
         services.AddHostedService<RuntimeDerivedCheckService>();
         services.AddHostedService<PhaseEvidenceService>();
         services.AddHostedService<HourlyBalanceService>();
+        services.AddHostedService<PlannerHostedService>();
 
         // The command path's sender runs until the guard has stopped, so the shutdown safe state's
         // commands still leave (bounded by HomeAssistant:ShutdownCommandWait).
@@ -316,8 +317,32 @@ public static class SwitchboardServices
         services.AddSingleton<IGoalInputSource, DiagnosticsGoalInputSource>();
         services.AddSingleton<GoalLedger>();
         services.AddSingleton<IGoalSource, ConfigGoalSource>();
+
+        // The manual goals ("want now", PLAN-19): the add-on's own state, a goal source of origin manual; no entity, no command.
+        services.AddSingleton<ManualGoalStore>();
+        services.AddSingleton<IManualGoalControl>(sp => sp.GetRequiredService<ManualGoalStore>());
+        services.AddSingleton<IGoalSource>(sp => sp.GetRequiredService<ManualGoalStore>());
         services.AddSingleton<GoalEvaluator>();
         services.AddSingleton<GoalTracker>();
+
+        // The planner (PLAN-10 to 12): its own loop and holder, reading the signal layer and the goal model, publishing a plan that nothing reads yet. Idle
+        // without a planner: section. It names no effector, command port, override or guard type: the one thing it asks of the guard is IPlannerSuspension.
+        services.AddSingleton<PlanHolder>();
+        services.AddSingleton<DiagnosticsPlannerSource>();
+        services.AddSingleton<IPlannerSource>(sp => sp.GetRequiredService<DiagnosticsPlannerSource>());
+        services.AddSingleton<IPlannerSuspension, PlannerSuspension>();
+
+        // Dispatch reads the plan only through this view (PLAN-13): behind planner.dispatch (off by default), and a plan that is missing, stale or made for
+        // something else is no plan at all (v2 exactly).
+        services.AddSingleton<IPlanCurrency, DiagnosticsPlanCurrency>();
+        services.AddSingleton<IPlanView, PlanView>();
+        services.AddSingleton(sp => new PlannerService(
+            sp.GetRequiredService<IPlannerSource>(),
+            sp.GetRequiredService<IPlannerSuspension>(),
+            sp.GetRequiredService<PlanHolder>(),
+            sp.GetRequiredService<SignalClock>().Time,
+            sp.GetRequiredService<ILogger<PlannerService>>()));
+        services.AddSingleton<IPlanTrigger>(sp => sp.GetRequiredService<PlannerService>());
         return services;
     }
 

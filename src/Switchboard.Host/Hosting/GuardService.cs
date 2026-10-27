@@ -31,6 +31,7 @@ internal sealed class GuardService(
     ControlSwitchState control,
     DeviceOverrides overrides,
     GoalLedger goals,
+    ManualGoalStore manualGoals,
     GuardStatusHolder status,
     ModeState mode,
     EffectorGate gate,
@@ -59,6 +60,7 @@ internal sealed class GuardService(
         state.Attach(runner, killSwitch);
         state.Attach(overrides);
         state.Attach(goals);
+        state.Attach(manualGoals);
         state.Attach(control);
         evidence.Attach(runner);
         activeTest.Attach(runner);
@@ -77,6 +79,7 @@ internal sealed class GuardService(
 
         overrides.Restore(loaded.State.Overrides);
         goals.Restore(loaded.State.Goals);
+        manualGoals.Restore(loaded.State.ManualGoals);
         var now = time.GetUtcNow();
         state.BeginObservation(log.OldestDay() is { } oldest && oldest < now ? oldest : now);
         status.Published += OnPublished;

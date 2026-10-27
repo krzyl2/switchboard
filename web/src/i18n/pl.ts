@@ -5,6 +5,7 @@ import type { Messages } from './en';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
+import { plan } from './plan';
 import { setup } from './setup';
 import { setupConnection } from './setupConnection';
 import { setupLoads } from './setupLoads';
@@ -426,14 +427,15 @@ export const pl: Messages = {
   'reason.settling_window_open': 'Okno ustalania otwarte: czeka, aż poprzednia zmiana pojawi się w pomiarach.',
   'reason.awaiting_confirmation': 'Czeka, aż wolna moc utrzyma się przez wymaganą liczbę cykli z rzędu, zanim doda obciążenie.',
   'reason.value_rank_below_cutoff': 'Jego wartość kWh jest w kolejce poniżej tego, na co starcza wolnej mocy.',
-  'reason.goal_met': 'Cel osiągnięty.',
+  'reason.goal_met': 'Cel osiągnięty, a urządzenie ma pozostać wyłączone.',
   'reason.guard_expression_false': 'Warunek ustawiony dla urządzenia nie jest spełniony.',
   'reason.device_unresponsive': 'Urządzenie nie reaguje na komendy.',
   'reason.manual_override': 'Ręczne nadpisanie.',
   'reason.mode_shadow': 'Tryb Obserwacja: decyzja policzona i zapisana, nic nie przełączono.',
   'reason.safe_state':
     'Stan bezpieczny: brak ważnych danych (brak połączenia, błędna konfiguracja albo jeszcze brak pierwszego odczytu) lub dodatek się zatrzymuje.',
-  'reason.plan_slot_target': 'Cel bieżącego odcinka planu.',
+  'reason.plan_slot_target':
+    'Decyduje bieżący odcinek planu: urządzenie pracuje, bo plan chce teraz energii, albo przestaje rosnąć, bo osiągnięto budżet energii lub limit mocy odcinka.',
   'reason.headroom_available': 'Wolna moc znów dostępna.',
   'reason.kill_switch': 'Wstrzymanie sterowania jest włączone.',
   'reason.change_limit': 'Inne zwiększenie w tym oknie ustalania wciąż trwa; jedna zmiana naraz.',
@@ -450,6 +452,12 @@ export const pl: Messages = {
   'reason.value_below_cost': 'Energia kosztuje więcej, niż urządzenie jest warte za kWh: cena strefy albo utracony przychód z eksportu.',
   'reason.surplus_available': 'Jest teraz nadwyżka mocy i wystarcza dla urządzenia.',
   'reason.surplus_low': 'Nadwyżki mocy teraz nie starcza dla urządzenia.',
+  // Wersja listy 7: plan (15-PLANNER); wersje 1 do 6 używały kodów mocy.
+  'reason.plan_deferred': 'Plan umieszcza energię urządzenia w późniejszym odcinku, więc teraz nie kupuje z sieci.',
+  'reason.goal_deadline_urgent': 'Inaczej twardy cel nie zostałby osiągnięty w terminie, więc urządzenie może teraz pracować na dowolnej energii.',
+  'reason.plan_discharge': 'Plan przewiduje rozładowanie baterii w tym odcinku.',
+  'reason.soc_floor': 'Bateria jest na minimalnym poziomie naładowania, więc nie jest rozładowywana.',
+  'reason.soc_ceiling': 'Bateria jest naładowana do maksimum, więc nie jest ładowana.',
   'reason.kill_switch.released': 'Wstrzymanie sterowania zostało wyłączone.',
   'reason.safe_state.exited': 'Dane znów są poprawne; stan bezpieczny zakończony.',
   'reason.device_unresponsive.cleared': 'Próba się zgodziła: urządzenie znów reaguje i bierze udział w rozdziale mocy.',
@@ -534,4 +542,5 @@ export const pl: Messages = {
   ...setupLoads.pl,
   ...setupMode.pl,
   ...control.pl,
+  ...plan.pl,
 };

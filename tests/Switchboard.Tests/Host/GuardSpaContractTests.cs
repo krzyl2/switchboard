@@ -77,10 +77,10 @@ public sealed partial class GuardSpaContractTests
     }
 
     [Fact]
-    public void Spa_reason_codes_are_list_version_6_in_the_order_of_04()
+    public void Spa_reason_codes_are_list_version_7_in_the_order_of_04()
     {
-        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 6.
-        Assert.Equal(6, ReasonCodes.ListVersion);
+        // The SPA renders one sentence per code; its list is the closed list of 04 §6, version 7.
+        Assert.Equal(7, ReasonCodes.ListVersion);
         Assert.Equal(ReasonCodes.All.Select(ReasonCodes.Name), SpaList(DecisionsContract, "REASON_CODES"));
     }
 

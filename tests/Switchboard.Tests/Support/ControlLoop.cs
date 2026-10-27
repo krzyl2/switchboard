@@ -31,11 +31,13 @@ internal sealed class ControlLoop
         KillSwitchState? killSwitch = null,
         ControlSwitchState? control = null,
         SelfTestSlot? selfTest = null,
-        ILogger<EffectorGate>? gateLogger = null)
+        ILogger<EffectorGate>? gateLogger = null,
+        Switchboard.Application.Planning.IPlanView? plan = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         Inbox = inbox ?? new GuardInbox();
         Lockouts = lockouts ?? new LockoutClocks();
+        Dispatch = new DispatchEngine(TimeProvider.System, plan);
         Mode = mode;
         Port = port;
         SelfTest = selfTest;
@@ -66,7 +68,7 @@ internal sealed class ControlLoop
 
     public GuardEngine Engine { get; }
 
-    public DispatchEngine Dispatch { get; } = new();
+    public DispatchEngine Dispatch { get; }
 
     public EffectorGate Gate { get; }
 

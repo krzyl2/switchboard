@@ -42,6 +42,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private long _savedVersion;
     private long _overridesVersion = -1;
     private long _goalsVersion = -1;
+    private long _manualGoalsVersion = -1;
     private string? _writeError;
 
     /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
@@ -255,6 +256,43 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         }
     }
 
+    /// <summary>Follows the manual goals (PLAN-19). Call once, before the first step.</summary>
+    public void Attach(ManualGoalStore manualGoals)
+    {
+        ArgumentNullException.ThrowIfNull(manualGoals);
+        manualGoals.Changed += (_, snapshot) => OnManualGoalsChanged(snapshot);
+    }
+
+    /// <summary>
+    /// Called by the manual goal store after a change. A goal that begins or ends (or is replaced by another) is written at once, so a
+    /// restart does not forget what the user asked for or bring back what was cancelled; delivered energy alone goes to memory and is written
+    /// with the next interval save, or at shutdown. A snapshot older than the last one applied is ignored.
+    /// </summary>
+    public void OnManualGoalsChanged(ManualGoalSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        lock (_gate)
+        {
+            if (snapshot.Version <= _manualGoalsVersion)
+            {
+                return;
+            }
+
+            _manualGoalsVersion = snapshot.Version;
+            var structural = !SameManualGoalShape(_current.ManualGoals, snapshot.Goals);
+            _current = _current with { ManualGoals = snapshot.Goals };
+            if (structural)
+            {
+                Enqueue(_current, _lastQueuedAt);
+            }
+        }
+    }
+
+    private static bool SameManualGoalShape(
+        ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.ManualGoal> a,
+        ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.ManualGoal> b) =>
+        a.Count == b.Count && a.All(x => b.TryGetValue(x.Key, out var y) && x.Value.SameWish(y) && x.Value.Since == y.Since);
+
     private static bool SameGoalShape(
         ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.GoalLedgerEntry> a,
         ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.GoalLedgerEntry> b) =>
@@ -317,7 +355,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         lock (_gate)
         {
             // Goal progress moves every step but is saved on the interval: the last of it is queued here, so a clean stop loses none.
-            if (_lastQueued is { } queued && !ReferenceEquals(queued.Goals, _current.Goals))
+            if (_lastQueued is { } queued && (!ReferenceEquals(queued.Goals, _current.Goals) || !ReferenceEquals(queued.ManualGoals, _current.ManualGoals)))
             {
                 Enqueue(_current, _lastQueuedAt);
             }
@@ -465,7 +503,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         || after.Budgets.Any(p => !before.Budgets.TryGetValue(p.Key, out var saved) || saved.Budget != p.Value.Budget)
         || GroupBudgetsChanged(before, after)
         || !ReferenceEquals(before.Devices, after.Devices)
-        || !ReferenceEquals(before.Goals, after.Goals);
+        || !ReferenceEquals(before.Goals, after.Goals)
+        || !ReferenceEquals(before.ManualGoals, after.ManualGoals);
 
     private static bool GroupBudgetsChanged(RuntimeState before, RuntimeState after) =>
         before.GroupBudgets.Count != after.GroupBudgets.Count

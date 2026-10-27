@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Decisions;
+using Switchboard.Application.Planning;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
@@ -33,10 +34,12 @@ public sealed partial class DispatchEngine
     }
 
     /// <param name="time">Only its <see cref="TimeProvider.LocalTimeZone"/> is read, for the tariff zones: the engine never reads the time itself, every call is handed <c>now</c>.</param>
-    public DispatchEngine(TimeProvider time)
+    /// <param name="plan">The plan, as dispatch may read it (15-PLANNER); null, or a view whose mode is off, is exactly the v2 dispatch.</param>
+    public DispatchEngine(TimeProvider time, IPlanView? plan = null)
     {
         ArgumentNullException.ThrowIfNull(time);
         _time = time;
+        _plan = plan;
     }
 
     /// <summary>

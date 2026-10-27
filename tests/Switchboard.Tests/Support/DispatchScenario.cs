@@ -108,9 +108,9 @@ internal static class DispatchScenario
     public static ModeStatus Active => ModeState.Resolve(OperatingMode.Active, controlAllowed: true, configurationValid: true, stateConfirmed: true);
 
     /// <param name="off">Devices reported off (relays off, setpoints at their floor); the rest start on.</param>
-    public static GuardScenario Create(string devices, string[] off, string control = "", ModeStatus? mode = null, IDeviceCommandPort? port = null, bool settledLockouts = true, DateTimeOffset? start = null, string extra = "")
+    public static GuardScenario Create(string devices, string[] off, string control = "", ModeStatus? mode = null, IDeviceCommandPort? port = null, bool settledLockouts = true, DateTimeOffset? start = null, string extra = "", Switchboard.Application.Planning.IPlanView? plan = null)
     {
-        var s = new GuardScenario(TestDevices.Document(devices, control, extra: extra), start: start, mode: mode, settledLockouts: false, dispatch: true, port: port);
+        var s = new GuardScenario(TestDevices.Document(devices, control, extra: extra), start: start, mode: mode, settledLockouts: false, dispatch: true, port: port, plan: plan);
         foreach (var name in off)
         {
             var device = s.Setup.Device(DeviceName.Parse(name))!;

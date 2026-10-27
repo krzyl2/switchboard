@@ -139,7 +139,7 @@ describe('shell', () => {
     expect(banner().textContent).toBe('Obserwacja — Switchboard niczego nie przełącza');
   });
 
-  it('lists the mockup screens in order, the day plan disabled, diagnostics after them', () => {
+  it('lists the mockup screens in order, the day plan (06) among them as a page, diagnostics after them', () => {
     render(<App lang="pl" />);
     const nav = within(screen.getByRole('navigation'));
 
@@ -149,16 +149,14 @@ describe('shell', () => {
       '03Konfiguracja wstępna',
       '04Karta urządzenia',
       '05Limity i przeciążenia',
+      '06Plan doby',
       '07Dziennik decyzji',
       'Sygnały',
       'Stan',
     ]);
-    for (const disabled of ['Plan doby']) {
-      const item = nav.getByText(disabled);
-      expect(item.closest('a')).toBeNull();
-      expect(item.getAttribute('aria-disabled')).toBe('true');
-      expect(item.textContent).toContain('nie w tej wersji');
-    }
+    // Every screen of the mockup is built: no entry is left that is listed but disabled.
+    expect(nav.queryByText('nie w tej wersji')).toBeNull();
+    expect(nav.getByText('Plan doby', { exact: false }).closest('a')?.getAttribute('href')).toBe('#/plan');
   });
 
   it('marks the page on screen in the navigation', () => {

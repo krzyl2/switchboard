@@ -34,7 +34,9 @@ namespace Switchboard.Infrastructure.Persistence;
 /// the stop), written only when known; 0.7.0 sets a file carrying it aside like any untrusted file.
 /// Schema 4 (0.11.0, planner slice 1) adds the goal ledger (<c>goals</c>: per device the energy an energy
 /// goal has drawn since it began, with its deadline); a schema 3 file reads as no goals, and a rollback to 0.10.x sets a
-/// schema 4 file aside like any untrusted file.
+/// schema 4 file aside like any untrusted file. Schema 5 (planner slice 7) adds the manual goals (<c>manual_goals</c>: per device what
+/// the user asked for with "want now", its deadline and the energy delivered); a schema 4 file reads as no manual goals, and a rollback to
+/// the slice 1 to 6 build sets a schema 5 file aside like any untrusted file.
 /// </para>
 /// </summary>
 public sealed class RuntimeStateFile : IRuntimeStateStore
@@ -57,6 +59,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private static readonly string[] Version2Keys = [.. Version1Keys, "overrides", "group_budgets"];
     private static readonly string[] Version3Keys = [.. Version2Keys.Where(k => k != "ui_mode"), "control", "observation", "start_baselines", "self_started"];
     private static readonly string[] Version4Keys = [.. Version3Keys, "goals"];
+    private static readonly string[] Version5Keys = [.. Version4Keys, "manual_goals"];
 
     private readonly string _directory;
     private readonly int _maxBytes;
@@ -293,6 +296,21 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             }
 
             writer.WriteEndObject();
+            writer.WriteStartObject("manual_goals");
+            foreach (var (device, goal) in state.ManualGoals.OrderBy(g => g.Key))
+            {
+                writer.WriteStartObject(device.Value);
+                writer.WriteString("kind", Snake(goal.Kind));
+                writer.WriteNumber("target", goal.Target);
+                WriteTime(writer, "deadline", goal.Deadline);
+                writer.WriteBoolean("hard", goal.Hard);
+                WriteTime(writer, "since", goal.Since);
+                writer.WriteNumber("delivered_kwh", goal.DeliveredKwh);
+                WriteTime(writer, "updated_at", goal.UpdatedAt);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndObject();
             writer.WriteEndObject();
         }
 
@@ -446,14 +464,15 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             && declared.TryGetInt32(out var number)
                 ? number
                 : 0;
-        if (version is not (RuntimeState.SchemaVersion or RuntimeState.GoalFreeSchemaVersion or RuntimeState.PreviousSchemaVersion or RuntimeState.LegacySchemaVersion))
+        if (version is not (RuntimeState.SchemaVersion or RuntimeState.LedgerSchemaVersion or RuntimeState.GoalFreeSchemaVersion or RuntimeState.PreviousSchemaVersion or RuntimeState.LegacySchemaVersion))
         {
-            throw new InvalidStateException($"schema_version is not {RuntimeState.LegacySchemaVersion}, {RuntimeState.PreviousSchemaVersion}, {RuntimeState.GoalFreeSchemaVersion} or {RuntimeState.SchemaVersion}");
+            throw new InvalidStateException($"schema_version is not {RuntimeState.LegacySchemaVersion}, {RuntimeState.PreviousSchemaVersion}, {RuntimeState.GoalFreeSchemaVersion}, {RuntimeState.LedgerSchemaVersion} or {RuntimeState.SchemaVersion}");
         }
 
         var keys = Keys(root, "the document", version switch
         {
-            RuntimeState.SchemaVersion => Version4Keys,
+            RuntimeState.SchemaVersion => Version5Keys,
+            RuntimeState.LedgerSchemaVersion => Version4Keys,
             RuntimeState.GoalFreeSchemaVersion => Version3Keys,
             RuntimeState.PreviousSchemaVersion => Version2Keys,
             _ => Version1Keys,
@@ -529,7 +548,57 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         };
 
         // A schema 3 file has no ledger: it reads as no goals, and the goals begin again from the configuration.
-        return version == RuntimeState.SchemaVersion ? state with { Goals = Goals(keys["goals"]) } : state;
+        if (version == RuntimeState.GoalFreeSchemaVersion)
+        {
+            return state;
+        }
+
+        state = state with { Goals = Goals(keys["goals"]) };
+
+        // A schema 4 file has no manual goals.
+        return version == RuntimeState.SchemaVersion ? state with { ManualGoals = ManualGoals(keys["manual_goals"]) } : state;
+    }
+
+    private static ImmutableDictionary<DeviceName, ManualGoal> ManualGoals(JsonElement element)
+    {
+        var goals = ImmutableDictionary.CreateBuilder<DeviceName, ManualGoal>();
+        foreach (var property in Object(element, "manual_goals", MaxDevices))
+        {
+            if (!DeviceName.TryParse(property.Name, out var device))
+            {
+                throw new InvalidStateException($"manual_goals.{property.Name} is not a device name");
+            }
+
+            var path = $"manual_goals.{property.Name}";
+            var entry = Keys(property.Value, path, "kind", "target", "deadline", "hard", "since", "delivered_kwh", "updated_at");
+            var kindText = entry["kind"].ValueKind == JsonValueKind.String ? entry["kind"].GetString() : null;
+            var kind = Enum.GetValues<GoalKind>().Where(k => Snake(k) == kindText).Select(k => (GoalKind?)k).SingleOrDefault()
+                ?? throw new InvalidStateException($"{path}.kind is neither energy nor soc");
+            var target = Number(entry["target"], $"{path}.target");
+            if (!ManualGoal.TargetInRange(kind, target))
+            {
+                throw new InvalidStateException($"{path}.target is outside what a {Snake(kind)} goal can ask");
+            }
+
+            var delivered = Number(entry["delivered_kwh"], $"{path}.delivered_kwh");
+            if (delivered is < 0 or > MaxGoalKwh || (kind == GoalKind.Soc && delivered != 0))
+            {
+                throw new InvalidStateException($"{path}.delivered_kwh is outside [0, {MaxGoalKwh.ToString("0", CultureInfo.InvariantCulture)}] (and zero for a soc goal)");
+            }
+
+            goals.Add(
+                device.Value,
+                new ManualGoal(
+                    kind,
+                    target,
+                    Time(entry["deadline"], $"{path}.deadline")!.Value,
+                    Bool(entry["hard"], $"{path}.hard"),
+                    Time(entry["since"], $"{path}.since")!.Value,
+                    delivered,
+                    Time(entry["updated_at"], $"{path}.updated_at")!.Value));
+        }
+
+        return goals.ToImmutable();
     }
 
     private static ImmutableDictionary<DeviceName, GoalLedgerEntry> Goals(JsonElement element)

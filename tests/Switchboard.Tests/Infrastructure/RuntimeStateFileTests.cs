@@ -76,9 +76,9 @@ public sealed class RuntimeStateFileTests : IDisposable
 
         using var json = JsonDocument.Parse(System.IO.File.ReadAllText(Path.Combine(_data.Path, "state.json")));
         Assert.Equal(
-            ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "phases", "devices", "mqtt", "overrides", "group_budgets", "control", "observation", "start_baselines", "self_started", "goals"],
+            ["schema_version", "saved_at", "clean_shutdown", "kill_switch", "kill_switch_changed_at", "phases", "devices", "mqtt", "overrides", "group_budgets", "control", "observation", "start_baselines", "self_started", "goals", "manual_goals"],
             json.RootElement.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(4, json.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(5, json.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal(["level", "shed", "since"], json.RootElement.GetProperty("start_baselines").GetProperty("heater_l1").EnumerateObject().Select(p => p.Name));
         Assert.Equal(["budget", "at"], json.RootElement.GetProperty("phases").GetProperty("L1").EnumerateObject().Select(p => p.Name));
         Assert.DoesNotContain(typeof(RuntimeState).GetProperties(), p => p.Name.Contains("Lockout", StringComparison.OrdinalIgnoreCase) || p.PropertyType == typeof(TimeSpan));
@@ -170,7 +170,7 @@ public sealed class RuntimeStateFileTests : IDisposable
     [Theory]
     [InlineData("\"budget\":0.83", "\"budget\":1.5")]
     [InlineData("\"budget\":0.83", "\"budget\":-0.1")]
-    [InlineData("\"schema_version\":4", "\"schema_version\":5")]
+    [InlineData("\"schema_version\":5", "\"schema_version\":6")]
     [InlineData("\"allowed\":true", "\"allowed\":\"yes\"")]
     [InlineData("\"locked\":false", "\"locked\":true")]
     [InlineData("\"source\":\"api\"", "\"source\":\"browser\"")]

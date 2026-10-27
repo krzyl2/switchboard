@@ -439,7 +439,7 @@ describe('navigation', () => {
     render(<App lang="en" />);
 
     const links = within(screen.getByRole('navigation')).getAllByRole('link');
-    // The mockup's screens (the day plan is not a link: not in this version), then diagnostics.
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/flows', '#/setup', '#/devices', '#/guard', '#/log', '#/signals', '#/status']);
+    // The mockup's screens in its order (the day plan is 06), then diagnostics.
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/', '#/flows', '#/setup', '#/devices', '#/guard', '#/plan', '#/log', '#/signals', '#/status']);
   });
 });

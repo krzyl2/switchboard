@@ -4,6 +4,7 @@ import { device } from './device';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
+import { plan } from './plan';
 import { setup } from './setup';
 import { setupConnection } from './setupConnection';
 import { setupLoads } from './setupLoads';
@@ -425,14 +426,15 @@ export const en = {
   'reason.settling_window_open': 'Waiting for the previous change to show in the measurements.',
   'reason.awaiting_confirmation': 'Waiting for the headroom to hold for enough cycles in a row before adding load.',
   'reason.value_rank_below_cutoff': 'Its value per kWh ranks below what the headroom allows.',
-  'reason.goal_met': 'Its goal is met.',
+  'reason.goal_met': 'Its goal is met and it is set to stay off.',
   'reason.guard_expression_false': 'A condition set for the device is not met.',
   'reason.device_unresponsive': 'The device does not respond to commands.',
   'reason.manual_override': 'Manual override.',
   'reason.mode_shadow': 'Shadow mode: computed and logged, nothing switched.',
   'reason.safe_state':
     'Safe state: no valid data (no connection, configuration invalid or no first reading yet), or the add-on is stopping.',
-  'reason.plan_slot_target': 'Target of the current plan slot.',
+  'reason.plan_slot_target':
+    'The current plan slot decides: the device runs because the plan wants energy now, or stops rising because the slot’s energy budget or power ceiling is reached.',
   'reason.headroom_available': 'Headroom is available again.',
   'reason.kill_switch': 'The kill switch is engaged.',
   'reason.change_limit': 'Another increase of this settling window is still in flight; one change at a time.',
@@ -449,6 +451,12 @@ export const en = {
   'reason.value_below_cost': 'The energy costs more than the device’s value per kWh: the zone price, or the export income it would forgo.',
   'reason.surplus_available': 'There is surplus power right now and it covers the device.',
   'reason.surplus_low': 'There is not enough surplus power right now for the device.',
+  // List version 7: the plan (15-PLANNER); versions 1 to 6 used the headroom codes.
+  'reason.plan_deferred': 'The plan places the device’s energy in a later slot, so it does not buy from the grid now.',
+  'reason.goal_deadline_urgent': 'A hard goal would otherwise miss its deadline, so the device may run on any energy now.',
+  'reason.plan_discharge': 'The plan calls for discharging the battery in this slot.',
+  'reason.soc_floor': 'The battery is at its minimum state of charge, so it is not discharged.',
+  'reason.soc_ceiling': 'The battery is at its maximum state of charge, so it is not charged.',
   // The end of a condition is worded by its action: the reason code still names the condition that ended.
   'reason.kill_switch.released': 'The kill switch was released.',
   'reason.safe_state.exited': 'Valid data again; the safe state ended.',
@@ -534,6 +542,7 @@ export const en = {
   ...setupLoads.en,
   ...setupMode.en,
   ...control.en,
+  ...plan.en,
 };
 
 export type Messages = { [K in keyof typeof en]: string };

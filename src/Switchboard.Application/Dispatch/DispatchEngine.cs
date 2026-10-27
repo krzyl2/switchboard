@@ -72,6 +72,7 @@ public sealed partial class DispatchEngine
             _fallbackChanges = [];
             ResetFallbackTracking();
             _classes.Clear();
+            ResetPlan();
             _free.Reset();
             _freeNet.Reset();
             _valueOrder.Reset();
@@ -95,6 +96,7 @@ public sealed partial class DispatchEngine
         _netFree = ObserveNetFree(setup, exportSample, now);
         _economics = ObserveEconomics(setup, now, input.Prices);
         _devicePowers = devicePowers.ToImmutable();
+        ObservePlan(input, setup, now);
 
         var overridesChanged = input.Overrides.Version != _overrideVersion;
         var changed = overridesChanged
@@ -257,7 +259,7 @@ public sealed partial class DispatchEngine
     {
         var guard = input.Guard;
         var envelope = guard.Envelope;
-        var order = StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted, OrderKey());
+        var order = UrgentFirst(StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted, OrderKey()));
         var plans = new List<Plan>();
         var openWindows = setup.Devices
             .Select(d => (Device: d, Window: input.Ledger.Entry(d.Id)?.Window))
@@ -300,6 +302,7 @@ public sealed partial class DispatchEngine
 
             var plan = new Plan(device, i + 1, levels, basis, basisIndex, capIndex, constraints, mode, unresponsive && !probeDue)
             {
+                Entry = _planEntries.GetValueOrDefault(spec.Id),
                 GuardAllows = guardAllows,
                 WindowFree = windowFree,
                 OwnWindow = blocking.Any(w => w.Device.Id == spec.Id),
@@ -367,6 +370,11 @@ public sealed partial class DispatchEngine
             {
                 // Unresponsive (DISP-07): off, and excluded from increases until its probe is due.
                 plan.MaxAllowed = Math.Min(Math.Max(0, lockedMin), capIndex);
+            }
+
+            if (plan.Entry is { } entry && plan.Mode == OverrideMode.Auto && !plan.Excluded)
+            {
+                NarrowByPlan(plan, entry, setup);
             }
 
             plan.MinAllowed = Math.Min(plan.MinAllowed, plan.MaxAllowed);
@@ -480,6 +488,7 @@ public sealed partial class DispatchEngine
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
                     : reduction ? reserve
+                    : plan.PlanStop is { } planStop ? planStop
                     : plan.BalanceStop is { } balanceStop ? balanceStop
                     : preempted || allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
                     : reserve;
@@ -498,6 +507,7 @@ public sealed partial class DispatchEngine
             {
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
+                    : plan.PlanRefusal is { } planRefusal && allocation.Uncapped > plan.BasisIndex ? planRefusal
                     : plan.BalanceReason is { } withheld && !plan.BalanceAllows && allocation.Uncapped > plan.BasisIndex ? withheld
                     : allocation.Limit == AllocationLimit.None ? ReasonCode.HeadroomAvailable
                     : allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
@@ -525,7 +535,7 @@ public sealed partial class DispatchEngine
                 change,
                 blockedOverride ? plan.BlockedBy : null,
                 fresh,
-                Inputs(plan, allocation, guard, input, setup, now, _balance, _economics?.Block(plan.Device.Id, plan.EnergyClass)))
+                Inputs(plan, allocation, guard, input, setup, now, _balance, _economics?.Block(plan.Device.Id, plan.EnergyClass), PlanBlock(plan)))
             {
                 PendingLevel = blockedOverride ? DeviceLevels.Toward(spec, plan.Basis, plan.Levels[plan.CapIndex], setup.Timing.MaxStepChangeStages) : null,
             });
@@ -548,6 +558,7 @@ public sealed partial class DispatchEngine
     private static ReasonCode PendingReason(Plan plan, Guard.GuardEvaluation guard, DeviceState state, DispatchSetup setup) =>
         plan.Excluded ? ReasonCode.DeviceUnresponsive
         : !plan.DataValid ? ReasonCode.GuardStaleSignal
+        : plan.GuardAllows && plan.PlanRefusal is { } planned ? planned
         : plan.GuardAllows && plan.BalanceReason is { } withheld && !plan.BalanceAllows ? withheld
         : !plan.GuardAllows ? plan.Constraints.Any(k => guard.Envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.HeadroomInsufficient
         : plan.OwnWindow ? ReasonCode.SettlingWindowOpen
@@ -586,7 +597,7 @@ public sealed partial class DispatchEngine
         return Allocator.Allocate(request).Devices.ToDictionary(d => d.Device);
     }
 
-    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now, BalanceView? balance, EconomicsDecisionInputs? economics)
+    private static DispatchDecisionInputs Inputs(Plan plan, DeviceAllocation allocation, Guard.GuardEvaluation guard, DispatchInput input, DispatchSetup setup, DateTimeOffset now, BalanceView? balance, EconomicsDecisionInputs? economics, PlanDecisionInputs? planBlock)
     {
         var spec = plan.Device.Spec;
         var load = guard.Envelope.Device(spec.Id);
@@ -607,6 +618,7 @@ public sealed partial class DispatchEngine
         {
             Balance = balance?.ToDecisionInputs(),
             Economics = economics,
+            Plan = planBlock,
         };
     }
 
@@ -774,5 +786,17 @@ public sealed partial class DispatchEngine
 
         /// <summary>The allowance gate asked the device to come down one stage (balance_projection_low, balance_unknown, value_below_cost, surplus_low).</summary>
         public ReasonCode? BalanceStop { get; set; }
+
+        /// <summary>The plan's entry for the device in this step (a valid, fresh one; null leaves the device to v2).</summary>
+        public Planning.PlanEntryView? Entry { get; init; }
+
+        /// <summary>Why the plan keeps the device from rising (goal_met, plan_slot_target); null while it does not.</summary>
+        public ReasonCode? PlanRefusal { get; set; }
+
+        /// <summary>Why the plan asks the device to come down (goal_met, plan_slot_target); null while it does not.</summary>
+        public ReasonCode? PlanStop { get; set; }
+
+        /// <summary>The plan keeps the device running on its class (full mode: a grid slot of a goal device, or an urgent hard goal), so the allowance gate does not stop it for the price or the sources.</summary>
+        public bool PlanKeeps { get; set; }
     }
 }

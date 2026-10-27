@@ -144,6 +144,9 @@ public sealed record DispatchDecisionInputs(
 
     /// <summary>The prices, effective value, order key and energy class the step used (ECO-09); null without an <c>economics:</c> section, and on lines written before it.</summary>
     public EconomicsDecisionInputs? Economics { get; init; }
+
+    /// <summary>The plan entry dispatch used for the device (PLAN-15); null when <c>planner.dispatch</c> is off, when no valid entry applied, and on lines written before list version 7.</summary>
+    public PlanDecisionInputs? Plan { get; init; }
 }
 
 /// <summary>
@@ -179,3 +182,34 @@ public sealed record EconomicsDecisionInputs(
     EnergyClass? Class,
     string? Sources,
     SettlementModelId Settlement);
+
+/// <summary>
+/// The plan entry a dispatch decision was made beside (15-PLANNER, "Reason codes (list version 7)"): which plan, which slot, what it wanted of the device
+/// and how much of the slot's budget was already delivered. Only a valid, fresh entry is recorded (status is always <c>fresh</c>); strings, not planner types,
+/// so nothing the guard builds a decision from reaches the planner.
+/// </summary>
+/// <param name="PlanId">The plan's content fingerprint.</param>
+/// <param name="Want">run, defer, done or urgent.</param>
+/// <param name="Class">pv or zone:&lt;id&gt;; null for a want that carries none.</param>
+/// <param name="EnergyKwh">The slot's budget for the device.</param>
+/// <param name="DeliveredKwh">What dispatch counted the device drawing in the slot since it began watching it (an estimate that can only fall short).</param>
+/// <param name="MaxPowerW">The slot's ceiling.</param>
+/// <param name="Mode">narrow or full.</param>
+public sealed record PlanDecisionInputs(
+    string PlanId,
+    DateTimeOffset ComputedAt,
+    DateTimeOffset SlotStart,
+    DateTimeOffset SlotEnd,
+    string Want,
+    string? Class,
+    double EnergyKwh,
+    double DeliveredKwh,
+    double MaxPowerW,
+    string Mode)
+{
+    public const string FreshStatus = "fresh";
+
+    public static readonly System.Collections.Frozen.FrozenSet<string> Wants = System.Collections.Frozen.FrozenSet.ToFrozenSet(["run", "defer", "done", "urgent"]);
+
+    public static readonly System.Collections.Frozen.FrozenSet<string> Modes = System.Collections.Frozen.FrozenSet.ToFrozenSet(["narrow", "full"]);
+}

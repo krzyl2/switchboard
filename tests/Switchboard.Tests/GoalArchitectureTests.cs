@@ -11,7 +11,8 @@ namespace Switchboard.Tests;
 /// The goal model and the planner section are structurally apart from protection and from dispatch (15-PLANNER, D2 to D4, CLAUDE.md): in
 /// slice 1 a goal is read and shown, it decides nothing. The planner decides when energy is wanted, never whether it is allowed, so no type
 /// the guard or dispatch holds may reach a goal, no guard or dispatch source may name one, and the goal code commands nothing and knows no
-/// entity. Slice 5 gives dispatch a plan view; this test is the one to update then, deliberately.
+/// entity. Slice 5 gave dispatch a plan view (an entry of the plan, through <c>IPlanView</c>): dispatch may now name the planner mode it reads and nothing else
+/// of the goal model, and the guard, its domain and the effector still name none of it, and see no plan, forecast or price.
 /// </summary>
 public sealed partial class GoalArchitectureTests
 {
@@ -48,17 +49,24 @@ public sealed partial class GoalArchitectureTests
     }
 
     [Fact]
-    public void No_guard_or_dispatch_source_names_a_goal_the_ledger_or_the_planner_before_slice_5()
+    public void No_guard_dispatch_or_effector_source_names_a_goal_the_ledger_or_the_planner_beyond_the_mode_dispatch_reads()
     {
-        // Why: the same promise as text: in this slice the guard, dispatch, the effector and the gate never read a goal, so a 0.10 file
-        // decides byte for byte as before whatever its goal says.
-        var files = new[] { "Switchboard.Domain/Guard", "Switchboard.Domain/Dispatch", "Switchboard.Application/Guard", "Switchboard.Application/Dispatch", "Switchboard.Application/Effector" }
+        // Why: the same promise as text. The guard, the effector and the gate never read a goal; dispatch reads the plan's entry (a want, a class, a ceiling) and the
+        // mode that says whether to, and nothing of the goal model: it never names a goal, the ledger, the tracker or the planner's parameters. The one planner
+        // word dispatch may use is the mode enum, so a goal's content can never decide a dispatch step.
+        var closed = new[] { "Switchboard.Domain/Guard", "Switchboard.Domain/Dispatch", "Switchboard.Application/Guard", "Switchboard.Application/Effector" }
             .SelectMany(dir => SourceFiles("src/" + dir))
             .ToList();
+        var dispatch = SourceFiles("src/Switchboard.Application/Dispatch").ToList();
+        var mode = new Regex(@"\bPlannerDispatchMode\b", RegexOptions.CultureInvariant);
 
-        var offenders = files.Where(f => GoalWord().IsMatch(File.ReadAllText(f))).Select(Path.GetFileName).ToList();
+        var offenders = closed.Where(f => GoalWord().IsMatch(File.ReadAllText(f)))
+            .Concat(dispatch.Where(f => GoalWord().IsMatch(mode.Replace(File.ReadAllText(f), string.Empty))))
+            .Select(Path.GetFileName)
+            .ToList();
 
-        Assert.True(files.Count > 20, "the guard and dispatch namespaces were not found");
+        Assert.True(closed.Count > 15, "the guard namespaces were not found");
+        Assert.True(dispatch.Count >= 8, "the dispatch namespace was not found");
         Assert.Empty(offenders);
     }
 

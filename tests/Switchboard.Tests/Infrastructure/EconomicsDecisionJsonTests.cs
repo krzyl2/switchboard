@@ -34,7 +34,7 @@ public sealed class EconomicsDecisionJsonTests
 
         Assert.Equal(written, read.Inputs.Dispatch!.Economics);
         Assert.Equal(line, DecisionJson.Serialize(read));
-        Assert.Contains("\"codes\":6", line, StringComparison.Ordinal);
+        Assert.Contains("\"codes\":7", line, StringComparison.Ordinal);
         Assert.Contains("\"class\":\"zone\"", line, StringComparison.Ordinal);
         Assert.Contains("\"sources\":\"pv_and_zone:offpeak\"", line, StringComparison.Ordinal);
         Assert.Equal(ReasonCode.ZoneAllowed, read.Reason);

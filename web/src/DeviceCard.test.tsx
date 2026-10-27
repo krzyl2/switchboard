@@ -5,6 +5,7 @@ import type { HistoryEntry } from './api/dispatch';
 import devices from './api/devices.sample.json';
 import dispatch from './api/dispatch.sample.json';
 import economics from './api/economics.sample.json';
+import plan from './api/plan.sample.json';
 import power from './api/power.sample.json';
 import { DISPATCH_REFRESH_INTERVAL_MS } from './config';
 import { measurement } from './DeviceCard';
@@ -147,16 +148,16 @@ describe('device card: connection', () => {
   });
 });
 
-// UI-12: economics — the value per kWh decides the order; goal and allowed sources do not exist in
-// this version and the card says so honestly instead of showing a made-up value.
+// UI-12: economics — the value per kWh decides the order; the goal row reads api/plan (GoalRow.test.tsx) and says so when
+// it cannot; allowed sources do not exist without an economics section and the card says so honestly instead of showing a made-up value.
 describe('device card: energy value and goal', () => {
-  it('shows the value per kWh and says goal and sources are not available in this version', async () => {
+  it('shows the value per kWh, says the goal is not available while api/plan does not answer, and says sources are not available', async () => {
     serve();
     await open('#/devices/ev_charger');
     const economics = card('Energy value and goal');
 
     expect(field(economics, 'What 1 kWh is worth for this device').textContent).toContain('2.03 per kWh');
-    expect(field(economics, 'Goal').textContent).toMatch(/^Not available in this version/);
+    expect(field(economics, 'Goal').textContent).toMatch(/^The goal is not available: the add-on does not answer\./);
     expect(field(economics, 'Allowed sources').textContent).toMatch(/^Not available in this version: .*grid power, at night too\.$/);
   });
 });
@@ -548,11 +549,11 @@ describe('device card: energy value, sources and what is allowed now (ECO-13)', 
     expect(field(section, 'Dozwolone teraz').textContent).toContain('obowiązująca strefa taryfy offpeak');
   });
 
-  it('keeps the goal row not available (goal is v3.0), and the history card as it was', async () => {
-    serveEconomics(economics);
+  it('shows the goal row from api/plan, and the history card as it was', async () => {
+    serveSamples(fetchMock, { 'api/devices': devices, 'api/dispatch': dispatch, 'api/power': power, 'api/economics': economics, 'api/plan': plan });
     const section = await openCard('ev_charger');
 
-    expect(field(section, 'Goal').textContent).toContain('Not available in this version');
+    expect(field(section, 'Goal').textContent).toContain('reach 90 % state of charge');
     expect(card('Command verification')).toBeTruthy();
   });
 
