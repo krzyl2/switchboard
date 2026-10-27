@@ -60,6 +60,29 @@ public sealed class PowerOnlyDrawTests
         Assert.True(rig.Setpoint < 12, "The charger must not have been taken to its limit on a stale power.");
     }
 
+    [Fact]
+    public void Setpoint_commands_of_a_power_only_charger_are_verified_on_the_derived_current()
+    {
+        // Live 0.10.1, the execution check: every setpoint command read "cannot be verified (no draw)"
+        // with Measured empty, because a setpoint device with no draw current is Unverifiable. With the
+        // derived current a fresh power and voltage verify it, and the check can never turn into a
+        // failure on the understatement: a lower draw is not a mismatch of a raise (inconclusive at
+        // worst) and cannot exceed a lowered setpoint.
+        var rig = new SelectStopRig(devices: PowerOnly, setpoint: 6, start: "headroom") { CarWants = 20 };
+        rig.Begin(0);
+        rig.Hold(0, TimeSpan.FromMinutes(5));
+        rig.Hold(6, TimeSpan.FromMinutes(5));
+        rig.Hold(0, TimeSpan.FromMinutes(5));
+
+        var verdicts = rig.Ledger.History.Where(h => h.Kind == Switchboard.Application.Effector.HistoryKind.Command).Select(h => h.Verdict).ToList();
+
+        Assert.True(verdicts.Count >= 3, "The scenario must command the charger several times.");
+        Assert.DoesNotContain(Switchboard.Domain.Dispatch.Verdict.Unverifiable, verdicts);
+        Assert.Contains(Switchboard.Domain.Dispatch.Verdict.Match, verdicts);
+        Assert.DoesNotContain(Switchboard.Domain.Dispatch.Verdict.Mismatch, verdicts);
+        Assert.Equal(0, rig.Ledger.Mismatches);
+    }
+
     private static double Climb(string device, double l1)
     {
         var rig = new SelectStopRig(devices: device, setpoint: 6, start: "headroom") { CarWants = 20 };
