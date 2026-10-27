@@ -35,6 +35,18 @@ public enum SignalDetail
     SignViolation,
     BalanceResidual,
     MaxAgeExceeded,
+
+    /// <summary>A series signal's attribute is absent, empty or not a list or mapping (the whole series is refused).</summary>
+    SeriesMissing,
+
+    /// <summary>A series signal's attribute has a malformed item (a bad time, a non-finite or impossible value): the whole series is refused.</summary>
+    SeriesMalformed,
+
+    /// <summary>A series signal's attribute is beyond the bounds (points or bytes): dropped, never truncated.</summary>
+    SeriesTooLarge,
+
+    /// <summary>A timestamp signal's state is not an instant with a UTC offset.</summary>
+    NotTimestamp,
 }
 
 /// <summary>Status of whatever feeds the store (the Home Assistant subscription, or a replay).</summary>

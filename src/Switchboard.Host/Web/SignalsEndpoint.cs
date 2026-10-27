@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
@@ -78,7 +79,15 @@ public sealed record SignalDto(
     int RefreshIntervals,
     DirectionDto? Direction,
     long RejectedCount,
-    IReadOnlyList<string> DependentDevices);
+    IReadOnlyList<string> DependentDevices,
+    SeriesDto? Series = null);
+
+/// <summary>
+/// What a series signal (a forecast or a price curve) holds, without its points: how many, from when, and until when it covers.
+/// Coverage is separate from freshness: a fresh series that ends in six hours is a partial forecast, not a stale one.
+/// </summary>
+/// <param name="ValueKind"><c>power_w</c>, <c>energy_wh_period</c> or <c>price_per_kwh</c>.</param>
+public sealed record SeriesDto(string ValueKind, int Points, DateTimeOffset? From, DateTimeOffset? CoversUntil);
 
 public sealed record RawDto(string State, string? Unit);
 
@@ -167,9 +176,11 @@ internal static class SignalsEndpoint
             {
                 null => null,
                 StateValue state => state.State,
+                TimestampValue timestamp => timestamp.At.ToString("O", CultureInfo.InvariantCulture),
+                SeriesValue => null,
                 var value => SignalNormalizer.Magnitude(value),
             },
-            reading.Value is null or StateValue ? null : reading.Kind == SignalKind.Price ? PriceUnit(diagnostics) : InternalUnit(reading.Kind),
+            reading.Value is null or StateValue or TimestampValue or SeriesValue ? null : reading.Kind == SignalKind.Price ? PriceUnit(diagnostics) : InternalUnit(reading.Kind),
             reading.RawState is { } raw ? new RawDto(raw, reading.RawUnit) : null,
             reading.LastReported,
             reading.LastReported is { } reported ? Math.Round((now - reported).TotalSeconds, 3) : null,
@@ -180,7 +191,8 @@ internal static class SignalsEndpoint
                 ? new DirectionDto(Snake(direction.Source), Snake(direction.Direction), direction.From?.Value)
                 : null,
             reading.RejectedCount,
-            reading.Dependents.IsDefault ? [] : [.. reading.Dependents.Select(d => d.Value)]);
+            reading.Dependents.IsDefault ? [] : [.. reading.Dependents.Select(d => d.Value)],
+            reading.Value is SeriesValue { Series: var series } ? new SeriesDto(Snake(series.Kind), series.Points.Length, series.From, series.CoversUntil) : null);
 
     private static IssueDto Issue(ConfigurationIssue issue) => new(issue.Code, issue.Path, issue.Line, issue.Column, issue.Message);
 
@@ -194,6 +206,7 @@ internal static class SignalsEndpoint
         SignalKind.Power => "W",
         SignalKind.Voltage => "V",
         SignalKind.EnergyCounter => "kWh",
+        SignalKind.EnergyForecast => "kWh",
         SignalKind.Percentage => "%",
         _ => null,
     };

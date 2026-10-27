@@ -23,6 +23,12 @@ public sealed record EntityUpdate(EntityId Entity, string State, string? Unit, D
     /// </summary>
     public ImmutableArray<string>? Options { get; init; }
 
+    /// <summary>
+    /// The whitelisted attribute of a series signal, parsed and bounded by the transport; null when the entity has no series spec
+    /// (and for a probe answer, which never carries one: a probe may confirm a series, never replace it).
+    /// </summary>
+    public ParsedSeries? Series { get; init; }
+
     /// <summary>An options list within the schema bounds, or null: never an error, only "not known".</summary>
     public static ImmutableArray<string>? BoundedOptions(IReadOnlyList<string?>? options) =>
         options is { Count: > 0 and <= MaxOptions } && options.All(o => o is { Length: > 0 and <= MaxOptionLength })
@@ -58,4 +64,47 @@ public sealed record EntityUpdateBatch(
 }
 
 /// <summary>An entity the store needs, with the unit the configuration declares for it.</summary>
-public sealed record TrackedEntity(EntityId Entity, string? DeclaredUnit);
+public sealed record TrackedEntity(EntityId Entity, string? DeclaredUnit)
+{
+    /// <summary>The one attribute of this entity that is kept as a series (15-PLANNER, slice 2); null for every ordinary signal.</summary>
+    public SeriesSpec? Series { get; init; }
+}
+
+/// <summary>How a series attribute is laid out; <see cref="Auto"/> takes a JSON list as a list and a JSON object as a mapping.</summary>
+public enum SeriesShape
+{
+    Auto,
+    List,
+    Dict,
+}
+
+/// <summary>
+/// Which attribute of an entity is kept as a series and how to read it: the per-signal whitelist (no other attribute is ever kept).
+/// A list holds objects whose start, optional end and value sit under the named keys; a dict maps a time to a number.
+/// </summary>
+public sealed record SeriesSpec(string Attribute, SeriesShape Shape, string StartKey, string? EndKey, string ValueKey)
+{
+    public const string DefaultStartKey = "start";
+    public const string DefaultEndKey = "end";
+    public const string DefaultValueKey = "value";
+}
+
+public enum SeriesProblem
+{
+    None,
+
+    /// <summary>The attribute is absent, empty, or neither a list nor a mapping.</summary>
+    Missing,
+
+    /// <summary>An item is malformed (no time, a time without a UTC offset, a non-finite number, a duplicate time, an end before the start): the whole series is refused.</summary>
+    Malformed,
+
+    /// <summary>More than <see cref="Switchboard.Domain.Signals.TimeSeries.MaxPoints"/> points or <see cref="Switchboard.Domain.Signals.TimeSeries.MaxBytes"/> bytes: dropped whole, never truncated.</summary>
+    TooLarge,
+}
+
+/// <summary>A series attribute as the transport read it: the raw numbers (the signal layer gives them their unit), time-sorted, or the reason there are none.</summary>
+public sealed record ParsedSeries(ImmutableArray<Switchboard.Domain.Signals.SeriesPoint> Points, SeriesProblem Problem)
+{
+    public static ParsedSeries Of(SeriesProblem problem) => new([], problem);
+}

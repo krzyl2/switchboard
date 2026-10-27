@@ -28,7 +28,7 @@ internal static partial class EconomicsSectionParser
 
     private static readonly string[] SectionKeys = ["currency", "holidays", "tariff", "settlement"];
     private static readonly string[] PriceKeys = ["default_zone", "zones"];
-    private static readonly string[] DynamicKeys = ["signal", "fallback", "add"];
+    private static readonly string[] DynamicKeys = ["signal", "fallback", "add", "curve"];
     private static readonly string[] ZoneKeys = ["id", "price", "when"];
     private static readonly string[] RuleKeys = ["days", "months", "hours"];
     private static readonly string[] SettlementKeys = ["model", "export_price"];
@@ -71,7 +71,9 @@ internal static partial class EconomicsSectionParser
         var errorsBefore = issues.Errors.Count;
         ConfigRead.CheckKeys(mapping, Key, SectionKeys, issues);
 
-        var prices = new PriceContext(signals.Where(s => s.Kind == SignalKind.Price).ToImmutableDictionary(s => s.Name));
+        var prices = new PriceContext(
+            signals.Where(s => s.Kind == SignalKind.Price).ToImmutableDictionary(s => s.Name),
+            signals.Where(s => s.Kind == SignalKind.Series && s.SeriesMeaning == SeriesValueKind.PricePerKwh).ToImmutableDictionary(s => s.Name));
         var currency = ReadCurrency(mapping, issues);
         var holidays = ReadHolidays(mapping, issues);
         PriceSpec? tariff = null;
@@ -185,7 +187,8 @@ internal static partial class EconomicsSectionParser
     }
 
     /// <summary>The price signals a dynamic price may name, by logical signal name.</summary>
-    private sealed record PriceContext(ImmutableDictionary<SignalName, SignalDefinition> Signals);
+    /// <param name="Curves">The series signals with a price unit (price curves) a dynamic price may name as its forward <c>curve</c>.</param>
+    private sealed record PriceContext(ImmutableDictionary<SignalName, SignalDefinition> Signals, ImmutableDictionary<SignalName, SignalDefinition> Curves);
 
     /// <summary>
     /// The price signals of the document after the economics section was read: each gets the currency label its unit must carry
@@ -196,10 +199,14 @@ internal static partial class EconomicsSectionParser
     {
         var used = PriceSpecs.Signals(economics?.Tariff).Concat(PriceSpecs.Signals(economics?.Settlement?.ExportPrice)).ToHashSet();
         var signalNodes = root.Find("signals")?.Value as ConfigMapping;
+        var curves = NamedCurves(root);
+        var plans = root.Find(PlannerKey) is not null;
         return [.. signals.Select(signal =>
         {
-            if (signal.Kind != SignalKind.Price)
+            var isCurve = signal.Kind == SignalKind.Series && signal.SeriesMeaning == SeriesValueKind.PricePerKwh;
+            if (signal.Kind != SignalKind.Price && !isCurve)
             {
+                WarnWhenForecastUnused(signal, plans, curves, signalNodes, issues);
                 return signal;
             }
 
@@ -213,6 +220,11 @@ internal static partial class EconomicsSectionParser
                     $"The unit '{signal.Unit}' carries the label '{label}' but economics.currency is '{section.Currency}': the signal is not usable and a price that follows it stays at its fallback.");
             }
 
+            if (isCurve)
+            {
+                WarnWhenForecastUnused(signal, plans, curves, signalNodes, issues);
+            }
+
             if (signal.Role is SignalRole.PriceImport or SignalRole.PriceExport && !used.Contains(signal.Name))
             {
                 issues.Warning(
@@ -224,6 +236,59 @@ internal static partial class EconomicsSectionParser
 
             return signal with { PriceCurrency = economics?.Currency };
         })];
+    }
+
+    // The planner section is read by its own parser (slice 1); here only its presence matters: the forecast signals have a consumer.
+    private const string PlannerKey = "planner";
+
+    /// <summary>
+    /// A forecast, sun-time or price-curve role that nothing consumes is warned (<c>forecast_signal_unused</c>): the forecast and sun
+    /// roles are read by the planner, so they are used when a <c>planner:</c> section exists; a curve role is used when an
+    /// economics price names it as its <c>curve:</c>. Nothing is dropped: the signal still shows in diagnostics.
+    /// </summary>
+    private static void WarnWhenForecastUnused(SignalDefinition signal, bool plans, HashSet<string> curves, ConfigMapping? signalNodes, ConfigIssues issues)
+    {
+        var used = signal.Role switch
+        {
+            SignalRole.PvForecast or SignalRole.PvForecastToday or SignalRole.PvForecastTomorrow or SignalRole.SunRising or SignalRole.SunSetting => plans,
+            SignalRole.PriceCurveImport or SignalRole.PriceCurveExport => curves.Contains(signal.Name.Value),
+            _ => true,
+        };
+        if (used)
+        {
+            return;
+        }
+
+        var mapping = signalNodes?.Find(signal.Name.Value)?.Value as ConfigMapping;
+        issues.Warning(
+            ConfigurationIssueCodes.ForecastSignalUnused,
+            ConfigRead.Join(signal.Path, "role"),
+            mapping?.Find("role")?.Value,
+            signal.Role is SignalRole.PriceCurveImport or SignalRole.PriceCurveExport
+                ? $"Signal '{signal.Name}' has a price curve role but no price names it: write curve: {signal.Name} next to signal: in economics.tariff or economics.settlement.export_price, or it feeds nothing."
+                : $"Signal '{signal.Name}' has a forecast role but there is no planner: section to read it, so it feeds nothing.");
+    }
+
+    /// <summary>The names written after <c>curve:</c> in the economics prices, from the raw document (whatever the price parsed to).</summary>
+    private static HashSet<string> NamedCurves(ConfigMapping root)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (root.Find(Key)?.Value is not ConfigMapping economics)
+        {
+            return names;
+        }
+
+        var tariff = economics.Find("tariff")?.Value as ConfigMapping;
+        var export = (economics.Find("settlement")?.Value as ConfigMapping)?.Find("export_price")?.Value as ConfigMapping;
+        foreach (var price in new[] { tariff, export })
+        {
+            if (price?.Find("curve")?.Value is ConfigScalar { Value: string name })
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
     }
 
     /// <summary>A number (flat), a zoned schedule or, where a dynamic price is allowed, a price that follows a signal.</summary>
@@ -321,14 +386,26 @@ internal static partial class EconomicsSectionParser
     /// <c>signal:</c> names a price signal; <c>fallback</c> is required and static (without it the document is invalid: a price
     /// that has nothing to fall back to would have to be guessed); <c>add</c> is optional and static, added while the signal is live.
     /// </summary>
-    private static DynamicPrice? ReadDynamic(ConfigMapping mapping, string path, ConfigIssues issues, PriceContext prices)
+    private static PriceSpec? ReadDynamic(ConfigMapping mapping, string path, ConfigIssues issues, PriceContext prices)
     {
         var errorsBefore = issues.Errors.Count;
         ConfigRead.CheckKeys(mapping, path, DynamicKeys, issues);
 
         SignalName? signal = null;
         var signalPath = ConfigRead.Join(path, "signal");
-        if (ConfigRead.Required(mapping, "signal", path, issues) is { } signalNode && ConfigRead.String(signalNode, signalPath, issues) is { } text)
+
+        // A curve with no signal is a warning, not an error (15-PLANNER, Configuration checks): it replaces nothing, so the price is the fallback.
+        var curveOnly = ConfigRead.Optional(mapping, "signal") is null && ConfigRead.Optional(mapping, "curve") is not null;
+        if (curveOnly)
+        {
+            issues.Warning(
+                ConfigurationIssueCodes.CurveWithoutSignal,
+                ConfigRead.Join(path, "curve"),
+                ConfigRead.Optional(mapping, "curve"),
+                "curve: without signal: replaces nothing; the price is its fallback. A forward curve sits beside the live price signal it extends.");
+        }
+
+        if (!curveOnly && ConfigRead.Required(mapping, "signal", path, issues) is { } signalNode && ConfigRead.String(signalNode, signalPath, issues) is { } text)
         {
             if (SignalName.TryParse(text, out var name) && prices.Signals.ContainsKey(name.Value))
             {
@@ -365,7 +442,30 @@ internal static partial class EconomicsSectionParser
             add = ReadPrice(addNode, ConfigRead.Join(path, "add"), issues, prices, allowDynamic: false);
         }
 
-        return issues.Errors.Count > errorsBefore || signal is null || fallback is null ? null : new DynamicPrice(signal.Value, fallback, add);
+        SignalName? curve = null;
+        var curvePath = ConfigRead.Join(path, "curve");
+        if (ConfigRead.Optional(mapping, "curve") is { } curveNode && ConfigRead.String(curveNode, curvePath, issues) is { } curveText)
+        {
+            if (SignalName.TryParse(curveText, out var curveName) && prices.Curves.ContainsKey(curveName.Value))
+            {
+                curve = curveName;
+            }
+            else
+            {
+                issues.Error(
+                    ConfigurationIssueCodes.InvalidValue,
+                    curvePath,
+                    curveNode,
+                    $"'{curveText}' is not a signal of kind series with a price unit declared under signals:; a forward curve is one (kind: series, attribute: ..., unit: <currency>/kWh or <currency>/MWh).");
+            }
+        }
+
+        if (curveOnly)
+        {
+            return issues.Errors.Count > errorsBefore ? null : fallback;
+        }
+
+        return issues.Errors.Count > errorsBefore || signal is null || fallback is null ? null : new DynamicPrice(signal.Value, fallback, add, curve);
     }
 
     /// <summary>

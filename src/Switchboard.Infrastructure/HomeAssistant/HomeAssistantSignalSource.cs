@@ -19,6 +19,7 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
     private readonly ConcurrentDictionary<EntityId, byte> _probing = new();
     private readonly CancellationTokenSource _stopping = new();
     private ImmutableArray<EntityId> _tracked = [];
+    private ImmutableDictionary<EntityId, SeriesSpec> _seriesSpecs = ImmutableDictionary<EntityId, SeriesSpec>.Empty;
 
     public HomeAssistantSignalSource(SignalInbox inbox, IEntityStateReader reader, ILogger<HomeAssistantSignalSource> logger)
     {
@@ -31,16 +32,24 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
 
     public IReadOnlyList<EntityId> Tracked => _tracked;
 
+    public IReadOnlyDictionary<EntityId, SeriesSpec> SeriesSpecs => _seriesSpecs;
+
     public void Track(IReadOnlyCollection<TrackedEntity> entities)
     {
         ArgumentNullException.ThrowIfNull(entities);
         ImmutableArray<EntityId> next = [.. entities.Select(e => e.Entity).Distinct().Order()];
+        var specs = entities.Where(e => e.Series is not null).GroupBy(e => e.Entity).ToImmutableDictionary(g => g.Key, g => g.First().Series!);
         var previous = ImmutableInterlocked.InterlockedExchange(ref _tracked, next);
-        if (!previous.SequenceEqual(next))
+        var previousSpecs = Interlocked.Exchange(ref _seriesSpecs, specs);
+        if (!previous.SequenceEqual(next) || !SameSpecs(previousSpecs, specs))
         {
             TrackedChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>A changed attribute whitelist needs a new subscription, because the parser that decodes it is built from it.</summary>
+    internal static bool SameSpecs(IReadOnlyDictionary<EntityId, SeriesSpec> a, IReadOnlyDictionary<EntityId, SeriesSpec> b) =>
+        a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && pair.Value == other);
 
     /// <summary>At most one read per entity in flight; the answer arrives as a probe batch.</summary>
     public void RequestProbe(EntityId entity)

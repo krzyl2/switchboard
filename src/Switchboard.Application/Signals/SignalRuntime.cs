@@ -30,6 +30,9 @@ internal sealed record RawSample(string State, string? Unit, DateTimeOffset Last
 {
     /// <summary>The options the entity offered with this state (a select's choices); null when not reported.</summary>
     public ImmutableArray<string>? Options { get; init; }
+
+    /// <summary>The series attribute as the transport parsed it (a series signal only); a re-read after a reload needs it.</summary>
+    public ParsedSeries? Series { get; init; }
 }
 
 /// <summary>
@@ -122,7 +125,9 @@ internal sealed class SignalRuntime(SignalDefinition definition)
         && Definition.Kind == other.Kind
         && string.Equals(Definition.Unit, other.Unit, StringComparison.Ordinal)
         && Definition.Sign == other.Sign
-        && string.Equals(Definition.PriceCurrency, other.PriceCurrency, StringComparison.Ordinal);
+        && string.Equals(Definition.PriceCurrency, other.PriceCurrency, StringComparison.Ordinal)
+        && Definition.Series == other.Series
+        && Definition.SeriesMeaning == other.SeriesMeaning;
 
     public void MarkAbsent(Presence presence)
     {

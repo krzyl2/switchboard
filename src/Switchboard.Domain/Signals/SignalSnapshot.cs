@@ -3,6 +3,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Signals;
@@ -82,4 +83,11 @@ public sealed record SignalSnapshot(
     /// configuration. Apart from <see cref="Protection"/> and <see cref="Dispatch"/>: a price never reaches the guard.
     /// </summary>
     public PriceInputs? Prices { get; init; }
+
+    /// <summary>
+    /// The forecast and price-curve signals (kinds series, energy_forecast, timestamp) of the same cycle, for the planner only
+    /// (15-PLANNER, slice 2); null without a valid configuration or when none is mapped. Apart from <see cref="Protection"/> and
+    /// <see cref="Dispatch"/>: a forecast never reaches the guard or a dispatch decision.
+    /// </summary>
+    public ForecastInputs? Forecast { get; init; }
 }

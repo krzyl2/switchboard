@@ -421,10 +421,12 @@ public sealed class HomeAssistantClient
     private async Task SubscriptionLoopAsync(IWebSocketTransport transport, CancellationToken cancellationToken)
     {
         IReadOnlyList<EntityId>? subscribed = null;
+        IReadOnlyDictionary<EntityId, SeriesSpec>? subscribedSpecs = null;
         while (true)
         {
             var tracked = _subscriptions.Tracked;
-            if (subscribed is null || !tracked.SequenceEqual(subscribed))
+            var specs = _subscriptions.SeriesSpecs;
+            if (subscribed is null || !tracked.SequenceEqual(subscribed) || !HomeAssistantSignalSource.SameSpecs(specs, subscribedSpecs!))
             {
                 var superseded = Volatile.Read(ref _active);
                 if (tracked.Count == 0)
@@ -435,7 +437,7 @@ public sealed class HomeAssistantClient
                 }
                 else
                 {
-                    await SubscribeEntitiesAsync(transport, tracked, cancellationToken).ConfigureAwait(false);
+                    await SubscribeEntitiesAsync(transport, tracked, specs, cancellationToken).ConfigureAwait(false);
                 }
 
                 if (superseded is not null)
@@ -444,19 +446,20 @@ public sealed class HomeAssistantClient
                 }
 
                 subscribed = tracked;
+                subscribedSpecs = specs;
             }
 
             await _trackedChanged.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async Task SubscribeEntitiesAsync(IWebSocketTransport transport, IReadOnlyList<EntityId> entities, CancellationToken cancellationToken)
+    private async Task SubscribeEntitiesAsync(IWebSocketTransport transport, IReadOnlyList<EntityId> entities, IReadOnlyDictionary<EntityId, SeriesSpec> series, CancellationToken cancellationToken)
     {
         var id = NextId();
         _subscribeIds[id] = 0;
 
         // Routed before the request leaves, so the initial state cannot arrive ahead of its parser.
-        Volatile.Write(ref _active, new ActiveSubscription(id, new SubscribeEntitiesParser(entities)));
+        Volatile.Write(ref _active, new ActiveSubscription(id, new SubscribeEntitiesParser(entities, series)));
         var payload = Serialize(writer =>
         {
             writer.WriteNumber("id", id);

@@ -12,6 +12,15 @@ public enum SignalKind
 
     /// <summary>A price in currency per kWh, from a Home Assistant entity (14-ECONOMICS, slice 4); dispatch only, never protection.</summary>
     Price,
+
+    /// <summary>A time series read from one attribute of an entity (a forecast, a price curve); planner inputs only, never protection or dispatch (15-PLANNER, slice 2).</summary>
+    Series,
+
+    /// <summary>A forecast energy in kWh (a day total), from a scalar state; planner input only.</summary>
+    EnergyForecast,
+
+    /// <summary>An instant (sunrise, sunset) from a scalar state; planner input only.</summary>
+    Timestamp,
 }
 
 /// <summary>
@@ -93,6 +102,27 @@ public enum SignalRole
 
     /// <summary>A goal's want gate (on or off), created from the device's goal; off means the device has no goal now.</summary>
     GoalWant,
+
+    /// <summary>The PV production forecast as a series (power W or period energy Wh): the planner's primary forecast shape (PLAN-06).</summary>
+    PvForecast,
+
+    /// <summary>The PV energy forecast of today as one number: the degraded forecast shape (PLAN-06).</summary>
+    PvForecastToday,
+
+    /// <summary>The PV energy forecast of tomorrow as one number: the degraded forecast shape (PLAN-06).</summary>
+    PvForecastTomorrow,
+
+    /// <summary>The next sunrise: with <see cref="SunSetting"/> it places the degraded daily total in the day (PLAN-06).</summary>
+    SunRising,
+
+    /// <summary>The next sunset (see <see cref="SunRising"/>).</summary>
+    SunSetting,
+
+    /// <summary>The forward import price curve (Nord Pool, Tibber, ENTSO-E style), in currency per kWh: the planner's future prices (PLAN-07).</summary>
+    PriceCurveImport,
+
+    /// <summary>The forward export price curve, in currency per kWh (PLAN-07).</summary>
+    PriceCurveExport,
 }
 
 /// <summary>

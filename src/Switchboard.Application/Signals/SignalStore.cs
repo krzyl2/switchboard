@@ -6,6 +6,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -107,7 +108,8 @@ public sealed class SignalStore
                 runtimes.Add(runtime);
                 if (kept?.Raw is { } raw)
                 {
-                    reread.Add((runtime, raw));
+                    // A series parsed under another attribute spec says nothing under this one.
+                    reread.Add((runtime, kept.Definition.Series == definition.Series ? raw : raw with { Series = null }));
                 }
             }
         }
@@ -129,14 +131,14 @@ public sealed class SignalStore
         _signals = runtimes.ToImmutable();
         _byEntity = _signals.ToDictionary(s => s.Definition.Entity);
         _byName = _signals.ToDictionary(s => s.Definition.Name);
-        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit)).OrderBy(t => t.Entity)]);
+        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit) { Series = s.Definition.Series }).OrderBy(t => t.Entity)]);
 
         // After the new set is in place, so the balance check and direction see the new definitions.
         // The report time stays the one Home Assistant gave: re-reading never makes a sample younger,
         // and the options it reported stay known (a select may not report again for hours).
         foreach (var (runtime, raw) in reread)
         {
-            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options }, BatchOrigin.Probe, now);
+            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options, Series = raw.Series }, BatchOrigin.Probe, now);
             runtime.Raw = runtime.Raw! with { HaReported = raw.HaReported };
         }
     }
@@ -445,6 +447,7 @@ public sealed class SignalStore
         {
             DispatchSetup = _dispatchSetup,
             Prices = Prices(now),
+            Forecast = Forecast(now),
             Presentation = new PresentationInputs(
                 configuration.Connection.Voltage,
                 generation.State,
@@ -509,6 +512,33 @@ public sealed class SignalStore
         return samples.Count == 0 ? null : new PriceInputs(samples.ToImmutable());
     }
 
+    /// <summary>
+    /// The forecast and curve signals (kinds series, energy_forecast, timestamp) as the planner may read them: the content only while
+    /// the signal is fresh (a report within max_age of <c>last_reported</c>), otherwise just its state, so a stale forecast is never
+    /// used and the last known curve never stands in. Coverage is the content's own business (<see cref="ForecastSample.CoversUntil"/>),
+    /// separate from freshness. Kept apart from the protection and dispatch inputs; null when none is mapped.
+    /// </summary>
+    private ForecastInputs? Forecast(DateTimeOffset now)
+    {
+        var samples = ImmutableDictionary.CreateBuilder<SignalName, ForecastSample>();
+        foreach (var signal in _signals.Where(s => s.Definition.Kind is SignalKind.Series or SignalKind.EnergyForecast or SignalKind.Timestamp))
+        {
+            var (state, detail) = Classify(signal, now);
+            var value = state == SignalState.Fresh ? signal.Accepted?.Value : null;
+            samples[signal.Definition.Name] = new ForecastSample(
+                signal.Definition.Role,
+                signal.Definition.Kind,
+                state,
+                detail,
+                signal.Accepted?.Effective ?? signal.Raw?.Reported,
+                (value as SeriesValue)?.Series,
+                (value as EnergyForecastValue)?.Energy.Value,
+                (value as TimestampValue)?.At);
+        }
+
+        return samples.Count == 0 ? null : new ForecastInputs(samples.ToImmutable());
+    }
+
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;
 
     private SignalRuntime? Find(EntityId id) => _byEntity.GetValueOrDefault(id);
@@ -558,9 +588,16 @@ public sealed class SignalStore
             }
         }
 
-        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit);
+        // A probe answer carries no attributes: it may confirm a series (the same-state path above), never replace it. The push of a
+        // new state brings the new series.
+        if (signal.Definition.Series is not null && update.Series is null)
+        {
+            return;
+        }
+
+        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit, update.Series);
         signal.Presence = Presence.Present;
-        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options };
+        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options, Series = update.Series };
         if (normalized.Outcome == NormalizationOutcome.Unavailable)
         {
             signal.RawStatus = RawStatus.Unavailable;
