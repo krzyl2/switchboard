@@ -2,7 +2,7 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.10.2 (unreleased)
+## 0.11.0
 
 ### Fixed
 
@@ -12,6 +12,7 @@ All notable changes to this add-on. Newest version first; format follows [Keep a
 
 ### Added
 
+- Planner (v3.0, shadow): goals with a deadline per device (`goal:`), PV and house-load forecasts, forward price curve, a pure deterministic planner, `GET api/plan` (entries, cost, notes, last solve), a day-plan screen (`#/plan`) and a goal row on the device card with a manual "Want now" goal (`POST api/goals`, `DELETE api/goals/{device}`; `state.json` schema 5). `planner.dispatch` defaults to `off`: the plan is computed and shown, dispatch ignores it and decides byte for byte as before; `narrow` and `full` exist behind that flag. Reason codes list version 7 (`plan_deferred`, `goal_deadline_urgent`, `plan_discharge`, `soc_floor`, `soc_ceiling`).
 - Displacement, with an `economics:` section: when a device worth more is refused only because the hourly projection is too low, but would start with a running cheaper device stopped, that cheaper device (lowest value first) is lowered one stage with reason `value_rank_below_cutoff`, and the dearer one starts on a later step by the ordinary rule. It needs a value gap of `economics.min_margin` and `economics.order_min_gap_fraction`, never stops a device before its `min_on`, never stops a zone-class device and displaces one device per step. Seen live: the car (2.03) could not start beside a running heater (0.35) with 2.4 kW free. No new setting, no new reason code. See `docs/14-ECONOMICS.md`.
 
 ## 0.10.1
