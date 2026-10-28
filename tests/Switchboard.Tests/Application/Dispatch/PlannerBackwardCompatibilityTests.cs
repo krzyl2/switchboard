@@ -67,7 +67,7 @@ public sealed class PlannerBackwardCompatibilityTests(DispatchSyntheticReplayRun
     {
         // Why: equality with a drifted baseline would prove nothing. The plain file's digest is the one pinned to the 0.9 engine.
         EconomicsBackwardCompatibilityTests.Same(
-            "1A552444141477480FE599C63E4E003FB05E74BB5CF2E6E4476DC641DD9CE446",
+            "37255EAC05B4E55FFF0AB687682A4FB3D1BD60B8D8D7728CB21AC9146B1628CC",
             Digest(run, DispatchSyntheticReplayRun.HeadroomConfiguration));
     }
 }

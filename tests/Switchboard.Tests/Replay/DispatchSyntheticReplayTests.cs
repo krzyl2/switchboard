@@ -182,7 +182,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
     // at a time. The idle charger's draw sensors report only on change, so the startup hold's stop
     // window does not wait for them (they were not fresh when it opened): it closes on the meter and
     // the charger, worth more per kWh, is restored first (06:03:00); L2 takes the next window
-    // (06:04:00) and L3 the first boundary after that one closed. Since 0.7.1 the startup hold stops
+    // (06:03:30) and L3 the first boundary after that one closed (06:04:00). Since 0.7.1 the startup hold stops
     // the charger through its select, so that restore is a switch-on (enabled again at a setpoint),
     // no longer a setpoint change from 6 A.
     [Fact]
@@ -192,7 +192,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var restore = ChargerRestore(run.Shadow);
 
         Assert.Equal(
-            [("heater_l2", DispatchSyntheticReplayRun.At(6, 4)), ("heater_l3", DispatchSyntheticReplayRun.At(6, 4, 30))],
+            [("heater_l2", DispatchSyntheticReplayRun.At(6, 3, 30)), ("heater_l3", DispatchSyntheticReplayRun.At(6, 4))],
             starts.Select(d => (d.Device!.Value.Value, d.At)));
         Assert.All(starts, d => Assert.Equal(ReasonCode.HeadroomAvailable, d.Reason));
         Assert.Equal(DispatchSyntheticReplayRun.At(6, 3), restore.At);
@@ -244,7 +244,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         harness.Decisions.First(d => d.Device?.Value == "ev_charger" && d.Origin == DecisionOrigin.Dispatch && d.Action is DecisionAction.SwitchOn or DecisionAction.SetSetpoint);
 
     // DISP-09: a reduction wanted inside min_on is recorded once as deferred and applied when the
-    // lockout expires (the L3 element started 06:04:30, the kettle came at 06:06: a foreign load, v3).
+    // lockout expires (the L3 element started 06:04:00, the kettle came at 06:06: a foreign load, v3).
     [Fact]
     public void A_reduction_inside_min_on_is_deferred_once_and_applied_at_expiry()
     {
@@ -253,7 +253,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var stop = DispatchSyntheticReplayRun.Of(run.Shadow, "heater_l3", DecisionAction.SwitchOff).First();
 
         Assert.Equal((ReasonCode.ForeignLoad, ReasonCode.LockoutMinOn), (deferred.Reason, deferred.RefusedBy));
-        Assert.Equal(DispatchSyntheticReplayRun.At(6, 4, 30), start.At);
+        Assert.Equal(DispatchSyntheticReplayRun.At(6, 4), start.At);
         Assert.Equal(start.At + run.Protection.Device(DeviceName.Parse("heater_l3"))!.MinOn, stop.At);
         Assert.Equal(deferred.At, stop.Inputs.Dispatch!.DeferredSince);
     }

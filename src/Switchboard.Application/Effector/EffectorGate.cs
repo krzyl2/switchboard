@@ -256,8 +256,15 @@ public sealed class EffectorGate
                 continue;
             }
 
-            var dispatchDevice = inputs?.DispatchSetup?.Device(device);
-            var outcome = SettlingRule.Evaluate(window.Times, ClosingSet(inputs, spec, dispatchDevice, window.Before), now);
+            var outcome = SettlingRule.Evaluate(window.Times, ClosingSet(inputs, spec), now);
+            if (outcome.State == SettlingState.TimedOut)
+            {
+                _logger.LogWarning(
+                    "Settling window of {Device} hit its hard timeout; silent inputs: {Silent}",
+                    device,
+                    string.Join(", ", outcome.Silent.Select(s => $"{s.Input}/{s.Phase} (last {s.ReportedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture) ?? "never"})")));
+            }
+
             if (outcome.State != SettlingState.Open)
             {
                 state.Window = window with { Outcome = outcome.State };
@@ -606,14 +613,14 @@ public sealed class EffectorGate
     }
 
     /// <summary>
-    /// The balance inputs a change on this device can move: per phase the main power and current, a
-    /// sub-metered group current, and the device's own draws. Never the device's own state (a relay
-    /// that reports only on change, or ignores the command, would hold the window to its timeout),
-    /// never a generation input (an inverter asleep at night reports nothing). A draw joins the set
-    /// only if it was fresh when the window opened: a draw that reports only on change is silent
-    /// while the device idles, and would hold the window to its timeout.
+    /// The balance inputs a change on this device can move: per phase the main power and current and
+    /// a sub-metered group current. Never the device's own state (a relay that reports only on
+    /// change, or ignores the command, would hold the window to its timeout), never a generation
+    /// input (an inverter asleep at night reports nothing), never the device's own draws: a draw
+    /// that reports only on change (the go-e's currents) falls silent once the draw is steady, and
+    /// would hold every window to its timeout. A draw is read when the window closes.
     /// </summary>
-    private static List<ClosingSignal> ClosingSet(ControlInputs? inputs, DeviceSpec device, DispatchDevice? dispatchDevice, ImmutableDictionary<Phase, WindowBaseline> before)
+    private static List<ClosingSignal> ClosingSet(ControlInputs? inputs, DeviceSpec device)
     {
         var set = new List<ClosingSignal>();
         foreach (var phase in device.Phases)
@@ -630,18 +637,6 @@ public sealed class EffectorGate
                 set.Add(new ClosingSignal(ClosingInput.PhaseCurrent, phase, meter?.Current?.ReportedAt));
             }
 
-            var baseline = before.GetValueOrDefault(phase);
-            if (device.HasCurrentDraw(phase) && baseline?.DrawCurrent is not null)
-            {
-                var draw = inputs?.Protection.DeviceDraws is { IsDefault: false } draws ? draws.FirstOrDefault(d => d.Device == device.Id && d.Phase == phase) : null;
-                set.Add(new ClosingSignal(ClosingInput.DrawCurrent, phase, draw?.ReportedAt));
-            }
-
-            if (dispatchDevice?.HasPowerDraw(phase) == true && baseline?.DrawPower is not null)
-            {
-                var power = inputs?.Dispatch.DevicePowers is { IsDefault: false } powers ? powers.FirstOrDefault(d => d.Device == device.Id && d.Phase == phase) : null;
-                set.Add(new ClosingSignal(ClosingInput.DrawPower, phase, power?.ReportedAt));
-            }
         }
 
         return set;

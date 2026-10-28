@@ -84,6 +84,9 @@ internal sealed class SelectStopRig
     /// <summary>The draw sensors report at every poll; false: they fall silent (a lost sample).</summary>
     public bool ReportDraw { get; set; } = true;
 
+    /// <summary>The meter reports at every poll; false: it falls silent (a lost sample).</summary>
+    public bool ReportMeter { get; set; } = true;
+
     /// <summary>The stop actuator's commands in order, by meaning: "stop" or "run", whatever the kind of stop.</summary>
     public IEnumerable<string> StopCommands => Path.Calls
         .Where(c => c.Call.Service is ActuatorService.SelectOption or ActuatorService.TurnOn or ActuatorService.TurnOff)
@@ -233,7 +236,7 @@ internal sealed class SelectStopRig
         void Add(string entity, double value, string unit) => updates.Add(new EntityUpdate(EntityId.Parse(entity), Format(value), unit, now, now));
 
         var amps = new[] { l1 + Draw, 5, 5 };
-        foreach (var (letter, index) in new[] { ("a", 0), ("b", 1), ("c", 2) })
+        foreach (var (letter, index) in ReportMeter ? new[] { ("a", 0), ("b", 1), ("c", 2) } : [])
         {
             Add($"sensor.meter_current_{letter}", amps[index], "A");
             Add($"sensor.meter_power_{letter}", -amps[index] * Volts, "W");
@@ -241,7 +244,11 @@ internal sealed class SelectStopRig
             Add($"sensor.inverter_current_{letter}", 0, "A");
         }
 
-        Add("sensor.inverter_power", 0, "W");
+        if (ReportMeter)
+        {
+            Add("sensor.inverter_power", 0, "W");
+        }
+
         if (ReportDraw)
         {
             Add("sensor.charger_draw_current", Draw, "A");

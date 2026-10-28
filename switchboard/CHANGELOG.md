@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.3
+
+### Fixed
+
+- A settling window no longer waits for the device's own draw. The go-e reports its currents only on change: fresh when a command left, silent once the draw was steady, so nearly every window ran to `settling.hard_timeout` (90 s, verdict "no new measurement in time") and dispatch could not take the next step for that long. The window now closes on the meter alone; the draw is still read at the close to verify the change. A timeout logs the silent inputs.
+
 ## 0.11.2
 
 ### Fixed

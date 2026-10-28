@@ -366,10 +366,10 @@ public sealed class SettlingScenarioTests
     [InlineData(true)]
     public void Lost_sample_times_out_the_stop_window_and_counts_no_mismatch(bool select)
     {
-        // The car's draw sensors fall silent after the stop: the window cannot close on them and
-        // times out at the hard timeout (90 s); no mismatch is counted.
+        // The meter falls silent after the stop: the window cannot close on it and times out at
+        // the hard timeout (90 s); no mismatch is counted.
         var rig = new SelectStopRig(switchStop: !select).Begin();
-        rig.ReportDraw = false;
+        rig.ReportMeter = false;
         rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
         rig.Harness.Runner.Step();
         var sent = rig.Harness.Now;
@@ -378,6 +378,27 @@ public sealed class SettlingScenarioTests
 
         var timedOut = Assert.Single(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.SettlingTimedOut && d.Device?.Value == "ev_charger");
         Assert.Equal(sent + TimeSpan.FromSeconds(90), timedOut.At);
+        Assert.Equal(0, rig.Ledger.Mismatches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Draw_that_falls_silent_after_the_stop_does_not_hold_the_window_to_its_timeout(bool select)
+    {
+        // The go-e's currents report only on change: fresh when the stop leaves, silent once the
+        // draw is steady. The draw reports the change once, then stays silent; the window closes on
+        // the meter alone, no timeout is recorded.
+        var rig = new SelectStopRig(switchStop: !select).Begin();
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+        rig.Poll(2, seconds: 1);
+        rig.ReportDraw = false;
+
+        rig.Hold(2, TimeSpan.FromSeconds(60));
+
+        Assert.Null(rig.Ledger.Window);
+        Assert.DoesNotContain(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.SettlingTimedOut && d.Device?.Value == "ev_charger");
         Assert.Equal(0, rig.Ledger.Mismatches);
     }
 

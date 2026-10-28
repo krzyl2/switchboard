@@ -273,7 +273,17 @@ devices:
 #     current: { L1: sensor.carport_current_l1 }   # optional sub-meter in A; without one the
 #     current_max_age: 90s                         # members' worst case is used
 
-# control: overrides any control-parameter default, key by key, for example:
+# control: overrides any control-parameter default, key by key.
+#
+# start_hysteresis_w 100 (default 300): the go-e draws about 1.3 A less than its setpoint, but dispatch
+# budgets the setpoint, so a raise needs about 2.3 A + the start hysteresis of headroom on the phase.
+# With 300 W the charger rested 2.3-3.6 A under the reserve threshold; 100 W takes about 0.9 A of that.
+# It must stay above stop_hysteresis_w (-200).
+# control:
+#   dispatch:
+#     start_hysteresis_w: 100
+#
+# Another override, for example:
 # control:
 #   signals:
 #     balance:
