@@ -119,6 +119,9 @@ internal sealed class SignalRuntime(SignalDefinition definition)
 
     public long RejectedCount { get; set; }
 
+    /// <summary>A power factor signal only: when its current run of reports below −deadband began; null while it is not negative.</summary>
+    public DateTimeOffset? NegativeSince { get; set; }
+
     /// <summary>The same entity read the same way: its samples stay valid across a configuration reload.</summary>
     public bool ReadsLike(SignalDefinition other) =>
         Definition.Entity == other.Entity
@@ -134,6 +137,7 @@ internal sealed class SignalRuntime(SignalDefinition definition)
         Presence = presence;
         Raw = null;
         Accepted = null;
+        NegativeSince = null;
         RawStatus = RawStatus.None;
         RawDetail = SignalDetail.None;
         Refresh.Break();

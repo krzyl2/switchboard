@@ -134,7 +134,9 @@ public sealed record SafetyEnvelope(
 /// <param name="Deadband">Direction power within ±deadband counts as import.</param>
 /// <param name="MaxSkew">How much older than the current the direction power may be reported and still pair with it.</param>
 /// <param name="PairingWait">How long a changed current waits for its direction power from the same meter poll.</param>
-public sealed record DirectionParameters(Watts Deadband, TimeSpan MaxSkew, TimeSpan PairingWait);
+/// <param name="PowerFactorDeadband">A direction power factor within ±this many percent counts as import.</param>
+/// <param name="ExportHold">A negative power factor counts as export only once it has stayed negative this long; until then the phase counts as import.</param>
+public sealed record DirectionParameters(Watts Deadband, TimeSpan MaxSkew, TimeSpan PairingWait, double PowerFactorDeadband, TimeSpan ExportHold);
 
 /// <param name="WindowIntervals">How many recent report intervals the estimate looks at.</param>
 /// <param name="MinIntervals">Below this many intervals the refresh is reported as unknown.</param>

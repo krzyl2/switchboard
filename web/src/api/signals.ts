@@ -97,6 +97,7 @@ export const SIGNAL_ROLES = [
   'phase_current',
   'phase_power',
   'phase_voltage',
+  'phase_power_factor',
   'inverter_power',
   'inverter_phase_current',
   'total_current',

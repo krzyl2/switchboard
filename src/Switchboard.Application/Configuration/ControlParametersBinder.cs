@@ -171,7 +171,9 @@ internal static class ControlParametersBinder
         var directionParameters = new DirectionParameters(
             new Watts(direction.Number("deadband_w", Range.AtLeast(0)) ?? 0),
             direction.PositiveDuration("max_skew") ?? TimeSpan.Zero,
-            direction.PositiveDuration("pairing_wait") ?? TimeSpan.Zero);
+            direction.PositiveDuration("pairing_wait") ?? TimeSpan.Zero,
+            direction.Number("power_factor_deadband_pct", new Range(0, 100)) ?? 0,
+            direction.PositiveDuration("export_hold") ?? TimeSpan.Zero);
         if (directionParameters.PairingWait >= directionParameters.MaxSkew)
         {
             issues.Error(

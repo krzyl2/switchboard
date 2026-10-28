@@ -149,6 +149,7 @@ public sealed class ControlDefaultsTests
         var signals = Control.Signals;
         Assert.Equal(0.1, signals.DefaultSigma[SignalKind.Current]);
         Assert.Equal((20.0, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(2)), (signals.Direction.Deadband.Value, signals.Direction.MaxSkew, signals.Direction.PairingWait));
+        Assert.Equal((20.0, TimeSpan.FromSeconds(30)), (signals.Direction.PowerFactorDeadband, signals.Direction.ExportHold));
         Assert.Equal((64, 8, 0.25), (signals.Refresh.WindowIntervals, signals.Refresh.MinIntervals, signals.Refresh.Quantile));
         Assert.Equal(0.5, signals.FreshnessProbe.AfterFraction);
         Assert.Equal((300.0, TimeSpan.FromSeconds(5)), (signals.Balance.ResidualThreshold.Value, signals.Balance.MaxSkew));

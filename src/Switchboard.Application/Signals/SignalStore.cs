@@ -327,6 +327,11 @@ public sealed class SignalStore
                 Consider(ProbeDue(signal));
             }
 
+            if (signal.NegativeSince is { } negativeSince)
+            {
+                Consider(negativeSince + Direction.ExportHold);
+            }
+
             if (signal.Accepted is { PairingProbeRequested: false } pending
                 && DirectionSignalOf(signal) is { } direction
                 && Classify(direction, now).State == SignalState.Fresh
@@ -632,6 +637,12 @@ public sealed class SignalStore
         signal.RawStatus = RawStatus.Accepted;
         signal.RawDetail = SignalDetail.None;
 
+        if (signal.Definition.Role == SignalRole.PhasePowerFactor)
+        {
+            // The hold runs from the report that began the negative run, so a pair of glitch samples never reaches export_hold.
+            signal.NegativeSince = Value(signal) < -Direction.PowerFactorDeadband ? signal.NegativeSince ?? reported : null;
+        }
+
         if (IsBalanceTrigger(signal.Definition.Role) && !BalanceAccepts(signal, now))
         {
             // The sample is rejected, never the decision: the last accepted value stays in use, and
@@ -806,7 +817,9 @@ public sealed class SignalStore
         }
 
         var power = WithRole(SignalRole.PhasePower, phase);
-        Watts? netImport = power is not null && Classify(power, now).State == SignalState.Fresh ? new Watts(Value(power)) : null;
+        var derived = DerivedPower(phase, now);
+        Watts? netImport = derived?.Power
+            ?? (power is not null && Classify(power, now).State == SignalState.Fresh ? new Watts(Value(power)) : null);
         var share = generation.For(phase);
         Watts? load = netImport is { } n && share is { } g ? n + g : null;
         var voltageSignal = WithRole(SignalRole.PhaseVoltage, phase);
@@ -820,7 +833,7 @@ public sealed class SignalStore
             : null;
         return new PhaseDispatch(phase, reason is null, reason, netImport, share, load, voltage)
         {
-            PowerReportedAt = netImport is null ? null : power!.Accepted!.Effective,
+            PowerReportedAt = derived?.ReportedAt ?? (netImport is null ? null : power!.Accepted!.Effective),
         };
     }
 
@@ -1179,6 +1192,11 @@ public sealed class SignalStore
 
         if (Aligned(signal, direction))
         {
+            if (direction.Definition.Role == SignalRole.PhasePowerFactor)
+            {
+                return PowerFactorDirection(direction, now);
+            }
+
             var power = Value(direction);
             var deadband = Direction.Deadband.Value;
             return power > deadband ? new DirectionInfo(DirectionSource.SignedSignal, FlowDirection.Import, from)
@@ -1189,6 +1207,45 @@ public sealed class SignalStore
         return now - signal.Accepted!.ArrivedAt < Direction.PairingWait
             ? new DirectionInfo(DirectionSource.Pending, FlowDirection.Unknown, from)
             : new DirectionInfo(DirectionSource.Unavailable, FlowDirection.Unknown, from);
+    }
+
+    /// <summary>
+    /// Import until a negative factor has persisted: a one-poll glitch must never read as export, because export blocks
+    /// shedding (and, in <see cref="DerivedPower"/>, would read as a phase giving back what it draws). The signal must be fresh.
+    /// </summary>
+    private DirectionInfo PowerFactorDirection(SignalRuntime factor, DateTimeOffset now)
+    {
+        var value = Value(factor);
+        var from = factor.Definition.Name;
+        return value > -Direction.PowerFactorDeadband || factor.NegativeSince is not { } since || now - since < Direction.ExportHold
+            ? new DirectionInfo(value > Direction.PowerFactorDeadband ? DirectionSource.SignedSignal : DirectionSource.Deadband, FlowDirection.Import, from)
+            : new DirectionInfo(DirectionSource.SignedSignal, FlowDirection.Export, from);
+    }
+
+    /// <summary>
+    /// A phase's net import from the meter's own current, voltage and power factor: P = U · I · |PF|, signed by the held power
+    /// factor direction. The meter's phase power register is int16 at 0.1 W: past 3.3 kW of import on one phase it wraps to a
+    /// positive value (true = reading − 6553.6 W), and near a zero net balance it reads about 0 while the current does not
+    /// (live, 2026-10-27/28: 433 and 376 samples). The three inputs do neither. Null unless all are mapped and fresh, then the
+    /// phase power is used as before. The reported time is the oldest of the three, so a settling window never closes on a
+    /// value older than its command.
+    /// </summary>
+    private (Watts Power, DateTimeOffset ReportedAt)? DerivedPower(Phase phase, DateTimeOffset now)
+    {
+        if (WithRole(SignalRole.PhasePowerFactor, phase) is not { } factor
+            || WithRole(SignalRole.PhaseVoltage, phase) is not { } voltage
+            || WithRole(SignalRole.PhaseCurrent, phase) is not { } current
+            || Classify(factor, now).State != SignalState.Fresh
+            || Classify(voltage, now).State != SignalState.Fresh
+            || Classify(current, now).State != SignalState.Fresh)
+        {
+            return null;
+        }
+
+        var magnitude = Value(voltage) * Value(current) * Math.Abs(Value(factor)) / 100;
+        var power = PowerFactorDirection(factor, now).Direction == FlowDirection.Export ? -magnitude : magnitude;
+        var reportedAt = new[] { factor.Accepted!.Effective, voltage.Accepted!.Effective, current.Accepted!.Effective }.Min();
+        return (new Watts(power), reportedAt);
     }
 
     private SignalRuntime? DirectionSignalOf(SignalRuntime signal) =>

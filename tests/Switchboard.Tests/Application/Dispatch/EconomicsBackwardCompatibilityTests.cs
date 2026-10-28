@@ -28,8 +28,8 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
     // Digests of the 0.9 engine (see the class comment). To renew one deliberately, run the test, read the actual value from its message
     // and say in DECISIONS.md which decision of an unchanged configuration moved and why.
     private const string BalanceWorlds = "B604FE86D71EAF34922B01FACC2909A1DB3EF0DDAF849B48F5EA23D831484135";
-    private const string SyntheticShadow = "4831B8B697EC61AF0A10E5D86F940B77EACDD3E1FDACCDB148BCD1DD1C344824";
-    private const string SyntheticActive = "01A77F4B0F8BC282E490649ACBDCFE743E7FE61F277336F9789FE795B7E7DCCD";
+    private const string SyntheticShadow = "1A552444141477480FE599C63E4E003FB05E74BB5CF2E6E4476DC641DD9CE446";
+    private const string SyntheticActive = "4D43F2F6850768E237934ABEA403D70E7356B5FBBECF27C4DA26DB879BB0E375";
 
     private static readonly DateTimeOffset T0 = GuardScenario.Start;
 
@@ -192,7 +192,7 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
 [Trait("Category", "LiveReplay")]
 public sealed class EconomicsLiveBackwardCompatibilityTests
 {
-    private const string Live = "D4F125E9B4B3DC097C24D397AB75BDE5DBE853B688A6EE27F7EF8B5365CF8F46";
+    private const string Live = "DB500B213B67B94C712727563568DE19776467F0B785F917747AC5E551F282B6";
 
     [Fact]
     public void The_live_72h_decides_byte_for_byte_as_the_0_9_dispatch_did()

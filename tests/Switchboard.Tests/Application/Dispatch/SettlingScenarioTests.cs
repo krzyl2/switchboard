@@ -384,6 +384,29 @@ public sealed class SettlingScenarioTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Draw_that_was_already_silent_at_the_stop_does_not_hold_the_window_to_its_timeout(bool select)
+    {
+        // The go-e's draw sensors report only on change, so an idle charger's are minutes old when the
+        // stop leaves. A draw that was not fresh at the command cannot be waited for: the window
+        // closes on the meter, no timeout is recorded, and the stale draw verifies nothing (inconclusive).
+        var rig = new SelectStopRig(switchStop: !select).Begin();
+        rig.ReportDraw = false;
+        rig.Hold(2, TimeSpan.FromSeconds(100));
+        rig.Harness.KillSwitch.Set(true, Switchboard.Application.Guard.KillSwitchSource.Api);
+        rig.Harness.Runner.Step();
+        Assert.Equal(["stop"], rig.StopCommands);
+
+        rig.Hold(2, TimeSpan.FromSeconds(60));
+
+        Assert.Null(rig.Ledger.Window);
+        Assert.DoesNotContain(rig.Harness.Recorder.Decisions, d => d.Action == DecisionAction.SettlingTimedOut && d.Device?.Value == "ev_charger");
+        Assert.Equal((HistoryKind.Command, Verdict.Inconclusive), (rig.Ledger.History[^1].Kind, rig.Ledger.History[^1].Verdict));
+        Assert.Equal(0, rig.Ledger.Mismatches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Unresponsive_stop_is_a_mismatch_and_marks_the_charger_at_the_limit(bool select)
     {
         // The stop actuator ignores the command and the car keeps drawing 10 A: at the window's close

@@ -52,6 +52,13 @@ public enum SignalRole
 
     PhaseVoltage,
 
+    /// <summary>
+    /// Main-meter power factor on one phase, in percent, signed (positive import after the declared sign): a direction
+    /// source for that phase's unsigned current, never a measurement of load. Unlike the phase power it cannot wrap or zero
+    /// with the balance, so a negative factor must persist for <c>export_hold</c> before it counts as export (SIG-03).
+    /// </summary>
+    PhasePowerFactor,
+
     /// <summary>Total inverter production (SIG-08).</summary>
     InverterPower,
 

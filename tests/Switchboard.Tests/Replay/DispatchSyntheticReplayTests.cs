@@ -178,11 +178,13 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         new(id, at, d.Scope, d.Device, d.Stage, d.Phase, action ?? d.Action, d.Reason, d.Overridden, d.Mode, d.Commanded, d.RefusedBy, inputs is null ? d.Inputs : d.Inputs with { Dispatch = inputs }, d.Origin, d.Group, target ?? d.Target);
 
     // DISP-10 and DISP-08: the elements are free to rotate, so the one on the phase with the most
-    // headroom (L2, the lowest base load) goes first, and only one increase is in flight at a time:
-    // the charger's restore from the startup hold (06:03:30) takes the next window, so the L3
-    // element starts only at the first boundary after that window closed. Since 0.7.1 the startup
-    // hold stops the charger through its select, so that restore is a switch-on (enabled again at a
-    // setpoint), no longer a setpoint change from 6 A.
+    // headroom (L2, the lowest base load) goes first among them, and only one increase is in flight
+    // at a time. The idle charger's draw sensors report only on change, so the startup hold's stop
+    // window does not wait for them (they were not fresh when it opened): it closes on the meter and
+    // the charger, worth more per kWh, is restored first (06:03:00); L2 takes the next window
+    // (06:04:00) and L3 the first boundary after that one closed. Since 0.7.1 the startup hold stops
+    // the charger through its select, so that restore is a switch-on (enabled again at a setpoint),
+    // no longer a setpoint change from 6 A.
     [Fact]
     public void Rotation_starts_the_element_with_the_most_headroom_first_one_window_at_a_time()
     {
@@ -190,11 +192,11 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var restore = ChargerRestore(run.Shadow);
 
         Assert.Equal(
-            [("heater_l2", DispatchSyntheticReplayRun.At(6, 3)), ("heater_l3", DispatchSyntheticReplayRun.At(6, 4, 30))],
+            [("heater_l2", DispatchSyntheticReplayRun.At(6, 4)), ("heater_l3", DispatchSyntheticReplayRun.At(6, 4, 30))],
             starts.Select(d => (d.Device!.Value.Value, d.At)));
         Assert.All(starts, d => Assert.Equal(ReasonCode.HeadroomAvailable, d.Reason));
-        Assert.Equal(DispatchSyntheticReplayRun.At(6, 3, 30), restore.At);
-        Assert.DoesNotContain(run.Shadow.Decisions, d => d.Origin == DecisionOrigin.Dispatch && d.Action is DecisionAction.SwitchOn or DecisionAction.SetSetpoint && d.At > restore.At && d.At < starts[1].At);
+        Assert.Equal(DispatchSyntheticReplayRun.At(6, 3), restore.At);
+        Assert.DoesNotContain(run.Shadow.Decisions, d => d.Origin == DecisionOrigin.Dispatch && d.Action is DecisionAction.SwitchOn or DecisionAction.SetSetpoint && d.At > restore.At && d.At < starts[0].At);
     }
 
     // DISP-03 / 04 §3: the charger is worth more per kWh, so its setpoint takes L1's headroom first;
@@ -232,7 +234,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
 
         Assert.Equal(l1.Current!.Value.Value, l1.EffectiveCurrent!.Value.Value, 3);
         Assert.Equal((6.0, false), (held.Target!.Setpoint!.Value.Value, held.Target.Enabled));
-        Assert.Equal((DispatchSyntheticReplayRun.At(6, 3, 30), ReasonCode.HeadroomAvailable), (restored.At, restored.Reason));
+        Assert.Equal((DispatchSyntheticReplayRun.At(6, 3), ReasonCode.HeadroomAvailable), (restored.At, restored.Reason));
         Assert.True(restored.Target!.Enabled);
         Assert.InRange(restored.Target.Setpoint!.Value.Value, 6.5, 19.5);
     }

@@ -166,6 +166,111 @@ public sealed class DirectionTests
         Assert.Contains(store.Configuration.Warnings, w => w.Code == "direction_unavailable_cautious");
     }
 
+    private const string PowerFactor = "sensor.meter_pf_a";
+
+    private static StoreHarness PowerFactorStore() => new(
+        TestConfigurations.ThreePhase(extra: "  grid_pf_l1:\n    entity: sensor.meter_pf_a\n    kind: percentage\n    unit: \"%\"\n    sign: positive_import\n    max_age: 90s\n    role: phase_power_factor\n    phase: L1\n")
+            .Replace("direction_from: grid_power_l1", "direction_from: grid_pf_l1", StringComparison.Ordinal));
+
+    [Fact]
+    public void Wrapped_phase_power_cannot_turn_a_heavy_import_into_export()
+    {
+        // 2026-10-27 11:45 on the reference install: the meter's phase power wrapped to +3059 W (export
+        // by its convention) while L1 drew 14.9 A and imported 3.5 kW. The power factor of the same phase
+        // stayed +81 %, so the direction must stay import and protection must keep shedding.
+        var store = PowerFactorStore();
+        store.Push(Power, "3059.4");
+        store.Push(PowerFactor, "81.59");
+        store.Push(Current, "14.868");
+
+        var reading = store.Protection(Phase.L1).Current!;
+        Assert.Equal((FlowDirection.Import, 14.868), (reading.Direction, reading.Signed.Value));
+    }
+
+    [Fact]
+    public void Negative_power_factor_counts_as_export_only_after_it_has_persisted()
+    {
+        var store = PowerFactorStore();
+        store.Push(PowerFactor, "-77.1");
+        store.Push(Current, "14.7");
+        var glitch = store.Protection(Phase.L1).Current!;
+
+        store.Advance(TimeSpan.FromSeconds(10));
+        store.Push(PowerFactor, "81.0");
+        store.Push(Current, "14.8");
+        var recovered = store.Protection(Phase.L1).Current!;
+
+        store.Advance(TimeSpan.FromSeconds(10));
+        store.Push(PowerFactor, "-80.0");
+        store.Push(Current, "6.0");
+        for (var i = 0; i < 2; i++)
+        {
+            store.Advance(TimeSpan.FromSeconds(10));
+            store.Push(PowerFactor, $"-8{i}.0");
+            store.Push(Current, $"6.{i + 1}");
+        }
+
+        var held = store.Protection(Phase.L1).Current!;
+        store.Advance(TimeSpan.FromSeconds(10));
+        store.Push(PowerFactor, "-83.0");
+        store.Push(Current, "6.4");
+        var persisted = store.Protection(Phase.L1).Current!;
+
+        Assert.Equal(FlowDirection.Import, glitch.Direction);
+        Assert.Equal(FlowDirection.Import, recovered.Direction);
+        Assert.Equal(FlowDirection.Import, held.Direction);
+        Assert.Equal((FlowDirection.Export, -6.4), (persisted.Direction, persisted.Signed.Value));
+    }
+
+    [Theory]
+    [InlineData("3059.4", 2760.0)] // wrapped: true import ≈ reading − 6553.6 W; the dispatch input is U·I·PF, not the register
+    [InlineData("0", 2760.0)] // zeroed near a zero net balance while the current is real
+    public void Dispatch_net_import_comes_from_voltage_current_and_power_factor_when_the_meter_power_is_wrong(string powerRegister, double expected)
+    {
+        var store = PowerFactorStore();
+        store.Push(Power, powerRegister);
+        store.Push("sensor.meter_voltage_a", "230");
+        store.Push(PowerFactor, "80");
+        store.Push(Current, "15");
+
+        var dispatch = store.Dispatch(Phase.L1);
+        Assert.Equal(expected, dispatch.NetImport!.Value.Value, 6);
+    }
+
+    [Fact]
+    public void A_one_poll_negative_power_factor_never_makes_the_dispatch_phase_export()
+    {
+        var store = PowerFactorStore();
+        store.Push(Power, "3059.4");
+        store.Push("sensor.meter_voltage_a", "230");
+        store.Push(PowerFactor, "-77");
+        store.Push(Current, "15");
+
+        Assert.Equal(230 * 15 * 0.77, store.Dispatch(Phase.L1).NetImport!.Value.Value, 6);
+    }
+
+    [Fact]
+    public void Dispatch_keeps_the_meter_power_without_a_fresh_power_factor()
+    {
+        var store = PowerFactorStore();
+        store.Push(Power, "-1150"); // positive_export: an import of 1150 W
+        store.Push("sensor.meter_voltage_a", "230");
+        store.Push(Current, "5");
+
+        Assert.Equal(1150, store.Dispatch(Phase.L1).NetImport!.Value.Value);
+    }
+
+    [Fact]
+    public void Power_factor_inside_its_deadband_counts_as_import()
+    {
+        var store = PowerFactorStore();
+        store.Push(PowerFactor, "-15");
+        store.Push(Current, "0.4");
+
+        var reading = store.Protection(Phase.L1).Current!;
+        Assert.Equal((FlowDirection.Import, DirectionSource.Deadband), (reading.Direction, reading.DirectionSource));
+    }
+
     [Fact]
     public void Diagnostics_show_the_signed_value_and_where_the_sign_came_from()
     {

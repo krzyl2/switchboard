@@ -67,6 +67,7 @@ public static class SwitchboardDocumentParser
         ("phase_current", SignalRole.PhaseCurrent),
         ("phase_power", SignalRole.PhasePower),
         ("phase_voltage", SignalRole.PhaseVoltage),
+        ("phase_power_factor", SignalRole.PhasePowerFactor),
         ("inverter_power", SignalRole.InverterPower),
         ("inverter_phase_current", SignalRole.InverterPhaseCurrent),
         ("total_current", SignalRole.TotalCurrent),
@@ -417,6 +418,11 @@ public static class SwitchboardDocumentParser
         {
             role = r;
             CheckRoleKind(role, kind, ConfigRead.Join(path, "role"), roleNode, issues);
+            if (role == SignalRole.PhasePowerFactor && kind == SignalKind.Percentage && sign is null)
+            {
+                issues.Error(ConfigurationIssueCodes.SignRequired, ConfigRead.Join(path, "sign"), mapping, "A phase_power_factor signal needs sign: positive_import or positive_export.");
+            }
+
             if (topology == Topology.SinglePhase && role is SignalRole.TotalCurrent or SignalRole.TotalPower)
             {
                 issues.Error(ConfigurationIssueCodes.RoleNotInTopology, ConfigRead.Join(path, "role"), roleNode, "A single-phase connection has no summed signals; use phase_current / phase_power on L1.");
@@ -638,6 +644,19 @@ public static class SwitchboardDocumentParser
     {
         var signPath = ConfigRead.Join(path, "sign");
         var node = ConfigRead.Optional(mapping, "sign");
+        if (kind == SignalKind.Percentage && node is not null)
+        {
+            // Only a power factor carries a direction; an unsigned one would have no source of its own.
+            var percentageSign = ConfigRead.Choice(node, signPath, issues, Signs);
+            if (percentageSign == SignConvention.Unsigned)
+            {
+                issues.Error(ConfigurationIssueCodes.SignNotAllowedForKind, signPath, node, "A percentage signal takes sign positive_import or positive_export (power factor), not unsigned.");
+                return null;
+            }
+
+            return percentageSign;
+        }
+
         if (kind is not (SignalKind.Current or SignalKind.Power))
         {
             if (node is not null)
@@ -663,6 +682,7 @@ public static class SwitchboardDocumentParser
         {
             SignalRole.PhaseCurrent or SignalRole.InverterPhaseCurrent or SignalRole.TotalCurrent => SignalKind.Current,
             SignalRole.PhasePower or SignalRole.InverterPower or SignalRole.TotalPower => SignalKind.Power,
+            SignalRole.PhasePowerFactor => SignalKind.Percentage,
             SignalRole.EnergyExport or SignalRole.EnergyImport => SignalKind.EnergyCounter,
             SignalRole.PriceImport or SignalRole.PriceExport => SignalKind.Price,
             SignalRole.PvForecast or SignalRole.PriceCurveImport or SignalRole.PriceCurveExport => SignalKind.Series,
@@ -682,7 +702,7 @@ public static class SwitchboardDocumentParser
         var node = ConfigRead.Optional(mapping, "phase");
         var requirement = role switch
         {
-            SignalRole.PhaseCurrent or SignalRole.PhasePower or SignalRole.PhaseVoltage or SignalRole.InverterPhaseCurrent => true,
+            SignalRole.PhaseCurrent or SignalRole.PhasePower or SignalRole.PhaseVoltage or SignalRole.PhasePowerFactor or SignalRole.InverterPhaseCurrent => true,
             SignalRole.InverterPower => (bool?)null,
             _ => false,
         };
@@ -769,13 +789,14 @@ public static class SwitchboardDocumentParser
             }
 
             var targetDefinition = target.Definition;
-            if (targetDefinition.Kind != SignalKind.Power || targetDefinition.Sign is null or SignConvention.Unsigned)
+            var powerFactor = targetDefinition.Role == SignalRole.PhasePowerFactor;
+            if ((targetDefinition.Kind != SignalKind.Power && !powerFactor) || targetDefinition.Sign is null or SignConvention.Unsigned)
             {
                 issues.Error(
                     ConfigurationIssueCodes.DirectionFromNotSignedPower,
                     path,
                     draft.DirectionNode,
-                    $"'{text}' must be a power signal with sign positive_import or positive_export.");
+                    $"'{text}' must be a power signal with sign positive_import or positive_export, or a phase_power_factor signal.");
                 continue;
             }
 
@@ -803,7 +824,7 @@ public static class SwitchboardDocumentParser
     /// </summary>
     private static bool PhasesCompatible(SignalDefinition signal, SignalDefinition target) => signal.Role switch
     {
-        SignalRole.PhaseCurrent or SignalRole.PhasePower or SignalRole.PhaseVoltage => target.Phase == signal.Phase,
+        SignalRole.PhaseCurrent or SignalRole.PhasePower or SignalRole.PhaseVoltage or SignalRole.PhasePowerFactor => target.Phase == signal.Phase,
         SignalRole.InverterPhaseCurrent or SignalRole.InverterPower => target.Phase is null || target.Phase == signal.Phase,
         SignalRole.TotalCurrent or SignalRole.TotalPower => target.Phase is null,
         _ => true,

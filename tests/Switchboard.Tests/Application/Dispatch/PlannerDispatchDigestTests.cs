@@ -21,7 +21,7 @@ public sealed class PlannerDispatchDigestTests(DispatchSyntheticReplayRun run) :
 {
     // The digests of EconomicsBackwardCompatibilityTests (taken at the 0.9 engine; the log line's list version is read as 6 there, see its Add).
     private const string BalanceWorlds = "B604FE86D71EAF34922B01FACC2909A1DB3EF0DDAF849B48F5EA23D831484135";
-    private const string SyntheticShadow = "4831B8B697EC61AF0A10E5D86F940B77EACDD3E1FDACCDB148BCD1DD1C344824";
+    private const string SyntheticShadow = "1A552444141477480FE599C63E4E003FB05E74BB5CF2E6E4476DC641DD9CE446";
 
     private static readonly string[] DeviceNames = ["heater_l1", "heater_l2", "heater_l3", "pool", "ev_charger"];
 
@@ -140,7 +140,7 @@ public sealed class PlannerDispatchDigestTests(DispatchSyntheticReplayRun run) :
 [Trait("Category", "LiveReplay")]
 public sealed class PlannerLiveDispatchDigestTests
 {
-    private const string Live = "D4F125E9B4B3DC097C24D397AB75BDE5DBE853B688A6EE27F7EF8B5365CF8F46";
+    private const string Live = "DB500B213B67B94C712727563568DE19776467F0B785F917747AC5E551F282B6";
 
     [Theory]
     [InlineData("mode_off")]

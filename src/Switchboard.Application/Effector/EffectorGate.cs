@@ -257,7 +257,7 @@ public sealed class EffectorGate
             }
 
             var dispatchDevice = inputs?.DispatchSetup?.Device(device);
-            var outcome = SettlingRule.Evaluate(window.Times, ClosingSet(inputs, spec, dispatchDevice), now);
+            var outcome = SettlingRule.Evaluate(window.Times, ClosingSet(inputs, spec, dispatchDevice, window.Before), now);
             if (outcome.State != SettlingState.Open)
             {
                 state.Window = window with { Outcome = outcome.State };
@@ -609,9 +609,11 @@ public sealed class EffectorGate
     /// The balance inputs a change on this device can move: per phase the main power and current, a
     /// sub-metered group current, and the device's own draws. Never the device's own state (a relay
     /// that reports only on change, or ignores the command, would hold the window to its timeout),
-    /// never a generation input (an inverter asleep at night reports nothing).
+    /// never a generation input (an inverter asleep at night reports nothing). A draw joins the set
+    /// only if it was fresh when the window opened: a draw that reports only on change is silent
+    /// while the device idles, and would hold the window to its timeout.
     /// </summary>
-    private static List<ClosingSignal> ClosingSet(ControlInputs? inputs, DeviceSpec device, DispatchDevice? dispatchDevice)
+    private static List<ClosingSignal> ClosingSet(ControlInputs? inputs, DeviceSpec device, DispatchDevice? dispatchDevice, ImmutableDictionary<Phase, WindowBaseline> before)
     {
         var set = new List<ClosingSignal>();
         foreach (var phase in device.Phases)
@@ -628,13 +630,14 @@ public sealed class EffectorGate
                 set.Add(new ClosingSignal(ClosingInput.PhaseCurrent, phase, meter?.Current?.ReportedAt));
             }
 
-            if (device.HasCurrentDraw(phase))
+            var baseline = before.GetValueOrDefault(phase);
+            if (device.HasCurrentDraw(phase) && baseline?.DrawCurrent is not null)
             {
                 var draw = inputs?.Protection.DeviceDraws is { IsDefault: false } draws ? draws.FirstOrDefault(d => d.Device == device.Id && d.Phase == phase) : null;
                 set.Add(new ClosingSignal(ClosingInput.DrawCurrent, phase, draw?.ReportedAt));
             }
 
-            if (dispatchDevice?.HasPowerDraw(phase) == true)
+            if (dispatchDevice?.HasPowerDraw(phase) == true && baseline?.DrawPower is not null)
             {
                 var power = inputs?.Dispatch.DevicePowers is { IsDefault: false } powers ? powers.FirstOrDefault(d => d.Device == device.Id && d.Phase == phase) : null;
                 set.Add(new ClosingSignal(ClosingInput.DrawPower, phase, power?.ReportedAt));

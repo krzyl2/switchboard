@@ -99,6 +99,10 @@ signals:
     max_skew: 5s
     # A changed value waits this long for its direction power from the same meter poll.
     pairing_wait: 2s
+    # A direction power factor (role phase_power_factor) within ±this many percent counts as import.
+    power_factor_deadband_pct: 20
+    # A negative power factor counts as export only after it has stayed negative this long; until then the phase counts as import.
+    export_hold: 30s
   refresh:
     window_intervals: 64
     min_intervals: 8

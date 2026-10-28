@@ -145,6 +145,7 @@ export const en = {
   'role.phase_current': 'phase current',
   'role.phase_power': 'phase power',
   'role.phase_voltage': 'phase voltage',
+  'role.phase_power_factor': 'phase power factor',
   'role.inverter_power': 'inverter power',
   'role.inverter_phase_current': 'inverter phase current',
   'role.total_current': 'total current',

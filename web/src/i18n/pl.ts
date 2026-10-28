@@ -145,6 +145,7 @@ export const pl: Messages = {
   'role.phase_current': 'prąd fazy',
   'role.phase_power': 'moc na fazie',
   'role.phase_voltage': 'napięcie fazowe',
+  'role.phase_power_factor': 'współczynnik mocy fazy',
   'role.inverter_power': 'moc falownika',
   'role.inverter_phase_current': 'prąd falownika na fazie',
   'role.total_current': 'prąd łączny',
