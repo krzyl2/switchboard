@@ -60,6 +60,9 @@ public enum CommandOutcome
     /// <summary>Home Assistant answered with an error.</summary>
     Failed,
 
+    /// <summary>Home Assistant refused the value itself (service_validation_error, e.g. a setpoint outside the entity's range): the device never saw it, so it says nothing about the device reacting.</summary>
+    Rejected,
+
     /// <summary>No answer within HomeAssistant:CommandTimeout, or the link closed before the answer: the command may or may not have been carried out.</summary>
     TimedOut,
 

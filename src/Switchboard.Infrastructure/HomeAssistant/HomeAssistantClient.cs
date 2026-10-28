@@ -602,7 +602,7 @@ public sealed class HomeAssistantClient
         {
             call.TrySetResult(message.TryGetProperty("success", out var called) && called.ValueKind == JsonValueKind.True
                 ? new CallOutcome(CommandOutcome.Acknowledged, null)
-                : new CallOutcome(CommandOutcome.Failed, ErrorMessageOf(message) ?? "Home Assistant refused the call without a reason"));
+                : new CallOutcome(ErrorCodeOf(message) == "service_validation_error" ? CommandOutcome.Rejected : CommandOutcome.Failed, ErrorMessageOf(message) ?? "Home Assistant refused the call without a reason"));
         }
         else if (type.ValueEquals(Result) && _unsubscribes.TryRemove(messageId, out var ended))
         {
@@ -717,6 +717,12 @@ public sealed class HomeAssistantClient
         message.ValueKind == JsonValueKind.Object
         && message.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String
             ? text.GetString()
+            : null;
+
+    private static string? ErrorCodeOf(JsonElement message) =>
+        message.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+        && error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
+            ? code.GetString()
             : null;
 
     private static string? ErrorMessageOf(JsonElement message) =>
