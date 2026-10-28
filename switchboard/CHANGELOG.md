@@ -2,6 +2,17 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.2
+
+### Fixed
+
+- The SolarEdge M1 phase power register is int16 at 0.1 W: past 3.3 kW of import on one phase it wraps to a positive value (true = reading - 6553.6 W), and near a zero net balance it reads about 0 while the current does not (seen live: 433 and 376 samples in two days). A wrapped L1 read as export, the guard then recorded `cannot_reduce_exporting` instead of shedding, and `breaker_headroom` showed about 43 A for a 25 A breaker. A phase current can now take its direction from the power factor of the same phase, and dispatch takes the net import from voltage x current x power factor. A negative factor counts as export only after `control.signals.direction.export_hold` (30 s); within `power_factor_deadband_pct` (20) it counts as import.
+- A draw that reports only on change and was silent when a settling window opened no longer holds the window to its timeout.
+
+### Added
+
+- Signal role `phase_power_factor` (`kind: percentage`, `unit: "%"`, `sign: positive_import`, `phase`) as a `direction_from` source and, with `phase_voltage` and `phase_current`, as the dispatch power of that phase. Opt-in: without it everything decides as before. The setup wizard still writes `direction_from` as the phase power, so a wizard save undoes it; edit `switchboard.yaml` by hand.
+
 ## 0.11.1
 
 ### Fixed
