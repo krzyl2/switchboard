@@ -82,6 +82,24 @@ public sealed class CommandResultTests
         Assert.False(s.Ledger(on.Device!.Value.Value)!.Target?.Relays[0] ?? false);
     }
 
+    [Theory]
+    [InlineData(CommandOutcome.Failed, true)]
+    [InlineData(CommandOutcome.Rejected, false)]
+    public void Only_a_failure_counts_toward_unresponsive_a_value_home_assistant_rejected_does_not(CommandOutcome outcome, bool counted)
+    {
+        // A setpoint outside the entity's range (an actuator max above what the charger accepts) never
+        // reaches the device: repeating it must not mark a healthy device unresponsive for the retry
+        // delay, which kept a charger off for 30 minutes.
+        var port = new RecordingDeviceCommandPort { Answer = c => c.On ? (outcome, null) : (CommandOutcome.Acknowledged, null) };
+        var s = DispatchScenario.Create(OnChangeHeaters, ["heater_l1", "heater_l2", "heater_l3"], OneBoundary, mode: DispatchScenario.Active, port: port);
+
+        s.PollUntil(T0 + TimeSpan.FromMinutes(10), 3, 3, 3);
+
+        Assert.NotEmpty(port.Submitted);
+        var mismatches = new[] { "heater_l1", "heater_l2", "heater_l3" }.Sum(d => s.Ledger(d)?.Mismatches ?? 0);
+        Assert.Equal(counted, mismatches > 0);
+    }
+
     [Fact]
     public void A_failed_dispatch_off_keeps_being_sent_so_a_later_guard_shed_still_reaches_the_device()
     {

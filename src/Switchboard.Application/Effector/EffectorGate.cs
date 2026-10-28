@@ -1710,7 +1710,7 @@ public sealed class EffectorGate
             {
                 // Home Assistant answered with an error or not at all (list version 5; versions 1 to 4
                 // used device_unresponsive, which now means only a device that does not react).
-                { Outcome: CommandOutcome.Failed or CommandOutcome.TimedOut } => ReasonCode.CommandFailed,
+                { Outcome: CommandOutcome.Failed or CommandOutcome.Rejected or CommandOutcome.TimedOut } => ReasonCode.CommandFailed,
                 { NotSent: CommandNotSentReason.ControlOff } => ReasonCode.ModeShadow,
 
                 // The command never left: no link, not a declared actuator (or one of Switchboard's own),

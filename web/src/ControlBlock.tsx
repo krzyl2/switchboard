@@ -72,7 +72,7 @@ function effectiveFacts(t: Messages, mode: Mode): { tone: Tone; label: string; n
 }
 
 function failureText(t: Messages, failure: CommandFailure): string {
-  return failure.notSent !== null ? t[`control.notSent.${failure.notSent}`] : t[`control.outcome.${failure.outcome as 'failed' | 'timed_out'}`];
+  return failure.notSent !== null ? t[`control.notSent.${failure.notSent}`] : t[`control.outcome.${failure.outcome as 'failed' | 'rejected' | 'timed_out'}`];
 }
 
 function noticeText(t: Messages, notice: NonNullable<ControlState['notice']>): string {

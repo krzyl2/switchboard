@@ -71,6 +71,22 @@ public sealed class HomeAssistantCallServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_value_home_assistant_validates_away_is_rejected_not_a_failure_of_the_device()
+    {
+        // A setpoint outside the entity's range never reaches the device: counting it as the device
+        // not reacting would mark a healthy charger unresponsive for the whole retry delay.
+        var transport = await ConnectAsync();
+
+        var call = _client.CallServiceAsync(Off, Declared, Timeout, CancellationToken.None);
+        var id = Id(await transport.NextSentAsync());
+        await transport.PushAndWaitAsync($$$"""{"id":{{{id}}},"type":"result","success":false,"error":{"code":"service_validation_error","message":"Validation error: Value 19.0 for number.goe_422752_amp is outside valid range 6 - 16"}}""");
+
+        var outcome = await call.Soon();
+        Assert.Equal(CommandOutcome.Rejected, outcome.Outcome);
+        Assert.Contains("outside valid range", outcome.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task No_answer_in_time_is_a_timeout_on_the_injected_clock()
     {
         var transport = await ConnectAsync();

@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.1
+
+### Fixed
+
+- A value Home Assistant refuses itself (`service_validation_error`, for example a setpoint above the range of a `number` entity) no longer counts as a mismatch of the device. Seen live: a go-e `max: 20` against an entity that accepted 6-16 A produced three rejected 19 A commands, which marked the charger unresponsive and kept it off for `unresponsive_retry_after`. The command is still taken back and a protective off is still re-sent; it just does not count toward `settling.mismatch_limit`. The decision keeps the reason `command_failed`; the control block shows "value rejected by Home Assistant". Keep the actuator's `max` within what its entity accepts (for the go-e, the "max current" in the go-e app).
+
 ## 0.11.0
 
 ### Fixed

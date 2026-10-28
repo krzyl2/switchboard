@@ -11,7 +11,7 @@ import { bool, count, fail, field, instant, list, nullable, object, oneOf, text 
 
 /** Why control is locked off: state.json could not be trusted at start (the kill switch is on until confirmed). */
 export const CONTROL_LOCK_REASONS = ['state_file_corrupt'] as const;
-export const COMMAND_OUTCOMES = ['acknowledged', 'failed', 'timed_out', 'not_sent'] as const;
+export const COMMAND_OUTCOMES = ['acknowledged', 'failed', 'rejected', 'timed_out', 'not_sent'] as const;
 export const COMMAND_NOT_SENT_REASONS = ['link_down', 'not_declared', 'superseded', 'control_off', 'own_entity'] as const;
 
 export type ControlLockReason = (typeof CONTROL_LOCK_REASONS)[number];
@@ -72,7 +72,7 @@ export function parseControl(raw: unknown): Control {
       lastAcknowledgedAt: nullable(field(commands, 'lastAcknowledgedAt', 'commands'), 'commands.lastAcknowledgedAt', instant),
       lastFailure: nullable(field(commands, 'lastFailure', 'commands'), 'commands.lastFailure', (v, p) => {
         const f = object(v, p);
-        const outcome = oneOf(['failed', 'timed_out', 'not_sent'] as const, field(f, 'outcome', p), `${p}.outcome`);
+        const outcome = oneOf(['failed', 'rejected', 'timed_out', 'not_sent'] as const, field(f, 'outcome', p), `${p}.outcome`);
         const notSent = nullable(field(f, 'notSent', p), `${p}.notSent`, (n, np) => oneOf(COMMAND_NOT_SENT_REASONS, n, np));
         // Only an unsent command says why it was not sent.
         if ((outcome === 'not_sent') !== (notSent !== null)) fail(`${p}.notSent`, 'present exactly for an unsent command');
