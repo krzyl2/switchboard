@@ -55,7 +55,7 @@ public sealed class PlanInputsEndpointTests
 
     private static PlanResponse Build(ConfigurationResult config, DateTimeOffset at, ForecastInputs? forecast = null)
     {
-        var sources = PlanSourceMapper.Map(config.Configuration!, forecast, LoadProfile.Empty, Warsaw);
+        var sources = PlanSourceMapper.Map(config.Configuration!, forecast, LoadProfile.Empty, Warsaw, at);
         return PlanEndpoint.Build(config, GoalBoard.Empty(at), sources, forecast);
     }
 
@@ -109,7 +109,7 @@ public sealed class PlanInputsEndpointTests
         // Why: a 0.10 file must answer exactly as before: not enabled, nothing computed. Even when sources are at hand the endpoint must not
         // present them as a plan.
         var config = TestConfigurations.Valid(TestConfigurations.ThreePhase() + HourlyTariff);
-        var sources = PlanSourceMapper.Map(config.Configuration!, null, LoadProfile.Empty, Warsaw);
+        var sources = PlanSourceMapper.Map(config.Configuration!, null, LoadProfile.Empty, Warsaw, Local(2026, 10, 24, 12, 2));
 
         var response = PlanEndpoint.Build(config, GoalBoard.Empty(Local(2026, 10, 24, 12, 2)), sources);
 
@@ -119,6 +119,36 @@ public sealed class PlanInputsEndpointTests
         Assert.Null(response.Inputs.PvForecast);
         Assert.Null(response.Inputs.LoadForecast);
         Assert.Null(response.Inputs.Prices);
+    }
+
+    private static ForecastInputs DailyTotals(SignalState total, DateTimeOffset reported) =>
+        new(ImmutableDictionary<SignalName, ForecastSample>.Empty
+            .Add(SignalName.Parse("pv_today"), new ForecastSample(SignalRole.PvForecastToday, SignalKind.EnergyForecast, total, total == SignalState.Fresh ? SignalDetail.None : SignalDetail.MaxAgeExceeded, reported, null, total == SignalState.Fresh ? 9.655 : null, null))
+            .Add(SignalName.Parse("sun_rising"), new ForecastSample(SignalRole.SunRising, SignalKind.Timestamp, SignalState.Fresh, SignalDetail.None, reported, null, null, Local(2026, 7, 16, 4, 0)))
+            .Add(SignalName.Parse("sun_setting"), new ForecastSample(SignalRole.SunSetting, SignalKind.Timestamp, SignalState.Fresh, SignalDetail.None, reported, null, null, Local(2026, 7, 15, 20, 0))));
+
+    [Fact]
+    public void Daily_totals_and_the_sun_are_planned_on_and_named_as_the_totals_basis()
+    {
+        // Why: PLAN-06 for an HA with only day-total sensors: the plan has PV and says it is the degraded shape, with the state of the signal it stands on.
+        var at = Local(2026, 7, 15, 6, 2);
+
+        var response = Build(Config(HourlyTariff), at, DailyTotals(SignalState.Fresh, at));
+
+        Assert.Equal(("totals", "fresh"), (response.Inputs.PvForecast!.Basis, response.Inputs.PvForecast.State));
+        Assert.Contains(response.Slots, s => s.PvKwh > 0);
+        Assert.DoesNotContain("pv_forecast_missing", response.Notes);
+    }
+
+    [Fact]
+    public void A_stale_day_total_is_zero_pv_with_basis_none_never_the_last_known_total()
+    {
+        var at = Local(2026, 7, 15, 6, 2);
+
+        var response = Build(Config(HourlyTariff), at, DailyTotals(SignalState.Stale, at.AddHours(-8)));
+
+        Assert.Equal(("none", "stale"), (response.Inputs.PvForecast!.Basis, response.Inputs.PvForecast.State));
+        Assert.All(response.Slots, s => Assert.Equal(0, s.PvKwh));
     }
 
     [Fact]

@@ -198,6 +198,26 @@ public sealed class HomeAssistantSignalSourceTests
     }
 
     [Fact]
+    public void Track_carries_every_declared_attribute_of_an_entity_and_resubscribes_when_they_change()
+    {
+        // Why: two sun signals read two attributes of one entity; the subscription's parser is built from the attribute names, so a change needs a new one.
+        var source = new HomeAssistantSignalSource(_inbox, new UnavailableEntityStateReader(), NullLogger<HomeAssistantSignalSource>.Instance);
+        var changes = 0;
+        source.TrackedChanged += (_, _) => changes++;
+        var sun = EntityId.Parse("sun.sun");
+
+        source.Track([new TrackedEntity(sun, null) { Attribute = "next_setting" }, new TrackedEntity(sun, null) { Attribute = "next_rising" }]);
+        source.Track([new TrackedEntity(sun, null) { Attribute = "next_rising" }, new TrackedEntity(sun, null) { Attribute = "next_setting" }]);
+        Assert.Equal(1, changes);
+        Assert.Equal(["next_rising", "next_setting"], source.TimestampAttributes[sun]);
+
+        source.Track([new TrackedEntity(sun, null) { Attribute = "next_rising" }]);
+        Assert.Equal(2, changes);
+        Assert.Equal(["next_rising"], source.TimestampAttributes[sun]);
+        Assert.Single(source.Tracked);
+    }
+
+    [Fact]
     public async Task At_most_one_probe_per_entity_is_in_flight_and_its_answer_is_a_probe_batch()
     {
         var reader = new ScriptedReader();

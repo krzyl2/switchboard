@@ -33,6 +33,9 @@ internal sealed record RawSample(string State, string? Unit, DateTimeOffset Last
 
     /// <summary>The series attribute as the transport parsed it (a series signal only); a re-read after a reload needs it.</summary>
     public ParsedSeries? Series { get; init; }
+
+    /// <summary>The attribute text of a timestamp signal as the transport read it; a re-read after a reload needs it.</summary>
+    public string? AttributeText { get; init; }
 }
 
 /// <summary>
@@ -130,6 +133,7 @@ internal sealed class SignalRuntime(SignalDefinition definition)
         && Definition.Sign == other.Sign
         && string.Equals(Definition.PriceCurrency, other.PriceCurrency, StringComparison.Ordinal)
         && Definition.Series == other.Series
+        && string.Equals(Definition.Attribute, other.Attribute, StringComparison.Ordinal)
         && Definition.SeriesMeaning == other.SeriesMeaning;
 
     public void MarkAbsent(Presence presence)

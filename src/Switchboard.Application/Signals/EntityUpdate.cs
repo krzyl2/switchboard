@@ -29,6 +29,16 @@ public sealed record EntityUpdate(EntityId Entity, string State, string? Unit, D
     /// </summary>
     public ParsedSeries? Series { get; init; }
 
+    /// <summary>
+    /// The text of each whitelisted attribute of the timestamp signals of this entity (a sun time kept under <c>next_rising</c>), by attribute name, bounded by
+    /// the transport: an empty text where the state carries no usable attribute (absent, not text, longer than <see cref="MaxAttributeText"/>); null when the
+    /// entity has no such attribute declared (and for a probe answer, which never carries attributes).
+    /// </summary>
+    public ImmutableDictionary<string, string>? Attributes { get; init; }
+
+    /// <summary>Schema bound on the text of a timestamp attribute; a longer value is read as no usable attribute.</summary>
+    public const int MaxAttributeText = 64;
+
     /// <summary>An options list within the schema bounds, or null: never an error, only "not known".</summary>
     public static ImmutableArray<string>? BoundedOptions(IReadOnlyList<string?>? options) =>
         options is { Count: > 0 and <= MaxOptions } && options.All(o => o is { Length: > 0 and <= MaxOptionLength })
@@ -68,6 +78,9 @@ public sealed record TrackedEntity(EntityId Entity, string? DeclaredUnit)
 {
     /// <summary>The one attribute of this entity that is kept as a series (15-PLANNER, slice 2); null for every ordinary signal.</summary>
     public SeriesSpec? Series { get; init; }
+
+    /// <summary>The one attribute of this entity whose text is the instant of a timestamp signal (a sun time); null for every other signal.</summary>
+    public string? Attribute { get; init; }
 }
 
 /// <summary>How a series attribute is laid out; <see cref="Auto"/> takes a JSON list as a list and a JSON object as a mapping.</summary>
@@ -96,7 +109,7 @@ public enum SeriesProblem
     /// <summary>The attribute is absent, empty, or neither a list nor a mapping.</summary>
     Missing,
 
-    /// <summary>An item is malformed (no time, a time without a UTC offset, a non-finite number, a duplicate time, an end before the start): the whole series is refused.</summary>
+    /// <summary>An item is malformed (no time, a time without a UTC offset when the add-on has no zone to read it in, a non-finite number, a duplicate time, an end before the start): the whole series is refused.</summary>
     Malformed,
 
     /// <summary>More than <see cref="Switchboard.Domain.Signals.TimeSeries.MaxPoints"/> points or <see cref="Switchboard.Domain.Signals.TimeSeries.MaxBytes"/> bytes: dropped whole, never truncated.</summary>

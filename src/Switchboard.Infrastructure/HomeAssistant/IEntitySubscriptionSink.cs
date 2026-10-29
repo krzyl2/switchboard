@@ -18,6 +18,9 @@ public interface IEntitySubscriptionSink
     /// </summary>
     IReadOnlyDictionary<EntityId, SeriesSpec> SeriesSpecs => System.Collections.Immutable.ImmutableDictionary<EntityId, SeriesSpec>.Empty;
 
+    /// <summary>The attributes whose text is kept per entity (sorted), for the entities that have a timestamp signal read from an attribute (a sun time); empty for a sink that tracks none.</summary>
+    IReadOnlyDictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>> TimestampAttributes => System.Collections.Immutable.ImmutableDictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>>.Empty;
+
     event EventHandler? TrackedChanged;
 
     /// <summary>Authenticated; the subscription (if any) is about to be requested.</summary>

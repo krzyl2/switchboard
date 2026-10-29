@@ -35,7 +35,7 @@ public sealed class SignalStore
     private readonly Dictionary<Phase, BalanceState> _balance = AllPhases.ToDictionary(p => p, _ => new BalanceState());
     private SwitchboardConfiguration? _configuration;
     private ImmutableArray<SignalRuntime> _signals = [];
-    private Dictionary<EntityId, SignalRuntime> _byEntity = [];
+    private Dictionary<EntityId, List<SignalRuntime>> _byEntity = [];
     private Dictionary<SignalName, SignalRuntime> _byName = [];
     private ImmutableArray<TrackedEntity> _tracked = [];
     private ProtectionSetup? _setup;
@@ -101,19 +101,26 @@ public sealed class SignalStore
         var reread = new List<(SignalRuntime Runtime, RawSample Raw)>();
         foreach (var definition in result.Configuration.Signals)
         {
-            if (previous.TryGetValue(definition.Entity, out var kept) && kept.ReadsLike(definition))
+            // One entity feeds one signal, except the timestamp signals that read different attributes of it (sun.sun's next_rising and next_setting).
+            var held = previous.GetValueOrDefault(definition.Entity) ?? [];
+            if (held.FirstOrDefault(k => k.ReadsLike(definition)) is { } same)
             {
-                kept.Definition = definition;
-                runtimes.Add(kept);
+                same.Definition = definition;
+                runtimes.Add(same);
             }
             else
             {
                 var runtime = new SignalRuntime(definition);
                 runtimes.Add(runtime);
+                var kept = held.FirstOrDefault(k => k.Definition.Attribute == definition.Attribute) ?? held.FirstOrDefault();
                 if (kept?.Raw is { } raw)
                 {
-                    // A series parsed under another attribute spec says nothing under this one.
-                    reread.Add((runtime, kept.Definition.Series == definition.Series ? raw : raw with { Series = null }));
+                    // A series or an attribute text read under another spec says nothing under this one.
+                    reread.Add((runtime, raw with
+                    {
+                        Series = kept.Definition.Series == definition.Series ? raw.Series : null,
+                        AttributeText = kept.Definition.Attribute == definition.Attribute ? raw.AttributeText : null,
+                    }));
                 }
             }
         }
@@ -134,16 +141,16 @@ public sealed class SignalStore
         _derivedDraws = [.. configuration.Devices.SelectMany(d => d.DerivedCurrentPhases(configuration.VoltagePhases).Select(p => (d.Id, p, d.Draw!.Power[p])))];
         _groupPhases = [.. configuration.Groups.SelectMany(g => g.Phases.Select(p => (g.Id, p, g.Current.TryGetValue(p, out var name) ? name : (SignalName?)null)))];
         _signals = runtimes.ToImmutable();
-        _byEntity = _signals.ToDictionary(s => s.Definition.Entity);
+        _byEntity = _signals.GroupBy(s => s.Definition.Entity).ToDictionary(g => g.Key, g => g.ToList());
         _byName = _signals.ToDictionary(s => s.Definition.Name);
-        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit) { Series = s.Definition.Series }).OrderBy(t => t.Entity)]);
+        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit) { Series = s.Definition.Series, Attribute = s.Definition.Attribute }).OrderBy(t => t.Entity)]);
 
         // After the new set is in place, so the balance check and direction see the new definitions.
         // The report time stays the one Home Assistant gave: re-reading never makes a sample younger,
         // and the options it reported stay known (a select may not report again for hours).
         foreach (var (runtime, raw) in reread)
         {
-            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options, Series = raw.Series }, BatchOrigin.Probe, now);
+            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options, Series = raw.Series, Attributes = Attributes(runtime.Definition, raw.AttributeText) }, BatchOrigin.Probe, now);
             runtime.Raw = runtime.Raw! with { HaReported = raw.HaReported };
         }
     }
@@ -209,17 +216,23 @@ public sealed class SignalStore
 
         foreach (var id in batch.Removed)
         {
-            Find(id)?.MarkAbsent(Presence.Removed);
+            foreach (var signal in Find(id))
+            {
+                signal.MarkAbsent(Presence.Removed);
+            }
         }
 
         foreach (var id in batch.Missing)
         {
-            Find(id)?.MarkAbsent(Presence.Missing);
+            foreach (var signal in Find(id))
+            {
+                signal.MarkAbsent(Presence.Missing);
+            }
         }
 
         foreach (var update in batch.Updates)
         {
-            if (Find(update.Entity) is { } signal)
+            foreach (var signal in Find(update.Entity))
             {
                 if (batch.Origin == BatchOrigin.Initial)
                 {
@@ -551,7 +564,11 @@ public sealed class SignalStore
 
     private DirectionParameters Direction => _configuration!.Control.Signals.Direction;
 
-    private SignalRuntime? Find(EntityId id) => _byEntity.GetValueOrDefault(id);
+    private IReadOnlyList<SignalRuntime> Find(EntityId id) => _byEntity.GetValueOrDefault(id) ?? [];
+
+    /// <summary>The one attribute text a timestamp signal re-reads after a reload; null when it has none (and for every other signal).</summary>
+    private static ImmutableDictionary<string, string>? Attributes(SignalDefinition definition, string? text) =>
+        definition.Attribute is { } name && text is not null ? ImmutableDictionary<string, string>.Empty.Add(name, text) : null;
 
     private SignalRuntime? WithRole(SignalRole role, Phase? phase = null) =>
         _signals.FirstOrDefault(s => s.Definition.Role == role && (phase is null || s.Definition.Phase == phase));
@@ -605,9 +622,15 @@ public sealed class SignalStore
             return;
         }
 
-        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit, update.Series);
+        string? attributeText = null;
+        if (signal.Definition.Attribute is { } attribute && (attributeText = update.Attributes?.GetValueOrDefault(attribute)) is null)
+        {
+            return;
+        }
+
+        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit, update.Series, attributeText);
         signal.Presence = Presence.Present;
-        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options, Series = update.Series };
+        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options, Series = update.Series, AttributeText = attributeText };
         if (normalized.Outcome == NormalizationOutcome.Unavailable)
         {
             signal.RawStatus = RawStatus.Unavailable;

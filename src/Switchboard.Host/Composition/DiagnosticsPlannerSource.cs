@@ -41,7 +41,7 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
         var board = goals.Evaluate(now);
         var requests = board.Goals.Select(g => g.Request).ToImmutableArray();
         var cuts = requests.Where(r => r.Deadline is not null).SelectMany(r => new[] { r.UsableDeadline!.Value, r.Deadline!.Value });
-        var sources = PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone);
+        var sources = PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone, now);
         var inputs = PlanInputs.Build(now, now + parameters.Horizon, cuts, parameters.Forecast(), sources);
         var voltage = presentation.NominalVoltage;
         var input = new PlanInput(

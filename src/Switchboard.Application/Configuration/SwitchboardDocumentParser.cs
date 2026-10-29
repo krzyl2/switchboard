@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
@@ -30,6 +31,7 @@ public static class SwitchboardDocumentParser
     private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key, PlannerSectionParser.Key];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero", "attribute", "series"];
+    private static readonly Regex AttributeName = new("^[A-Za-z_][A-Za-z0-9_]{0,63}\\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly string[] SeriesKeys = ["shape", "value", "start_key", "end_key", "value_key"];
 
     private static readonly ImmutableDictionary<string, Topology> Topologies = Choices(
@@ -430,6 +432,7 @@ public static class SwitchboardDocumentParser
         }
 
         var (seriesSpec, seriesMeaning) = ReadSeries(mapping, kind, role, unit, path, issues);
+        var timestampAttribute = ReadTimestampAttribute(mapping, kind, path, issues);
 
         var phase = ReadPhase(mapping, role, topology, path, issues);
 
@@ -456,6 +459,7 @@ public static class SwitchboardDocumentParser
             {
                 Series = seriesSpec,
                 SeriesMeaning = seriesMeaning,
+                Attribute = timestampAttribute,
             },
             directionText,
             directionNode,
@@ -532,9 +536,14 @@ public static class SwitchboardDocumentParser
         {
             foreach (var (key, node) in new[] { ("attribute", attributeNode), ("series", seriesNode) })
             {
-                if (node is not null && kind is not null)
+                // A timestamp signal may name the attribute that holds its instant (ReadTimestampAttribute).
+                if (node is not null && kind is not null && !(key == "attribute" && kind == SignalKind.Timestamp))
                 {
-                    issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(path, key), node, $"{key} applies only to a series signal.");
+                    issues.Error(
+                        ConfigurationIssueCodes.KeyNotAllowed,
+                        ConfigRead.Join(path, key),
+                        node,
+                        key == "attribute" ? "attribute applies only to a series or a timestamp signal." : "series applies only to a series signal.");
                 }
             }
 
@@ -616,6 +625,32 @@ public static class SwitchboardDocumentParser
         return issues.Errors.Count > errorsBefore || attribute is null || resolved is null
             ? (null, null)
             : (new SeriesSpec(attribute, shape, startKey, endKey, valueKey), resolved);
+    }
+
+    /// <summary>
+    /// <c>attribute:</c> of a timestamp signal: the one attribute whose text is the instant (sun.sun keeps <c>next_rising</c> and <c>next_setting</c> there; its
+    /// state is above_horizon). The name is a plain identifier, so the whitelist stays a name and never a path or a pattern. Without it the entity's state is the instant.
+    /// </summary>
+    private static string? ReadTimestampAttribute(ConfigMapping mapping, SignalKind? kind, string path, ConfigIssues issues)
+    {
+        if (kind != SignalKind.Timestamp || ConfigRead.Optional(mapping, "attribute") is not { } node)
+        {
+            return null;
+        }
+
+        var attributePath = ConfigRead.Join(path, "attribute");
+        if (ConfigRead.String(node, attributePath, issues) is not { } text)
+        {
+            return null;
+        }
+
+        if (!AttributeName.IsMatch(text))
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, attributePath, node, "attribute is the name of one attribute of the entity: letters, digits and underscores, not starting with a digit (1 to 64 characters).");
+            return null;
+        }
+
+        return text;
     }
 
     private static string? ReadKey(ConfigMapping series, string key, string path, string? fallback, ConfigIssues issues)
@@ -743,19 +778,33 @@ public static class SwitchboardDocumentParser
 
     private static void CheckDuplicateEntities(List<SignalDraft> drafts, ConfigIssues issues)
     {
-        var seen = new Dictionary<EntityId, SignalName>();
+        var seen = new Dictionary<EntityId, List<SignalDefinition>>();
         foreach (var draft in drafts)
         {
-            if (!seen.TryAdd(draft.Definition.Entity, draft.Definition.Name))
+            var definition = draft.Definition;
+            if (!seen.TryGetValue(definition.Entity, out var earlier))
+            {
+                seen[definition.Entity] = [definition];
+            }
+            else if (earlier.FirstOrDefault(e => !ReadsOtherAttribute(e, definition)) is { } clash)
             {
                 issues.Error(
                     ConfigurationIssueCodes.DuplicateEntity,
-                    $"{draft.Definition.Path}.entity",
+                    $"{definition.Path}.entity",
                     draft.EntityNode,
-                    $"{draft.Definition.Entity} is already mapped by signal '{seen[draft.Definition.Entity]}'; one entity feeds one signal.");
+                    $"{definition.Entity} is already mapped by signal '{clash.Name}'; one entity feeds one signal (only timestamp signals reading different attributes may share one).");
+            }
+            else
+            {
+                earlier.Add(definition);
             }
         }
     }
+
+    /// <summary>Two timestamp signals that each name an attribute, and not the same one: sun.sun's next_rising and next_setting.</summary>
+    private static bool ReadsOtherAttribute(SignalDefinition a, SignalDefinition b) =>
+        a.Kind == SignalKind.Timestamp && b.Kind == SignalKind.Timestamp && a.Attribute is not null && b.Attribute is not null
+        && !string.Equals(a.Attribute, b.Attribute, StringComparison.Ordinal);
 
     private static ImmutableArray<SignalDefinition> ResolveDirections(List<SignalDraft> drafts, ConfigIssues issues)
     {

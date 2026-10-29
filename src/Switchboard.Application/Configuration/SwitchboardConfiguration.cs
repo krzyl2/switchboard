@@ -58,6 +58,9 @@ public sealed record SignalDefinition(
     /// <summary>For a series signal (15-PLANNER, slice 2): the one attribute kept and how it is laid out; null for every other signal.</summary>
     public SeriesSpec? Series { get; init; }
 
+    /// <summary>For a timestamp signal: the one attribute whose text is the instant (<c>next_rising</c> of the sun entity), instead of the entity's state; null otherwise.</summary>
+    public string? Attribute { get; init; }
+
     /// <summary>For a series signal: what its numbers mean (power W, period energy Wh, or a price); null otherwise.</summary>
     public SeriesValueKind? SeriesMeaning { get; init; }
 

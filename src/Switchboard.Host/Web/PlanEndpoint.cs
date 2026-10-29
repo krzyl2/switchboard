@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
@@ -207,7 +208,7 @@ internal static partial class PlanEndpoint
             var now = clock.Time.GetUtcNow();
             var current = diagnostics.Current;
             var sources = current.Configuration?.Configuration is { Planner: not null } configuration
-                ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone)
+                ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone, now)
                 : null;
             return Results.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current));
         });
@@ -246,14 +247,14 @@ internal static partial class PlanEndpoint
             planner is { } p ? ApiText.Snake(p.Dispatch) : null,
             ApiText.Snake(status),
             new PlanInputsDto(
-                planInputs is null ? null : PvForecast(planInputs, parameters!, forecast?.ForRole(SignalRole.PvForecast), board.At),
+                planInputs is null ? null : PvForecast(planInputs, parameters!, forecast?.ForRole(SignalRole.PvForecast) ?? forecast?.ForRole(SignalRole.PvForecastToday), board.At),
                 planInputs is null ? null : new LoadForecastDto(ApiText.Snake(planInputs.LoadBasis), planInputs.LoadDaysFilled),
                 planInputs is null ? null : new PlanPricesDto(ApiText.Snake(planInputs.ImportPriceBasis), planInputs.ImportCurveCoversUntil),
                 board.Goals.Length,
                 [.. board.Inactive.Select(i => new GoalInactiveDto(i.Device.Value, ApiText.Snake(i.Reason), ApiText.Snake(i.Input)))]),
             [.. devices.Select(d => Device(d.Key, d.Value, plan))],
             [.. board.Superseded.Select(r => Applied(new Goal(r, GoalStatus.OnTrack), null, PlanStatus.Absent) with { Status = "superseded", Device = r.Device.Value })],
-            Notes(planInputs, plan, state),
+            Notes(planInputs, plan, state, planner is null ? [] : board.Inactive),
             Issues(result))
         {
             Slots = planInputs is null ? [] : [.. planInputs.Slots.Select(Slot)],
@@ -275,8 +276,8 @@ internal static partial class PlanEndpoint
             : new SolveDto(report.At, report.Duration.TotalMilliseconds, ApiText.Snake(report.Result), report.Reason, [.. report.Violations.Select(v => ApiText.Snake(v.Code)).Distinct()]);
 
     /// <summary>The input notes, the plan's own (a goal at risk, a shortfall) and the service's (a held solve), once each in the order of the list.</summary>
-    private static IReadOnlyList<string> Notes(PlanInputs? inputs, PlanSnapshot? plan, PlanState? state) =>
-        [.. (plan?.Notes ?? inputs?.Notes ?? []).Concat(plan is null ? [] : state?.Notes ?? []).Distinct().Order().Select(n => ApiText.Snake(n))];
+    private static IReadOnlyList<string> Notes(PlanInputs? inputs, PlanSnapshot? plan, PlanState? state, ImmutableArray<InactiveGoal> inactive) =>
+        [.. (plan?.Notes ?? inputs?.Notes ?? []).Concat(plan is null ? [] : state?.Notes ?? []).Concat(inactive.Any(i => i.Reason is GoalInactiveReason.InputStale or GoalInactiveReason.InputUnavailable) ? [PlanNote.GoalInputStale] : []).Distinct().Order().Select(n => ApiText.Snake(n))];
 
     private static PlanDeviceDto Device(string name, List<GoalDto> goals, PlanSnapshot? plan)
     {

@@ -69,6 +69,88 @@ public sealed class ForecastConfigurationTests
         AssertError(result, ConfigurationIssueCodes.KeyNotAllowed, $"signals.forecast.{key}");
     }
 
+    private const string Sun = "entity: sun.sun\nkind: timestamp\nattribute: next_rising\nmax_age: 1h\nrole: sun_rising";
+
+    [Fact]
+    public void A_sun_time_names_the_attribute_that_holds_its_instant()
+    {
+        var result = Parse(Sun);
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        var signal = result.Configuration!.Signals.Single(s => s.Name == SignalName.Parse("forecast"));
+        Assert.Equal((SignalKind.Timestamp, SignalRole.SunRising, "next_rising"), (signal.Kind, signal.Role, signal.Attribute));
+        Assert.Null(signal.Series);
+    }
+
+    [Fact]
+    public void A_timestamp_without_an_attribute_reads_the_state_as_before()
+    {
+        var result = Parse(Sun.Replace("attribute: next_rising\n", string.Empty, StringComparison.Ordinal));
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        Assert.Null(result.Configuration!.Signals.Single(s => s.Name == SignalName.Parse("forecast")).Attribute);
+    }
+
+    private static string SunSetting(string attributeLine) =>
+        Signal(Sun).Replace("forecast:", "sunset:", StringComparison.Ordinal).Replace("sun_rising", "sun_setting", StringComparison.Ordinal).Replace("    attribute: next_rising\n", attributeLine, StringComparison.Ordinal);
+
+    [Fact]
+    public void The_sun_entity_may_feed_both_sun_times_through_two_different_attributes()
+    {
+        // Why: the sun entity is one entity with next_rising and next_setting; "one entity feeds one signal" would make it unusable.
+        var result = TestConfigurations.Parse(TestConfigurations.ThreePhase(Signal(Sun) + SunSetting("    attribute: next_setting\n")));
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        Assert.Equal(["next_rising", "next_setting"], result.Configuration!.Signals.Where(s => s.Kind == SignalKind.Timestamp).Select(s => s.Attribute).Order());
+    }
+
+    [Theory]
+    [InlineData("    attribute: next_rising\n")]
+    [InlineData("")]
+    public void Two_sun_signals_that_do_not_read_different_attributes_are_still_a_duplicate_entity(string secondAttribute)
+    {
+        var result = TestConfigurations.Parse(TestConfigurations.ThreePhase(Signal(Sun) + SunSetting(secondAttribute)));
+
+        Assert.Contains(result.Errors, e => e.Code == ConfigurationIssueCodes.DuplicateEntity);
+    }
+
+    [Theory]
+    [InlineData("kind: energy_forecast\nunit: kWh")]
+    [InlineData("kind: state")]
+    [InlineData("kind: price\nunit: PLN/kWh")]
+    [InlineData("kind: voltage\nunit: V")]
+    public void No_kind_but_series_and_timestamp_has_an_attribute(string kind)
+    {
+        // Why: the attribute whitelist is granted per kind; an ordinary measurement reads the state and nothing else of the entity.
+        var result = Parse($"entity: sensor.x\n{kind}\nattribute: next_rising\nmax_age: 60s");
+
+        AssertError(result, ConfigurationIssueCodes.KeyNotAllowed, "signals.forecast.attribute");
+    }
+
+    [Fact]
+    public void A_timestamp_has_no_series_block()
+    {
+        var result = Parse(Sun + "\nseries:\n  value: power_w");
+
+        AssertError(result, ConfigurationIssueCodes.KeyNotAllowed, "signals.forecast.series");
+    }
+
+    [Theory]
+    [InlineData("a.b")]
+    [InlineData("next rising")]
+    [InlineData("1st")]
+    [InlineData("a[0]")]
+    [InlineData("a/b")]
+    [InlineData("")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void A_timestamp_attribute_is_a_plain_identifier_never_a_path_or_a_pattern(string name)
+    {
+        var result = Parse(Sun.Replace("next_rising", $"\"{name}\"", StringComparison.Ordinal));
+
+        Assert.NotEqual(ConfigurationStatus.Valid, result.Status);
+        Assert.Contains(result.Errors, e => e.Path == "signals.forecast.attribute");
+    }
+
     [Theory]
     [InlineData("shape: tree")]
     [InlineData("value: kw")]

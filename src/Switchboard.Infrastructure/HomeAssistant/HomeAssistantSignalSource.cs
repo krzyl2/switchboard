@@ -20,6 +20,7 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
     private readonly CancellationTokenSource _stopping = new();
     private ImmutableArray<EntityId> _tracked = [];
     private ImmutableDictionary<EntityId, SeriesSpec> _seriesSpecs = ImmutableDictionary<EntityId, SeriesSpec>.Empty;
+    private ImmutableDictionary<EntityId, ImmutableArray<string>> _timestampAttributes = ImmutableDictionary<EntityId, ImmutableArray<string>>.Empty;
 
     public HomeAssistantSignalSource(SignalInbox inbox, IEntityStateReader reader, ILogger<HomeAssistantSignalSource> logger)
     {
@@ -34,14 +35,19 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
 
     public IReadOnlyDictionary<EntityId, SeriesSpec> SeriesSpecs => _seriesSpecs;
 
+    public IReadOnlyDictionary<EntityId, ImmutableArray<string>> TimestampAttributes => _timestampAttributes;
+
     public void Track(IReadOnlyCollection<TrackedEntity> entities)
     {
         ArgumentNullException.ThrowIfNull(entities);
         ImmutableArray<EntityId> next = [.. entities.Select(e => e.Entity).Distinct().Order()];
         var specs = entities.Where(e => e.Series is not null).GroupBy(e => e.Entity).ToImmutableDictionary(g => g.Key, g => g.First().Series!);
+        var attributes = entities.Where(e => e.Attribute is not null).GroupBy(e => e.Entity)
+            .ToImmutableDictionary(g => g.Key, g => g.Select(e => e.Attribute!).Distinct().Order(StringComparer.Ordinal).ToImmutableArray());
         var previous = ImmutableInterlocked.InterlockedExchange(ref _tracked, next);
         var previousSpecs = Interlocked.Exchange(ref _seriesSpecs, specs);
-        if (!previous.SequenceEqual(next) || !SameSpecs(previousSpecs, specs))
+        var previousAttributes = Interlocked.Exchange(ref _timestampAttributes, attributes);
+        if (!previous.SequenceEqual(next) || !SameSpecs(previousSpecs, specs) || !SameAttributes(previousAttributes, attributes))
         {
             TrackedChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -50,6 +56,10 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
     /// <summary>A changed attribute whitelist needs a new subscription, because the parser that decodes it is built from it.</summary>
     internal static bool SameSpecs(IReadOnlyDictionary<EntityId, SeriesSpec> a, IReadOnlyDictionary<EntityId, SeriesSpec> b) =>
         a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && pair.Value == other);
+
+    /// <inheritdoc cref="SameSpecs"/>
+    internal static bool SameAttributes(IReadOnlyDictionary<EntityId, ImmutableArray<string>> a, IReadOnlyDictionary<EntityId, ImmutableArray<string>> b) =>
+        a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && pair.Value.SequenceEqual(other));
 
     /// <summary>At most one read per entity in flight; the answer arrives as a probe batch.</summary>
     public void RequestProbe(EntityId entity)

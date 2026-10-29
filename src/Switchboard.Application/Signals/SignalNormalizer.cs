@@ -105,7 +105,8 @@ public static class SignalNormalizer
     public const string UnknownState = "unknown";
 
     /// <param name="series">The whitelisted attribute of a series signal as the transport parsed it; null for every other signal and for a probe answer.</param>
-    public static Normalization Normalize(SignalDefinition definition, string state, string? unit, ParsedSeries? series = null)
+    /// <param name="attributeText">The whitelisted attribute of a timestamp signal as the transport read it; null for every other signal and for a probe answer.</param>
+    public static Normalization Normalize(SignalDefinition definition, string state, string? unit, ParsedSeries? series = null, string? attributeText = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(state);
@@ -125,7 +126,8 @@ public static class SignalNormalizer
 
         if (definition.Kind == SignalKind.Timestamp)
         {
-            return IsoInstant.TryParse(state, out var at) ? Accept(new TimestampValue(at)) : Reject(SignalDetail.NotTimestamp);
+            // A sun time lives in an attribute (the sun entity's state is above_horizon); the declaration names it, the state says nothing about it.
+            return IsoInstant.TryParse(definition.Attribute is null ? state : attributeText, out var at) ? Accept(new TimestampValue(at)) : Reject(SignalDetail.NotTimestamp);
         }
 
         // A series has no unit of its own: the state of the entity says nothing about the attribute, and the declaration

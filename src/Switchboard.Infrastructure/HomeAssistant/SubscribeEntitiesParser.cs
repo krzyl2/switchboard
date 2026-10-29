@@ -12,7 +12,7 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// <c>s</c>, <c>a</c> (attributes), <c>lc</c> (last_changed) and <c>lu</c> (last_updated, left out
 /// when equal to lc); <c>lr</c> (last_reported) is read when present. Of the attributes only the
 /// unit and a select's <c>options</c> are kept, and for an entity with a <see cref="SeriesSpec"/> the one
-/// named series attribute (bounded, see <see cref="SeriesAttributeParser"/>). Stateful: diffs only make sense against the cached
+/// named series attribute (bounded, see <see cref="SeriesAttributeParser"/>), and for an entity read from an attribute (a sun time) that attribute's text. Stateful: diffs only make sense against the cached
 /// state, so one parser serves one subscription.
 /// </summary>
 public sealed class SubscribeEntitiesParser
@@ -22,13 +22,18 @@ public sealed class SubscribeEntitiesParser
 
     private readonly ImmutableArray<EntityId> _requested;
     private readonly IReadOnlyDictionary<EntityId, SeriesSpec> _series;
+    private readonly IReadOnlyDictionary<EntityId, ImmutableArray<string>> _attributes;
     private readonly Dictionary<EntityId, CachedState> _states = [];
+    private readonly TimeZoneInfo? _localZone;
     private bool _initialSeen;
 
-    public SubscribeEntitiesParser(IEnumerable<EntityId> requested, IReadOnlyDictionary<EntityId, SeriesSpec>? series = null)
+    /// <param name="localZone">The zone a series time without a UTC offset is local in (the add-on's, as the slot grid); null refuses such a time.</param>
+    public SubscribeEntitiesParser(IEnumerable<EntityId> requested, IReadOnlyDictionary<EntityId, SeriesSpec>? series = null, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? attributes = null, TimeZoneInfo? localZone = null)
     {
+        _localZone = localZone;
         _requested = [.. requested];
         _series = series ?? new Dictionary<EntityId, SeriesSpec>();
+        _attributes = attributes ?? new Dictionary<EntityId, ImmutableArray<string>>();
     }
 
     /// <summary>
@@ -62,7 +67,7 @@ public sealed class SubscribeEntitiesParser
                 {
                     if (Track(entity.Name) is { } id)
                     {
-                        var state = Full(entity.Value, _series.GetValueOrDefault(id));
+                        var state = Full(entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id));
                         working[id] = state;
                         updates.Add(state.ToUpdate(id));
                     }
@@ -75,7 +80,7 @@ public sealed class SubscribeEntitiesParser
                 {
                     if (Track(entity.Name) is { } id && working.TryGetValue(id, out var cached))
                     {
-                        var state = Diff(cached, entity.Value, _series.GetValueOrDefault(id));
+                        var state = Diff(cached, entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id));
                         working[id] = state;
                         updates.Add(state.ToUpdate(id));
                     }
@@ -129,7 +134,7 @@ public sealed class SubscribeEntitiesParser
             ? element.EnumerateObject()
             : throw new FormatException($"'{key}' is not an object");
 
-    private static CachedState Full(JsonElement state, SeriesSpec? series)
+    private CachedState Full(JsonElement state, SeriesSpec? series, ImmutableArray<string> attributes)
     {
         if (state.ValueKind != JsonValueKind.Object)
         {
@@ -146,10 +151,11 @@ public sealed class SubscribeEntitiesParser
         {
             Options = Options(state, null),
             Series = series is null ? null : Series(state, series, ParsedSeries.Of(SeriesProblem.Missing)),
+            Attributes = attributes.IsDefaultOrEmpty ? null : AttributeTexts(state, attributes, null),
         };
     }
 
-    private static CachedState Diff(CachedState cached, JsonElement diff, SeriesSpec? series)
+    private CachedState Diff(CachedState cached, JsonElement diff, SeriesSpec? series, ImmutableArray<string> attributes)
     {
         if (diff.ValueKind != JsonValueKind.Object)
         {
@@ -168,6 +174,11 @@ public sealed class SubscribeEntitiesParser
             if (series is not null)
             {
                 next = next with { Series = Series(plus, series, next.Series) };
+            }
+
+            if (!attributes.IsDefaultOrEmpty)
+            {
+                next = next with { Attributes = AttributeTexts(plus, attributes, next.Attributes) };
             }
 
             // A new last_changed means a new state, and HA updates last_updated with it.
@@ -202,6 +213,11 @@ public sealed class SubscribeEntitiesParser
             {
                 next = next with { Series = ParsedSeries.Of(SeriesProblem.Missing) };
             }
+
+            if (!attributes.IsDefaultOrEmpty)
+            {
+                next = next with { Attributes = (next.Attributes ?? ImmutableDictionary<string, string>.Empty).SetItems(attributes.Where(removed.Contains).Select(a => KeyValuePair.Create(a!, string.Empty))) };
+            }
         }
 
         return next;
@@ -228,10 +244,34 @@ public sealed class SubscribeEntitiesParser
     /// The whitelisted series attribute replacing <paramref name="current"/> when the attributes carry it; a problem is part of the
     /// result (the signal is refused with the reason), never an error that would drop the state itself.
     /// </summary>
-    private static ParsedSeries? Series(JsonElement state, SeriesSpec spec, ParsedSeries? current) =>
+    private ParsedSeries? Series(JsonElement state, SeriesSpec spec, ParsedSeries? current) =>
         state.TryGetProperty("a", out var attributes) && attributes.ValueKind == JsonValueKind.Object && attributes.TryGetProperty(spec.Attribute, out var attribute)
-            ? SeriesAttributeParser.Parse(attribute, spec)
+            ? SeriesAttributeParser.Parse(attribute, spec, _localZone)
             : current;
+
+    /// <summary>
+    /// The text of each whitelisted attribute, replacing the one in <paramref name="current"/> when the attributes carry it; a name never seen is empty. A value
+    /// that is not text or longer than <see cref="EntityUpdate.MaxAttributeText"/> reads as empty (no usable attribute), never as an error that would drop the
+    /// state itself.
+    /// </summary>
+    private static ImmutableDictionary<string, string> AttributeTexts(JsonElement state, ImmutableArray<string> names, ImmutableDictionary<string, string>? current)
+    {
+        var attributes = state.TryGetProperty("a", out var element) && element.ValueKind == JsonValueKind.Object ? element : (JsonElement?)null;
+        var texts = ImmutableDictionary.CreateBuilder<string, string>();
+        foreach (var name in names)
+        {
+            if (attributes is { } carried && carried.TryGetProperty(name, out var attribute))
+            {
+                texts[name] = attribute.ValueKind == JsonValueKind.String && attribute.GetString() is { Length: > 0 and <= EntityUpdate.MaxAttributeText } text ? text : string.Empty;
+            }
+            else
+            {
+                texts[name] = current is not null && current.TryGetValue(name, out var kept) ? kept : string.Empty;
+            }
+        }
+
+        return texts.ToImmutable();
+    }
 
     private static string? State(JsonElement state) =>
         state.TryGetProperty("s", out var s)
@@ -284,11 +324,13 @@ public sealed class SubscribeEntitiesParser
 
         public ParsedSeries? Series { get; init; }
 
+        public ImmutableDictionary<string, string>? Attributes { get; init; }
+
         /// <summary>last_reported where present, else the newer of last_updated and last_changed, as HA defines it.</summary>
         public EntityUpdate ToUpdate(EntityId id)
         {
             var updated = LastUpdated > LastChanged ? LastUpdated : LastChanged;
-            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated) { Options = Options, Series = Series };
+            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated) { Options = Options, Series = Series, Attributes = Attributes };
         }
     }
 }

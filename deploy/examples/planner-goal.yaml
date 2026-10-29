@@ -28,3 +28,47 @@ planner:
 #     kind: energy
 #     target_kwh: 12
 #     deadline: { at: "06:30" }
+#
+# PV forecast from the core forecast_solar sensors and the sun entity only (no hourly series in Home Assistant). Add these under signals:. The day
+# totals are spread over daylight between the sun's next rising and next setting (basis `totals` in GET api/plan); a stale total or sun means zero
+# PV for the plan, never the last known value. `sun.sun` feeds both sun signals, each through its own attribute. Check the entity names in your HA.
+#
+# Hourly PV series instead (better than the totals; when it is usable it wins over them). A template sensor in HA sums the watts dictionaries
+# of the Forecast.Solar planes by time key into the attribute `watts` (a dict, local time of the site without an offset, "2026-10-29 07:00:00" -> W;
+# the keys need not be sorted). The add-on reads those times in its own zone, the one of the plan's slot grid, so the add-on and HA must have the
+# same time zone. Values are instantaneous watts; the plan integrates them as straight lines between points. The source refreshes hourly: 3h.
+#
+#   pv_forecast_series:
+#     entity: sensor.pv_forecast_watts
+#     kind: series
+#     attribute: watts
+#     series: { shape: dict, value: power_w }
+#     max_age: 3h
+#     role: pv_forecast
+#
+# Or the daily totals shape:
+#
+#   pv_forecast_today:
+#     entity: sensor.energy_production_today
+#     kind: energy_forecast
+#     unit: kWh
+#     max_age: 3h             # the sensor refreshes hourly
+#     role: pv_forecast_today
+#   pv_forecast_tomorrow:
+#     entity: sensor.energy_production_tomorrow
+#     kind: energy_forecast
+#     unit: kWh
+#     max_age: 3h
+#     role: pv_forecast_tomorrow
+#   sun_rising:
+#     entity: sun.sun
+#     kind: timestamp
+#     attribute: next_rising  # sun.sun's state is above_horizon / below_horizon; the instant is in the attribute
+#     max_age: 1h
+#     role: sun_rising
+#   sun_setting:
+#     entity: sun.sun
+#     kind: timestamp
+#     attribute: next_setting
+#     max_age: 1h
+#     role: sun_setting

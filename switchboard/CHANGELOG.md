@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.5
+
+### Added
+
+- A PV forecast can be read from daily totals (Forecast.Solar style `watt_hours_day` series): the planner derives the hourly shape from them. A series key without a UTC offset is read as the add-on's local zone.
+- A timestamp signal can read its value from an entity attribute (`attribute:`); `sun.sun` may feed two timestamp signals (for example next rising and next setting).
+- Planner failure table covered by tests; `goal_input_stale` is documented.
+
 ## 0.11.4
 
 ### Fixed

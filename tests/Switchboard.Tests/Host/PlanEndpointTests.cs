@@ -87,6 +87,30 @@ public sealed class PlanEndpointTests
         Assert.Equal(0, response.Inputs.GoalsActive);
     }
 
+    [Theory]
+    [InlineData(GoalInactiveReason.InputStale, true)]
+    [InlineData(GoalInactiveReason.InputUnavailable, true)]
+    [InlineData(GoalInactiveReason.WantOff, false)]
+    [InlineData(GoalInactiveReason.InputOutOfRange, false)]
+    public void A_goal_inactive_for_a_stale_or_unavailable_input_raises_the_goal_input_stale_note(GoalInactiveReason reason, bool noted)
+    {
+        // Why: PLAN-17 row "goal input stale": the plan drops the goal silently otherwise, and the UI warns by this note. A goal off by want or by a bad value is
+        // not a stale input and must not raise it (the note would send the user to look at a fresh sensor).
+        var inactive = new InactiveGoal(Car, reason, GoalInputKind.Soc, GoalOrigin.Entity, GoalKind.Soc, true);
+
+        var response = PlanEndpoint.Build(Config("planner:\n  dispatch: off\n"), new GoalBoard(Now, [], [inactive], []));
+
+        Assert.Equal(noted, response.Notes.Contains("goal_input_stale"));
+    }
+
+    [Fact]
+    public void With_all_goal_inputs_fresh_there_is_no_goal_input_stale_note()
+    {
+        var response = PlanEndpoint.Build(Config("planner:\n  dispatch: off\n"), new GoalBoard(Now, [Goal.Of(Request(), Now)], [], []));
+
+        Assert.DoesNotContain("goal_input_stale", response.Notes);
+    }
+
     [Fact]
     public void Several_goals_of_one_device_are_listed_in_the_order_given_with_the_first_as_the_goal()
     {

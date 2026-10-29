@@ -43,18 +43,56 @@ public sealed record TimeSeries(ImmutableArray<SeriesPoint> Points, SeriesValueK
     public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Kind} series of {Points.Length} points");
 }
 
-/// <summary>Reads an instant that carries its UTC offset (<c>Z</c> or <c>+hh:mm</c>); a time without one is refused, not read as local time.</summary>
+/// <summary>
+/// Reads an instant that carries its UTC offset (<c>Z</c> or <c>+hh:mm</c>); a time without one is refused, not read as local time, unless the caller
+/// names the zone it is local in (<see cref="TryParse(string?, TimeZoneInfo?, out DateTimeOffset)"/>).
+/// </summary>
 public static class IsoInstant
 {
-    public static bool TryParse(string? text, out DateTimeOffset instant)
+    private static readonly string[] LocalFormats =
+    [
+        "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-ddTHH:mm",
+        "yyyy-MM-dd HH:mm:ss.FFFFFFF", "yyyy-MM-ddTHH:mm:ss.FFFFFFF",
+    ];
+
+    public static bool TryParse(string? text, out DateTimeOffset instant) => TryParse(text, null, out instant);
+
+    /// <summary>
+    /// As <see cref="TryParse(string?, out DateTimeOffset)"/>, and when <paramref name="localZone"/> is given a date and time without an offset
+    /// (<c>2026-10-29 07:00:00</c>, the Forecast.Solar keys) is read as wall-clock time in that zone. A local time that does not exist (the spring
+    /// gap) is moved one hour on, to the first valid moment after the gap; one that happens twice (the autumn hour) is the first of the two. Never throws.
+    /// </summary>
+    public static bool TryParse(string? text, TimeZoneInfo? localZone, out DateTimeOffset instant)
     {
         instant = default;
-        if (string.IsNullOrEmpty(text) || text.Length > 40 || !HasOffset(text))
+        if (string.IsNullOrEmpty(text) || text.Length > 40)
         {
             return false;
         }
 
-        return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out instant);
+        if (HasOffset(text))
+        {
+            return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out instant);
+        }
+
+        if (localZone is null || !DateTime.TryParseExact(text, LocalFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+        {
+            return false;
+        }
+
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        if (localZone.IsInvalidTime(local))
+        {
+            local = local.AddHours(1);
+            if (localZone.IsInvalidTime(local))
+            {
+                return false;
+            }
+        }
+
+        var offset = localZone.IsAmbiguousTime(local) ? localZone.GetAmbiguousTimeOffsets(local).Max() : localZone.GetUtcOffset(local);
+        instant = new DateTimeOffset(local, offset);
+        return true;
     }
 
     private static bool HasOffset(string text)

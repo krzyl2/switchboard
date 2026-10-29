@@ -10,12 +10,13 @@ namespace Switchboard.Infrastructure.HomeAssistant;
 /// Reads the one whitelisted attribute of an entity as a series (15-PLANNER, "What the signal layer needs that it does not have").
 /// Bounded and strict: more than <see cref="TimeSeries.MaxPoints"/> points or <see cref="TimeSeries.MaxBytes"/> bytes drops the whole
 /// frame (never a truncated series), and one malformed item refuses the whole series (never a series with a hole in it). Times must
-/// carry a UTC offset; a time without one is not read as local time. The result is sorted by start; numbers are raw, the signal layer
+/// carry a UTC offset, unless <c>localZone</c> is given (the add-on's zone, the one of the slot grid): then a time without one is wall-clock time in that
+/// zone (Forecast.Solar keys, <c>2026-10-29 07:00:00</c>); without a zone it is refused, never guessed. The result is sorted by start; numbers are raw, the signal layer
 /// gives them their unit.
 /// </summary>
 public static class SeriesAttributeParser
 {
-    public static ParsedSeries Parse(JsonElement attribute, SeriesSpec spec)
+    public static ParsedSeries Parse(JsonElement attribute, SeriesSpec spec, TimeZoneInfo? localZone = null)
     {
         ArgumentNullException.ThrowIfNull(spec);
         var shape = attribute.ValueKind switch
@@ -50,7 +51,7 @@ public static class SeriesAttributeParser
         {
             foreach (var item in attribute.EnumerateArray())
             {
-                if (ListPoint(item, spec) is not { } point)
+                if (ListPoint(item, spec, localZone) is not { } point)
                 {
                     return ParsedSeries.Of(SeriesProblem.Malformed);
                 }
@@ -62,7 +63,7 @@ public static class SeriesAttributeParser
         {
             foreach (var item in attribute.EnumerateObject())
             {
-                if (!IsoInstant.TryParse(item.Name, out var start) || Number(item.Value) is not { } value)
+                if (!IsoInstant.TryParse(item.Name, localZone, out var start) || Number(item.Value) is not { } value)
                 {
                     return ParsedSeries.Of(SeriesProblem.Malformed);
                 }
@@ -83,12 +84,12 @@ public static class SeriesAttributeParser
         return new ParsedSeries([.. points], SeriesProblem.None);
     }
 
-    private static SeriesPoint? ListPoint(JsonElement item, SeriesSpec spec)
+    private static SeriesPoint? ListPoint(JsonElement item, SeriesSpec spec, TimeZoneInfo? localZone)
     {
         if (item.ValueKind != JsonValueKind.Object
             || !item.TryGetProperty(spec.StartKey, out var startElement)
             || startElement.ValueKind != JsonValueKind.String
-            || !IsoInstant.TryParse(startElement.GetString(), out var start)
+            || !IsoInstant.TryParse(startElement.GetString(), localZone, out var start)
             || !item.TryGetProperty(spec.ValueKey, out var valueElement)
             || Number(valueElement) is not { } value)
         {
@@ -98,7 +99,7 @@ public static class SeriesAttributeParser
         DateTimeOffset? end = null;
         if (spec.EndKey is { } endKey && item.TryGetProperty(endKey, out var endElement) && endElement.ValueKind != JsonValueKind.Null)
         {
-            if (endElement.ValueKind != JsonValueKind.String || !IsoInstant.TryParse(endElement.GetString(), out var parsed))
+            if (endElement.ValueKind != JsonValueKind.String || !IsoInstant.TryParse(endElement.GetString(), localZone, out var parsed))
             {
                 return null;
             }

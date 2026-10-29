@@ -175,6 +175,44 @@ public sealed class SeriesAttributeParserTests
     }
 
     [Fact]
+    public void The_text_of_a_declared_attribute_is_kept_for_a_sun_time_and_no_other_attribute_is()
+    {
+        // Why: the state of the sun entity is above_horizon; its instants live in next_rising and next_setting. Only the declared names are read (a bounded
+        // whitelist), a diff replaces one, a removal empties it, a value that is not text or is oversized reads as empty, and an entity with none declared carries none.
+        var sun = EntityId.Parse("sun.sun");
+        var plain = EntityId.Parse("sensor.other");
+        var names = System.Collections.Immutable.ImmutableArray.Create("next_rising", "next_setting");
+        var parser = new SubscribeEntitiesParser([sun, plain], null, new Dictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>> { [sun] = names });
+
+        var json = """
+            {"a": {
+              "sun.sun": {"s": "above_horizon", "a": {"next_rising": "2026-10-30T05:32:11.1+00:00", "next_setting": 5, "elevation": 12.3, "next_dusk": "2026-10-29T16:20:00+00:00"}, "lc": 1700000000, "lr": 1700000000},
+              "sensor.other": {"s": "1", "a": {"next_rising": "2026-10-30T05:32:11+00:00"}, "lc": 1700000000}
+            }}
+            """;
+        var initial = parser.Parse(JsonDocument.Parse(json).RootElement, out var problem)!;
+
+        Assert.Null(problem);
+        var sunUpdate = initial.Updates.Single(u => u.Entity == sun);
+        Assert.Equal(["next_rising", "next_setting"], sunUpdate.Attributes!.Keys.Order());
+        Assert.Equal(("2026-10-30T05:32:11.1+00:00", string.Empty), (sunUpdate.Attributes["next_rising"], sunUpdate.Attributes["next_setting"]));
+        Assert.Null(initial.Updates.Single(u => u.Entity == plain).Attributes);
+
+        var diff = """{"c": {"sun.sun": {"+": {"lc": 1700000100, "a": {"next_setting": "2026-10-29T15:41:00+00:00"}}}}}""";
+        var replaced = parser.Parse(JsonDocument.Parse(diff).RootElement, out _)!.Updates.Single().Attributes!;
+        Assert.Equal(("2026-10-30T05:32:11.1+00:00", "2026-10-29T15:41:00+00:00"), (replaced["next_rising"], replaced["next_setting"]));
+
+        var untouched = parser.Parse(JsonDocument.Parse("""{"c": {"sun.sun": {"+": {"lr": 1700000200}}}}""").RootElement, out _)!.Updates.Single().Attributes!;
+        Assert.Equal("2026-10-29T15:41:00+00:00", untouched["next_setting"]);
+
+        var removed = parser.Parse(JsonDocument.Parse("""{"c": {"sun.sun": {"-": {"a": ["next_rising"]}, "+": {"lr": 1700000300}}}}""").RootElement, out _)!.Updates.Single().Attributes!;
+        Assert.Equal((string.Empty, "2026-10-29T15:41:00+00:00"), (removed["next_rising"], removed["next_setting"]));
+
+        var oversized = "{\"c\": {\"sun.sun\": {\"+\": {\"lc\": 1700000400, \"a\": {\"next_rising\": \"" + new string('x', EntityUpdate.MaxAttributeText + 1) + "\"}}}}}";
+        Assert.Equal(string.Empty, parser.Parse(JsonDocument.Parse(oversized).RootElement, out _)!.Updates.Single().Attributes!["next_rising"]);
+    }
+
+    [Fact]
     public void An_entity_without_the_attribute_at_the_initial_state_is_a_missing_series_not_a_dropped_state()
     {
         var pv = EntityId.Parse("sensor.pv_forecast_watts");
