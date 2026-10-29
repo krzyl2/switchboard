@@ -26,3 +26,6 @@ tests/fixtures/replay/live-*.csv.gz
 
 # Playwright MCP console logs from local UI checks
 .playwright-mcp/
+
+# Release output (deploy/release.ps1)
+deploy/out/

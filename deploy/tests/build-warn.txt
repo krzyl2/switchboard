@@ -1,0 +1,5 @@
+Build succeeded.
+
+Foo.cs(1,1): warning CS0168: x
+    3 Warning(s)
+    0 Error(s)

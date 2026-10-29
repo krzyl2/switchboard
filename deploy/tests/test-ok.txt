@@ -1,0 +1,1 @@
+Passed!  - Failed:     0, Passed:  1230, Skipped:     4, Total:  1234, Duration: 12 s - Switchboard.Tests.dll (net10.0)

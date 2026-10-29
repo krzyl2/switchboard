@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.7
+
+### Added
+
+- `deploy/release.ps1` and the `/deploy` skill: bump, verify, commit, push, image, deploy and post-check as one script with a dry run and a self-test.
+- The Home Assistant token for the deploy stage is stored DPAPI-protected per Windows user (`deploy/set-ha-token.ps1`).
+
+No change in dispatch behaviour.
+
 ## 0.11.6
 
 ### Fixed

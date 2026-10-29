@@ -1,0 +1,8 @@
+fail: Switchboard.Old[0]
+      earlier error before the start
+info: x
+      Switchboard 9.9.9 starting as addon; mode shadow
+info: y
+      Configuration /config/switchboard.yaml loaded: 3 signals, three-phase
+fail: Switchboard.Mqtt[0]
+      connection error

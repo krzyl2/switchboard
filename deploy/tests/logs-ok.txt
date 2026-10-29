@@ -1,0 +1,7 @@
+fail: Switchboard.Old[0]
+      earlier error before the start
+info: Switchboard.Host[0]
+      Switchboard 9.9.9 starting as addon; mode shadow, log level info; configuration /config/switchboard.yaml
+info: Switchboard.Cfg[0]
+      Configuration /config/switchboard.yaml loaded: 24 signals, three-phase
+info: Fail-safe table ready (fail-safe)

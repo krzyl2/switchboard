@@ -1,0 +1,10 @@
+Name:      ghcr.io/krzyl2/switchboard:9.9.9
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:abababababababababababababababababababababababababababababababab
+
+Manifests:
+  Name:        ghcr.io/krzyl2/switchboard:9.9.9@sha256:111
+  Platform:    linux/amd64
+
+  Name:        ghcr.io/krzyl2/switchboard:9.9.9@sha256:222
+  Platform:    linux/arm64

@@ -80,7 +80,7 @@ Single entry point for a new session. Updated 2026-10-27 at version 0.10.1 (git 
 ## Working method (what worked)
 
 - One workflow script per stage (`design → red-team → implement (sequential + parallel parts) → 3-lens review → verify → fix`), then the orchestrator re-verifies: `dotnet build Switchboard.slnx -c Release --no-incremental` (0 warnings), `dotnet test`, `cd web && npm ci && npm test && npm run build`, grep that `call_service` lives only in the command port and allow-list (8 pairs) and only `EffectorGate` submits.
-- Release loop: bump versions (`switchboard/config.yaml`, `Directory.Build.props`, `WebSurfaceTests`), CHANGELOG, commit and push, `BUILDX_BUILDER=switchboard-builder pwsh deploy/build-push.ps1 -Version x.y.z`, then in the HA browser page `store/reload` and `addons/fb9ed8c0_switchboard/update` via `hass.callWS({type:'supervisor/api', ...})`. Logs: `hass.callApiRaw('GET','hassio/addons/fb9ed8c0_switchboard/logs')`.
+- Release loop: `/deploy` (skill) runs `pwsh deploy/release.ps1 -Version x.y.z -Subject ... -Notes ...` (bump, verify, commit, push as krzyl2, image, update on the live HA, post-check); dry run with `-DryRun`. HA token is DPAPI-stored once via `deploy/set-ha-token.ps1`. See `docs/RELEASE.md`. Manual fallback: HA browser page `store/reload` and `addons/fb9ed8c0_switchboard/update` via `hass.callWS({type:'supervisor/api', ...})`; logs `hass.callApiRaw('GET','hassio/addons/fb9ed8c0_switchboard/logs')`.
 - Writing the live `switchboard.yaml`: code-server terminal (`a0d7b954_vscode`), Cancel the workspace-trust dialog, write via temp file + `mv`, check sha256, `exit`. Never type while the editor has focus.
 - Decisions go one line each, dated, into `docs/DECISIONS.md`.
 
