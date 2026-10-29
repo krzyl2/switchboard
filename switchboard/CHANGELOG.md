@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.4
+
+### Fixed
+
+- The hourly balance is no longer unknown until the next :00 when there is no counter report at or before the start of the hour (a start or restart inside the hour, or a meter silent across :00). It now counts from the first report of the running hour; it misses what flowed before that report.
+
 ## 0.11.3
 
 ### Fixed

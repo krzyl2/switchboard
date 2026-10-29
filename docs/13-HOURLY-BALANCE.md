@@ -31,8 +31,8 @@ baseline      = (export_total, import_total) as last reported before hour_start
 balance_wh    = ((export_total - baseline.export) - (import_total - baseline.import)) * 1000   positive = net export
 ```
 
-- The baseline is the last counter value reported **at or before** the boundary (the counters refresh about every 10 s), never the first one after it. It is persisted in `state.json` so a restart inside the hour keeps it.
-- A restart or an outage with no valid baseline for the running hour makes the balance **unknown until the next :00**. The Recorder is never read to recover it.
+- The baseline is the last counter value reported **at or before** the boundary (the counters refresh about every 10 s). It is persisted so a restart inside the hour keeps it.
+- With no usable report at or before the boundary (a start inside the hour, or a meter silent across :00) the baseline is the **first report of the running hour** (0.11.4): the balance covers the hour from that report on and misses what flowed before it, instead of being unknown until the next :00. The Recorder is never read to recover it.
 - A counter that decreases, or a clock step back, makes the balance unknown for the rest of the hour. Counters that are unavailable make it unknown only while they are, and so does a meter that is not alive: the counters are cumulative, so the balance is right again with the next report.
 - **A counter that does not change is not reported again** (found live, 0.8.0): the export counter stands still while the house imports and the import counter while it exports, so a counter's own age proves nothing. The pair is usable when neither counter is unavailable or refused and the meter is demonstrably alive: a counter or a phase power was reported within its `max_age`. The pair's report time is the latest such report (the values are valid as of then).
 

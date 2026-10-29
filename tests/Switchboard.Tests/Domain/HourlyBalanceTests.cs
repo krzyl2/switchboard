@@ -47,18 +47,29 @@ public sealed class HourlyBalanceTests
     }
 
     [Fact]
-    public void A_start_inside_the_hour_has_no_balance_until_the_next_hour()
+    public void A_start_inside_the_hour_counts_from_the_first_report_instead_of_blocking_the_hour()
     {
         var tracker = Tracker();
 
         var midHour = tracker.Observe(TenOclock.AddMinutes(25), At(TenOclock.AddMinutes(25), 100, 200), MaxAge);
-        Assert.False(midHour.IsKnown);
-        Assert.Equal(BalanceUnknown.NoBaseline, midHour.Reason);
+        Assert.True(midHour.IsKnown);
+        Assert.Equal(0, midHour.Wh!.Value, 6);
+
+        var later = tracker.Observe(TenOclock.AddMinutes(40), At(TenOclock.AddMinutes(40), 100.1, 200), MaxAge);
+        Assert.Equal(100, later.Wh!.Value, 6);
 
         tracker.Observe(TenOclock.AddMinutes(59).AddSeconds(55), At(TenOclock.AddMinutes(59).AddSeconds(55), 100.1, 200), MaxAge);
         var next = tracker.Observe(TenOclock.AddHours(1).AddSeconds(10), At(TenOclock.AddHours(1).AddSeconds(5), 100.1, 200.05), MaxAge);
 
         Assert.Equal(-50, next.Wh!.Value, 6);
+    }
+
+    [Fact]
+    public void No_report_at_all_is_unavailable_not_a_missing_baseline()
+    {
+        var reading = Tracker().Observe(TenOclock.AddMinutes(25), null, MaxAge);
+
+        Assert.Equal(BalanceUnknown.Unavailable, reading.Reason);
     }
 
     [Fact]
@@ -84,7 +95,8 @@ public sealed class HourlyBalanceTests
 
         var reading = tracker.Observe(TenOclock.AddMinutes(30), At(TenOclock.AddMinutes(30), 100, 200), MaxAge);
 
-        Assert.Equal(BalanceUnknown.NoBaseline, reading.Reason);
+        Assert.Equal(0, reading.Wh!.Value, 6);
+        Assert.Equal(100, tracker.Baseline!.ExportKwh);
     }
 
     [Fact]

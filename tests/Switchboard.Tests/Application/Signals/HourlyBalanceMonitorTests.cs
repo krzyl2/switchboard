@@ -89,16 +89,18 @@ public sealed class HourlyBalanceMonitorTests
     }
 
     [Fact]
-    public void A_start_inside_the_hour_reports_no_baseline_never_a_zero()
+    public void A_start_inside_the_hour_counts_from_the_first_report()
     {
         _store.Advance(TimeSpan.FromMinutes(25));
         Report("100.000", "200.000");
+        _store.Advance(TimeSpan.FromMinutes(5));
+        Report("100.300", "200.000");
 
         var response = BalanceEndpoint.Build(_monitor.Current);
 
         Assert.True(response.Configured);
-        Assert.Null(response.Wh);
-        Assert.Equal("no_baseline", response.Reason);
+        Assert.Equal(300, response.Wh!.Value, 3);
+        Assert.Equal("none", response.Reason);
     }
 
     [Fact]
@@ -205,7 +207,8 @@ public sealed class HourlyBalanceMonitorTests
 
         holder.Publish(new SignalDiagnostics(_store.Snapshot(), null, [], []));
 
-        Assert.Equal("no_baseline", BalanceEndpoint.Build(monitor.Current).Reason);
+        // Counted from this report, not from the earlier hour's 0/0 (that would read 100450 Wh).
+        Assert.Equal(0, BalanceEndpoint.Build(monitor.Current).Wh!.Value, 3);
     }
 
     [Fact]

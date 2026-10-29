@@ -38,8 +38,9 @@ public readonly record struct BalanceReading(double? Wh, DateTimeOffset HourStar
 /// <code>
 /// balance = (export − export₀) − (import − import₀)      [kWh → Wh]
 /// </code>
-/// where the baseline is the last counter report at or before the start of the hour, never the first
-/// one after it. The counters are cumulative, so a gap in reports does not lose energy and the balance
+/// where the baseline is the last counter report at or before the start of the hour; only when there
+/// is none (a start inside the hour) it is the first report after it, and the balance then covers the
+/// hour from that report on. The counters are cumulative, so a gap in reports does not lose energy and the balance
 /// is right again as soon as a fresh report arrives; only a decrease, a missing baseline or a clock step
 /// back make it unknown for the rest of the hour. Pure state machine driven by the caller's clock; hours
 /// are local clock hours of <c>zone</c> (23 and 25 hour days included, a repeated clock hour is two hours).
@@ -135,13 +136,19 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone)
             var candidate = _history[i];
             if (candidate.ReportedAt <= hour)
             {
-                return hour - candidate.ReportedAt <= maxAge
-                    ? new HourBaseline(hour, candidate.ExportKwh, candidate.ImportKwh)
-                    : null;
+                if (hour - candidate.ReportedAt <= maxAge)
+                {
+                    return new HourBaseline(hour, candidate.ExportKwh, candidate.ImportKwh);
+                }
+
+                break;
             }
         }
 
-        return null;
+        // No usable report at or before :00 (a start inside the hour, or a silent meter across :00):
+        // the balance counts from the first report of this hour. It misses what flowed before it.
+        var first = _history.Find(r => r.ReportedAt > hour);
+        return first.ReportedAt > hour ? new HourBaseline(hour, first.ExportKwh, first.ImportKwh) : null;
     }
 
     /// <summary>Reports older than max_age before this hour can serve no baseline now or later.</summary>
@@ -156,7 +163,7 @@ public sealed class HourlyBalanceTracker(TimeZoneInfo zone)
 
         if (_baseline is null)
         {
-            return new BalanceReading(null, hour, BalanceUnknown.NoBaseline);
+            return new BalanceReading(null, hour, _history.Count == 0 ? BalanceUnknown.Unavailable : BalanceUnknown.NoBaseline);
         }
 
         if (counters is null || _history.Count == 0)
