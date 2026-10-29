@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.8
+
+### Fixed
+
+- `deploy/release.ps1`: the image stage no longer fails on a clean tree whose only dirty path is the never-staged `src/Switchboard.Host/Properties/` (empty filtered list had no `Count` in strict mode); covered by the self-test.
+
+No change in dispatch behaviour.
+
 ## 0.11.7
 
 ### Added

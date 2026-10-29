@@ -44,9 +44,9 @@
     How long the deploy stage waits for the add-on to report the target version started (default 300).
 
 .EXAMPLE
-    pwsh deploy/release.ps1 -Version 0.11.7 -Subject 'Plan chart fixes' -Notes notes.md -DryRun
-    pwsh deploy/release.ps1 -Version 0.11.7 -Subject 'Plan chart fixes' -Notes notes.md
-    pwsh deploy/release.ps1 -Version 0.11.7 -Subject 'Plan chart fixes' -From image   # resume
+    pwsh deploy/release.ps1 -Version 1.2.3 -Subject 'Plan chart fixes' -Notes notes.md -DryRun
+    pwsh deploy/release.ps1 -Version 1.2.3 -Subject 'Plan chart fixes' -Notes notes.md
+    pwsh deploy/release.ps1 -Version 1.2.3 -Subject 'Plan chart fixes' -From image   # resume
 #>
 [CmdletBinding()]
 param(
@@ -232,6 +232,13 @@ function Get-ImageDigest {
     return $null
 }
 
+function Test-StrayChanges {
+    # $true when the dirty list holds anything besides the paths that are never staged. @() keeps .Count valid in
+    # strict mode when the filter leaves nothing (an empty pipeline result has no Count).
+    param([object[]]$Dirty)
+    return @($Dirty | Where-Object { $null -ne $_ -and $_.Path -notmatch $neverStage }).Count -gt 0
+}
+
 function Get-ImagePlatforms {
     param([string[]]$Lines)
     return @($Lines | ForEach-Object { if ($_ -match '^\s*Platform:\s*(linux/\S+)') { $Matches[1] } })
@@ -264,10 +271,10 @@ if ($SelfTest) {
     }
     function Fx([string]$n) { Get-Content -LiteralPath (Join-Path $fixtureDir $n) }
 
-    Assert-That 'bump 0.11.6 -> 0.11.7 is strict' { Compare-StrictBump '0.11.6' '0.11.7' }
+    Assert-That 'bump 1.2.2 -> 1.2.3 is strict' { Compare-StrictBump '1.2.2' '1.2.3' }
     Assert-That 'bump 0.9.9 -> 0.10.0 compares numerically' { Compare-StrictBump '0.9.9' '0.10.0' }
-    Assert-That 'same version is not a bump' { -not (Compare-StrictBump '0.11.6' '0.11.6') }
-    Assert-That 'downgrade is not a bump' { -not (Compare-StrictBump '0.11.6' '0.11.5') }
+    Assert-That 'same version is not a bump' { -not (Compare-StrictBump '1.2.3' '1.2.3') }
+    Assert-That 'downgrade is not a bump' { -not (Compare-StrictBump '1.2.2' '1.2.1') }
     Assert-That 'version 0.10.0 > 0.9.0 (not string order)' { Compare-StrictBump '0.9.0' '0.10.0' }
 
     foreach ($p in $versionPlaces) {
@@ -311,10 +318,10 @@ if ($SelfTest) {
     Assert-That 'test summary (MTP block) passed' { $s = Read-TestSummary (Fx 'test-mtp-ok.txt'); $s.Total -eq 50 -and $s.Passed -eq 50 -and $s.Failed -eq 0 }
     Assert-That 'test summary: no summary found' { (Read-TestSummary @('nothing')).Found -eq 0 }
 
-    Assert-That 'subject ok' { $null -eq (Test-CommitSubject '0.11.7' 'Plan chart fixes') }
-    Assert-That 'subject with type tag rejected' { $null -ne (Test-CommitSubject '0.11.7' 'fix: plan chart') }
-    Assert-That 'subject too long rejected' { $null -ne (Test-CommitSubject '0.11.7' ('x' * 70)) }
-    Assert-That 'subject exactly 72 accepted' { $null -eq (Test-CommitSubject '0.11.7' ('x' * 64)) }
+    Assert-That 'subject ok' { $null -eq (Test-CommitSubject '1.2.3' 'Plan chart fixes') }
+    Assert-That 'subject with type tag rejected' { $null -ne (Test-CommitSubject '1.2.3' 'fix: plan chart') }
+    Assert-That 'subject too long rejected' { $null -ne (Test-CommitSubject '1.2.3' ('x' * 70)) }
+    Assert-That 'subject exactly 72 accepted' { $null -eq (Test-CommitSubject '1.2.3' ('x' * 64)) }
 
     Assert-That 'logs ok: started, config loaded, signals counted' {
         $r = Read-ReleaseLogs ((Fx 'logs-ok.txt') -join "`n") '9.9.9'; $r.Started -and $r.ConfigLoaded -and $r.Signals -eq 24 -and $r.Problems.Count -eq 0
@@ -327,6 +334,13 @@ if ($SelfTest) {
     Assert-That 'digest + platforms parsed from imagetools output' {
         $l = Fx 'imagetools.txt'
         (Get-ImageDigest $l) -eq ('sha256:' + ('ab' * 32)) -and (Get-ImagePlatforms $l).Count -eq 2
+    }
+    Assert-That 'stray changes: an empty dirty list and the never-staged Properties dir are not stray' {
+        (-not (Test-StrayChanges @())) -and (-not (Test-StrayChanges $null)) -and
+        (-not (Test-StrayChanges @([pscustomobject]@{ Xy = '??'; Path = 'src/Switchboard.Host/Properties/launchSettings.json' })))
+    }
+    Assert-That 'stray changes: any other path is stray' {
+        Test-StrayChanges @([pscustomobject]@{ Xy = ' M'; Path = 'deploy/release.ps1' })
     }
     Assert-That 'porcelain -z parsing incl. rename and untracked' {
         $raw = " M a/b.cs`0?? new dir/x.txt`0R  new.cs`0old.cs`0"
@@ -469,7 +483,7 @@ function Stage-Preflight {
     if ($branch -ne 'main') { throw "on '$branch', not main" }
 
     if (-not [string]::IsNullOrWhiteSpace((Invoke-Git diff --cached --name-only))) { throw 'index has staged changes; the release stages explicit paths itself (git restore --staged .)' }
-    $paths = Get-StagePaths
+    $paths = @(Get-StagePaths)
     $bad = @($paths | Where-Object { $_ -match $forbiddenStage -or $_ -notmatch $allowedRoots })
     if ($bad.Count) { throw "unexpected files in the tree: $($bad -join ', ')" }
     $info += "$($paths.Count) path(s) to stage"
@@ -581,14 +595,14 @@ function Stage-Verify {
 
 function Stage-Commit {
     if (Test-ReleaseCommitExists) {
-        if ((Get-Dirty | Where-Object { $_.Path -notmatch $neverStage }).Count) { throw "release commit exists but the tree has further changes" }
+        if (Test-StrayChanges (Get-Dirty)) { throw "release commit exists but the tree has further changes" }
         $ctx.commit = (Invoke-Git rev-parse HEAD).Trim()
         return "already committed $($ctx.commit.Substring(0, 8))"
     }
     $why = Test-CommitSubject $Version $Subject
     if ($why) { throw "-Subject: $why" }
     $msg = "${Version}: $Subject"
-    $paths = Get-StagePaths
+    $paths = @(Get-StagePaths)
     if ($DryRun) { $paths = @($paths + @($versionPlaces | ForEach-Object { $_.Path }) + 'switchboard/CHANGELOG.md' | Sort-Object -Unique) }
     if (-not $paths.Count) { throw 'nothing to commit' }
     if ($DryRun) { return "would commit $($paths.Count) path(s) as '$msg'$(if ($CoAuthor) { ' + trailer' })`: $($paths -join ', ')" }
@@ -631,7 +645,7 @@ function Stage-Image {
     if ($DryRun -and -not (Test-ReleaseCommitExists)) { return "would run BUILDX_BUILDER=$Builder deploy/build-push.ps1 -Version $Version -SkipConfigSync (linux/amd64,linux/arm64), then imagetools inspect ${Image}:$Version for digest and platforms" }
     if (-not (Test-ReleaseCommitExists)) { throw "no '$Version`:' release commit at HEAD" }
     if ([int](Invoke-Git rev-list --count 'origin/main..HEAD').Trim() -ne 0) { throw 'HEAD is not pushed; the Supervisor reads config.yaml from main' }
-    if ((Get-Dirty | Where-Object { $_.Path -notmatch $neverStage }).Count) { throw 'working tree is dirty; the image is built from the tree' }
+    if (Test-StrayChanges (Get-Dirty)) { throw 'working tree is dirty; the image is built from the tree' }
     $existing = Get-RemoteImage $Version
     if ($existing -and -not $Rebuild) {
         $ctx.imageDigest = $existing.Digest; $ctx.imagePlatforms = $existing.Platforms

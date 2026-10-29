@@ -8,7 +8,7 @@
 //
 //   node deploy/ha-supervisor.mjs ping
 //   node deploy/ha-supervisor.mjs info                         add-on info (version, state, ingress_url)
-//   node deploy/ha-supervisor.mjs deploy --target 0.11.7 [--timeout 300]
+//   node deploy/ha-supervisor.mjs deploy --target 1.2.3 [--timeout 300]
 //   node deploy/ha-supervisor.mjs logs                         add-on log text
 //   node deploy/ha-supervisor.mjs states <entity_id>...        read-only get_states, filtered
 //   node deploy/ha-supervisor.mjs status                       GET api/status through ingress (best effort)
