@@ -437,9 +437,15 @@ public sealed partial class DispatchEngine
         if (index == plan.BasisIndex && refusal is null)
         {
             // Nothing was judged (the cap leaves no stage): say why the next stage would not be given, as 0.9 says it with the balance.
+            // When an energy class is open for it the cap (guard, envelope, rank) is the limit, not the sources: no energy refusal then.
             var next = plan.BasisIndex + 1 < plan.Levels.Length ? Math.Max(0, PlannedPower(plan, plan.BasisIndex + 1, config) - PlannedPower(plan, plan.BasisIndex, config)) : 0;
             var pv = PvOf(economics, device, surplus, load, next, Commitment(plan, plan.BasisIndex));
-            refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, ZoneOf(economics, device));
+            var zone = ZoneOf(economics, device);
+            var open = (device.Spec.Sources!.Pv && pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth) || zone.Ok(running: plan.BasisIndex > 0);
+            if (!open)
+            {
+                refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
+            }
         }
 
         plan.BalanceAllows = index > plan.BasisIndex;
