@@ -125,6 +125,17 @@ describe('day plan: the page', () => {
     expect(slots.querySelector('tbody td .mono')!.textContent).toBe('afternoon_peak');
   });
 
+  it.each(['en', 'pl'] as const)('keeps the row labels of the chart (%s) left of the tariff band, whatever the language or the device id', async (lang) => {
+    await open(plan, lang);
+    const svg = document.querySelector('svg[data-plan="chart"]')!;
+    const bandX = Number(svg.querySelector('rect.plan-zone')!.getAttribute('x'));
+    const labels = [...svg.querySelectorAll('text.plan-axis')].filter((el) => el.getAttribute('x') === '0');
+
+    // The label column is as wide as its longest label needs (9 px text, 5 px per character at most), so a longer translation never runs under the band.
+    expect(labels.length).toBeGreaterThanOrEqual(3);
+    for (const label of labels) expect((label.textContent ?? '').length * 5).toBeLessThanOrEqual(bandX);
+  });
+
   it('shows the inputs the plan stood on and the warnings it carries', async () => {
     await open();
     const inputs = card('plan-inputs');

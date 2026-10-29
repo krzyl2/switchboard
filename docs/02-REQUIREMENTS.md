@@ -111,7 +111,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **UI-09**: Device queue with state, power and the reason for the current state
 - [x] **UI-10**: Stopped devices remain visible with their blocking reason rather than disappearing
 - [x] **UI-11**: Foreign (uncontrolled) load is visually distinct from controlled load throughout
-- [ ] **UI-12**: Device card: connection, phase, limits, reaction time, value per kWh, goal, and recent command/verification history
+- [x] **UI-12**: Device card: connection, phase, limits, reaction time, value per kWh, goal, and recent command/verification history
 - [x] **UI-13**: Full light and dark theming; layout usable at phone width
 - [x] **UI-14**: Polish and English translations for all add-on options and UI chrome
 
@@ -139,7 +139,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **PLAN-03**: Goal progress: a persisted energy ledger for energy goals (`state.json` schema bump, an old file read), the SoC signal for soc goals; remaining need includes the loss fraction
 - [x] **PLAN-04**: Goal source seam (`IGoalSource`): configuration, mapped entities and manual goals merged per device with a stated precedence, several goals per device ordered by deadline; the EV module is a consumer, not part of this requirement
 - [x] **PLAN-05**: `planner:` section (`dispatch: off | narrow | full`, default off) and `planner` parameters in `control-defaults.yaml` (`control.planner` overrides, checked), no literal in code
-- [ ] **PLAN-06**: Forecast signals from Home Assistant entities only: kinds `series`, `energy_forecast`, `timestamp`, roles `pv_forecast`, `pv_forecast_today`, `pv_forecast_tomorrow`, `sun_rising`, `sun_setting`; bounded attribute whitelist; freshness from `last_reported` and `max_age`, coverage kept apart; a stale or unusable forecast means zero PV, never the last known curve; the add-on fetches nothing
+- [x] **PLAN-06**: Forecast signals from Home Assistant entities only: kinds `series`, `energy_forecast`, `timestamp`, roles `pv_forecast`, `pv_forecast_today`, `pv_forecast_tomorrow`, `sun_rising`, `sun_setting`; bounded attribute whitelist; freshness from `last_reported` and `max_age`, coverage kept apart; a stale or unusable forecast means zero PV, never the last known curve; the add-on fetches nothing
 - [x] **PLAN-07**: Forward price curve from an HA entity (`curve:` in a dynamic price spec, roles `price_curve_import`, `price_curve_export`), currency label checked, `/MWh` converted in the signal layer only; the uncovered part falls back to the schedule or the spec's fallback with the basis shown
 - [x] **PLAN-08**: Load forecast of the uncontrolled house load from statistics-derived hour-of-week bins in `load-profile.json` (seeded from the retained buckets, fed hourly, bounded, corruption set aside), no Recorder access; fallback power when there is no profile
 - [x] **PLAN-09**: Slot grid on the injected clock's local time: 23- and 25-hour days, UTC-offset transitions, deadline cuts, slot length from configuration (60, 30 or 15 minutes); price per slot time-weighted
@@ -152,5 +152,5 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [x] **PLAN-16**: Re-planning every 15 minutes and on goal, device-state, forecast, configuration and clock events, rate limited, with adoption hysteresis for the current slot (agreeing cycles and a minimum change) so the plan does not flap
 - [x] **PLAN-17**: Every row of the planner failure table in `15-PLANNER.md` has a named test: forecast, curve, profile, goal input, solver failure and timeout, clock step, restart (plan not persisted), safe state, configuration removal (storage row deferred with slice 6)
 - [ ] **PLAN-18**: Battery arbitrage as device class `storage`: SoC window, round-trip efficiency, exact DP over SoC and slots, minimum spread, discharge never above the house load unless allowed and never counted as relief, discharge command disabled by default until a real battery has run in shadow
-- [ ] **PLAN-19**: Day-plan screen and device card goal row (closes UI-12) with the manual "want now" goal, en and pl, both themes, phone width, the estimate-not-guarantee wording, entity IDs in monospace
+- [x] **PLAN-19**: Day-plan screen and device card goal row (closes UI-12) with the manual "want now" goal, en and pl, both themes, phone width, the estimate-not-guarantee wording, entity IDs in monospace
 - [ ] **PLAN-20**: Planner logic tested on the virtual clock including the 23- and 25-hour days, forecast fixtures, determinism and the optimality bound; live shadow verification on the maintainer's installation (plan against dispatch and real PV for a week, one day checked by hand)

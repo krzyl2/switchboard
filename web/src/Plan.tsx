@@ -193,7 +193,9 @@ function Notes({ plan, t }: { plan: Plan; t: Messages }) {
 
 // The picture: time left to right in proportion to real duration (a 23- or 25-hour day is drawn as it is), the tariff zones as a band
 // coloured by price rank, the PV forecast as a step line, one row per device with bars by energy class, and a marker for now.
-const LABEL_W = 84;
+const LABEL_MIN_W = 84;
+const PROSE_CHAR_W = 5; // 9 px axis text, a little generous so a longer translation never runs under the zone band
+const MONO_CHAR_W = 5.6;
 const HOUR_W = 16;
 const BAND_Y = 4;
 const BAND_H = 12;
@@ -216,12 +218,17 @@ function Chart({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice[] } 
   if (slots.length === 0) return <p class="note" data-plan="no-slots">{t['plan.chart.noSlots']}</p>;
   const t0 = slots[0]!.start.getTime();
   const t1 = slots[slots.length - 1]!.end.getTime();
-  const x = (ms: number) => LABEL_W + ((ms - t0) / HOUR_MS) * HOUR_W;
+  const rows = devices.filter((d) => runsOf(d.entries).length > 0);
+  const labelW = Math.max(
+    LABEL_MIN_W,
+    Math.ceil(Math.max(t['plan.chart.zones'].length, t['plan.chart.pv'].length) * PROSE_CHAR_W) + 8,
+    Math.ceil(Math.max(0, ...rows.map((d) => d.device.length)) * MONO_CHAR_W) + 8,
+  );
+  const x = (ms: number) => labelW + ((ms - t0) / HOUR_MS) * HOUR_W;
   const width = x(t1) + 8;
   const tones = priceTones(slots);
   const kw = (s: PlanSlot) => s.pvKwh / Math.max(1e-9, (s.end.getTime() - s.start.getTime()) / HOUR_MS);
   const peak = Math.max(0.5, ...slots.map(kw));
-  const rows = devices.filter((d) => runsOf(d.entries).length > 0);
   const height = ROW_Y + Math.max(1, rows.length) * ROW_H + AXIS_H;
   const y = (value: number) => PV_Y + PV_H - (value / peak) * PV_H;
   const pv = slots.flatMap((s) => [`${x(s.start.getTime())},${y(kw(s))}`, `${x(s.end.getTime())},${y(kw(s))}`]).join(' ');

@@ -1,6 +1,6 @@
 name: "Switchboard"
 description: "Phase-aware load dispatch: keeps every phase under its breaker and sends power where it is worth most. Best-effort; not a protective device."
-version: "0.11.5"
+version: "0.11.6"
 slug: switchboard
 url: "https://github.com/krzyl2/switchboard"
 image: "ghcr.io/krzyl2/switchboard"

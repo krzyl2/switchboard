@@ -2,6 +2,18 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.11.6
+
+### Fixed
+
+- The day-plan chart sizes its label column from the longest label, so labels (for example in Polish) no longer overlap the zone band.
+
+### Added
+
+- Tests for the G13 tariff: Polish public holidays and the season boundaries.
+
+No change in dispatch behaviour.
+
 ## 0.11.5
 
 ### Added
