@@ -161,7 +161,7 @@ public sealed partial class DispatchEngine
     }
 
     /// <summary>What the plan lets the allowance gate do for a device with an entry (see <see cref="ApplyAllowanceGate"/>).</summary>
-    /// <param name="Defers">A zone-class start or increase is refused (plan_deferred).</param>
+    /// <param name="Defers">A zone-class start or increase is refused, and a device already running on the zone (which the surplus does not hold) is brought down one stage a step (plan_deferred).</param>
     /// <param name="Opens">Full mode only: the reason of the one class the plan adds, for a grid slot of a goal device (plan_slot_target) or an urgent hard goal (goal_deadline_urgent); null when none.</param>
     private readonly record struct PlanGate(bool Defers, ReasonCode? Opens)
     {

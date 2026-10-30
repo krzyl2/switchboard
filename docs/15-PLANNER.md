@@ -54,7 +54,8 @@ At each step dispatch asks `PlanView.For(device, now)`. A valid answer is the en
 guard permission and envelope                  unchanged, first
 allocation by order key                        unchanged; MaxAllowed capped by the entry's MaxPowerW (narrows)
 allowance gate (sources, price test, balance)  unchanged, plus:
-    Defer            refuses a zone-class start or increase              reason plan_deferred   (narrows)
+    Defer            refuses a zone-class start or increase, and ends a    reason plan_deferred   (narrows)
+                     run that holds on the zone class alone (0.12.1)
     Done             refuses every class when goal.on_met is stop        reason goal_met        (narrows)
                      refuses an increase beyond the slot's budget        reason plan_slot_target (narrows)
     Run, class zone  opens the class `plan` for a goal device that declares   (widens one class,
@@ -360,7 +361,7 @@ Version 6 is in the tree, so these are **version 7**; the list only appends and 
 |---|---|---|
 | `plan_slot_target` (existing) | a start by the plan's own class, or an increase refused or a decrease because the slot's power ceiling or energy budget is reached | `headroom_available` / `headroom_insufficient` |
 | `goal_met` (existing) | a start or increase refused or a stop because the device's goal is met and `on_met` is `stop` | `headroom_insufficient` |
-| `plan_deferred` (new) | a start or increase refused because the plan places the device's energy in a later slot (zone class only) | `headroom_insufficient` (or the v6 permitted code, which v6 would have used) |
+| `plan_deferred` (new) | a start or increase refused, or (0.12.1) a run on the zone class alone brought down one stage a step through min_on and persistence, because the plan places the device's energy in a later slot (zone class only; a run the surplus rule still holds stays) | `headroom_insufficient` (or the v6 permitted code, which v6 would have used) |
 | `goal_deadline_urgent` (new) | a start or increase permitted beyond the device's sources because a hard goal would otherwise miss its deadline | `headroom_available` |
 | `plan_discharge` (new) | a storage discharge permitted because the plan's slot calls for it | `headroom_available` |
 | `soc_floor` (new) | a discharge refused or ended because the state of charge is at its floor | `headroom_insufficient` |

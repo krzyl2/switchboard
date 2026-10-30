@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.1
+
+### Fixed
+
+- A plan entry `defer` (reason `plan_deferred`) now also stops a device that is running on a tariff zone alone, not only refuses a start or an increase; `min_on`, persistence and the guard apply as for the end of a zone, the surplus class and devices without `sources:` are untouched.
+- An unknown hourly balance leaves a running device to the v2 rules under a `defer` entry (no stop-start on a data blip).
+
+Without a plan (`planner.dispatch: off`) decisions are unchanged.
+
 ## 0.12.0
 
 ### Added

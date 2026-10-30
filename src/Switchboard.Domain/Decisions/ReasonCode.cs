@@ -70,7 +70,7 @@ public enum ReasonCode
     /// <summary>Version 6: a start refused or a stop because the instantaneous surplus (net billing) does not cover the device. Versions 1 to 5 used headroom_insufficient.</summary>
     SurplusLow,
 
-    /// <summary>Version 7: a start or increase refused because the plan places the device's energy in a later slot (zone class only; 15-PLANNER). Versions 1 to 6 used headroom_insufficient (or the code the allowance gate would have given).</summary>
+    /// <summary>Version 7: a start or increase refused, or a run on the active zone brought down one stage, because the plan places the device's energy in a later slot (zone class only; 15-PLANNER). Versions 1 to 6 used headroom_insufficient (or the code the allowance gate would have given).</summary>
     PlanDeferred,
 
     /// <summary>Version 7: a start or increase permitted beyond the device's sources because a hard goal would otherwise miss its deadline (15-PLANNER). Versions 1 to 6 used headroom_available.</summary>

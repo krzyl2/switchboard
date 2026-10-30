@@ -217,7 +217,8 @@ public sealed partial class DispatchEngine
             }
             else if (!plan.PlanKeeps)
             {
-                stop = StopReason(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan, input);
+                stop = StopReason(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan, input)
+                    ?? DeferStop(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan);
             }
 
             if (stop is not { } reason)
@@ -374,6 +375,36 @@ public sealed partial class DispatchEngine
             AllowanceDecision.Unknown => input.Ledger.Entry(plan.Device.Id)?.SelfStarted is not null ? ReasonCode.BalanceUnknown : null,
             _ => pv.Worth ? null : ReasonCode.ValueBelowCost,
         };
+    }
+
+    /// <summary>
+    /// A plan entry of <c>defer</c> also brings a running device down when it runs on the active zone (a device whose sources do not open the zone now is left to <see cref="StopReason"/>) and the surplus does not hold it: the plan places its energy in a later slot, so buying
+    /// it from the zone now is what the plan is there to avoid (15-PLANNER). The surplus class is not the plan's to refuse: a device the surplus rule still holds
+    /// (settlement says start or hold and the value covers the forgone export) keeps running. It is the stop a zone's end makes, one stage a step
+    /// through <see cref="LowerOneStage"/>, so min_on, persistence and the guard act as for any other stop; without an entry (mode off, no valid plan) nothing here runs.
+    /// </summary>
+    private ReasonCode? DeferStop(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, Plan plan)
+    {
+        if (!GateFor(plan).Defers)
+        {
+            return null;
+        }
+
+        // Only a device that is running on the active zone: with the zone not open for it (a pv_only device, outside its zone, value below the
+        // price) StopReason alone decides, so an unknown balance stays on the v2 side (it stops only a device Switchboard started).
+        if (!ZoneOf(economics, device).Ok(running: true))
+        {
+            return null;
+        }
+
+        // The surplus holds the run (settlement says start or hold and the value covers the forgone export), and an unknown balance holds it too: a blip of the
+        // balance input must not end a run the surplus rule would restart a minute later (v2 stops on an unknown balance only a device Switchboard started).
+        if (device.Spec.Sources!.Pv && PvOf(economics, device, surplus, load, 0) is { Allowance.Decision: AllowanceDecision.Unknown } or { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold })
+        {
+            return null;
+        }
+
+        return ReasonCode.PlanDeferred;
     }
 
     /// <summary>

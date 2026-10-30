@@ -41,14 +41,15 @@ public sealed class PlanDispatchGateTests
         string[] off,
         PlannerDispatchMode mode,
         Action<GuardScenario, ScriptedPlanView>? plan = null,
-        double wh = -100,
+        double? wh = -100,
         double export = -500,
         double l1 = 1,
         double minutes = 3,
-        string control = OneBoundary)
+        string control = OneBoundary,
+        string? exportPrice = "0.35")
     {
         var view = new ScriptedPlanView(mode);
-        var s = Create(devices, at, off, Economics(), control, plan: view);
+        var s = Create(devices, at, off, Economics(exportPrice: exportPrice), control, plan: view);
         plan?.Invoke(s, view);
         Export(s, export);
         var feed = Feed(s, wh);
@@ -95,13 +96,145 @@ public sealed class PlanDispatchGateTests
         Assert.Equal(Switchboard.Domain.Economics.EnergyClass.Pv, start.Inputs.Dispatch!.Economics!.Class);
     }
 
-    [Fact]
-    public void Defer_does_not_stop_a_device_already_running_on_the_zone()
+    [Theory]
+    [InlineData(PlannerDispatchMode.Narrow)]
+    [InlineData(PlannerDispatchMode.Full)]
+    public void Defer_stops_a_device_running_on_the_zone_alone_with_plan_deferred_where_v2_keeps_it(PlannerDispatchMode mode)
     {
-        // Why: Defer refuses a start or an increase, not a run in progress; stopping a charger mid-session on a forecast is the stop-start the lockouts exist for.
-        var s = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Full, Entry(PlanWant.Defer), wh: 100, export: 0);
+        // Why: 0.12.1, live: the plan said defer for every slot (the goal is a PV-only cap, the trip needs nothing) and the charger went on buying 4 kW from the
+        // off-peak zone, so the cap was not a cap. Defer now ends a run that holds on the zone class alone, the way a zone's end does, through the same lockouts.
+        var v2 = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: 100, export: 0);
+        Assert.False(v2.Stopped());
+
+        var planned = Play(Car("pv_and_zone:offpeak"), Night, [], mode, Entry(PlanWant.Defer), wh: 100, export: 0);
+
+        var stop = Stops(planned.S, "dev").First();
+        Assert.Equal(ReasonCode.PlanDeferred, stop.Reason);
+        Assert.Equal("defer", stop.Inputs.Dispatch!.Plan!.Want);
+    }
+
+    [Fact]
+    public void Defer_leaves_a_device_the_surplus_class_still_holds_running()
+    {
+        // Why: "Defer blocks only the zone class": a charger that runs on PV that exists now is on free energy the plan never forbids; stopping it would waste the
+        // surplus the forecast may have got wrong. The stop is for a run the surplus rule does not hold.
+        var s = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: 600, export: 3000);
 
         Assert.False(s.Stopped());
+    }
+
+    [Fact]
+    public void Defer_waits_for_min_on_stops_after_it_and_does_not_start_the_device_again_in_the_slot()
+    {
+        // Why: a lockout never yields to the plan (a relay stopped before its min_on is the stop-start the lockouts exist for), and a deferred device that was
+        // stopped must stay off: the same entry that stopped it refuses the zone start, so there is no start-stop chatter.
+        var port = new RecordingDeviceCommandPort();
+        var view = new ScriptedPlanView(PlannerDispatchMode.Narrow);
+        var s = DispatchScenario.Create(Car("pv_and_zone:offpeak"), ["dev"], OneBoundary, mode: DispatchScenario.Active, port: port, start: Night, extra: "\n" + Economics(), plan: view);
+        s.Time.Zone = Warsaw;
+        s.Follow(port);
+        Export(s, -500);
+        Run(s, Feed(s, -100), 2);
+        var started = Starts(s, "dev").First();
+        Assert.Equal(ReasonCode.ZoneAllowed, started.Reason);
+
+        view.Entries[Dev] = ScriptedPlanView.Entry(s.Now, PlanWant.Defer);
+        Run(s, Feed(s, -100), 3);
+        Assert.DoesNotContain(Stops(s, "dev"), d => d.At - started.At < TimeSpan.FromMinutes(6));
+
+        Run(s, Feed(s, -100), 10);
+
+        var stops = Stops(s, "dev").Where(d => d.Commanded).ToList();
+        Assert.NotEmpty(stops);
+        Assert.All(stops, d => Assert.Equal(ReasonCode.PlanDeferred, d.Reason));
+        Assert.All(stops, d => Assert.True(d.At - started.At >= TimeSpan.FromMinutes(6), "the stop came inside the relay's minimum on time"));
+        Assert.Single(Starts(s, "dev"));
+    }
+
+    [Fact]
+    public void Defer_does_not_stop_a_device_in_the_mode_off_or_without_an_entry()
+    {
+        // Why: without a valid entry nothing of the plan runs and the decision is v2's to the byte: a view that is off is not even asked.
+        var s = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: 100, export: 0);
+        Assert.False(s.Stopped());
+
+        var none = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Full, wh: 100, export: 0);
+        Assert.False(none.Stopped());
+    }
+
+    [Theory]
+    [InlineData(PlannerDispatchMode.Narrow)]
+    [InlineData(PlannerDispatchMode.Full)]
+    public void Only_a_defer_entry_stops_a_run_on_the_zone_a_run_entry_leaves_it_alone(PlannerDispatchMode mode)
+    {
+        // Why: the stop belongs to the defer entry alone; a run entry with budget left (the plan wants this slot's energy) must not end a run the zone class holds.
+        var s = Play(Car("pv_and_zone:offpeak"), Night, [], mode, Entry(PlanWant.Run, "zone:offpeak"), wh: 100, export: 0);
+
+        Assert.False(s.Stopped());
+    }
+
+    [Fact]
+    public void Defer_never_stops_a_running_urgent_goal_in_full()
+    {
+        // Why: urgent is a hard goal at risk; the entry opens its class and keeps the device on it. Only a defer entry stops, an urgent one is the opposite.
+        var s = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Full, Entry(PlanWant.Urgent), wh: 100, export: 0);
+
+        Assert.False(s.Stopped());
+    }
+
+    [Fact]
+    public void Defer_leaves_a_device_without_sources_to_the_0_9_balance_rule()
+    {
+        // Why: the plan acts only for devices that declare sources: a goal device on the plain balance rule is narrowed, never stopped by a defer.
+        var v2 = Play(Device("dev", "L1", 6.6, 1500, 2.03, null), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: 100, export: 0);
+        var planned = Play(Device("dev", "L1", 6.6, 1500, 2.03, null), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: 100, export: 0);
+
+        Assert.Equal(v2.Stopped(), planned.Stopped());
+        Assert.DoesNotContain(Stops(planned.S, "dev"), d => d.Reason == ReasonCode.PlanDeferred);
+    }
+
+    [Fact]
+    public void Surplus_that_the_value_does_not_cover_does_not_hold_a_deferred_run()
+    {
+        // Why: the surplus class holds a run only while its value covers the forgone export; at an export price above the device's value the surplus is not the
+        // reason it runs, so a defer still brings it down (a mutant that ignores the value test would keep it on and survive every other row).
+        var s = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: 600, export: 3000, exportPrice: "2.5");
+
+        Assert.Equal(ReasonCode.PlanDeferred, Stops(s.S, "dev").First().Reason);
+    }
+
+    [Fact]
+    public void A_stop_the_surplus_rule_makes_keeps_its_v2_reason_under_a_defer_entry()
+    {
+        // Why: the defer stop is only for a run nothing else ends; when the surplus rule itself stops a pv_only device (no surplus, balance known) the decision
+        // is v2's with v2's reason, not plan_deferred (the plan must not take credit for, or hide, a stop it did not make).
+        var v2 = Play(Car("pv_only"), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: 100, export: 0);
+        var planned = Play(Car("pv_only"), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: 100, export: 0);
+
+        Assert.Equal(Stops(v2.S, "dev").Select(d => d.Reason), Stops(planned.S, "dev").Select(d => d.Reason));
+    }
+
+    [Theory]
+    [InlineData("pv_only")]
+    [InlineData("pv_and_zone:offpeak")]
+    public void An_unknown_balance_under_a_defer_entry_decides_as_v2_does(string sources)
+    {
+        // Why: with the balance unknown v2 stops only a device Switchboard started; a defer entry must not widen that (a blip of the balance input would stop a run
+        // the surplus rule restarts a minute later), so the count of stops is v2's in either mode.
+        var v2 = Play(Car(sources), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: null, export: 0);
+        var planned = Play(Car(sources), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: null, export: 0);
+
+        Assert.Equal(Stops(v2.S, "dev").Count(), Stops(planned.S, "dev").Count());
+        Assert.DoesNotContain(Stops(planned.S, "dev"), d => d.Reason == ReasonCode.PlanDeferred);
+    }
+
+    [Fact]
+    public void A_pv_only_device_is_never_stopped_by_a_defer_entry()
+    {
+        // Why: the zone is not among its sources, so "bought from the zone" is never true of it; with a known surplus-less balance v2 decides, whatever the entry says.
+        var planned = Play(Car("pv_only"), Night, [], PlannerDispatchMode.Narrow, Entry(PlanWant.Defer), wh: 100, export: 0);
+
+        Assert.DoesNotContain(Stops(planned.S, "dev"), d => d.Reason == ReasonCode.PlanDeferred);
     }
 
     // Done ----------------------------------------------------------------------------------------------------------------------------------
