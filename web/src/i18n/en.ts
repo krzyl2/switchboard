@@ -529,6 +529,7 @@ export const en = {
   'verdict.not_applied': 'not applied (shadow mode)',
   'verdict.unverifiable': 'cannot be verified (no draw signal)',
   'verdict.timed_out': 'no new measurement in time',
+  'verdict.not_delivered': 'not applied (command did not reach the device)',
 
   ...shell.en,
   ...dashboard.en,

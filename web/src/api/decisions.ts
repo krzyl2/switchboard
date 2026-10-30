@@ -122,7 +122,7 @@ export const VALUE_BASES = ['static', 'followed', 'fallback'] as const;
 /** The energy class that allowed a decision: the surplus, the active tariff zone, or neither. */
 export const ENERGY_CLASSES = ['pv', 'zone', 'none'] as const;
 export const SETTLEMENT_MODELS = ['hourly_netting', 'net_billing'] as const;
-export const VERDICTS = ['match', 'mismatch', 'inconclusive', 'not_applied', 'unverifiable', 'timed_out'] as const;
+export const VERDICTS = ['match', 'mismatch', 'inconclusive', 'not_applied', 'unverifiable', 'timed_out', 'not_delivered'] as const;
 export const MEASURE_UNITS = ['amperes', 'watts'] as const;
 export const OVERRIDE_MODES = ['auto', 'force_on', 'force_off'] as const;
 

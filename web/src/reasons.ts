@@ -31,7 +31,7 @@ export function levelText(level: Level, t: Messages, lang: Lang): string {
  * no new measurement in time, or cannot be measured at all: only the verdict is said then.
  */
 export function verificationText(v: Verification, t: Messages, lang: Lang): string {
-  if (v.verdict === 'not_applied' || v.verdict === 'timed_out' || v.verdict === 'unverifiable') return t[`verdict.${v.verdict}`];
+  if (v.verdict === 'not_applied' || v.verdict === 'not_delivered' || v.verdict === 'timed_out' || v.verdict === 'unverifiable') return t[`verdict.${v.verdict}`];
   const unit = v.unit === 'amperes' ? 'A' : 'W';
   return fill(t.verificationDetail, {
     expected: formatQuantity(v.expected, unit, lang),

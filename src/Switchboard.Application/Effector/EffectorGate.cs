@@ -539,7 +539,7 @@ public sealed class EffectorGate
         var timedOut = outcome == SettlingState.TimedOut;
         var (verdict, expected, measured, unit) = timedOut
             ? (Verdict.TimedOut, 0.0, 0.0, MeasureUnit.Watts)
-            : window.Kind == WindowKind.Command && !window.Applied ? (Verdict.NotApplied, 0.0, 0.0, MeasureUnit.Watts)
+            : window.Kind == WindowKind.Command && !window.Applied ? (window.NotDelivered ? Verdict.NotDelivered : Verdict.NotApplied, 0.0, 0.0, MeasureUnit.Watts)
             : Verify(context, device, dispatchDevice, window);
         AddHistory(state, new VerificationRecord(context.Now, window.Kind == WindowKind.Command ? HistoryKind.Command : HistoryKind.Observed, expected, measured, unit, verdict)
         {
@@ -1653,7 +1653,7 @@ public sealed class EffectorGate
         state.TargetCommanded = false;
         if (state.Window is { Kind: WindowKind.Command, Open: true } window)
         {
-            state.Window = window with { Applied = false, Outcome = SettlingState.Closed };
+            state.Window = window with { Applied = false, NotDelivered = true, Outcome = SettlingState.Closed };
         }
 
         if (result.Outcome == CommandOutcome.Failed)

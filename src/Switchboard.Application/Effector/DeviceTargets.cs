@@ -65,6 +65,9 @@ public sealed record OpenWindow(
     /// </summary>
     public SettlingState? Outcome { get; init; }
 
+    /// <summary>The command was sent through the port in active mode but did not take effect; tells that from a shadow window, which is never applied.</summary>
+    public bool NotDelivered { get; init; }
+
     public bool Open => Outcome is null;
 }
 

@@ -79,6 +79,9 @@ public enum Verdict
 
     /// <summary>An input of the closing set stayed silent until the hard timeout; no mismatch is counted.</summary>
     TimedOut,
+
+    /// <summary>Active mode, but the command never took effect (no link to Home Assistant, a refused or failed call): nothing to verify, nothing held against the device.</summary>
+    NotDelivered,
 }
 
 /// <summary>What a verification compares: a relay's expected step, or a setpoint's new ceiling against the device's own draw.</summary>

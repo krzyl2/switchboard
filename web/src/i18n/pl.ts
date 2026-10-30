@@ -529,6 +529,7 @@ export const pl: Messages = {
   'verdict.not_applied': 'nie wykonano (tryb Obserwacja)',
   'verdict.unverifiable': 'nie da się sprawdzić (brak pomiaru poboru)',
   'verdict.timed_out': 'brak nowego pomiaru na czas',
+  'verdict.not_delivered': 'nie wykonano (polecenie nie dotarło do urządzenia)',
 
   ...shell.pl,
   ...dashboard.pl,

@@ -261,6 +261,7 @@ describe('describeDecision, dispatch decisions', () => {
     [{ expected: 1700, measured: 12, unit: 'watts', verdict: 'mismatch' }, 'expected 1,700 W, measured 12 W: no response'],
     [{ expected: 6, measured: 9.6, unit: 'amperes', verdict: 'match' }, 'expected 6 A, measured 9.6 A: match'],
     [{ expected: 0, measured: 0, unit: 'watts', verdict: 'not_applied' }, 'not applied (shadow mode)'],
+    [{ expected: 0, measured: 0, unit: 'watts', verdict: 'not_delivered' }, 'not applied (command did not reach the device)'],
     [{ expected: 0, measured: 0, unit: 'watts', verdict: 'timed_out' }, 'no new measurement in time'],
     [{ expected: 6, measured: 0, unit: 'amperes', verdict: 'unverifiable' }, 'cannot be verified (no draw signal)'],
   ] as const)('words the verification %j as %s', (v, text) => {

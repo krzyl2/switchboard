@@ -43,10 +43,11 @@ const VERDICT_TONE: Record<Verdict, Tone> = {
   not_applied: 'muted',
   unverifiable: 'muted',
   timed_out: 'warn',
+  not_delivered: 'muted',
 };
 
 /** Records that carry no measurement at all: the add-on writes 0 for both values. */
-const NOTHING_MEASURED: ReadonlySet<Verdict> = new Set<Verdict>(['not_applied', 'timed_out', 'unverifiable']);
+const NOTHING_MEASURED: ReadonlySet<Verdict> = new Set<Verdict>(['not_applied', 'timed_out', 'unverifiable', 'not_delivered']);
 
 const label = (device: DeviceConfig) => device.name ?? device.id;
 

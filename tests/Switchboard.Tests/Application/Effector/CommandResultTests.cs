@@ -2,6 +2,7 @@ using Switchboard.Application.Decisions;
 using Switchboard.Application.Effector;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Application.Effector;
@@ -171,6 +172,12 @@ public sealed class CommandResultTests
         var held = s.Decisions.Where(d => d.Origin == DecisionOrigin.Guard && d.Action == DecisionAction.SwitchOff).ToList();
         Assert.Equal(3, held.Count);
         Assert.All(held, d => Assert.False(d.Commanded));
+        s.PollUntil(s.Now + TimeSpan.FromSeconds(10), 3, 3, 3);
+
+        // Active mode with a dead link: the history must not blame a shadow mode that was never in force.
+        var verdicts = new[] { "heater_l1", "heater_l2", "heater_l3" }.SelectMany(d => s.Ledger(d)!.History).Select(h => h.Verdict).ToList();
+        Assert.Contains(Verdict.NotDelivered, verdicts);
+        Assert.DoesNotContain(Verdict.NotApplied, verdicts);
         var before = port.Commands.Count;
 
         port.Answer = _ => (CommandOutcome.Acknowledged, null);
