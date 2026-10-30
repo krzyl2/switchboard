@@ -127,9 +127,11 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
 
         double min;
         double max;
+        double? stepW = null;
         if (spec.Range is { } range && spec.Stages.Length > 0)
         {
             var phases = spec.Stages[0].Phases.Length;
+            stepW = range.Step.Value * voltage.Value * phases;
             min = Math.Max(0, range.Min.Value) * voltage.Value * phases;
             max = Math.Max(0, range.Max.Value) * voltage.Value * phases;
         }
@@ -163,7 +165,8 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
             definition.Start == StartPolicy.Headroom,
             definition.Value,
             definition.Sources,
-            Identity(spec));
+            Identity(spec),
+            stepW);
     }
 
     /// <summary>A fingerprint of the device's physical model (type, stages, range, group): a plan entry made for another one is not applied.</summary>

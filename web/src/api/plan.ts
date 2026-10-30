@@ -32,6 +32,23 @@ export const PLAN_NOTES = [
   'solver_timeout',
   'plan_invalid',
 ] as const;
+/** Why the EV module wants a goal: its own closed assessment list (the reason codes stay at list version 7). */
+export const EV_CAUSES = [
+  'ev_trip_deadline',
+  'ev_surplus',
+  'ev_cheap_zone',
+  'ev_floor_hold',
+  'ev_weekly_full',
+  'ev_not_plugged',
+  'ev_forecast_missing',
+  'ev_manual',
+  'ev_soc_stale',
+  'ev_calendar_unavailable',
+  'ev_range_unusable',
+  'ev_pv_only',
+  'ev_off',
+  'ev_without_planner_dispatch',
+] as const;
 /** What a plan entry says about a slot: run on its class, wait, done, run because the deadline needs it, or nothing for a device that is not planned. */
 export const ENTRY_WANTS = ['run', 'defer', 'done', 'urgent', 'none'] as const;
 export const PV_BASES = ['none', 'series', 'totals'] as const;
@@ -61,6 +78,7 @@ export type GoalOnMet = (typeof GOAL_ON_MET)[number];
 export type InactiveReason = (typeof INACTIVE_REASONS)[number];
 export type InactiveInput = (typeof INACTIVE_INPUTS)[number];
 export type PlanNote = (typeof PLAN_NOTES)[number];
+export type EvCause = (typeof EV_CAUSES)[number];
 export type EntryWant = (typeof ENTRY_WANTS)[number];
 export type PvBasis = (typeof PV_BASES)[number];
 export type LoadBasis = (typeof LOAD_BASES)[number];
@@ -135,6 +153,8 @@ export interface PlanGoal {
   urgent: boolean | null;
   /** The device a request belongs to; set only on a request the precedence merge set aside, which is listed apart from the devices. */
   device: string | null;
+  /** Why the EV module wants the goal; null on a goal of any other source. */
+  cause: EvCause | null;
 }
 
 export interface PlanDevice {
@@ -305,6 +325,7 @@ function goal(raw: unknown, path: string): PlanGoal {
     latestGridStart: nullable(field(r, 'latestGridStart', path), `${path}.latestGridStart`, instant),
     urgent: nullable(field(r, 'urgent', path), `${path}.urgent`, bool),
     device: nullable(field(r, 'device', path), `${path}.device`, text),
+    cause: nullable(field(r, 'cause', path), `${path}.cause`, (v, p) => oneOf(EV_CAUSES, v, p)),
   };
 }
 

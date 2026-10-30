@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DISPATCH_MODES,
   ENTRY_WANTS,
+  EV_CAUSES,
   GOAL_SOURCES,
   GOAL_STATUSES,
   INACTIVE_REASONS,
@@ -94,6 +95,14 @@ describe('parsePlan', () => {
 
   it.each(PLAN_NOTES)('accepts the note %s', (note) => {
     expect(parsePlan(payload((p) => (p.notes = [note]))).notes).toEqual([note]);
+  });
+
+  it.each(EV_CAUSES)('accepts the EV cause %s', (cause) => {
+    expect(parsePlan(payload((p) => Object.assign(p.devices[0].goal, { cause }))).devices[0]!.goal!.cause).toBe(cause);
+  });
+
+  it('refuses a cause that is not in the EV list', () => {
+    expect(() => parsePlan(payload((p) => Object.assign(p.devices[0].goal, { cause: 'ev_made_up' })))).toThrow();
   });
 
   it.each(VIOLATION_CODES)('accepts the verifier code %s', (code) => {

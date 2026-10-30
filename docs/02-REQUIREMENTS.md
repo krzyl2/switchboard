@@ -154,3 +154,18 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [ ] **PLAN-18**: Battery arbitrage as device class `storage`: SoC window, round-trip efficiency, exact DP over SoC and slots, minimum spread, discharge never above the house load unless allowed and never counted as relief, discharge command disabled by default until a real battery has run in shadow
 - [x] **PLAN-19**: Day-plan screen and device card goal row (closes UI-12) with the manual "want now" goal, en and pl, both themes, phone width, the estimate-not-guarantee wording, entity IDs in monospace
 - [ ] **PLAN-20**: Planner logic tested on the virtual clock including the 23- and 25-hour days, forecast fixtures, determinism and the optimality bound; live shadow verification on the maintainer's installation (plan against dispatch and real PV for a week, one day checked by hand)
+
+## EV module (`EV.md`, supersedes `12-EV-MODULE.md` where they differ)
+
+- [ ] **EV-01**: `ev:` section (device, capacity, signals SoC / range / plugged / calendar, thresholds from `control.ev`), parser, issues, wizard keeps, read-only `GET api/ev`
+- [ ] **EV-02**: Signals: calendar-event kind (bounded attributes `message`, `description`, `start_time`, `end_time`, `all_day`; description length limit), distance kind (km, mi), roles `ev_range` and `ev_plugged`, `on_change` freshness for `ev_plugged` only; none of these enter `ProtectionInputs` or `DispatchInputs`
+- [ ] **EV-03**: `TripParser` (pure domain): `km:` rules, naive local times, DST, unparsed list, bound `ev.max_trip_km`, trip removed at its start
+- [ ] **EV-04**: kWh/km learning (smoothing, fallback, plausibility, same-report pairs, outside charging, persisted in `ev.json`)
+- [ ] **EV-05**: Target SoC rule (floor, floor_after, reserve, losses, ready_margin, cap 90 %, weekly 100 %); table tests 50 % to 90 %, 60 % to 100 %
+- [ ] **EV-06**: Policy and `EvGoalSource`: modes, floor, cap, weekly, plugged gating, stale expiry, incremental needs, unique deadlines, stable revision, snapshot outside the guard thread; architecture test: no path to effector, command port, overrides or guard
+- [ ] **EV-07**: EV assessment list (own closed list, `EV.md` section 3 point 5) in `api/ev` and `cause` in `api/plan`, SPA lists and en/pl sentences complete, contract tests; `ReasonCode` list stays v7
+- [ ] **EV-08**: Every EV failure-table row (`EV.md` section 9) has a named test
+- [ ] **EV-09**: Manual mode and charge now: `ev.json`, `POST api/ev/mode`, `POST api/ev/charge-now`, MQTT select/number/button with `MqttTopicGuard` extension, expiry; never a write to an entity the user has not declared as an actuator
+- [ ] **EV-10**: UI: EV card in `#/plan`, EV row on the device card, unparsed events, controls; en and pl, 375 px, both themes, entity IDs in monospace
+- [ ] **EV-11**: Without `ev:`, or at `planner.dispatch: off`, dispatch decisions are byte for byte v2 (digests); at `narrow` a subset of v2
+- [ ] **EV-12**: Live shadow week: assessment vs plan vs real charging, one trip checked by hand; then `narrow`, later `full` with consent

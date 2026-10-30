@@ -179,9 +179,9 @@ public sealed partial class Stage3ArchitectureTests
     [Fact]
     public void On_change_is_refused_for_every_measurement_role()
     {
-        // Only a device state may report on change: a measurement or protection input that stops
+        // Only a device state, and the EV plugged state (a discrete state that writes only when it changes), may report on change: a measurement or protection input that stops
         // reporting must go stale (SIG-05).
-        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r != SignalRole.DeviceState))
+        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r is not (SignalRole.DeviceState or SignalRole.EvPlugged)))
         {
             var definition = new SignalDefinition(SignalName.Parse("x"), EntityId.Parse("sensor.x"), SignalKind.Current, "A", SignConvention.PositiveImport, null, false, TimeSpan.FromSeconds(30), 0.1, role, null, false);
             Assert.Throws<ArgumentException>(() => definition with { Freshness = StateFreshness.OnChange });
@@ -189,6 +189,9 @@ public sealed partial class Stage3ArchitectureTests
 
         var state = new SignalDefinition(SignalName.Parse("device_x"), EntityId.Parse("switch.x"), SignalKind.State, null, null, null, false, TimeSpan.FromMinutes(10), null, SignalRole.DeviceState, null, false);
         Assert.Equal(StateFreshness.OnChange, (state with { Freshness = StateFreshness.OnChange }).Freshness);
+
+        var plugged = state with { Name = SignalName.Parse("device_x_ev_plugged"), Role = SignalRole.EvPlugged };
+        Assert.Equal(StateFreshness.OnChange, (plugged with { Freshness = StateFreshness.OnChange }).Freshness);
     }
 
     [Fact]

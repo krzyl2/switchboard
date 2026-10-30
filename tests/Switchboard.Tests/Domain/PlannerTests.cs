@@ -341,6 +341,48 @@ public sealed class PlannerTests
     }
 
     [Fact]
+    public void A_met_stop_cap_does_not_stop_the_device_from_being_planned_for_an_unmet_trip_on_the_same_device()
+    {
+        // Why: a module cap (soft, met, on_met stop, deadline at the end of the day) and a trip (hard, unmet, earlier deadline) share one charger. The cap being met
+        // must not turn the trip's slots into done: the trip is planned and charged in full, and only the slots after the trip's energy, still inside the cap's window, are done.
+        var inputs = Custom(Midnight, 10, i => ("z", i == 2 ? 0.2 : 1.0, 0.1, 0));
+        var cap = Goal(DeviceA, 0, Midnight.AddHours(9), hard: false, onMet: GoalOnMet.Stop, revision: 1);
+        var trip = Goal(DeviceA, 2, Midnight.AddHours(5), revision: 2);
+        var input = Make(inputs, [Dev(DeviceA, L1)], [cap, trip]);
+
+        var plan = Solve(input);
+
+        var device = plan.Device(DeviceA)!;
+        var tripPlan = device.Goals.Single(g => g.Ref.Revision == 2);
+        Assert.Equal(2, tripPlan.PlannedKwh, 9);
+        Assert.Equal(GoalStatus.Met, device.Goals.Single(g => g.Ref.Revision == 1).Status);
+        var runs = Runs(plan, DeviceA);
+        Assert.Equal(2, runs.Sum(e => e.EnergyKwh), 9);
+        Assert.All(runs, e => Assert.True(e.End <= Midnight.AddHours(5)));
+        var lastRun = runs.Max(e => e.End);
+        Assert.DoesNotContain(device.Entries, e => e.Want == PlanWant.Done && e.Start < lastRun);
+        Assert.All(device.Entries.Where(e => e.Start >= lastRun && e.Start < Midnight.AddHours(9)), e => Assert.Equal(PlanWant.Done, e.Want));
+        Assert.Empty(PlanVerifier.Verify(input, plan));
+    }
+
+    [Fact]
+    public void A_met_stop_cap_never_hides_a_trip_that_cannot_be_met_from_the_plan_notes()
+    {
+        // Why: the trip is hard and its sources cannot meet it (pv only, no PV, no escalation). The cap being met must not make the plan look healthy: the trip
+        // stays at risk with the shortfall note, whatever the entries of the slots say.
+        var cap = Goal(DeviceA, 0, Midnight.AddHours(9), hard: false, onMet: GoalOnMet.Stop, revision: 1);
+        var trip = Goal(DeviceA, 2, Midnight.AddHours(5), escalate: false, revision: 2);
+        var input = Make(Flat(10), [Dev(DeviceA, L1, sources: SourceSet.PvOnly)], [cap, trip]);
+
+        var plan = Solve(input);
+
+        var device = plan.Device(DeviceA)!;
+        Assert.Equal(GoalStatus.AtRisk, device.Goals.Single(g => g.Ref.Revision == 2).Status);
+        Assert.Contains(PlanNote.GoalShortfall, plan.Notes);
+        Assert.Empty(PlanVerifier.Verify(input, plan));
+    }
+
+    [Fact]
     public void The_plan_follows_the_twenty_five_hour_day_and_uses_both_repeated_hours()
     {
         // Why: on 2026-10-25 the clocks go back at 03:00 and the 02:00 hour happens twice. Two cheap slots (both 02:00 hours, UTC+2 then UTC+1) must both be used and

@@ -87,6 +87,11 @@ export function GoalLines({ goal, plan, ...ctx }: { goal: PlanGoal; plan: Plan }
           {goal.latestGridStart !== null && <> · {fill(t['plan.goal.latestStart'], { time: dayTime(goal.latestGridStart, plan.at, lang, zone) })}</>}
         </span>
       )}
+      {goal.cause !== null && (
+        <span class="line sub" data-goal="cause" data-cause={goal.cause}>
+          {t[`plan.cause.${goal.cause}`]}
+        </span>
+      )}
       {!inactive && goal.sources !== null && (
         <span class="line sub" data-goal="sources">
           {t['plan.goal.sources'].split('{sources}')[0]}

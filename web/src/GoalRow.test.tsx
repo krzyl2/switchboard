@@ -299,6 +299,6 @@ describe('device card: want now', () => {
     await open('ev_charger');
 
     expect(fetchMock.mock.calls.every(([, init]) => init?.method === undefined || init.method === 'GET')).toBe(true);
-    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual(['api/devices', 'api/dispatch', 'api/economics', 'api/mode', 'api/plan', 'api/power']);
+    expect([...new Set(fetchMock.mock.calls.map(([input]) => String(input)))].sort()).toEqual(['api/devices', 'api/dispatch', 'api/economics', 'api/ev', 'api/mode', 'api/plan', 'api/power']);
   });
 });

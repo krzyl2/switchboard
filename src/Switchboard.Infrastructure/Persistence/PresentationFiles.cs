@@ -73,7 +73,7 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
         }
         catch (InvalidPresentationFileException ex)
         {
-            return Reset(ex.Message);
+            return Reset(ex.Message, ex.KeepAs);
         }
         catch (Exception ex) when (ex is OverflowException or ArgumentException or FormatException)
         {
@@ -144,12 +144,20 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
 
     private bool TrimReported { get; set; }
 
-    private PresentationLoad<T> Reset(string reason)
+    private PresentationLoad<T> Reset(string reason, string? keepAs = null)
     {
-        var warning = $"{FileName} was not usable ({reason}); it was kept as {FileName}{CorruptSuffix} and {LostText}.";
+        // A file the reader merely does not understand (a newer schema) is kept under its own name and never over an earlier copy; a damaged one replaces the last .corrupt.
+        var suffix = keepAs ?? CorruptSuffix;
+        var target = FilePath + suffix;
+        for (var n = 1; keepAs is not null && File.Exists(target); n++)
+        {
+            target = $"{FilePath}{suffix}.{n}";
+        }
+
+        var warning = $"{FileName} was not usable ({reason}); it was kept as {Path.GetFileName(target)} and {LostText}.";
         try
         {
-            File.Move(FilePath, FilePath + CorruptSuffix, overwrite: true);
+            File.Move(FilePath, target, overwrite: keepAs is null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -285,4 +293,8 @@ internal static class PresentationJson
     }
 }
 
-internal sealed class InvalidPresentationFileException(string message) : Exception(message);
+/// <param name="keepAs">When set, the file is not damaged but not understood: it is moved to <c>&lt;name&gt;&lt;keepAs&gt;</c> (never over an existing one) instead of <c>.corrupt</c>.</param>
+internal sealed class InvalidPresentationFileException(string message, string? keepAs = null) : Exception(message)
+{
+    public string? KeepAs { get; } = keepAs;
+}

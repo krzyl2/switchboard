@@ -3,6 +3,7 @@ using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
@@ -32,7 +33,8 @@ public sealed record ControlParameters(
     EffectorParameters Effector,
     HourlyBalanceParameters HourlyBalance,
     EconomicsParameters Economics,
-    PlannerParameters Planner);
+    PlannerParameters Planner,
+    EvParameters Ev);
 
 /// <summary>The command path's confirmation of acknowledged commands (0.7.0).</summary>
 /// <param name="ConfirmTimeout">After Home Assistant acknowledged a command, how long beyond the device's reaction time its reported state may take to show it before the device is flagged unconfirmed.</param>

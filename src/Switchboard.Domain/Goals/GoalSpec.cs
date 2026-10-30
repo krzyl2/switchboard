@@ -35,6 +35,7 @@ public sealed record GoalDeadlineSpec(TimeOnly? At, SignalName? Signal, TimeSpan
 /// <param name="Want">An optional gate (a state signal); off means no goal.</param>
 /// <param name="Sources">The classes the planner may schedule the goal on, after narrowing to the tariff's zones; null means the device's.</param>
 /// <param name="Escalate">A hard goal at risk may use any zone.</param>
+/// <param name="ModuleOwned">The spec belongs to a module (the EV module's synthetic goal): its source states it, <c>ConfigGoalSource</c> skips it. The parser never sets it.</param>
 public sealed record GoalSpec(
     DeviceName Device,
     GoalKind Kind,
@@ -47,10 +48,11 @@ public sealed record GoalSpec(
     SignalName? Want,
     SourceSet? Sources,
     bool Escalate,
-    GoalOnMet OnMet)
+    GoalOnMet OnMet,
+    bool ModuleOwned = false)
 {
-    /// <summary>A goal whose target, deadline or want comes from a mapped entity is an entity goal; one made of literals is a config goal.</summary>
-    public GoalOrigin Origin => Target.IsSignal || Deadline?.Signal is not null || Want is not null ? GoalOrigin.Entity : GoalOrigin.Config;
+    /// <summary>A goal whose target, deadline or want comes from a mapped entity is an entity goal; one made of literals is a config goal; a module-owned one (never read from the file) is a module goal.</summary>
+    public GoalOrigin Origin => ModuleOwned ? GoalOrigin.Module : Target.IsSignal || Deadline?.Signal is not null || Want is not null ? GoalOrigin.Entity : GoalOrigin.Config;
 
     /// <summary>
     /// A fingerprint of what the goal is (FNV-1a over its canonical text): a plan entry made for another revision is not applied. It

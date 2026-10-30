@@ -21,6 +21,7 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
     private ImmutableArray<EntityId> _tracked = [];
     private ImmutableDictionary<EntityId, SeriesSpec> _seriesSpecs = ImmutableDictionary<EntityId, SeriesSpec>.Empty;
     private ImmutableDictionary<EntityId, ImmutableArray<string>> _timestampAttributes = ImmutableDictionary<EntityId, ImmutableArray<string>>.Empty;
+    private ImmutableHashSet<EntityId> _calendarEntities = [];
 
     public HomeAssistantSignalSource(SignalInbox inbox, IEntityStateReader reader, ILogger<HomeAssistantSignalSource> logger)
     {
@@ -37,6 +38,8 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
 
     public IReadOnlyDictionary<EntityId, ImmutableArray<string>> TimestampAttributes => _timestampAttributes;
 
+    public IReadOnlySet<EntityId> CalendarEntities => _calendarEntities;
+
     public void Track(IReadOnlyCollection<TrackedEntity> entities)
     {
         ArgumentNullException.ThrowIfNull(entities);
@@ -47,7 +50,9 @@ public sealed class HomeAssistantSignalSource : ISignalSource, IEntitySubscripti
         var previous = ImmutableInterlocked.InterlockedExchange(ref _tracked, next);
         var previousSpecs = Interlocked.Exchange(ref _seriesSpecs, specs);
         var previousAttributes = Interlocked.Exchange(ref _timestampAttributes, attributes);
-        if (!previous.SequenceEqual(next) || !SameSpecs(previousSpecs, specs) || !SameAttributes(previousAttributes, attributes))
+        var calendars = entities.Where(e => e.Calendar).Select(e => e.Entity).ToImmutableHashSet();
+        var previousCalendars = Interlocked.Exchange(ref _calendarEntities, calendars);
+        if (!previous.SequenceEqual(next) || !SameSpecs(previousSpecs, specs) || !SameAttributes(previousAttributes, attributes) || !previousCalendars.SetEquals(calendars))
         {
             TrackedChanged?.Invoke(this, EventArgs.Empty);
         }

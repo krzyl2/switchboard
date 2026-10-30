@@ -5,6 +5,7 @@ using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
@@ -307,6 +308,16 @@ internal static class ControlParametersBinder
             economicsSection.PositiveDuration("net_billing_window") ?? TimeSpan.Zero);
 
         var planner = BindPlanner(root.Child("planner"), issues);
+        var evSection = root.Child("ev");
+        var ev = BindEv(evSection, issues);
+        if (ev.SnapshotMaxAge > TimeSpan.Zero && dispatchParameters.Cycle > TimeSpan.Zero && ev.SnapshotMaxAge < dispatchParameters.Cycle * 2)
+        {
+            issues.Error(
+                ConfigurationIssueCodes.InvalidValue,
+                ConfigRead.Join(evSection.Path, "snapshot_max_age"),
+                evSection.Node("snapshot_max_age"),
+                "ev.snapshot_max_age may not be shorter than two dispatch cycles: the module's offer would be stale at nearly every guard step and the plan would flap to v2.");
+        }
 
         var limits = root.Child(LimitsKey);
         var envelope = new SafetyEnvelope(
@@ -359,7 +370,8 @@ internal static class ControlParametersBinder
             effector,
             hourlyBalance,
             economics,
-            planner);
+            planner,
+            ev);
     }
 
     /// <summary>The slot lengths the plan grid supports (15-PLANNER, The slot grid); a design bound, not a tuning parameter.</summary>
@@ -437,6 +449,62 @@ internal static class ControlParametersBinder
         {
             issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(load.Path, "halflife_days"), load.Node("halflife_days"), "planner.load.halflife_days is too small to be a time span.");
         }
+
+        return parameters;
+    }
+
+    // Schema bound, not a control parameter: a trip beyond this is a typo.
+    private const double MaxTripKmLimit = 5000;
+
+    private static readonly ImmutableDictionary<string, DayOfWeek> WeekDays =
+        new Dictionary<string, DayOfWeek>
+        {
+            ["monday"] = DayOfWeek.Monday,
+            ["tuesday"] = DayOfWeek.Tuesday,
+            ["wednesday"] = DayOfWeek.Wednesday,
+            ["thursday"] = DayOfWeek.Thursday,
+            ["friday"] = DayOfWeek.Friday,
+            ["saturday"] = DayOfWeek.Saturday,
+            ["sunday"] = DayOfWeek.Sunday,
+        }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    private static readonly Range Percent = new(0, 100);
+
+    /// <summary>
+    /// <c>ev:</c> of the control parameters (docs/EV.md, S1): bound and range-checked, read by nothing before the EV module exists. Every key
+    /// is required, so no value is invented here.
+    /// </summary>
+    private static EvParameters BindEv(Section ev, ConfigIssues issues)
+    {
+        var weekly = ev.Child("weekly_full");
+        var learn = ev.Child("learn");
+        var chargeNow = ev.Child("charge_now");
+
+        var parameters = new EvParameters(
+            ev.Number("floor", Percent) ?? 0,
+            ev.Number("floor_after", Percent) ?? 0,
+            ev.Number("reserve", Percent) ?? 0,
+            ev.Number("cap", Percent) ?? 0,
+            new EvWeeklyFullParameters(weekly.DayList("days"), weekly.Number("target", Percent) ?? 0),
+            ev.NonNegativeDuration("ready_margin") ?? TimeSpan.Zero,
+            ev.Number("loss", new Range(0, 1, MaxExclusive: true)) ?? 0,
+            ev.Number("kwh_per_km", Range.Above(0)) ?? 0,
+            new EvLearnParameters(
+                learn.Number("smoothing", new Range(0, 1, MinExclusive: true)) ?? 0,
+                learn.Number("min_soc", Percent) ?? 0,
+                learn.Number("min_kwh_per_km", new Range(0, EvLearnParameters.MaxKwhPerKmLimit, MinExclusive: true)) ?? 0,
+                learn.Number("max_kwh_per_km", new Range(0, EvLearnParameters.MaxKwhPerKmLimit, MinExclusive: true)) ?? 0,
+                learn.Integer("max_samples", 1, EvLearnParameters.MaxSamplesLimit) ?? 0,
+                learn.NonNegativeDuration("pair_tolerance") ?? TimeSpan.Zero),
+            ev.Number("max_trip_km", new Range(0, MaxTripKmLimit, MinExclusive: true)) ?? 0,
+            ev.PositiveDuration("soc_max_age") ?? TimeSpan.Zero,
+            ev.Number("drift_limit_kwh", Range.Above(0)) ?? 0,
+            ev.Number("target_change_threshold", new Range(0, 100, MinExclusive: true)) ?? 0,
+            new EvChargeNowParameters(
+                chargeNow.Number("target", new Range(0, 100, MinExclusive: true)) ?? 0,
+                chargeNow.PositiveDuration("duration") ?? TimeSpan.Zero),
+            ev.Boolean("spread") ?? false,
+            ev.PositiveDuration("snapshot_max_age") ?? TimeSpan.Zero);
 
         return parameters;
     }
@@ -716,6 +784,36 @@ internal static class ControlParametersBinder
 
         public TimeSpan? NonNegativeDuration(string key) =>
             Node(key) is { } node ? ConfigRead.NonNegativeDuration(node, ConfigRead.Join(Path, key), _issues) : null;
+
+        public bool? Boolean(string key) =>
+            Node(key) is { } node ? ConfigRead.Boolean(node, ConfigRead.Join(Path, key), _issues) : null;
+
+        /// <summary>A required list of weekday names (an empty list is allowed: it switches the feature off).</summary>
+        public ImmutableArray<DayOfWeek> DayList(string key)
+        {
+            if (Node(key) is not { } node)
+            {
+                return [];
+            }
+
+            var path = ConfigRead.Join(Path, key);
+            if (node is not ConfigSequence sequence)
+            {
+                _issues.Error(ConfigurationIssueCodes.WrongType, path, node, "Expected a list of weekday names.");
+                return [];
+            }
+
+            var days = ImmutableArray.CreateBuilder<DayOfWeek>();
+            foreach (var item in sequence.Items)
+            {
+                if (ConfigRead.Choice(item, path, _issues, WeekDays) is { } day && !days.Contains(day))
+                {
+                    days.Add(day);
+                }
+            }
+
+            return days.ToImmutable();
+        }
 
         public T? Choice<T>(string key, ImmutableDictionary<string, T> choices)
             where T : struct =>

@@ -8,6 +8,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Balance;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Effector;
+using Switchboard.Application.Ev;
 using Switchboard.Application.Goals;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Health;
@@ -18,6 +19,7 @@ using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Planning;
 using Switchboard.Host.Hosting;
 using Switchboard.Host.Web;
@@ -78,7 +80,7 @@ public static class SwitchboardServices
         services.AddSingleton(sp =>
         {
             var mqtt = sp.GetRequiredService<IOptions<MqttOptions>>().Value;
-            return new MqttTopicGuard(mqtt.DiscoveryPrefix, mqtt.BaseTopic, DeclaredDevices(sp));
+            return new MqttTopicGuard(mqtt.DiscoveryPrefix, mqtt.BaseTopic, DeclaredDevices(sp), EvControlsEnabled(sp));
         });
         services.AddSingleton<IMqttTransport, MqttNetTransport>();
         services.AddSingleton<MqttLink>();
@@ -116,6 +118,7 @@ public static class SwitchboardServices
         services.AddHostedService<PhaseEvidenceService>();
         services.AddHostedService<HourlyBalanceService>();
         services.AddHostedService<PlannerHostedService>();
+        services.AddHostedService<EvSnapshotHostedService>();
 
         // The command path's sender runs until the guard has stopped, so the shutdown safe state's
         // commands still leave (bounded by HomeAssistant:ShutdownCommandWait).
@@ -279,6 +282,14 @@ public static class SwitchboardServices
             sp.GetRequiredService<AppVersion>(),
             sp.GetRequiredService<ILogger<DispatchEntities>>()));
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<DispatchEntities>());
+
+        // The EV module's manual controls (EV-09): announced and listened to only while the valid configuration holds an ev: section.
+        services.AddSingleton(sp => new EvEntities(
+            sp.GetRequiredService<IEvControl>(),
+            sp.GetRequiredService<IOptions<MqttOptions>>(),
+            sp.GetRequiredService<AppVersion>(),
+            sp.GetRequiredService<ILogger<EvEntities>>()));
+        services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<EvEntities>());
         return services;
     }
 
@@ -315,10 +326,15 @@ public static class SwitchboardServices
 
         // The goal ledger and tracker (PLAN-03, read-only): a listener of the guard runner like the hub, plus the sources the API merges.
         services.AddSingleton<IGoalInputSource, DiagnosticsGoalInputSource>();
+
+        // The EV module's own typed view of its signals (EV-02, B7), read-only; GoalInputs is not widened for it.
+        services.AddSingleton<IEvInputSource, DiagnosticsEvInputSource>();
         services.AddSingleton<GoalLedger>();
         services.AddSingleton<IGoalSource, ConfigGoalSource>();
 
-        // The manual goals ("want now", PLAN-19): the add-on's own state, a goal source of origin manual; no entity, no command.
+        // The manual goals ("want now", PLAN-19): the add-on's own state, a goal source of origin manual; no entity, no command. For the EV device the goal reads
+        // the module's SoC estimate (lazily: the module's engine reads these goals, and the two must not wait for each other when the container builds them).
+        services.AddSingleton<IModuleSocSource>(sp => new EvModuleSocSource(() => sp.GetRequiredService<IEvSnapshotSource>(), sp.GetRequiredService<SignalClock>()));
         services.AddSingleton<ManualGoalStore>();
         services.AddSingleton<IManualGoalControl>(sp => sp.GetRequiredService<ManualGoalStore>());
         services.AddSingleton<IGoalSource>(sp => sp.GetRequiredService<ManualGoalStore>());
@@ -343,6 +359,36 @@ public static class SwitchboardServices
             sp.GetRequiredService<SignalClock>().Time,
             sp.GetRequiredService<ILogger<PlannerService>>()));
         services.AddSingleton<IPlanTrigger>(sp => sp.GetRequiredService<PlannerService>());
+
+        // The EV module (EV-06): its own file, its own loop and an immutable snapshot; the guard's step only reads the snapshot through the goal source. The
+        // module has no path to the effector, the command port, the overrides or the guard. Without an ev: section it offers nothing.
+        services.AddSingleton<IPresentationStore<EvState>>(sp => new EvStateFile(
+            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
+            sp.GetRequiredService<ILogger<EvStateFile>>()));
+        services.AddSingleton(sp =>
+        {
+            var manual = sp.GetRequiredService<ManualGoalStore>();
+            return new EvEngine(
+                sp.GetRequiredService<IEvInputSource>(),
+                sp.GetRequiredService<IPresentationSource>(),
+                sp.GetRequiredService<PlanHolder>(),
+                sp.GetRequiredService<IPresentationStore<EvState>>(),
+                device => manual.Current.Goals.ContainsKey(device),
+                sp.GetRequiredService<SignalClock>(),
+                sp.GetRequiredService<IOptions<StatisticsOptions>>(),
+                sp.GetRequiredService<ILogger<EvEngine>>(),
+                sp.GetRequiredService<EvManualState>());
+        });
+        services.AddSingleton<EvManualState>();
+        services.AddSingleton<EvControl>();
+        services.AddSingleton<IEvControl>(sp => sp.GetRequiredService<EvControl>());
+        services.AddSingleton<EvSnapshotKeeper>();
+        services.AddSingleton<IEvSnapshotSource>(sp => sp.GetRequiredService<EvSnapshotKeeper>());
+        services.AddSingleton<IGoalSource>(sp =>
+        {
+            var manual = sp.GetRequiredService<ManualGoalStore>();
+            return new EvGoalSource(sp.GetRequiredService<IEvSnapshotSource>(), device => manual.Current.Goals.ContainsKey(device));
+        });
         return services;
     }
 
@@ -352,6 +398,8 @@ public static class SwitchboardServices
     /// Read from the published snapshot, not the guard's input port, so a defect there cannot take
     /// the MQTT link (and with it the health entity going OFF) down too.
     /// </summary>
+    private static Func<bool> EvControlsEnabled(IServiceProvider sp) => () => sp.GetRequiredService<IEvControl>().Configured == true;
+
     private static Func<IReadOnlyCollection<DeviceName>?> DeclaredDevices(IServiceProvider sp) => () =>
         sp.GetRequiredService<ISignalDiagnosticsSource>().Current.Snapshot.Protection.Setup is { } setup ? [.. setup.Devices.Select(d => d.Id)] : null;
 

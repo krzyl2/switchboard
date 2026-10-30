@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
+using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Goals;
@@ -46,6 +47,21 @@ public enum ManualGoalResult
     DeadlineBeyondHorizon,
 }
 
+/// <summary>What a module knows of the state of charge behind a device whose goal it owns: the estimate the module plans with, and whether the car is plugged in.</summary>
+/// <param name="Percent">The estimate; null when there is none (stale, drifted, no reading): the goal is inactive, never computed from the last value.</param>
+/// <param name="Plugged">True when plugged, false when unplugged, null when unknown.</param>
+public readonly record struct ModuleSocReading(double? Percent, bool? Plugged);
+
+/// <summary>
+/// Where the manual goal of a device with a module-owned SoC goal (the EV module's synthetic spec) reads its state of charge: the module's estimate, not the raw
+/// signal, which a sleeping car reports every few hours. Read only; it does no work.
+/// </summary>
+public interface IModuleSocSource
+{
+    /// <summary>The reading for <paramref name="device"/>; null when the module has nothing (not its device, no fresh offer).</summary>
+    ModuleSocReading? Read(DeviceName device);
+}
+
 /// <summary>Stores and cancels manual goals ("want now", PLAN-19). Only the add-on's own state changes; no entity is ever written.</summary>
 public interface IManualGoalControl
 {
@@ -68,15 +84,51 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
     private readonly IGoalInputSource _inputs;
     private readonly TimeProvider _time;
     private readonly ILogger<ManualGoalStore> _logger;
+    private readonly IModuleSocSource? _moduleSoc;
     private readonly object _gate = new();
     private ManualGoalSnapshot _current = ManualGoalSnapshot.None;
 
-    public ManualGoalStore(IGoalInputSource inputs, SignalClock clock, ILogger<ManualGoalStore> logger)
+    public ManualGoalStore(IGoalInputSource inputs, SignalClock clock, ILogger<ManualGoalStore> logger, IModuleSocSource? moduleSoc = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         _inputs = inputs;
         _time = clock.Time;
         _logger = logger;
+        _moduleSoc = moduleSoc;
+    }
+
+    /// <summary>
+    /// The goal spec a manual goal on <paramref name="declared"/> follows: the device's own <c>goal:</c>, else, for the device the <c>ev:</c> section names, the
+    /// module's synthetic SoC spec (EV B9): capacity and loss from the section and <c>control.ev</c>, the SoC read from the module, the device's own sources.
+    /// Null when the device has neither.
+    /// </summary>
+    private static GoalSpec? SpecFor(SwitchboardConfiguration configuration, DeviceDefinition declared)
+    {
+        if (declared.Goal is { } own)
+        {
+            return own;
+        }
+
+        if (configuration.Ev is not { } ev || ev.Device != declared.Id)
+        {
+            return null;
+        }
+
+        var p = configuration.Control.Ev;
+        return new GoalSpec(
+            declared.Id,
+            GoalKind.Soc,
+            Hard: true,
+            p.LossFraction,
+            ev.CapacityKwh,
+            GoalNumber.From(ev.Soc),
+            GoalNumber.Of(p.ChargeNow.TargetPercent),
+            Deadline: null,
+            Want: null,
+            declared.Sources,
+            Escalate: true,
+            GoalOnMet.Opportunistic,
+            ModuleOwned: true);
     }
 
     /// <summary>Raised after every change, outside the lock; for persistence and for waking the planner. Handlers must not block.</summary>
@@ -115,7 +167,7 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
             return ManualGoalResult.UnknownDevice;
         }
 
-        if (kind == GoalKind.Soc && declared.Goal is not { Kind: GoalKind.Soc })
+        if (kind == GoalKind.Soc && SpecFor(configuration, declared) is not { Kind: GoalKind.Soc })
         {
             return ManualGoalResult.SocNotConfigured;
         }
@@ -179,7 +231,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
     /// </summary>
     public void Expire(DateTimeOffset now)
     {
-        var declared = _inputs.Current.Configuration?.Configuration?.Devices.Select(d => d.Id).ToHashSet();
+        var configuration = _inputs.Current.Configuration?.Configuration;
+        var declared = configuration?.Devices.Select(d => d.Id).ToHashSet();
         ManualGoalSnapshot? snapshot = null;
         List<(DeviceName Device, string Why)> ended = [];
         lock (_gate)
@@ -195,6 +248,11 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
                 else if (declared is not null && !declared.Contains(device))
                 {
                     ended.Add((device, "the device is no longer declared"));
+                    goals = goals.Remove(device);
+                }
+                else if (ModuleReason(configuration, device, goal) is { } why)
+                {
+                    ended.Add((device, why));
                     goals = goals.Remove(device);
                 }
             }
@@ -217,6 +275,23 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
         }
 
         Raise(snapshot);
+    }
+
+    /// <summary>
+    /// Why a SoC goal on the module's device is over before its deadline: the car is unplugged, or the module's estimate has reached the target. Null otherwise,
+    /// also when the module has no reading (an unknown state ends nothing).
+    /// </summary>
+    private string? ModuleReason(SwitchboardConfiguration? configuration, DeviceName device, ManualGoal goal)
+    {
+        if (goal.Kind != GoalKind.Soc || _moduleSoc is null || configuration is null
+            || configuration.Devices.FirstOrDefault(d => d.Id == device) is not { } declared
+            || SpecFor(configuration, declared) is not { ModuleOwned: true }
+            || _moduleSoc.Read(device) is not { } reading)
+        {
+            return null;
+        }
+
+        return reading.Plugged == false ? "the car was unplugged" : reading.Percent is { } percent && percent >= goal.Target ? "its target was reached" : null;
     }
 
     /// <summary>Adds energy a device drew over a step to its energy goal; a device with no energy goal counts nothing. Progress alone is not written at once.</summary>
@@ -261,7 +336,7 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
                 continue;
             }
 
-            var spec = declared.Goal;
+            var spec = SpecFor(context.Configuration, declared);
             var loss = spec?.LossFraction ?? context.Configuration.Control.Planner.Goal.DefaultLossFraction;
             var revision = goal.Revision(device);
             if (goal.Kind == GoalKind.Energy)
@@ -275,6 +350,19 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
             {
                 // The device's goal: no longer says where the SoC is read (edited away since): there is nothing to compute the need from.
                 inactive.Add(new InactiveGoal(device, GoalInactiveReason.InputMissing, GoalInputKind.Soc, GoalOrigin.Manual, GoalKind.Soc, goal.Hard));
+                continue;
+            }
+
+            if (spec.ModuleOwned)
+            {
+                // The module's estimate, not the raw signal: a sleeping car reports every few hours while it charges.
+                if (_moduleSoc?.Read(device) is not { Percent: { } estimate })
+                {
+                    inactive.Add(new InactiveGoal(device, GoalInactiveReason.InputStale, GoalInputKind.Soc, GoalOrigin.Manual, GoalKind.Soc, goal.Hard));
+                    continue;
+                }
+
+                requests.Add(new GoalRequest(device, GoalKind.Soc, GoalMath.RemainingSocKwh(goal.Target, estimate, capacity, loss), null, goal.Target, estimate, null, goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, null, GoalOrigin.Manual, revision));
                 continue;
             }
 

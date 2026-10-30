@@ -6,7 +6,7 @@ import { advance, respond, serveSamples } from './screens.test-support';
 
 // Screen 06 as the shell delivers it: #/plan. The plan is an estimate from forecasts and, with planner.dispatch off, only a preview: the screen
 // must say so, must show the plan's status as the add-on reports it (a stale or suspended plan never looks fresh), the cost against both
-// references with the currency label of the data, and the warnings the plan carries. Entity ids and zone ids are monospace. It reads api/plan only.
+// references with the currency label of the data, and the warnings the plan carries. Entity ids and zone ids are monospace. It reads api/plan, and api/ev for the EV card (EvView.test.tsx).
 let fetchMock: Mock<typeof fetch>;
 
 beforeEach(() => {
@@ -236,10 +236,10 @@ describe('day plan: the page', () => {
     expect(card('plan-head')).toBeNull();
   });
 
-  it('asks for nothing but api/plan (besides the shell mode banner) and no write', async () => {
+  it('asks for nothing but api/plan and api/ev (besides the shell mode banner) and no write', async () => {
     await open();
 
-    expect(fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url !== 'api/mode')).toEqual(['api/plan']);
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url !== 'api/mode').sort()).toEqual(['api/ev', 'api/plan']);
     expect(fetchMock.mock.calls.every(([, init]) => init?.method === undefined || init.method === 'GET')).toBe(true);
   });
 

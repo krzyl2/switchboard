@@ -4,6 +4,7 @@ using Switchboard.Application.Configuration;
 using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
@@ -65,6 +66,7 @@ public sealed class PlanSpaContractTests
         Assert.Equal(Names<GoalInactiveReason>(), Spa("INACTIVE_REASONS"));
         Assert.Equal(Names<GoalInputKind>(), Spa("INACTIVE_INPUTS"));
         Assert.Equal(Names<PlanNote>(), Spa("PLAN_NOTES"));
+        Assert.Equal([.. EvAssessmentCodes.All.Select(EvAssessmentCodes.Text).Order(StringComparer.Ordinal)], Spa("EV_CAUSES"));
         Assert.Equal(Names<PlanWant>(), Spa("ENTRY_WANTS"));
         Assert.Equal(Names<PvBasis>(), Spa("PV_BASES"));
         Assert.Equal(Names<LoadBasis>(), Spa("LOAD_BASES"));

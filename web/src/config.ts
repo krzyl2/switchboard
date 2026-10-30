@@ -107,3 +107,8 @@ export const PLAN_REQUEST_TIMEOUT_MS = 8_000;
 
 /** POST and DELETE api/goals only store or drop the add-on's own state and wake the planner: they answer at once. */
 export const GOAL_REQUEST_TIMEOUT_MS = 5_000;
+
+/** GET api/ev: the module recomputes every control cycle; ten seconds, like the plan it feeds. POST and DELETE api/ev/... answer at once (own state, no entity). */
+export const EV_REFRESH_INTERVAL_MS = 10_000;
+export const EV_REQUEST_TIMEOUT_MS = 8_000;
+export const EV_CHANGE_TIMEOUT_MS = 5_000;

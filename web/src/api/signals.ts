@@ -59,6 +59,7 @@ export const ISSUE_CODES = [
   'zone_gap',
   'price_fallback_missing',
   'series_value_required',
+  'unknown_device',
   'reserved_key_ignored',
   'direction_unavailable_cautious',
   'group_rating_above_main',
@@ -72,6 +73,11 @@ export const ISSUE_CODES = [
 
   'forecast_signal_unused',
   'curve_without_signal',
+  'ev_device_has_goal',
+  'ev_device_cannot_start',
+  'ev_device_without_sources',
+  'ev_without_planner_dispatch',
+  'ev_calendar_zone_mismatch',
   'max_age_short_for_probe',
 ] as const;
 /** Warnings of the runtime derived-sensor check of the configuration in force: never a safe state, never a refusal. */
@@ -91,7 +97,20 @@ export const PROTECTION_INVALID_REASONS = [
 ] as const;
 export const FLOW_DIRECTIONS = ['import', 'export', 'unknown'] as const;
 export const DIRECTION_SOURCES = ['signed_signal', 'deadband', 'pending', 'unavailable', 'not_configured'] as const;
-export const SIGNAL_KINDS = ['current', 'power', 'voltage', 'energy_counter', 'state', 'percentage', 'price', 'series', 'energy_forecast', 'timestamp'] as const;
+export const SIGNAL_KINDS = [
+  'current',
+  'power',
+  'voltage',
+  'energy_counter',
+  'state',
+  'percentage',
+  'price',
+  'series',
+  'energy_forecast',
+  'timestamp',
+  'distance',
+  'calendar_event',
+] as const;
 export const SIGNAL_ROLES = [
   'none',
   'phase_current',
@@ -122,6 +141,10 @@ export const SIGNAL_ROLES = [
   'sun_setting',
   'price_curve_import',
   'price_curve_export',
+  'ev_soc',
+  'ev_range',
+  'ev_plugged',
+  'ev_calendar',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [
@@ -140,6 +163,9 @@ export const SIGNAL_DETAILS = [
   'series_malformed',
   'series_too_large',
   'not_timestamp',
+  'calendar_malformed',
+  'calendar_description_too_long',
+  'source_disconnected',
 ] as const;
 export const SERIES_VALUE_KINDS = ['power_w', 'energy_wh_period', 'price_per_kwh'] as const;
 
@@ -170,7 +196,8 @@ export const INTERNAL_UNITS = {
   energy_counter: 'kWh',
   percentage: '%',
   energy_forecast: 'kWh',
-} as const satisfies Record<Exclude<SignalKind, 'state' | 'price' | 'series' | 'timestamp'>, string>;
+  distance: 'km',
+} as const satisfies Record<Exclude<SignalKind, 'state' | 'price' | 'series' | 'timestamp' | 'calendar_event'>, string>;
 
 /** A price value always travels per kWh (the add-on converted a per-MWh unit); the label before the slash is the user's own. */
 export const PRICE_UNIT = /^[^/\s][^/]*\/kWh$/;
@@ -377,6 +404,11 @@ function signal(raw: unknown, path: string): Signal {
     // A timestamp travels as the instant's text (ISO 8601 with its offset), like a state.
     value = nullable(rawValue, `${path}.value`, text);
     if (unit !== null) fail(`${path}.unit`, `null for a ${kind} signal`);
+  } else if (kind === 'calendar_event') {
+    // A calendar event has no single value and no unit; the add-on shows it on its own page (api/ev).
+    if (rawValue !== null) fail(`${path}.value`, 'null for a calendar_event signal');
+    if (unit !== null) fail(`${path}.unit`, 'null for a calendar_event signal');
+    value = null;
   } else if (kind === 'series') {
     // A series has no single value and no unit; its content is summarized in `series`.
     if (rawValue !== null) fail(`${path}.value`, 'null for a series signal');

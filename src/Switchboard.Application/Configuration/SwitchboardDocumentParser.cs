@@ -28,7 +28,7 @@ public static class SwitchboardDocumentParser
     private static readonly Range BreakerRatingRange = new(1, 250);
     private static readonly Range VoltageRange = new(100, 300);
 
-    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key, PlannerSectionParser.Key];
+    private static readonly string[] RootKeys = ["schema_version", "connection", "signals", "devices", "circuit_groups", ControlKey, EconomicsSectionParser.Key, PlannerSectionParser.Key, EvSectionParser.Key];
     private static readonly string[] ConnectionKeys = ["topology", "breaker_rating_a", "characteristic", "voltage_v", "reserve_w"];
     private static readonly string[] SignalKeys = ["entity", "kind", "unit", "sign", "direction_from", "max_age", "sigma", "role", "phase", "unavailable_as_zero", "attribute", "series"];
     private static readonly Regex AttributeName = new("^[A-Za-z_][A-Za-z0-9_]{0,63}\\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
@@ -138,10 +138,12 @@ public static class SwitchboardDocumentParser
             issues);
         groups = [.. groups.Select(g => g with { Members = [.. devices.Where(d => d.CircuitGroup == g.Id).Select(d => d.Id)] })];
         var signals = userSignals.AddRange(groupSignals).AddRange(deviceSignals);
+        var (ev, evSignals) = EvSectionParser.Read(root, control, devices, signals, economics, planner, issues);
+        signals = signals.AddRange(evSignals);
 
         var configuration = issues.HasErrors || connection is null || control is null
             ? null
-            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups, Economics = economics, Planner = planner };
+            : new SwitchboardConfiguration(connection, signals, control, devices) { Groups = groups, Economics = economics, Planner = planner, Ev = ev };
         return Finish(configuration, issues, path, loadedAt);
     }
 

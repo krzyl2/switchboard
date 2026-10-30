@@ -1,5 +1,7 @@
 # EV charging module (optional)
 
+> **Superseded in part (2026-10-30).** Where this file and `docs/EV.md` differ, `EV.md` wins; its section 3 lists the ten corrections (zone names only in configuration; `Auto` effective only at `planner.dispatch: narrow`/`full`; cap 90 % needs `on_met: stop`; surplus is the existing `hourly_netting` gate; no reason code list v8, the EV assessment has its own closed list; EV state in `ev.json`; next trip only; naive local calendar times; PHEV rules; charge now only at `full`). See also `DECISIONS.md` (2026-10-30). Differing places below: Inputs/Tariff (G13 zone names), Surplus, reason codes, state.
+
 Status: specification from the maintainer interview of 2026-10-25. Nothing built. Depends on the v2.0 tariff and settlement modules and the v3.0 forecast and deadline-goal mechanisms; the EV is their first user. Protection is unchanged: the module only proposes a target for the charger, and Guard and Dispatch still cap it by the L1 limit (D2, D3). Off by default; shadow mode applies (D7).
 
 ## Goal
@@ -17,7 +19,7 @@ All read from Home Assistant entities, mapped in the wizard; the core knows no e
 | Trips | Google Calendar `Kursy`, read through the HA calendar entity | see Trips |
 | Plugged / charging | go-e car-state entity | no cable = no plan, no control |
 | PV forecast, 2 days | Forecast.Solar via HA | hourly values; missing or stale = plan with zero PV |
-| Tariff | zone preset `G13` (hours) + prices per kWh in configuration | see Tariff |
+| Tariff | zones (hours) + prices per kWh in `economics:` configuration; no zone names in code | see Tariff |
 | Surplus | net-billing hourly balance | see Surplus |
 
 The add-on makes no outbound connection (D10): calendar and forecast come through HA only.
@@ -46,19 +48,19 @@ After the trip at least 25 % remains, plus a 15-point reserve: target = trip SoC
 ## Merit order (cheapest source first)
 
 1. PV surplus (the hourly balance, see Surplus).
-2. The cheapest grid zone (G13 off-peak).
-3. The middle-priced zone (G13 morning peak).
-4. The most expensive zone (G13 afternoon peak): only for the part of a trip target that cheaper sources cannot deliver before departure. A trip target is a hard deadline: it is met in any zone, with no comparison against fuel cost.
+2. The cheapest grid zone (lowest price in the `PriceBook`, optional `ev.cheap_zone`; for example off-peak under G13).
+3. The middle-priced zone (for example the morning peak under G13).
+4. The most expensive zone (for example the afternoon peak under G13): only for the part of a trip target that cheaper sources cannot deliver before departure. A trip target is a hard deadline: it is met in any zone, with no comparison against fuel cost.
 
 The order of the grid zones is by the price per kWh in configuration, not by their names, so another tariff with two or four zones works the same way. Every zone is filled as late as it can be and still meet the deadline only when a cheaper one cannot deliver; the planner works backwards from the departure.
 
-The planner looks at the 2-day PV forecast and does not take cheap-zone energy that forecast surplus before departure will cover. Weekends and holidays are off-peak all day.
+The planner looks at the 2-day PV forecast and does not take cheap-zone energy that forecast surplus before departure will cover. Weekends and holidays come from `economics.holidays` in configuration.
 
 ## Surplus
 
-The hourly net-billing balance decides: charge while the current hour is expected to end with export >= 0, so a 6 A start (about 1.4 kW) on a smaller instantaneous surplus and riding out a cloud are allowed. The go-e range is 6-20 A on L1 (single phase, 4.6 kW at most). Starts and stops respect lockouts and hysteresis from configuration (no literals).
+The existing `hourly_netting` gate decides (band `floor_wh`/`ceiling_wh`, min_on tail, lockouts; only for devices with `start: headroom`): start when the projection is >= `floor_wh` after the start, so a 6 A start (about 1.4 kW) on a smaller instantaneous surplus and riding out a cloud are allowed. The go-e range is 6-20 A on L1 (single phase, 4.6 kW at most). Starts and stops respect lockouts and hysteresis from configuration (no literals).
 
-## Tariff (G13 preset, prices in configuration)
+## Tariff (example: G13, configuration only)
 
 | Zone | Hours |
 |---|---|
@@ -66,7 +68,7 @@ The hourly net-billing balance decides: charge while the current hour is expecte
 | Afternoon peak | 19:00-22:00 Apr-Sep, 16:00-21:00 Oct-Mar |
 | Off-peak | everything else; whole weekends and holidays |
 
-Hours are as remembered by the maintainer; to be checked against the contract. Zone logic is a pluggable tariff module (D6), `DateTimeOffset` and an injected clock, tested over 23- and 25-hour days. Export is valued at last month's average RCE price (survey decision), used only to rank surplus against grid energy.
+The table is a configuration example (`deploy/examples/economics-g13.yaml`), not code; hours are as remembered by the maintainer, to be checked against the contract. Zone logic is a pluggable tariff module (D6), `DateTimeOffset` and an injected clock, tested over 23- and 25-hour days. Export is valued at last month's average RCE price (survey decision), used only to rank surplus against grid energy.
 
 ## Control
 

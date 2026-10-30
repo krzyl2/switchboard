@@ -35,14 +35,15 @@ public sealed class CompositionTests
         Assert.NotNull(provider.GetRequiredService<GuardRunner>());
         Assert.NotNull(provider.GetRequiredService<JsonlDecisionLog>());
         Assert.NotNull(provider.GetRequiredService<Switchboard.Application.Presentation.PresentationPersistence>());
-        Assert.Equal(14, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(15, provider.GetServices<IHostedService>().Count());
     }
 
     [Fact]
     public void Links_start_in_order_so_they_stop_guard_first_then_heartbeat_then_mqtt_then_home_assistant()
     {
         // The signal pipeline the links feed starts first and stops last; the guard stops before
-        // everything, so its shutdown safe state is recorded while MQTT can still report it.
+        // everything, so its shutdown safe state is recorded while MQTT can still report it. The
+        // EV module's loop is a proposer like the planner: it stops right after the guard.
         using var provider = Build();
 
         Assert.Equal(
@@ -50,7 +51,7 @@ public sealed class CompositionTests
                 typeof(SignalStoreService), typeof(ConfigurationWatcherService), typeof(ReplayService),
                 typeof(HomeAssistantLinkService), typeof(MqttLinkService), typeof(HeartbeatService),
                 typeof(PresentationService), typeof(SetupLinkService), typeof(RuntimeDerivedCheckService),
-                typeof(PhaseEvidenceService), typeof(HourlyBalanceService), typeof(PlannerHostedService), typeof(CommandPathService), typeof(GuardService),
+                typeof(PhaseEvidenceService), typeof(HourlyBalanceService), typeof(PlannerHostedService), typeof(EvSnapshotHostedService), typeof(CommandPathService), typeof(GuardService),
             ],
             provider.GetServices<IHostedService>().Select(s => s.GetType()));
     }

@@ -1,6 +1,7 @@
 import { control } from './control';
 import { dashboard } from './dashboard';
 import { device } from './device';
+import { ev } from './ev';
 import { flows } from './flows';
 import { limits } from './limits';
 import { log } from './log';
@@ -141,6 +142,9 @@ export const en = {
   'signalDetail.series_malformed': 'an item of the series is malformed; the whole series is refused',
   'signalDetail.series_too_large': 'the series is too large (over 512 points or 64 KiB); dropped, not truncated',
   'signalDetail.not_timestamp': 'value is not a time with a UTC offset',
+  'signalDetail.calendar_malformed': 'a calendar attribute is malformed (a time that is not a time, or an attribute of the wrong type); the whole event is refused',
+  'signalDetail.calendar_description_too_long': 'the event description is over 1024 characters; the whole event is refused, not truncated',
+  'signalDetail.source_disconnected': 'not connected to Home Assistant, nothing is known now',
   'role.none': 'no role, shown only',
   'role.phase_current': 'phase current',
   'role.phase_power': 'phase power',
@@ -170,6 +174,10 @@ export const en = {
   'role.sun_setting': 'next sunset',
   'role.price_curve_import': 'import price curve (forecast)',
   'role.price_curve_export': 'export price curve (forecast)',
+  'role.ev_soc': 'car state of charge (EV module input)',
+  'role.ev_range': 'car electric range (EV module input)',
+  'role.ev_plugged': 'car plugged in (EV module input)',
+  'role.ev_calendar': 'trip calendar (EV module input)',
   'directionSource.signed_signal': 'signed value',
   'directionSource.deadband': 'near zero, counted as import',
   'directionSource.pending': 'waiting for the power of the same reading, counted as import',
@@ -231,6 +239,7 @@ export const en = {
   'issue.unknown_circuit_group': 'The device names a circuit group that is not declared under circuit_groups.',
   'issue.duplicate_zone_id': 'Two tariff zones have the same id.',
   'issue.dynamic_price_not_supported': 'A dynamic price is not allowed here: the fallback and the add are static (a number or zones).',
+  'issue.unknown_device': 'ev: names a device that is not declared under devices.',
   'issue.series_value_required': 'A series signal needs series.value (power_w or energy_wh_period), or a price unit for a price curve.',
   'issue.forecast_signal_unused': 'A forecast, sun-time or price-curve role is declared but nothing reads it (a planner: section, or curve: in an economics price); it feeds nothing.',
   'issue.curve_without_signal': 'curve: without signal: replaces nothing; the price stays its fallback.',
@@ -238,6 +247,11 @@ export const en = {
   'issue.unit_mismatch': 'The currency in the price signal unit is not economics.currency; the signal is not used and the fallback price stands in.',
   'issue.price_signal_unused': 'A price role is declared but no price names this signal (signal: in economics); it feeds nothing.',
   'issue.goal_without_start': 'The device has start: restore_only, so the planner never starts it for its goal; the goal can still hold it back.',
+  'issue.ev_device_has_goal': 'The EV device has a goal: of its own. The EV module makes the goal of that device itself, so it stays off until the device goal is removed.',
+  'issue.ev_device_cannot_start': 'The EV device has start: restore_only, so the planner never starts the charger; the EV module can only hold it back.',
+  'issue.ev_device_without_sources': 'The EV device declares no sources:, so the EV plan cannot tell PV from grid energy for it.',
+  'issue.ev_without_planner_dispatch': 'planner.dispatch is off or there is no planner: section, so the EV module only shows a preview and the charger follows the v2 rules.',
+  'issue.ev_calendar_zone_mismatch': 'The calendar entity says its times are in another time zone than the add-on, so a trip would start at the wrong hour.',
   'issue.goal_dropped': 'The goal cannot be evaluated as written (a literal outside its range) and is dropped; the device has no goal.',
   'issue.zone_gap': 'Some moments are not claimed by any tariff zone.',
   'issue.holidays_list_stale': 'The holiday list has no date of the current year; renew it.',
@@ -545,6 +559,7 @@ export const en = {
   ...setupMode.en,
   ...control.en,
   ...plan.en,
+  ...ev.en,
 };
 
 export type Messages = { [K in keyof typeof en]: string };

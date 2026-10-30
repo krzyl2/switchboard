@@ -47,6 +47,15 @@ public enum SignalDetail
 
     /// <summary>A timestamp signal's state is not an instant with a UTC offset.</summary>
     NotTimestamp,
+
+    /// <summary>A calendar signal's attributes are malformed (a time that is not a time, an attribute of the wrong type): the whole event is refused.</summary>
+    CalendarMalformed,
+
+    /// <summary>A calendar event's description is beyond the bound: the whole event is refused, never truncated.</summary>
+    CalendarDescriptionTooLong,
+
+    /// <summary>The feed from Home Assistant is not connected, so nothing about this input is known now (the EV inputs view reports it so; the store does not).</summary>
+    SourceDisconnected,
 }
 
 /// <summary>Status of whatever feeds the store (the Home Assistant subscription, or a replay).</summary>

@@ -21,7 +21,7 @@ internal sealed class GuardRunnerHarness
     /// <param name="port">A recording command port: with it the loop runs with the real control switch and mode state (control starts off), as GuardService composes them.</param>
     /// <param name="selfTest">The self-test slot the gate and the runner share (active self-test scenarios).</param>
     /// <param name="gateLogger">The effector gate's logger, for a test that reads its warnings.</param>
-    public GuardRunnerHarness(string yaml, OperatingMode ceiling = OperatingMode.Shadow, OperatingMode uiChoice = OperatingMode.Shadow, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null, ILogger<EffectorGate>? gateLogger = null)
+    public GuardRunnerHarness(string yaml, OperatingMode ceiling = OperatingMode.Shadow, OperatingMode uiChoice = OperatingMode.Shadow, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null, ILogger<EffectorGate>? gateLogger = null, Switchboard.Application.Planning.IPlanView? plan = null)
     {
         Time = new SteppableTime(GuardScenario.Start);
         var clock = new SignalClock(Time);
@@ -31,7 +31,7 @@ internal sealed class GuardRunnerHarness
         Store.ApplySourceStatus(SignalSourceStatus.Connected);
         Holder = new SignalSnapshotHolder(new SignalDiagnostics(Store.Snapshot(Now), null, [], []));
         Loop = port is null && selfTest is null
-            ? new ControlLoop(Holder, clock, TestModes.State(ceiling, uiChoice == OperatingMode.Active), "boot1", gateLogger: gateLogger)
+            ? new ControlLoop(Holder, clock, TestModes.State(ceiling, uiChoice == OperatingMode.Active), "boot1", gateLogger: gateLogger, plan: plan)
             : ControlLoop.WithControl(Holder, clock, ceiling, "boot1", port, selfTest, gateLogger);
     }
 

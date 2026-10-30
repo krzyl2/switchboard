@@ -2,6 +2,21 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.0
+
+### Added
+
+- EV module (optional `ev:` section, off by default): goals for one charger from the car's SoC, electric range, plugged state and the next trip in an HA calendar (`km:` in the event description); floor, 90 % cap, weekly full charge, charge spread over a long window; own assessment list in `GET api/ev` and `cause` in `GET api/plan`; reason codes stay at version 7.
+- Manual control of the module: mode (auto, PV only, full charge) and "charge now" through `POST api/ev/mode`, `POST`/`DELETE api/ev/charge-now`, MQTT entities and the plan screen (en and pl).
+- Planner: a module goal can finish as late as its window allows and spread the energy at the lowest power that holds it.
+
+### Fixed
+
+- A failing goal source no longer resets the energy ledger of a goal from the configuration; goal sources are isolated one by one.
+- A command that never reached the device no longer reads as shadow mode; a delivery verdict `not_delivered` is shown on the device card.
+
+Without `ev:` or at `planner.dispatch: off` decisions are unchanged.
+
 ## 0.11.8
 
 ### Fixed

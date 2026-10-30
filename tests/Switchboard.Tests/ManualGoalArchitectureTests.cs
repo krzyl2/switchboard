@@ -35,11 +35,12 @@ public sealed partial class ManualGoalArchitectureTests
     [Fact]
     public void The_manual_goal_store_is_built_only_from_the_goal_inputs_the_clock_and_a_logger()
     {
-        // Why: the structural form of the same promise: its constructor takes no port, gate, switch or override, so there is nothing for it to call.
+        // Why: the structural form of the same promise: its constructor takes no port, gate, switch or override, so there is nothing for it to call. The one optional
+        // extra is a read-only door to a module's SoC estimate (the EV device's synthetic goal).
         var constructor = typeof(ManualGoalStore).GetConstructors().Single();
 
         Assert.Equal(
-            [typeof(Switchboard.Application.Signals.IGoalInputSource), typeof(Switchboard.Application.Signals.SignalClock), typeof(Microsoft.Extensions.Logging.ILogger<ManualGoalStore>)],
+            [typeof(Switchboard.Application.Signals.IGoalInputSource), typeof(Switchboard.Application.Signals.SignalClock), typeof(Microsoft.Extensions.Logging.ILogger<ManualGoalStore>), typeof(IModuleSocSource)],
             constructor.GetParameters().Select(p => p.ParameterType));
         var offenders = typeof(ManualGoalStore).GetMembers(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .SelectMany(m => m is FieldInfo f ? [f.FieldType] : m is PropertyInfo p ? [p.PropertyType] : Array.Empty<Type>())

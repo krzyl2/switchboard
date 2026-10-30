@@ -36,8 +36,27 @@ public sealed record EntityUpdate(EntityId Entity, string State, string? Unit, D
     /// </summary>
     public ImmutableDictionary<string, string>? Attributes { get; init; }
 
+    /// <summary>
+    /// The calendar attributes (message, description, start_time, end_time, all_day) of a calendar signal's entity, parsed and bounded by the
+    /// transport; null when the entity has no calendar signal (and for a probe answer, which never carries attributes: a probe may confirm a
+    /// calendar event, never replace it).
+    /// </summary>
+    public ParsedCalendar? Calendar { get; init; }
+
     /// <summary>Schema bound on the text of a timestamp attribute; a longer value is read as no usable attribute.</summary>
     public const int MaxAttributeText = 64;
+
+    /// <summary>Schema bound on a calendar event's message (display only); a longer one is cut here, since nothing is decided by it.</summary>
+    public const int MaxCalendarMessage = 200;
+
+    /// <summary>
+    /// Schema bound on a calendar event's description (where the trip's <c>km:</c> is written), well above the 64 of an ordinary attribute: an event with a
+    /// longer one is refused whole, because a truncated description could hide the <c>km:</c> or cut its number.
+    /// </summary>
+    public const int MaxCalendarDescription = 1024;
+
+    /// <summary>Schema bound on the zone name a calendar entity states for its times.</summary>
+    public const int MaxCalendarZoneName = 64;
 
     /// <summary>An options list within the schema bounds, or null: never an error, only "not known".</summary>
     public static ImmutableArray<string>? BoundedOptions(IReadOnlyList<string?>? options) =>
@@ -81,6 +100,26 @@ public sealed record TrackedEntity(EntityId Entity, string? DeclaredUnit)
 
     /// <summary>The one attribute of this entity whose text is the instant of a timestamp signal (a sun time); null for every other signal.</summary>
     public string? Attribute { get; init; }
+
+    /// <summary>True for a calendar signal's entity: the transport then keeps the five whitelisted calendar attributes (and no other).</summary>
+    public bool Calendar { get; init; }
+}
+
+public enum CalendarProblem
+{
+    None,
+
+    /// <summary>A time that is not a time (or has no offset where the add-on has no zone to read it in), an attribute of the wrong type: the whole event is refused.</summary>
+    Malformed,
+
+    /// <summary>The description is longer than <see cref="EntityUpdate.MaxCalendarDescription"/>: the whole event is refused, never truncated.</summary>
+    DescriptionTooLong,
+}
+
+/// <summary>A calendar entity's attributes as the transport read them: the event (null when the calendar has none) or the reason there is none.</summary>
+public sealed record ParsedCalendar(Switchboard.Domain.Signals.CalendarEvent? Event, CalendarProblem Problem, string? ZoneName = null)
+{
+    public static ParsedCalendar Of(CalendarProblem problem) => new(null, problem);
 }
 
 /// <summary>How a series attribute is laid out; <see cref="Auto"/> takes a JSON list as a list and a JSON object as a mapping.</summary>

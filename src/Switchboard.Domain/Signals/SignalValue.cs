@@ -28,3 +28,19 @@ public sealed record TimestampValue(DateTimeOffset At) : SignalValue;
 public sealed record SeriesValue(TimeSeries Series) : SignalValue;
 
 public sealed record StateValue(string State) : SignalValue;
+
+/// <summary>A distance in km (the signal layer converted mi). Never negative.</summary>
+public sealed record DistanceValue(double Kilometers) : SignalValue;
+
+/// <summary>
+/// One event of a calendar as its entity exposes it. <see cref="Start"/> and <see cref="End"/> are instants: the entity writes naive local
+/// times, and the signal layer read them in the add-on's zone. <see cref="Description"/> is never longer than the schema bound
+/// (an event beyond it is refused whole).
+/// </summary>
+public sealed record CalendarEvent(string Message, string Description, DateTimeOffset Start, DateTimeOffset End, bool AllDay);
+
+/// <summary>
+/// The current or next event of a calendar entity; <see cref="Event"/> is null when the calendar has none. <see cref="ZoneName"/> is the zone
+/// the entity says its times are in, when it says so at all (null otherwise).
+/// </summary>
+public sealed record CalendarEventValue(CalendarEvent? Event, string? ZoneName = null) : SignalValue;

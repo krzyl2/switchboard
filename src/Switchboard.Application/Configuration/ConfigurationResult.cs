@@ -68,6 +68,7 @@ public static class ConfigurationIssueCodes
     public const string ZoneGap = "zone_gap";
     public const string PriceFallbackMissing = "price_fallback_missing";
     public const string SeriesValueRequired = "series_value_required";
+    public const string UnknownDevice = "unknown_device";
 
     // Warnings: the document is still valid.
     public const string ReservedKeyIgnored = "reserved_key_ignored";
@@ -83,6 +84,13 @@ public static class ConfigurationIssueCodes
 
     public const string ForecastSignalUnused = "forecast_signal_unused";
     public const string CurveWithoutSignal = "curve_without_signal";
+    public const string EvDeviceHasGoal = "ev_device_has_goal";
+    public const string EvDeviceCannotStart = "ev_device_cannot_start";
+    public const string EvDeviceWithoutSources = "ev_device_without_sources";
+    public const string EvWithoutPlannerDispatch = "ev_without_planner_dispatch";
+
+    /// <summary>Raised at run time (GET api/ev): the calendar entity says its times are in another zone than the add-on's, so every trip would start at the wrong hour.</summary>
+    public const string EvCalendarZoneMismatch = "ev_calendar_zone_mismatch";
 
     /// <summary>Raised at run time, once a refresh interval is detected (see the signal store).</summary>
     public const string MaxAgeShortForProbe = "max_age_short_for_probe";

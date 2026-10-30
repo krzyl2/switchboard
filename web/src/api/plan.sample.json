@@ -53,7 +53,8 @@
         "shortfallKwh": 0,
         "latestGridStart": "2026-10-28T03:11:20.2675586+01:00",
         "urgent": false,
-        "device": null
+        "device": null,
+        "cause": null
       },
       "goals": [
         {
@@ -78,7 +79,8 @@
           "shortfallKwh": 0,
           "latestGridStart": "2026-10-28T03:11:20.2675586+01:00",
           "urgent": false,
-          "device": null
+          "device": null,
+          "cause": null
         }
       ],
       "entries": [
@@ -502,7 +504,8 @@
         "shortfallKwh": null,
         "latestGridStart": null,
         "urgent": null,
-        "device": null
+        "device": null,
+        "cause": null
       },
       "goals": [
         {
@@ -527,7 +530,8 @@
           "shortfallKwh": null,
           "latestGridStart": null,
           "urgent": null,
-          "device": null
+          "device": null,
+          "cause": null
         }
       ],
       "entries": [
@@ -951,7 +955,8 @@
       "shortfallKwh": null,
       "latestGridStart": null,
       "urgent": null,
-      "device": "ev_charger"
+      "device": "ev_charger",
+      "cause": null
     }
   ],
   "notes": [

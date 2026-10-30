@@ -2,10 +2,12 @@ using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
+using Switchboard.Application.Ev;
 using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Planning;
@@ -192,6 +194,9 @@ public sealed record GoalDto(
 
     /// <summary>The device a request belongs to; set only on a request the merge set aside (listed apart from the devices), null on a device's own goals.</summary>
     public string? Device { get; init; }
+
+    /// <summary>Why the EV module wants this goal (its own closed assessment list, <c>ev_trip_deadline</c> ...); null on a goal of any other source.</summary>
+    public string? Cause { get; init; }
 }
 
 internal static partial class PlanEndpoint
@@ -203,14 +208,15 @@ internal static partial class PlanEndpoint
             [FromServices] SignalClock clock,
             [FromServices] GoalTracker goals,
             [FromServices] LoadProfileFeed loadProfile,
-            [FromServices] PlanHolder plans) =>
+            [FromServices] PlanHolder plans,
+            [FromServices] IEvSnapshotSource ev) =>
         {
             var now = clock.Time.GetUtcNow();
             var current = diagnostics.Current;
             var sources = current.Configuration?.Configuration is { Planner: not null } configuration
                 ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone, now)
                 : null;
-            return Results.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current));
+            return Results.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current, ev.Current));
         });
         return endpoints;
     }
@@ -218,8 +224,10 @@ internal static partial class PlanEndpoint
     /// <param name="sources">The plan's sources (see <see cref="PlanSourceMapper"/>); null leaves the inputs and slots out, as without a planner.</param>
     /// <param name="forecast">The forecast signals of the latest store cycle, for the PV forecast's state and age.</param>
     /// <param name="state">What the planner service holds (the last adopted plan, its status, the last solve); null or empty without a planner.</param>
-    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board, PlanInputSources? sources = null, ForecastInputs? forecast = null, PlanState? state = null)
+    /// <param name="ev">The EV module's published snapshot; its assessment code is the <c>cause</c> of the module's goals.</param>
+    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board, PlanInputSources? sources = null, ForecastInputs? forecast = null, PlanState? state = null, EvPublished? ev = null)
     {
+        var cause = ev?.Snapshot is { } evSnapshot ? EvAssessmentCodes.Text(evSnapshot.Composition.Code) : null;
         var planner = result?.Configuration?.Planner;
         var parameters = result?.Configuration?.Control.Planner;
         var plan = planner is not null ? state?.Plan : null;
@@ -233,12 +241,12 @@ internal static partial class PlanEndpoint
         var devices = new SortedDictionary<string, List<GoalDto>>(StringComparer.Ordinal);
         foreach (var goal in board.Goals)
         {
-            Of(devices, goal.Request.Device.Value).Add(Applied(goal, plan, status));
+            Of(devices, goal.Request.Device.Value).Add(Applied(goal, plan, status, CauseOf(ev?.Snapshot, goal.Request.Revision, cause)));
         }
 
         foreach (var inactive in board.Inactive)
         {
-            Of(devices, inactive.Device.Value).Add(Inactive(inactive));
+            Of(devices, inactive.Device.Value).Add(Inactive(inactive, cause));
         }
 
         return new PlanResponse(
@@ -313,8 +321,30 @@ internal static partial class PlanEndpoint
         return list;
     }
 
+    /// <summary>
+    /// Why the module wants this very goal: its own kind says (trip, weekly full charge, surplus cap, floor); a goal the snapshot does not list (an inactive one)
+    /// or a PV-only mode falls back to the assessment's primary code.
+    /// </summary>
+    private static string? CauseOf(EvSnapshot? snapshot, long revision, string? fallback)
+    {
+        if (snapshot is null || snapshot.Composition.Code == EvAssessmentCode.PvOnly)
+        {
+            return fallback;
+        }
+
+        var offer = snapshot.Composition.Goals.FirstOrDefault(g => g.Request.Revision == revision);
+        return offer?.Kind switch
+        {
+            EvGoalKind.Trip => EvAssessmentCodes.Text(EvAssessmentCode.TripDeadline),
+            EvGoalKind.WeeklyFull => EvAssessmentCodes.Text(EvAssessmentCode.WeeklyFull),
+            EvGoalKind.Cap => EvAssessmentCodes.Text(EvAssessmentCode.Surplus),
+            EvGoalKind.Floor => EvAssessmentCodes.Text(GoalMath.IsMet(offer.Request.RemainingKwh) ? EvAssessmentCode.FloorHold : EvAssessmentCode.CheapZone),
+            _ => fallback,
+        };
+    }
+
     /// <summary>A goal as shown; the status is the plan's (at risk, infeasible) while a fresh plan has judged the goal, else the goal model's.</summary>
-    private static GoalDto Applied(Goal goal, PlanSnapshot? plan, PlanStatus status)
+    private static GoalDto Applied(Goal goal, PlanSnapshot? plan, PlanStatus status, string? cause = null)
     {
         var r = goal.Request;
         var judged = status == PlanStatus.Fresh ? plan?.Device(r.Device)?.Goals.FirstOrDefault(g => g.Ref.Revision == r.Revision && g.Deadline == r.Deadline) : null;
@@ -341,10 +371,11 @@ internal static partial class PlanEndpoint
             ShortfallKwh = judged?.ShortfallKwh,
             LatestGridStart = judged?.LatestGridStart,
             Urgent = judged?.Urgent,
+            Cause = r.Origin == GoalOrigin.Module ? cause : null,
         };
     }
 
-    private static GoalDto Inactive(InactiveGoal goal) =>
+    private static GoalDto Inactive(InactiveGoal goal, string? cause = null) =>
         new(
             ApiText.Snake(goal.Kind),
             goal.Hard,
@@ -362,7 +393,10 @@ internal static partial class PlanEndpoint
             null,
             false,
             null,
-            null);
+            null)
+        {
+            Cause = goal.Origin == GoalOrigin.Module ? cause : null,
+        };
 
     private static IReadOnlyList<ConfigurationIssue> Issues(ConfigurationResult? result) =>
         result is null

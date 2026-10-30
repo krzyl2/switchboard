@@ -1,0 +1,71 @@
+# The ev: section (docs/EV.md, slice S1). In this release it is only read, validated and shown (GET api/ev); nothing here changes a
+# decision yet. The EV module that makes goals for the car comes in later slices, and a plan reaches the charger only behind
+# planner.dispatch: narrow or full (see planner-goal.yaml); at off the module will only show a preview.
+#
+# Append the section below to switchboard.yaml. The device must be declared under devices: and must have no goal: of its own (the module
+# makes the goal of that device itself; with a goal: on the device, ev: is ignored and a warning says so). For the module to be able to act
+# the device also needs, on the device itself:
+#
+#   start: headroom                # restore_only: the planner never starts the charger
+#   sources: pv_and_zone:offpeak   # which energy it may use; a zone id of economics.tariff
+#
+# and the file needs a planner: section with dispatch: narrow or full. Without them the section is accepted with a warning each
+# (ev_device_cannot_start, ev_device_without_sources, ev_without_planner_dispatch).
+ev:
+  device: ev_charger          # id of the charger under devices:
+  capacity_kwh: 18            # gross battery capacity
+  soc:                        # the car's state of charge, percent; read like any signal (checked for freshness and unit)
+    entity: sensor.car_battery_level
+    max_age: 30m              # optional; default control.planner.goal.input_max_age
+  # cheap_zone: offpeak       # optional: the zone id of economics.tariff that counts as "cheap"; without it the lowest price does
+  #
+  # Optional inputs (slice S2). They are read and shown at GET api/ev; nothing decides from them yet. None of them ever reaches the guard
+  # or dispatch. Each is a plain entity; the add-on never commands any of them.
+  #
+  # range:                    # the ELECTRIC range (not the total range with fuel)
+  #   entity: sensor.car_electric_range
+  #   unit: km                # km (default) or mi; converted to km by the signal layer, nowhere else
+  #   max_age: 1h             # optional; default control.planner.goal.input_max_age
+  # plugged:                  # is the car plugged in
+  #   entity: sensor.charger_car_state
+  #   states: [Charging, "Wait for car", Complete]   # the states of that entity that mean plugged in (compared without regard to case)
+  #   state_reports: on_change   # default: fresh while available, no age limit; "age" with max_age judges it by age instead
+  # calendar:                 # the calendar whose current or next event is the next trip
+  #   entity: calendar.trips
+  #   max_age: 24h            # optional; default control.signals.max_age_limit (a calendar entity re-reports rarely)
+  #
+  # A trip is an event whose description contains "km: 42" (case-insensitive, comma or dot as the decimal sign, the first one counts).
+  # All-day events, events without km: and a km: above control.ev.max_trip_km are ignored and listed at GET api/ev. The calendar entity
+  # shows only one event, so only the next trip is planned; the add-on reads the event's local times in its own time zone, so keep the
+  # add-on's zone equal to the calendar's.
+
+# The module's parameters are control.ev. All are starting values to review after a shadow week; override only what you need, key by key.
+# The values below are the defaults.
+#
+# control:
+#   ev:
+#     floor: 25                  # SoC kept from the cheapest zone when no trip is planned (percent)
+#     floor_after: 25            # SoC that must remain after a trip
+#     reserve: 15                # percentage points on top: target = trip SoC + floor_after + reserve
+#     cap: 90                    # ceiling of surplus-only charging
+#     weekly_full:
+#       days: [saturday, sunday] # one full charge a week on one of these local weekdays; [] switches it off
+#       target: 100
+#     ready_margin: 30m          # the car is ready this long before a trip starts
+#     loss: 0.10                 # charging losses: energy drawn = energy stored x (1 + loss)
+#     kwh_per_km: 0.20           # consumption while nothing is learned
+#     learn:
+#       smoothing: 0.2           # weight of a new sample
+#       min_soc: 20              # a SoC and range pair below this SoC is not used
+#       min_kwh_per_km: 0.12     # plausibility bounds of one sample
+#       max_kwh_per_km: 0.60
+#       max_samples: 50          # at most 200
+#       pair_tolerance: 60s      # a SoC and a range this close in time count as one report
+#     max_trip_km: 500           # a longer trip is a typo and is ignored
+#     soc_max_age: 6h            # beyond this the SoC estimate is not trusted
+#     drift_limit_kwh: 1.5       # energy into the car unseen by the SoC before the estimate is dropped
+#     target_change_threshold: 3 # a frozen trip target is recomputed only when it moves by more than this many points
+#     charge_now:
+#       target: 90
+#       duration: 12h
+#     spread: true               # spread a charge over a long window instead of running at the ceiling

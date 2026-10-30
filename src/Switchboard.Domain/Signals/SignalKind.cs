@@ -21,6 +21,12 @@ public enum SignalKind
 
     /// <summary>An instant (sunrise, sunset) from a scalar state; planner input only.</summary>
     Timestamp,
+
+    /// <summary>A distance in km (a car's electric range), from a scalar state in km or mi; the EV module's input only, never protection or dispatch (EV-02).</summary>
+    Distance,
+
+    /// <summary>The current or next event of a calendar entity, read from its bounded attributes; the EV module's input only, never protection or dispatch (EV-02).</summary>
+    CalendarEvent,
 }
 
 /// <summary>
@@ -130,6 +136,18 @@ public enum SignalRole
 
     /// <summary>The forward export price curve, in currency per kWh (PLAN-07).</summary>
     PriceCurveExport,
+
+    /// <summary>The car's state of charge (percent), created from <c>ev:</c>; the EV module's input, never protection or dispatch (EV-02).</summary>
+    EvSoc,
+
+    /// <summary>The car's electric range (km), created from <c>ev:</c>; the EV module's input, never protection or dispatch (EV-02).</summary>
+    EvRange,
+
+    /// <summary>Whether the car is plugged in (a state mapped through a configured list of states), created from <c>ev:</c>; reports on change; the EV module's input only (EV-02).</summary>
+    EvPlugged,
+
+    /// <summary>The calendar whose current or next event is the next trip, created from <c>ev:</c>; the EV module's input only (EV-02).</summary>
+    EvCalendar,
 }
 
 /// <summary>

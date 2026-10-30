@@ -1,0 +1,38 @@
+/* The EV card of the day plan and the charger row of the device card. Colours come only from the tokens in styles.css, so both themes apply.
+   The forms reuse the .plan-wish layout of plan.css; what is added here is what that layout does not cover. */
+[data-ev='message'][data-tone='warn'] {
+  color: var(--warn);
+}
+
+[data-ev='message'][data-tone='ok'] {
+  color: var(--ok);
+}
+
+[data-card='ev'] .plan-wish select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+[data-card='ev'] .plan-wish {
+  align-items: stretch;
+}
+
+[data-card='ev'] .plan-wish .plan-actions {
+  align-items: center;
+}
+
+
+/* The blocks of the card sit apart: goals, ignored events, inputs, issues and the manual control are read one at a time. */
+[data-card='ev'] [data-ev='goals'],
+[data-card='ev'] [data-ev='unparsed'],
+[data-card='ev'] [data-ev='inputs'],
+[data-card='ev'] [data-ev='issues'],
+[data-card='ev'] [data-ev='controls'] {
+  margin-top: 14px;
+}

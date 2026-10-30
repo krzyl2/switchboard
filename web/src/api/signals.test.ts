@@ -231,6 +231,28 @@ describe('parseSignals, forecast and curve signals', () => {
     expect(() => parseSignals(withSignal(extra))).toThrow();
   });
 
+  it('keeps an electric range as km and a calendar event as a signal with no value and no unit', () => {
+    const range = parseSignals(withSignal({ kind: 'distance', role: 'ev_range', value: 49.9, unit: 'km' }));
+    const calendar = parseSignals(withSignal({ kind: 'calendar_event', role: 'ev_calendar', value: null, unit: null }));
+
+    expect(range.signals.find((s) => s.name === 'forecast')?.value).toBe(49.9);
+    expect(calendar.signals.find((s) => s.name === 'forecast')?.value).toBeNull();
+  });
+
+  it.each(['calendar_malformed', 'calendar_description_too_long'])('accepts the calendar detail %s', (detail) => {
+    const parsed = parseSignals(withSignal({ kind: 'calendar_event', role: 'ev_calendar', state: 'rejected', detail }));
+
+    expect(parsed.signals.find((s) => s.name === 'forecast')?.detail).toBe(detail);
+  });
+
+  it.each([
+    ['a range in W', { kind: 'distance', role: 'ev_range', value: 1, unit: 'W' }],
+    ['a calendar with a number', { kind: 'calendar_event', role: 'ev_calendar', value: 1 }],
+    ['a calendar with a unit', { kind: 'calendar_event', role: 'ev_calendar', unit: 'km' }],
+  ])('rejects %s', (_case, extra) => {
+    expect(() => parseSignals(withSignal(extra))).toThrow();
+  });
+
   it('requires the series key on every signal', () => {
     expect(() => parseSignals(payload((p) => delete base(p).series))).toThrow();
   });

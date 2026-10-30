@@ -1,0 +1,153 @@
+{
+  "at": "2026-10-23T12:00:00.005+00:00",
+  "enabled": true,
+  "config": {
+    "device": "ev_charger",
+    "capacityKwh": 18,
+    "socSignal": "device_ev_charger_ev_soc",
+    "cheapZone": null,
+    "plannerDispatch": "off",
+    "rangeSignal": "device_ev_charger_ev_range",
+    "pluggedSignal": "device_ev_charger_ev_plugged",
+    "pluggedStates": [
+      "Charging",
+      "Wait for car",
+      "complete"
+    ],
+    "calendarSignal": "device_ev_charger_ev_calendar"
+  },
+  "parameters": {
+    "floorPercent": 25,
+    "floorAfterPercent": 25,
+    "reservePoints": 15,
+    "capPercent": 90,
+    "weeklyFullDays": [
+      "saturday",
+      "sunday"
+    ],
+    "weeklyFullTargetPercent": 100,
+    "readyMarginS": 1800,
+    "lossFraction": 0.1,
+    "fallbackKwhPerKm": 0.2,
+    "learnSmoothing": 0.2,
+    "learnMinSocPercent": 20,
+    "learnMinKwhPerKm": 0.12,
+    "learnMaxKwhPerKm": 0.6,
+    "learnMaxSamples": 50,
+    "learnPairToleranceS": 60,
+    "maxTripKm": 500,
+    "socMaxAgeS": 21600,
+    "driftLimitKwh": 1.5,
+    "targetChangeThresholdPoints": 3,
+    "chargeNowTargetPercent": 90,
+    "chargeNowDurationS": 43200,
+    "spread": true,
+    "snapshotMaxAgeS": 120
+  },
+  "issues": [
+    {
+      "code": "ev_without_planner_dispatch",
+      "path": "ev",
+      "line": 149,
+      "column": 3,
+      "message": "planner.dispatch is off or there is no planner: section, so the EV module only shows a preview: no plan reaches the charger and it follows the v2 rules."
+    }
+  ],
+  "addOnZone": "Europe/Warsaw",
+  "inputs": {
+    "soc": {
+      "configured": true,
+      "state": "fresh",
+      "detail": "none",
+      "readAt": "2026-10-23T12:00:00.001+00:00",
+      "ageS": 0.004,
+      "maxAgeS": 1800
+    },
+    "socPercent": 40,
+    "range": {
+      "configured": true,
+      "state": "fresh",
+      "detail": "none",
+      "readAt": "2026-10-23T12:00:00.004+00:00",
+      "ageS": 0.001,
+      "maxAgeS": 3600
+    },
+    "rangeKm": 54,
+    "plugged": {
+      "configured": true,
+      "state": "fresh",
+      "detail": "none",
+      "readAt": "2026-10-23T12:00:00.002+00:00",
+      "ageS": 0.003,
+      "maxAgeS": 3600
+    },
+    "isPlugged": true,
+    "pluggedState": "Charging",
+    "calendar": {
+      "configured": true,
+      "state": "fresh",
+      "detail": "none",
+      "readAt": "2026-10-23T12:00:00.005+00:00",
+      "ageS": 0,
+      "maxAgeS": 86400
+    }
+  },
+  "trips": {
+    "nextTrip": {
+      "title": "Kurs Warszawa",
+      "start": "2026-10-23T22:00:00.004+00:00",
+      "km": 42
+    },
+    "unparsed": [],
+    "warnings": [],
+    "calendarZone": null
+  },
+  "assessment": {
+    "failed": false,
+    "reason": "ev_trip_deadline",
+    "notes": [
+      "ev_without_planner_dispatch"
+    ],
+    "computedAt": "2026-10-23T12:00:00.005+00:00",
+    "validUntil": "2026-10-23T12:02:00.005+00:00",
+    "expired": false,
+    "mode": "auto",
+    "socPercent": 40,
+    "socGap": null,
+    "kwhPerKm": 0.13333333333333333,
+    "nextTrip": {
+      "title": "Kurs Warszawa",
+      "start": "2026-10-23T22:00:00.004+00:00",
+      "km": 42
+    },
+    "lastFullAt": null,
+    "goals": [
+      {
+        "kind": "cap",
+        "targetPercent": 90,
+        "remainingKwh": 3.7400000000220004,
+        "deadline": "2026-10-24T00:00:00+02:00",
+        "hard": false,
+        "sources": "pv_only",
+        "spread": false
+      },
+      {
+        "kind": "trip",
+        "targetPercent": 71.111111111,
+        "remainingKwh": 6.159999999978,
+        "deadline": "2026-10-23T22:00:00.004+00:00",
+        "hard": true,
+        "sources": "pv_and_zone:offpeak",
+        "spread": true
+      }
+    ]
+  },
+  "manual": {
+    "mode": "auto",
+    "chargeNow": {
+      "active": true,
+      "targetPct": 80,
+      "until": "2026-10-23T14:00:00.005+00:00"
+    }
+  }
+}

@@ -607,6 +607,52 @@ public sealed class SetupDocumentMapperTests
         Assert.Null(result.Configuration!.Planner);
     }
 
+    private static readonly string EvSnippet = File.ReadAllText(RepoPaths.Combine("deploy", "examples", "ev.yaml")).ReplaceLineEndings("\n");
+
+    [Fact]
+    public void The_ev_section_survives_a_wizard_save_unchanged_and_the_file_still_parses()
+    {
+        // EV-01: the wizard has no EV step. A save that dropped the section would silently end the user's EV configuration the first time they
+        // touched a device name; a rewrite would change what they typed. The example file is the section a user starts from.
+        var yaml = Rich.TrimEnd() + "\n\n" + EvSnippet;
+        var before = SetupFixtures.Tree(yaml);
+        var load = SetupDocumentMapper.Read(before);
+        Assert.Contains(load.Preserved, p => p.Path == "ev");
+
+        var draft = load.Draft with { Devices = [.. load.Draft.Devices.Select(d => d.Id == "ev_charger" ? d with { Name = "Garage charger" } : d)] };
+        var (text, result, _) = SetupFixtures.Apply(yaml, draft);
+
+        Assert.Equal(ConfigurationStatus.Valid, result.Status);
+        Assert.Equal(SetupFixtures.Canon(Section(before, "ev")), SetupFixtures.Canon(Section(SetupFixtures.Tree(text), "ev")));
+        var ev = result.Configuration!.Ev!;
+        Assert.Equal(("ev_charger", 18.0), (ev.Device.Value, ev.CapacityKwh));
+        Assert.Contains(result.Configuration.Signals, s => s.Name == ev.Soc && s.Entity.Value == "sensor.car_battery_level");
+        Assert.Equal("Garage charger", result.Configuration.Devices.Single(d => d.Id.Value == "ev_charger").Name);
+    }
+
+    [Fact]
+    public void A_save_on_a_file_without_an_ev_section_does_not_invent_one()
+    {
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(Rich));
+
+        var (text, result, _) = SetupFixtures.Apply(Rich, load.Draft);
+
+        Assert.DoesNotContain("\nev:", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Ev);
+    }
+
+    [Fact]
+    public void The_ev_section_is_removed_only_when_the_user_confirms_dropping_it()
+    {
+        var yaml = Rich.TrimEnd() + "\n\n" + EvSnippet;
+        var load = SetupDocumentMapper.Read(SetupFixtures.Tree(yaml));
+
+        var (text, result, _) = SetupFixtures.Apply(yaml, load.Draft with { DropPreserved = ["ev"] });
+
+        Assert.DoesNotContain("\nev:", text, StringComparison.Ordinal);
+        Assert.Null(result.Configuration!.Ev);
+    }
+
     [Fact]
     public void The_new_device_key_is_one_the_wizard_knows_it_does_not_own()
     {

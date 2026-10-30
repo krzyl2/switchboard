@@ -14,8 +14,9 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// <item>exactly <c>&lt;DiscoveryPrefix&gt;/&lt;component&gt;/&lt;BaseTopic&gt;/&lt;object_id&gt;/config</c> — our discovery configs.</item>
 /// </list>
 /// Subscriptions are narrower still: exactly Home Assistant's birth topic, the kill switch's and the
-/// control switch's command topics and, for each device of the current valid configuration (the
-/// declared set, re-read at every check), exactly its override select's command topic. A subscription is how a message gets
+/// control switch's command topics, for each device of the current valid configuration (the
+/// declared set, re-read at every check), exactly its override select's command topic and, while that configuration holds an <c>ev:</c> section, exactly the
+/// three command topics of the EV controls. A subscription is how a message gets
 /// in, so nothing else may be listened to: no wildcard, no prefix match, no undeclared device.
 /// </summary>
 public sealed class MqttTopicGuard
@@ -29,9 +30,11 @@ public sealed class MqttTopicGuard
     private readonly string _baseTopic;
     private readonly string[] _subscriptions;
     private readonly Func<IReadOnlyCollection<DeviceName>?> _declaredDevices;
+    private readonly Func<bool> _evControlsEnabled;
 
     /// <param name="declaredDevices">The devices of the current valid configuration; null (or no provider) while there is none.</param>
-    public MqttTopicGuard(string discoveryPrefix, string baseTopic, Func<IReadOnlyCollection<DeviceName>?>? declaredDevices = null)
+    /// <param name="evControlsEnabled">Whether the current valid configuration holds an <c>ev:</c> section: only then are the EV controls' command topics listened to.</param>
+    public MqttTopicGuard(string discoveryPrefix, string baseTopic, Func<IReadOnlyCollection<DeviceName>?>? declaredDevices = null, Func<bool>? evControlsEnabled = null)
     {
         if (!TopicLevel.IsPlain(discoveryPrefix) || !TopicLevel.IsPlain(baseTopic))
         {
@@ -47,6 +50,7 @@ public sealed class MqttTopicGuard
             GuardEntities.CommandTopic(baseTopic, GuardEntities.ControlAllowedObjectId),
         ];
         _declaredDevices = declaredDevices ?? (() => null);
+        _evControlsEnabled = evControlsEnabled ?? (() => false);
     }
 
     public bool IsAllowed(string? topic)
@@ -84,11 +88,12 @@ public sealed class MqttTopicGuard
         }
     }
 
-    /// <summary>Exactly Home Assistant's birth topic, the kill switch and control switch command topics and the override command topic of a declared device.</summary>
+    /// <summary>Exactly Home Assistant's birth topic, the kill switch and control switch command topics, the override command topic of a declared device and, with an <c>ev:</c> section, the EV controls' command topics.</summary>
     public bool IsSubscriptionAllowed(string? topicFilter) =>
         topicFilter is not null
         && (_subscriptions.Contains(topicFilter, StringComparer.Ordinal)
-            || (_declaredDevices() ?? []).Any(d => string.Equals(topicFilter, DispatchEntities.OverrideCommandTopic(_baseTopic, d), StringComparison.Ordinal)));
+            || (_declaredDevices() ?? []).Any(d => string.Equals(topicFilter, DispatchEntities.OverrideCommandTopic(_baseTopic, d), StringComparison.Ordinal))
+            || (_evControlsEnabled() && EvEntities.Topics(_baseTopic).Contains(topicFilter, StringComparer.Ordinal)));
 
     public void EnsureSubscriptionAllowed(string? topicFilter)
     {
@@ -101,7 +106,7 @@ public sealed class MqttTopicGuard
 
 public sealed class MqttTopicRefusedException(string? topic, bool subscription = false)
     : InvalidOperationException(subscription
-        ? $"Subscribing to MQTT topic '{topic}' is not allowed; the add-on listens only to Home Assistant's birth topic, its kill switch and control switch commands and the override commands of declared devices."
+        ? $"Subscribing to MQTT topic '{topic}' is not allowed; the add-on listens only to Home Assistant's birth topic, its kill switch and control switch commands, the override commands of declared devices and the EV controls of a configured ev: section."
         : $"Publishing to MQTT topic '{topic}' is outside the add-on's own namespace and was refused.")
 {
     public string? Topic { get; } = topic;

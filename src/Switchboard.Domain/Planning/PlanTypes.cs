@@ -63,7 +63,8 @@ public readonly record struct PlanKeyShare(ConstraintKey Key, double Share);
 /// <summary>
 /// A device as the planner sees it: watts, never amperes or entities (the conversion is the caller's). <paramref name="Keys"/> are the
 /// constraints it loads and the share of its power on each; <paramref name="CanStart"/> is false for <c>start: restore_only</c>, which
-/// the planner never starts; <paramref name="SpecIdentity"/> fingerprints the device's physical model, so an entry made for another spec is not applied.
+/// the planner never starts; <paramref name="SpecIdentity"/> fingerprints the device's physical model, so an entry made for another spec is not applied;
+/// <paramref name="StepW"/> is one setpoint step of a modulating device in watts (a spread goal rounds its power up to it), null when unknown.
 /// </summary>
 public sealed record PlanDevice(
     DeviceName Id,
@@ -75,7 +76,8 @@ public sealed record PlanDevice(
     bool CanStart,
     ValueSpec Value,
     SourceSet? Sources,
-    long SpecIdentity);
+    long SpecIdentity,
+    double? StepW = null);
 
 /// <summary>Everything the pure planner needs (15-PLANNER, "The planning algorithm"): time, per-slot inputs, devices, goals, the guard's static limits and the parameters.</summary>
 /// <param name="Now">The plan's moment; the first slot starts here.</param>

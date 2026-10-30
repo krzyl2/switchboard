@@ -23,7 +23,12 @@ public static class SignalUnits
         ["kWh"] = 1,
         ["MWh"] = 1000,
         ["%"] = 1,
+        ["km"] = 1,
+        ["mi"] = KilometersPerMile,
     }.ToImmutableDictionary(StringComparer.Ordinal);
+
+    /// <summary>The international mile, exactly; the one place a distance is converted (to km).</summary>
+    private const double KilometersPerMile = 1.609344;
 
     public static ImmutableArray<string> AllowedFor(SignalKind kind) => kind switch
     {
@@ -33,6 +38,7 @@ public static class SignalUnits
         SignalKind.EnergyCounter => ["Wh", "kWh", "MWh"],
         SignalKind.Percentage => ["%"],
         SignalKind.EnergyForecast => ["Wh", "kWh", "MWh"],
+        SignalKind.Distance => ["km", "mi"],
         _ => [],
     };
 
@@ -106,7 +112,8 @@ public static class SignalNormalizer
 
     /// <param name="series">The whitelisted attribute of a series signal as the transport parsed it; null for every other signal and for a probe answer.</param>
     /// <param name="attributeText">The whitelisted attribute of a timestamp signal as the transport read it; null for every other signal and for a probe answer.</param>
-    public static Normalization Normalize(SignalDefinition definition, string state, string? unit, ParsedSeries? series = null, string? attributeText = null)
+    /// <param name="calendar">The whitelisted attributes of a calendar signal as the transport parsed them; null for every other signal and for a probe answer.</param>
+    public static Normalization Normalize(SignalDefinition definition, string state, string? unit, ParsedSeries? series = null, string? attributeText = null, ParsedCalendar? calendar = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(state);
@@ -128,6 +135,17 @@ public static class SignalNormalizer
         {
             // A sun time lives in an attribute (the sun entity's state is above_horizon); the declaration names it, the state says nothing about it.
             return IsoInstant.TryParse(definition.Attribute is null ? state : attributeText, out var at) ? Accept(new TimestampValue(at)) : Reject(SignalDetail.NotTimestamp);
+        }
+
+        // A calendar entity's state is on or off; the event lives in the attributes the transport parsed, and an event the bounds refuse is refused whole.
+        if (definition.Kind == SignalKind.CalendarEvent)
+        {
+            return calendar switch
+            {
+                null or { Problem: CalendarProblem.Malformed } => Reject(SignalDetail.CalendarMalformed),
+                { Problem: CalendarProblem.DescriptionTooLong } => Reject(SignalDetail.CalendarDescriptionTooLong),
+                _ => Accept(new CalendarEventValue(calendar.Event, calendar.ZoneName)),
+            };
         }
 
         // A series has no unit of its own: the state of the entity says nothing about the attribute, and the declaration
@@ -159,6 +177,11 @@ public static class SignalNormalizer
         if (definition.Kind == SignalKind.EnergyForecast)
         {
             return value < 0 ? Reject(SignalDetail.SignViolation) : Accept(new EnergyForecastValue(new KilowattHours(value)));
+        }
+
+        if (definition.Kind == SignalKind.Distance)
+        {
+            return value < 0 ? Reject(SignalDetail.SignViolation) : Accept(new DistanceValue(value));
         }
 
         switch (definition.Sign)
@@ -259,6 +282,7 @@ public static class SignalNormalizer
         EnergyValue e => e.Energy.Value,
         PriceValue p => p.PerKwh,
         EnergyForecastValue f => f.Energy.Value,
+        DistanceValue d => d.Kilometers,
         PercentageValue p => p.Percentage.Value,
         _ => null,
     };

@@ -120,6 +120,7 @@ public sealed class SignalStore
                     {
                         Series = kept.Definition.Series == definition.Series ? raw.Series : null,
                         AttributeText = kept.Definition.Attribute == definition.Attribute ? raw.AttributeText : null,
+                        Calendar = kept.Definition.Kind == SignalKind.CalendarEvent && definition.Kind == SignalKind.CalendarEvent ? raw.Calendar : null,
                     }));
                 }
             }
@@ -143,14 +144,14 @@ public sealed class SignalStore
         _signals = runtimes.ToImmutable();
         _byEntity = _signals.GroupBy(s => s.Definition.Entity).ToDictionary(g => g.Key, g => g.ToList());
         _byName = _signals.ToDictionary(s => s.Definition.Name);
-        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit) { Series = s.Definition.Series, Attribute = s.Definition.Attribute }).OrderBy(t => t.Entity)]);
+        SetTracked([.. _signals.Select(s => new TrackedEntity(s.Definition.Entity, s.Definition.Unit) { Series = s.Definition.Series, Attribute = s.Definition.Attribute, Calendar = s.Definition.Kind == SignalKind.CalendarEvent }).OrderBy(t => t.Entity)]);
 
         // After the new set is in place, so the balance check and direction see the new definitions.
         // The report time stays the one Home Assistant gave: re-reading never makes a sample younger,
         // and the options it reported stay known (a select may not report again for hours).
         foreach (var (runtime, raw) in reread)
         {
-            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options, Series = raw.Series, Attributes = Attributes(runtime.Definition, raw.AttributeText) }, BatchOrigin.Probe, now);
+            ApplyUpdate(runtime, new EntityUpdate(runtime.Definition.Entity, raw.State, raw.Unit, raw.LastUpdated, raw.Reported) { Options = raw.Options, Series = raw.Series, Attributes = Attributes(runtime.Definition, raw.AttributeText), Calendar = raw.Calendar }, BatchOrigin.Probe, now);
             runtime.Raw = runtime.Raw! with { HaReported = raw.HaReported };
         }
     }
@@ -622,15 +623,21 @@ public sealed class SignalStore
             return;
         }
 
+        // The same for a calendar event: only a push carries the attributes.
+        if (signal.Definition.Kind == SignalKind.CalendarEvent && update.Calendar is null)
+        {
+            return;
+        }
+
         string? attributeText = null;
         if (signal.Definition.Attribute is { } attribute && (attributeText = update.Attributes?.GetValueOrDefault(attribute)) is null)
         {
             return;
         }
 
-        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit, update.Series, attributeText);
+        var normalized = SignalNormalizer.Normalize(signal.Definition, update.State, update.Unit, update.Series, attributeText, update.Calendar);
         signal.Presence = Presence.Present;
-        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options, Series = update.Series, AttributeText = attributeText };
+        signal.Raw = new RawSample(update.State, update.Unit, update.LastUpdated, reported, update.Reported) { Options = update.Options, Series = update.Series, AttributeText = attributeText, Calendar = update.Calendar };
         if (normalized.Outcome == NormalizationOutcome.Unavailable)
         {
             signal.RawStatus = RawStatus.Unavailable;
@@ -1167,8 +1174,8 @@ public sealed class SignalStore
         // Aged from the last accepted report: a signal whose every new sample is rejected goes
         // stale like a frozen one instead of showing an old value forever. A device state declared
         // on_change has no age limit: it reports only when it changes, so its freshness is its
-        // availability (Unavailable, Missing and a disconnected source are all handled above or by
-        // the device-state interpreter).
+        // availability (Unavailable and Missing are handled above). A disconnected source is NOT handled here: Classify does not look at it. The device-state
+        // interpreter and the EV module's own inputs view each treat a disconnected source as "nothing known", so an on_change state never stays Fresh forever.
         if (signal.Definition.Freshness == StateFreshness.Age && now - accepted.Effective >= signal.Definition.MaxAge)
         {
             return (SignalState.Stale, SignalDetail.MaxAgeExceeded);

@@ -5,8 +5,10 @@ import type { OverrideMode, Verdict } from './api/decisions';
 import type { DeviceConfig } from './api/devices';
 import type { DispatchDevice, DispatchStatus, HistoryEntry, OverrideRefusal } from './api/dispatch';
 import type { Economics, EconomicsDevice } from './api/economics';
+import type { Ev } from './api/ev';
 import type { Power } from './api/power';
 import { economicsDevice, priceText, SourcesText } from './Economics';
+import { EvDeviceLines, isEvDevice } from './EvView';
 import { GoalRow } from './GoalView';
 import { formatAmps, formatCountdown, formatKw, formatNumber, roundTo } from './format';
 import { fill, messages, type Lang, type Messages } from './i18n';
@@ -16,6 +18,7 @@ import { useDevices } from './useDevices';
 import { useEconomics } from './useEconomics';
 import { useDispatch, type DispatchView } from './useDispatch';
 import type { PollView } from './usePoll';
+import { useEv } from './useEv';
 import { usePlan, type PlanControl } from './usePlan';
 import { usePower } from './usePower';
 import './DeviceCard.css';
@@ -292,7 +295,7 @@ function AllowedNow({ eco, economics, state, t }: { eco: EconomicsDevice; econom
   );
 }
 
-function Economics({ device, economics, state, plan, t, lang }: { device: DeviceConfig; economics: Economics | null; state: DispatchDevice | null; plan: PlanControl } & Props) {
+function Economics({ device, economics, state, plan, ev, t, lang }: { device: DeviceConfig; economics: Economics | null; state: DispatchDevice | null; plan: PlanControl; ev: Ev | null } & Props) {
   const eco = economicsDevice(economics, device.id);
   // Without an economics: section nothing prices a kWh: the 0.9 words stay, and say so.
   const configured = economics !== null && economics.configured && economics.currency !== null && eco !== null;
@@ -313,6 +316,11 @@ function Economics({ device, economics, state, plan, t, lang }: { device: Device
         <Field name={t['device.goal']}>
           <GoalRow device={device.id} control={plan} t={t} lang={lang} />
         </Field>
+        {isEvDevice(ev, device.id) && (
+          <Field name={t['ev.device.field']}>
+            <EvDeviceLines ev={ev} device={device.id} t={t} lang={lang} />
+          </Field>
+        )}
         <Field name={t['device.sources']}>
           {configured ? (
             <SourcesNow eco={eco} t={t} />
@@ -612,12 +620,14 @@ function DeviceDetail({ device, ...props }: { device: DeviceConfig } & Props) {
   const power = usePower();
   const economics = useEconomics();
   const plan = usePlan();
+  const evView = useEv().view;
+  const ev = evView.kind === 'live' ? evView.data : null;
   const state = dispatch.view.kind === 'live' ? (dispatch.view.dispatch.devices.find((d) => d.id === device.id) ?? null) : null;
   return (
     <>
       <div class="dc-grid">
         <Connection device={device} {...props} />
-        <Economics device={device} economics={economics.kind === 'live' ? economics.data : null} state={state} plan={plan} {...props} />
+        <Economics device={device} economics={economics.kind === 'live' ? economics.data : null} state={state} plan={plan} ev={ev} {...props} />
       </div>
       <StateCard device={device} view={dispatch.view} state={state} power={power} setOverride={dispatch.setOverride} {...props} />
       <HistoryCard device={device} view={dispatch.view} state={state} {...props} />

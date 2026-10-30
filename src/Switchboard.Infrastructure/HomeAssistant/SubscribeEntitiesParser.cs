@@ -25,12 +25,15 @@ public sealed class SubscribeEntitiesParser
     private readonly IReadOnlyDictionary<EntityId, ImmutableArray<string>> _attributes;
     private readonly Dictionary<EntityId, CachedState> _states = [];
     private readonly TimeZoneInfo? _localZone;
+    private readonly IReadOnlySet<EntityId> _calendars;
     private bool _initialSeen;
 
     /// <param name="localZone">The zone a series time without a UTC offset is local in (the add-on's, as the slot grid); null refuses such a time.</param>
-    public SubscribeEntitiesParser(IEnumerable<EntityId> requested, IReadOnlyDictionary<EntityId, SeriesSpec>? series = null, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? attributes = null, TimeZoneInfo? localZone = null)
+    /// <param name="calendars">The entities whose five calendar attributes are kept (calendar signals); empty keeps none.</param>
+    public SubscribeEntitiesParser(IEnumerable<EntityId> requested, IReadOnlyDictionary<EntityId, SeriesSpec>? series = null, IReadOnlyDictionary<EntityId, ImmutableArray<string>>? attributes = null, TimeZoneInfo? localZone = null, IReadOnlySet<EntityId>? calendars = null)
     {
         _localZone = localZone;
+        _calendars = calendars ?? new HashSet<EntityId>();
         _requested = [.. requested];
         _series = series ?? new Dictionary<EntityId, SeriesSpec>();
         _attributes = attributes ?? new Dictionary<EntityId, ImmutableArray<string>>();
@@ -67,9 +70,9 @@ public sealed class SubscribeEntitiesParser
                 {
                     if (Track(entity.Name) is { } id)
                     {
-                        var state = Full(entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id));
+                        var state = Full(entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id), _calendars.Contains(id));
                         working[id] = state;
-                        updates.Add(state.ToUpdate(id));
+                        updates.Add(state.ToUpdate(id, _localZone));
                     }
                 }
             }
@@ -80,9 +83,9 @@ public sealed class SubscribeEntitiesParser
                 {
                     if (Track(entity.Name) is { } id && working.TryGetValue(id, out var cached))
                     {
-                        var state = Diff(cached, entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id));
+                        var state = Diff(cached, entity.Value, _series.GetValueOrDefault(id), _attributes.GetValueOrDefault(id), _calendars.Contains(id));
                         working[id] = state;
-                        updates.Add(state.ToUpdate(id));
+                        updates.Add(state.ToUpdate(id, _localZone));
                     }
                 }
             }
@@ -134,7 +137,7 @@ public sealed class SubscribeEntitiesParser
             ? element.EnumerateObject()
             : throw new FormatException($"'{key}' is not an object");
 
-    private CachedState Full(JsonElement state, SeriesSpec? series, ImmutableArray<string> attributes)
+    private CachedState Full(JsonElement state, SeriesSpec? series, ImmutableArray<string> attributes, bool calendar)
     {
         if (state.ValueKind != JsonValueKind.Object)
         {
@@ -152,10 +155,11 @@ public sealed class SubscribeEntitiesParser
             Options = Options(state, null),
             Series = series is null ? null : Series(state, series, ParsedSeries.Of(SeriesProblem.Missing)),
             Attributes = attributes.IsDefaultOrEmpty ? null : AttributeTexts(state, attributes, null),
+            Calendar = !calendar ? null : state.TryGetProperty("a", out var calendarAttributes) ? CalendarFields.Empty.Apply(calendarAttributes) : CalendarFields.Empty,
         };
     }
 
-    private CachedState Diff(CachedState cached, JsonElement diff, SeriesSpec? series, ImmutableArray<string> attributes)
+    private CachedState Diff(CachedState cached, JsonElement diff, SeriesSpec? series, ImmutableArray<string> attributes, bool calendar)
     {
         if (diff.ValueKind != JsonValueKind.Object)
         {
@@ -179,6 +183,11 @@ public sealed class SubscribeEntitiesParser
             if (!attributes.IsDefaultOrEmpty)
             {
                 next = next with { Attributes = AttributeTexts(plus, attributes, next.Attributes) };
+            }
+
+            if (calendar && plus.TryGetProperty("a", out var calendarAttributes))
+            {
+                next = next with { Calendar = (next.Calendar ?? CalendarFields.Empty).Apply(calendarAttributes) };
             }
 
             // A new last_changed means a new state, and HA updates last_updated with it.
@@ -212,6 +221,11 @@ public sealed class SubscribeEntitiesParser
             if (series is not null && removed.Contains(series.Attribute))
             {
                 next = next with { Series = ParsedSeries.Of(SeriesProblem.Missing) };
+            }
+
+            if (calendar)
+            {
+                next = next with { Calendar = (next.Calendar ?? CalendarFields.Empty).Remove(removed) };
             }
 
             if (!attributes.IsDefaultOrEmpty)
@@ -326,11 +340,13 @@ public sealed class SubscribeEntitiesParser
 
         public ImmutableDictionary<string, string>? Attributes { get; init; }
 
+        internal CalendarFields? Calendar { get; init; }
+
         /// <summary>last_reported where present, else the newer of last_updated and last_changed, as HA defines it.</summary>
-        public EntityUpdate ToUpdate(EntityId id)
+        public EntityUpdate ToUpdate(EntityId id, TimeZoneInfo? localZone)
         {
             var updated = LastUpdated > LastChanged ? LastUpdated : LastChanged;
-            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated) { Options = Options, Series = Series, Attributes = Attributes };
+            return new EntityUpdate(id, State, Unit, updated, LastReported is { } reported && reported > updated ? reported : updated) { Options = Options, Series = Series, Attributes = Attributes, Calendar = Calendar?.Parse(localZone) };
         }
     }
 }

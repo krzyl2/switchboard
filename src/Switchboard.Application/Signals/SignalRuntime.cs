@@ -36,6 +36,9 @@ internal sealed record RawSample(string State, string? Unit, DateTimeOffset Last
 
     /// <summary>The attribute text of a timestamp signal as the transport read it; a re-read after a reload needs it.</summary>
     public string? AttributeText { get; init; }
+
+    /// <summary>The calendar attributes of a calendar signal as the transport parsed them; a re-read after a reload needs it.</summary>
+    public ParsedCalendar? Calendar { get; init; }
 }
 
 /// <summary>

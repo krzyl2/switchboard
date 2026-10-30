@@ -21,6 +21,9 @@ public interface IEntitySubscriptionSink
     /// <summary>The attributes whose text is kept per entity (sorted), for the entities that have a timestamp signal read from an attribute (a sun time); empty for a sink that tracks none.</summary>
     IReadOnlyDictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>> TimestampAttributes => System.Collections.Immutable.ImmutableDictionary<EntityId, System.Collections.Immutable.ImmutableArray<string>>.Empty;
 
+    /// <summary>The entities that have a calendar signal: the transport keeps the five calendar attributes of each (EV-02); empty for a sink that tracks none.</summary>
+    IReadOnlySet<EntityId> CalendarEntities => new HashSet<EntityId>();
+
     event EventHandler? TrackedChanged;
 
     /// <summary>Authenticated; the subscription (if any) is about to be requested.</summary>

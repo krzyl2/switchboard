@@ -16,6 +16,8 @@ namespace Switchboard.Domain.Goals;
 /// <param name="Margin">Finish this long before the deadline.</param>
 /// <param name="Since">When the goal began, from the ledger; null for a SoC goal, whose progress is the SoC signal and which has no ledger.</param>
 /// <param name="Revision">The goal's fingerprint, see <see cref="GoalSpec.Revision"/>.</param>
+/// <param name="Spread">The plan finishes this goal as late as its window allows and spreads the energy evenly over the window (the lowest power that holds it) instead of running at the device's ceiling; only a module goal asks for it.</param>
+/// <param name="QuietShortfall">Energy this goal leaves unplaced does not raise the plan's <c>goal_shortfall</c> note (a PV-only cap that a cloudy evening cannot fill).</param>
 public sealed record GoalRequest(
     DeviceName Device,
     GoalKind Kind,
@@ -32,7 +34,9 @@ public sealed record GoalRequest(
     GoalOnMet OnMet,
     DateTimeOffset? Since,
     GoalOrigin Origin,
-    long Revision)
+    long Revision,
+    bool Spread = false,
+    bool QuietShortfall = false)
 {
     /// <summary>The instant the plan aims to be finished: the deadline less the margin; null without a deadline.</summary>
     public DateTimeOffset? UsableDeadline => Deadline - Margin;

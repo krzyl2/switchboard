@@ -233,6 +233,58 @@ planner:
     # loss_fraction of a goal that declares none: energy drawn = needed x (1 + loss_fraction).
     default_loss_fraction: 0
 
+ev:
+  # Parameters of the EV module (docs/EV.md, docs/12-EV-MODULE.md). Bound and checked, read by nothing before the module exists. Every one is a
+  # starting value with no origin unless it says so; review after the shadow week. SoC values are percent of capacity.
+  # SoC held from the cheapest zone when no trip is planned.
+  floor: 25
+  # SoC that must remain after a trip.
+  floor_after: 25
+  # Percentage points on top of trip SoC and floor_after (target = trip SoC + floor_after + reserve).
+  reserve: 15
+  # Ceiling of surplus-only charging.
+  cap: 90
+  weekly_full:
+    # Local weekdays on which one full charge a week is allowed (the maintainer's weekend).
+    days: [saturday, sunday]
+    target: 100
+  # The car is ready this long before a trip starts.
+  ready_margin: 30m
+  # Charging losses: energy drawn = energy stored x (1 + loss).
+  loss: 0.10
+  # kWh per km while nothing is learned: the maintainer's full charge, 18 kWh, is about 90 km.
+  kwh_per_km: 0.20
+  learn:
+    # Weight of a new sample in the smoothed kWh/km.
+    smoothing: 0.2
+    # A SoC and range pair below this SoC is not used (the buffer at the bottom is not representative).
+    min_soc: 20
+    # Plausibility bounds of one sample (kWh per km).
+    min_kwh_per_km: 0.12
+    max_kwh_per_km: 0.60
+    # Samples kept in the state file (at most 200, what ev.json holds).
+    max_samples: 50
+    # A SoC and a range count as one report when their report times differ by at most this. Starting value with no origin: Home Assistant stamps
+    # the two entities of one car update a moment apart; review after the shadow week.
+    pair_tolerance: 60s
+  # A trip longer than this is a typo and is ignored (km).
+  max_trip_km: 500
+  # Beyond this the SoC estimate is not trusted and the goals are inactive.
+  soc_max_age: 6h
+  # Energy that may flow into the car unseen by the SoC (air conditioning) before the estimate is dropped.
+  drift_limit_kwh: 1.5
+  # A frozen trip target is recomputed only when it moves by more than this many percentage points.
+  target_change_threshold: 3
+  charge_now:
+    # SoC "charge now" runs to when the request names none.
+    target: 90
+    # A "charge now" that has not reached its target ends after this long.
+    duration: 12h
+  # Spread a charge evenly over a long window instead of running at the ceiling.
+  spread: true
+  # The module's offer is computed beside the control loop; one older than this is dropped. Starting value with no origin (a few dispatch cycles).
+  snapshot_max_age: 2m
+
 decision_log:
   # Daily decision files (/data/decisions/YYYY-MM-DD.jsonl, UTC days) are kept this many days.
   retention_days: 30

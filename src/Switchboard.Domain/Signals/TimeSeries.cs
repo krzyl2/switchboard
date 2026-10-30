@@ -65,6 +65,28 @@ public static class IsoInstant
     public static bool TryParse(string? text, TimeZoneInfo? localZone, out DateTimeOffset instant)
     {
         instant = default;
+        try
+        {
+            // A time at the edge of the representable range is refused whole: no zone arithmetic or later subtraction (a margin before a start) may overflow.
+            return Resolve(text, localZone, out instant) && instant.UtcDateTime > DateTime.MinValue + Edge && instant.UtcDateTime < DateTime.MaxValue - Edge || Refuse(out instant);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return Refuse(out instant);
+        }
+    }
+
+    private static readonly TimeSpan Edge = TimeSpan.FromDays(366);
+
+    private static bool Refuse(out DateTimeOffset instant)
+    {
+        instant = default;
+        return false;
+    }
+
+    private static bool Resolve(string? text, TimeZoneInfo? localZone, out DateTimeOffset instant)
+    {
+        instant = default;
         if (string.IsNullOrEmpty(text) || text.Length > 40)
         {
             return false;

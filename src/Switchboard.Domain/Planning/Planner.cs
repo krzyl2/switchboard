@@ -51,7 +51,8 @@ public static class Planner
     public static string GoalId(GoalRequest request) =>
         request.Device.Value + "@" + (request.Deadline is { } deadline ? deadline.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture) : "horizon");
 
-    private readonly record struct Alloc(int Slot, bool Pv, string? Zone, double Kwh, double Cost, bool Urgent);
+    /// <param name="CapW">The ceiling the entry carries for this energy when a goal spread it over its window (<see cref="GoalRequest.Spread"/>); null: the device's ceiling.</param>
+    private readonly record struct Alloc(int Slot, bool Pv, string? Zone, double Kwh, double Cost, bool Urgent, double? CapW = null);
 
     private readonly record struct Cell(int Slot, bool Pv, string? Zone, double Cost, double AvailHours);
 
@@ -219,7 +220,11 @@ public static class Planner
             {
                 // Grid-only delivery at full power: the last start that still makes the deadline (15-PLANNER step 6).
                 w.LatestGridStart = ceilingW > 0 ? w.Cutoff - TimeSpan.FromHours(w.Need / (ceilingW / 1000)) : null;
-                w.UrgentLatest = ceilingW <= 0 || now >= w.LatestGridStart - _in.Parameters.HardGoal.EscalationMargin;
+                // A spread goal runs below the ceiling on purpose, so the escalation margin would turn it urgent in the last hours of its window (it trades a buffer
+                // it holds in the ceiling's headroom for an early finish). It goes urgent when delivery at the ceiling only just fits: spread power rises as the goal
+                // falls behind (every replan), so that moment is reached only when it is truly late. The cutoff already excludes the goal's own ready margin.
+                var margin = request.Spread ? TimeSpan.Zero : _in.Parameters.HardGoal.EscalationMargin;
+                w.UrgentLatest = ceilingW <= 0 || now >= w.LatestGridStart - margin;
             }
 
             return w;
@@ -326,7 +331,10 @@ public static class Planner
                 return;
             }
 
-            var regular = Cells(w, anyZone: false, valueTest: !w.Hard).OrderBy(c => Key(c.Cost)).ThenBy(c => c.Slot).ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
+            // A spread goal finishes as late as its window allows (the equal-cost tie goes to the later slot); every other goal keeps the earliest.
+            var regularCells = Cells(w, anyZone: false, valueTest: !w.Hard);
+            var regular = (w.Request.Spread ? regularCells.OrderBy(c => Key(c.Cost)).ThenByDescending(c => c.Slot) : regularCells.OrderBy(c => Key(c.Cost)).ThenBy(c => c.Slot))
+                .ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
             Fill(_state, w, regular, w.Need, w.Allocs, urgent: false);
             if (w.Hard && w.Escalate && !w.BeyondHorizon && w.Shortfall > Tolerance)
             {
@@ -334,6 +342,131 @@ public static class Planner
                 var before = w.Placed;
                 Fill(_state, w, extended, w.Shortfall, w.Allocs, urgent: true);
                 w.Escalated = w.Placed > before + Tolerance;
+            }
+
+            if (w.Request.Spread && !w.Escalated && w.Shortfall <= Tolerance)
+            {
+                SpreadPass(w);
+            }
+        }
+
+        /// <summary>
+        /// Spreads a goal's grid energy evenly over the contiguous window of equal-cost slots it ends in, instead of at the device's ceiling (a long night at 14 A, not
+        /// a short burst at 20 A): the lowest power that still holds the energy, raised to the device's next current step, never below its minimum and never above its
+        /// ceiling. The energy and its cost do not change, only where in the window it sits (the latest slots first); what cannot be spread is left as it was.
+        /// An urgent, infeasible or missed goal never comes here: it runs at the ceiling from now.
+        /// </summary>
+        private void SpreadPass(Work w)
+        {
+            var device = w.Device;
+            var ceilingW = CeilingW(device, _in.CapacityW);
+            if (device.Kind != PlanDeviceKind.Modulating || ceilingW <= 0 || CannotRun(device) || w.Critical)
+            {
+                return;
+            }
+
+            var grid = w.Allocs.Where(a => !a.Pv && !a.Urgent && a.CapW is null).ToList();
+            if (grid.Count == 0)
+            {
+                return;
+            }
+
+            // The dearest level the goal had to use is the one that was not exhausted; the cheaper ones are full and stay as they are.
+            var level = grid.Max(a => Key(a.Cost));
+            var cells = new Dictionary<int, Cell>();
+            foreach (var cell in Cells(w, anyZone: false, valueTest: !w.Hard))
+            {
+                if (!cell.Pv && Key(cell.Cost) == level)
+                {
+                    cells.TryAdd(cell.Slot, cell);
+                }
+            }
+
+            var last = grid.Where(a => Key(a.Cost) == level).Max(a => a.Slot);
+            var window = new List<int>();
+            for (var t = last; cells.ContainsKey(t); t--)
+            {
+                window.Add(t);
+            }
+
+            // A window of one slot (the last hour of a night charge, or a short deadline) is not spread: with the SoC arriving in whole percent steps the lowest power
+            // of a single slot would be recomputed to a new step at every replan, and a constant ceiling there only finishes the last slot early, never late.
+            if (window.Count < 2)
+            {
+                return;
+            }
+
+            var mine = grid.Where(a => Key(a.Cost) == level && window.Contains(a.Slot)).ToList();
+            var energy = mine.Sum(a => a.Kwh);
+            ReleaseAllocs(w, mine);
+            var minePool = mine.ToHashSet();
+            w.Allocs = [.. w.Allocs.Where(a => !minePool.Contains(a))];
+
+            var capacity = window.ToDictionary(t => t, t => Capacity(_state, w, cells[t]));
+            double Held(double powerW) => window.Sum(t => Math.Min(powerW / 1000 * cells[t].AvailHours, capacity[t]));
+
+            if (Held(ceilingW) < energy - Tolerance)
+            {
+                Recommit(w, mine);
+                return;
+            }
+
+            double low = Math.Min(device.MinW, ceilingW), high = ceilingW;
+            for (var i = 0; i < 60 && high - low > 1e-9; i++)
+            {
+                var mid = (low + high) / 2;
+                if (Held(mid) >= energy - Tolerance)
+                {
+                    high = mid;
+                }
+                else
+                {
+                    low = mid;
+                }
+            }
+
+            var power = Math.Max(high, device.MinW);
+            if (device.StepW is { } step && step > 0)
+            {
+                power = device.MinW + (Math.Ceiling(((power - device.MinW) / step) - 1e-6) * step);
+            }
+
+            power = Math.Min(power, ceilingW);
+            var minFill = device.MinW * device.MinRun.TotalHours / 1000;
+            var placed = new List<Alloc>();
+            var remaining = energy;
+            foreach (var t in window)
+            {
+                if (remaining <= Tolerance)
+                {
+                    break;
+                }
+
+                var take = Math.Min(remaining, Math.Min(power / 1000 * cells[t].AvailHours, capacity[t]));
+                if (take <= Tolerance || (take < minFill - Tolerance && take < remaining - Tolerance))
+                {
+                    continue;
+                }
+
+                Commit(_state, w, cells[t], take, placed, urgent: false, power);
+                remaining -= take;
+            }
+
+            if (remaining > Tolerance)
+            {
+                ReleaseAllocs(w, placed);
+                Recommit(w, mine);
+                return;
+            }
+
+            w.Allocs.AddRange(placed);
+        }
+
+        private void Recommit(Work w, List<Alloc> allocs)
+        {
+            foreach (var a in allocs)
+            {
+                Commit(_state, w, new Cell(a.Slot, a.Pv, a.Zone, a.Cost, 0), a.Kwh, w.Allocs, a.Urgent, a.CapW);
             }
         }
 
@@ -431,7 +564,7 @@ public static class Planner
             }
         }
 
-        private static void Commit(State state, Work w, Cell cell, double kwh, List<Alloc> into, bool urgent)
+        private static void Commit(State state, Work w, Cell cell, double kwh, List<Alloc> into, bool urgent, double? capW = null)
         {
             var t = cell.Slot;
             state.Dev[w.Device.Id][t] -= kwh;
@@ -448,20 +581,28 @@ public static class Planner
                 state.Pv[t] -= kwh;
             }
 
-            var index = into.FindIndex(a => a.Slot == t && a.Pv == cell.Pv && a.Zone == cell.Zone && a.Urgent == urgent);
+            var index = into.FindIndex(a => a.Slot == t && a.Pv == cell.Pv && a.Zone == cell.Zone && a.Urgent == urgent && a.CapW == capW);
             if (index >= 0)
             {
                 into[index] = into[index] with { Kwh = into[index].Kwh + kwh };
             }
             else
             {
-                into.Add(new Alloc(t, cell.Pv, cell.Zone, kwh, cell.Cost, urgent));
+                into.Add(new Alloc(t, cell.Pv, cell.Zone, kwh, cell.Cost, urgent, capW));
             }
         }
 
         private void Release(Work w)
         {
-            foreach (var a in w.Allocs)
+            ReleaseAllocs(w, w.Allocs);
+            w.Allocs = [];
+            w.Escalated = false;
+        }
+
+        /// <summary>Gives back the capacity of <paramref name="allocs"/> (all of the goal's or some of them); the goal's own list is the caller's.</summary>
+        private void ReleaseAllocs(Work w, IEnumerable<Alloc> allocs)
+        {
+            foreach (var a in allocs)
             {
                 _state.Dev[w.Device.Id][a.Slot] += a.Kwh;
                 foreach (var key in w.Device.Keys)
@@ -477,9 +618,6 @@ public static class Planner
                     _state.Pv[a.Slot] += a.Kwh;
                 }
             }
-
-            w.Allocs = [];
-            w.Escalated = false;
         }
 
         // Refinement ----------------------------------------------------------------------------------------------------------------------
@@ -680,7 +818,8 @@ public static class Planner
             {
                 var last = w.Allocs.Max(a => a.Slot);
                 var kwhThere = w.Allocs.Where(a => a.Slot == last).Sum(a => a.Kwh);
-                var ceiling = CeilingW(device, _in.CapacityW) / 1000;
+                var atLast = w.Allocs.Where(a => a.Slot == last).ToList();
+                var ceiling = (atLast.All(a => a.CapW is not null) ? Math.Min(CeilingW(device, _in.CapacityW), atLast.Max(a => a.CapW!.Value)) : CeilingW(device, _in.CapacityW)) / 1000;
                 var end = ceiling > 0 ? _slots[last].Slot.Start + TimeSpan.FromHours(kwhThere / ceiling) : _slots[last].Slot.End;
                 completion = end < _slots[last].Slot.End ? end : _slots[last].Slot.End;
             }
@@ -707,6 +846,7 @@ public static class Planner
             var planned = device.CanStart && device.Kind != PlanDeviceKind.Storage ? mine.Where(w => w.Planned).ToList() : [];
             var ceilingW = CeilingW(device, _in.CapacityW);
             var stopMet = mine.Where(w => w.Request.OnMet == GoalOnMet.Stop && (w.Met || (w.Planned && w.Shortfall <= Tolerance))).ToList();
+            var holding = planned.Where(w => w.Request.OnMet == GoalOnMet.Stop && w.Request.QuietShortfall && w.Shortfall > Tolerance).ToList();
             var lastAlloc = planned.SelectMany(w => w.Allocs).Select(a => (int?)a.Slot).DefaultIfEmpty(null).Max();
             for (var t = 0; t < _n; t++)
             {
@@ -722,7 +862,7 @@ public static class Planner
                     var grid = inSlot.Where(x => !x.Alloc.Pv).OrderByDescending(x => Key(x.Alloc.Cost)).ThenBy(x => x.Alloc.Zone, StringComparer.Ordinal).Select(x => x.Alloc).ToList();
                     var entryClass = grid.Count > 0 ? PlanClasses.Zone(grid[0].Zone) : PlanClasses.Pv;
                     var goal = inSlot.GroupBy(x => x.Work).OrderByDescending(g => g.Sum(x => x.Alloc.Kwh)).ThenBy(g => g.Key.Request.Revision).First().Key;
-                    entries.Add(new PlanEntry(slot.Start, slot.End, urgent ? PlanWant.Urgent : PlanWant.Run, entryClass, energy, ceilingW, Ref(goal, device)));
+                    entries.Add(new PlanEntry(slot.Start, slot.End, urgent ? PlanWant.Urgent : PlanWant.Run, entryClass, energy, inSlot.All(x => x.Alloc.CapW is not null) ? Math.Min(ceilingW, inSlot.Max(x => x.Alloc.CapW!.Value)) : ceilingW, Ref(goal, device)));
                     continue;
                 }
 
@@ -738,6 +878,14 @@ public static class Planner
                     continue;
                 }
 
+                // A stop goal that is quiet about its shortfall (a PV-only cap) and is not yet met holds the device until its deadline: the slots with no surplus
+                // in the forecast must not fall back to the v2 opportunist, which would charge it from the grid up to full.
+                if (holding.FirstOrDefault(w => slot.Start < (w.Request.Deadline ?? _in.Inputs.Grid.To)) is { } hold)
+                {
+                    entries.Add(new PlanEntry(slot.Start, slot.End, PlanWant.Defer, null, 0, 0, Ref(hold, device)));
+                    continue;
+                }
+
                 entries.Add(new PlanEntry(slot.Start, slot.End, PlanWant.None, null, 0, 0, null));
             }
 
@@ -749,7 +897,7 @@ public static class Planner
         private ImmutableArray<PlanNote> Notes(List<Work> works)
         {
             var notes = new HashSet<PlanNote>(_in.Inputs.Notes);
-            if (works.Any(w => w.Planned && w.Shortfall > Tolerance && !w.BeyondHorizon))
+            if (works.Any(w => w.Planned && w.Shortfall > Tolerance && !w.BeyondHorizon && !w.Request.QuietShortfall))
             {
                 notes.Add(PlanNote.GoalShortfall);
             }

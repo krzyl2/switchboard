@@ -1,0 +1,30 @@
+# The ev: section for the maintainer's installation (BYD Seal 5 DM-i, go-e charger, Google calendar "Kursy"), entities found read-only on
+# the live HA on 2026-10-30. Nothing here is applied to the live switchboard.yaml: append it by hand, with control off, after the
+# maintainer's decision. See ev.yaml for every key and the control.ev parameters.
+#
+# Prerequisites on the device itself (the live ev_charger already has start: headroom and sources: pv_and_zone:offpeak; check after any wizard save):
+#   start: headroom
+#   sources: pv_and_zone:offpeak
+# and a planner: section (the zone in sources: must exist in economics.tariff). Without planner.dispatch: narrow or full the module only
+# shows a preview (ev_without_planner_dispatch). The example switchboard.yaml has ev_charger with start: restore_only and no sources:, which
+# gives the warnings ev_device_cannot_start and ev_device_without_sources; the live file does not.
+# Validated with the real parser (Valid, no warnings with the three prerequisites above).
+# Note control.ev.soc_max_age (default 6h) judges the SoC estimate; the car may report only every ~5 h, so review it after the shadow week.
+ev:
+  device: ev_charger
+  capacity_kwh: 18
+  soc:
+    entity: sensor.byd_seal_5_dm_i_poziom_baterii
+    max_age: 12h                 # the car reports every few hours while it sleeps (live: up to about 5 h); SoC and range arrive in the same refresh
+  range:
+    entity: sensor.byd_seal_5_dm_i_zasieg_ev      # the ELECTRIC range (the plain ..._zasieg is the total range with fuel: do not use it)
+    unit: km
+    max_age: 12h
+  plugged:
+    entity: sensor.goe_422752_car_value           # go-e car state; the car's own binary_sensor.byd_seal_5_dm_i_wtyczka is the alternative (states: ["on"])
+    states: [Charging, "Wait for car", Complete]  # only "Complete" is confirmed on the live HA; verify "Charging" and "Wait for car" while the car charges (Idle = nothing plugged)
+    state_reports: on_change
+  calendar:
+    entity: calendar.kursy       # a trip: description contains "km: 18"; Google refreshes in HA about every 10-15 minutes
+    max_age: 24h
+  # cheap_zone: offpeak          # optional; without it the lowest price in economics counts as cheap

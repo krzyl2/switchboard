@@ -12,9 +12,13 @@ namespace Switchboard.Application.Goals;
 public sealed record GoalContext(DateTimeOffset Now, SwitchboardConfiguration Configuration, GoalInputs Inputs, TimeZoneInfo Zone, IGoalProgress Progress);
 
 /// <summary>What a source offers: the goals it can state now, and the goals it has but cannot state (with why).</summary>
-public sealed record GoalOffer(ImmutableArray<GoalRequest> Requests, ImmutableArray<InactiveGoal> Inactive)
+/// <param name="Failed">The source could not compute its offer (it threw, or says its snapshot is gone): the offer is empty because of a failure, not because it has no goals.</param>
+public sealed record GoalOffer(ImmutableArray<GoalRequest> Requests, ImmutableArray<InactiveGoal> Inactive, bool Failed = false)
 {
     public static GoalOffer Empty { get; } = new([], []);
+
+    /// <summary>An empty offer that says the source failed.</summary>
+    public static GoalOffer FailedOffer { get; } = new([], [], true);
 }
 
 /// <summary>
@@ -41,7 +45,7 @@ public sealed class ConfigGoalSource : IGoalSource
         var inactive = ImmutableArray.CreateBuilder<InactiveGoal>();
         var readings = context.Inputs.Samples;
 
-        foreach (var device in context.Configuration.Devices.Where(d => d.Goal is not null).OrderBy(d => d.Id))
+        foreach (var device in context.Configuration.Devices.Where(d => d.Goal is { ModuleOwned: false }).OrderBy(d => d.Id))
         {
             var outcome = Evaluate(device.Goal!, context, readings);
             if (outcome.Request is { } request)

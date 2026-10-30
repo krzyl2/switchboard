@@ -207,6 +207,46 @@ public sealed class PlanViewTests
     }
 
     [Fact]
+    public void A_met_stop_cap_leaves_the_trip_slots_of_the_same_device_to_run_and_only_the_slots_after_it_done()
+    {
+        // Why: a met cap with on_met: stop and an unmet trip on one charger. Dispatch must be handed the trip's run entries (never done) until the trip's energy is
+        // placed, and the cap's done only afterwards, inside the cap's window. A done handed out in a trip slot would stop a charger the trip still needs.
+        var now = Local(2026, 10, 26, 18);
+        var tripDeadline = Local(2026, 10, 27, 7);
+        var capDeadline = Local(2026, 10, 28, 7);
+        var cap = Goal(Car, 0, capDeadline, hard: false, sources: Offpeak, onMet: GoalOnMet.Stop, revision: 1);
+        var trip = Goal(Car, 4, tripDeadline, sources: Offpeak, onMet: GoalOnMet.Opportunistic, revision: 2);
+        var plan = Solve(Input(now, Inputs(now, PvForecast.None, [tripDeadline, capDeadline]), [Charger(Offpeak)], [cap, trip]));
+        var holder = new PlanHolder();
+        holder.Publish(new PlanState(plan, false, null, [], TimeSpan.FromDays(10)));
+        var currency = new StubCurrency { ConfigRevision = plan.ConfigRevision };
+        foreach (var goal in plan.Device(Car)!.Goals)
+        {
+            currency.Specs[Car] = goal.Ref.SpecIdentity;
+            currency.Goals[(Car, goal.Ref.Id, goal.Ref.Revision)] = new PlanGoalState(Offpeak, goal.OnMet == GoalOnMet.Stop);
+        }
+
+        var view = new PlanView(holder, currency, new LogCapture().For<PlanView>());
+
+        var entries = plan.Device(Car)!.Entries;
+        var runs = entries.Where(e => e.Want is PlanWant.Run or PlanWant.Urgent).ToList();
+        Assert.Equal(4, runs.Sum(e => e.EnergyKwh), 9);
+        var lastRun = runs.Max(e => e.End);
+        foreach (var entry in entries.Where(e => e.Start < lastRun))
+        {
+            var seen = view.For(Car, entry.Start);
+            Assert.NotEqual(PlanWant.Done, seen?.Want);
+            if (entry.Want is PlanWant.Run or PlanWant.Urgent)
+            {
+                Assert.Equal(entry.Want, seen!.Want);
+            }
+        }
+
+        var after = entries.First(e => e.Start >= lastRun && e.Start < capDeadline);
+        Assert.Equal(PlanWant.Done, view.For(Car, after.Start)!.Want);
+    }
+
+    [Fact]
     public void The_plan_class_may_open_a_grid_zone_only_when_the_goal_itself_declares_it()
     {
         // Why: class plan skips the price test. It is meant for the zone the user wrote into goal.sources; a goal that declares none, or another zone, leaves the

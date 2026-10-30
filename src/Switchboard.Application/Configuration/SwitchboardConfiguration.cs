@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Ev;
 using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
 
@@ -38,14 +39,14 @@ public sealed record SignalDefinition(
     private readonly StateFreshness _freshness;
 
     /// <summary>
-    /// Age (the default) or on-change. On-change is refused for anything but a device state: a
-    /// measurement or protection input that stops reporting must go stale (SIG-05).
+    /// Age (the default) or on-change. On-change is refused for anything but a device state and the EV plugged state (a discrete state
+    /// that reports only when it changes): a measurement or protection input that stops reporting must go stale (SIG-05).
     /// </summary>
     public StateFreshness Freshness
     {
         get => _freshness;
-        init => _freshness = value == StateFreshness.OnChange && Role != SignalRole.DeviceState
-            ? throw new ArgumentException($"Signal {Name} has role {Role}: only a device state may report on change.", nameof(value))
+        init => _freshness = value == StateFreshness.OnChange && Role is not (SignalRole.DeviceState or SignalRole.EvPlugged)
+            ? throw new ArgumentException($"Signal {Name} has role {Role}: only a device state or the EV plugged state may report on change.", nameof(value))
             : value;
     }
 
@@ -90,6 +91,9 @@ public sealed record SwitchboardConfiguration(
 
     /// <summary>The optional <c>planner:</c> section (PLAN-05); null when the file has none, and then the planner is off and nothing changes.</summary>
     public PlannerDefinition? Planner { get; init; }
+
+    /// <summary>The optional <c>ev:</c> section (EV-01); null when the file has none, or its device has a goal of its own. Read by nothing in this slice: the module comes later.</summary>
+    public EvDefinition? Ev { get; init; }
 
     /// <summary>The phases that have a mapped phase-voltage signal: where a power-only draw can be turned into a current.</summary>
     public ImmutableArray<Phase> VoltagePhases => [.. Signals.Where(s => s.Role == SignalRole.PhaseVoltage && s.Phase is not null).Select(s => s.Phase!.Value).Distinct().Order()];

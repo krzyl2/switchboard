@@ -15,25 +15,35 @@ namespace Switchboard.Application.Goals;
 /// Every goal at one moment: the applied ones with their status (ordered per device by deadline), the ones that cannot be evaluated
 /// with why, and the requests the precedence merge set aside.
 /// </summary>
-public sealed record GoalBoard(DateTimeOffset At, ImmutableArray<Goal> Goals, ImmutableArray<InactiveGoal> Inactive, ImmutableArray<GoalRequest> Superseded)
+/// <param name="Degraded">A source failed (threw or reported <see cref="GoalOffer.Failed"/>): the board is partial, so nothing may be concluded from a goal's absence (the tracker does not let the ledger follow it).</param>
+public sealed record GoalBoard(DateTimeOffset At, ImmutableArray<Goal> Goals, ImmutableArray<InactiveGoal> Inactive, ImmutableArray<GoalRequest> Superseded, bool Degraded = false)
 {
     public static GoalBoard Empty(DateTimeOffset at) => new(at, [], [], []);
 }
 
-/// <summary>What the goals look like now, without side effects (the API reads it; the tracker uses it per step).</summary>
-public sealed class GoalEvaluator(IEnumerable<IGoalSource> sources)
+/// <summary>
+/// What the goals look like now, without side effects (the API reads it; the tracker uses it per step). Each source is isolated: one that throws offers
+/// nothing this time (the others are unaffected) and is logged once per streak, because this runs inside the guard step through the plan view and a
+/// source must never be able to stop it. Cancellation is not a failure and passes through.
+/// </summary>
+public sealed class GoalEvaluator(IEnumerable<IGoalSource> sources, ILogger<GoalEvaluator>? logger = null)
 {
     private readonly IGoalSource[] _sources = [.. sources];
+    private readonly HashSet<IGoalSource> _failing = [];
+    private readonly object _gate = new();
 
     public GoalBoard Evaluate(GoalContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         var requests = new List<GoalRequest>();
         var inactive = new List<InactiveGoal>();
-        foreach (var offer in _sources.Select(s => s.Goals(context)))
+        var degraded = false;
+        foreach (var source in _sources)
         {
+            var offer = Offer(source, context);
             requests.AddRange(offer.Requests);
             inactive.AddRange(offer.Inactive);
+            degraded |= offer.Failed;
         }
 
         var merged = GoalMerge.Merge(requests);
@@ -41,7 +51,44 @@ public sealed class GoalEvaluator(IEnumerable<IGoalSource> sources)
             context.Now,
             [.. merged.Applied.Select(r => Goal.Of(r, context.Now))],
             [.. inactive.OrderBy(i => i.Device).ThenBy(i => i.Input)],
-            merged.Superseded);
+            merged.Superseded,
+            degraded);
+    }
+
+    private GoalOffer Offer(IGoalSource source, GoalContext context)
+    {
+        try
+        {
+            var offer = source.Goals(context);
+            lock (_gate)
+            {
+                if (offer.Failed)
+                {
+                    _failing.Add(source);
+                }
+                else
+                {
+                    _failing.Remove(source);
+                }
+            }
+
+            return offer;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            bool first;
+            lock (_gate)
+            {
+                first = _failing.Add(source);
+            }
+
+            if (first)
+            {
+                logger?.LogError(ex, "The goal source {Source} failed and offers no goals; the other sources and protection are unaffected, this source's goals are missing until it recovers", source.GetType().Name);
+            }
+
+            return GoalOffer.FailedOffer;
+        }
     }
 }
 
@@ -183,6 +230,12 @@ public sealed class GoalTracker
         }
 
         var board = Evaluate(at);
+        if (board.Degraded)
+        {
+            // A failed source leaves the board partial: a goal it would have stated looks absent, and the ledger must not read that as "ended".
+            return;
+        }
+
         // A manual goal keeps its own progress (ManualGoalStore): it must not begin, move or end the file goal's ledger entry.
         foreach (var goal in board.Goals.Where(g => g.Request.Kind == GoalKind.Energy && g.Request.Origin != GoalOrigin.Manual))
         {

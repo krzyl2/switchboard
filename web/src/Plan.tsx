@@ -1,10 +1,12 @@
 import type { Plan, PlanDevice, PlanSlot, PlanStatus } from './api/plan';
 import { formatAge, formatKwh, formatNumber } from './format';
 import { GoalLines } from './GoalView';
+import { EvCard } from './EvView';
 import { fill, messages, type Lang, type Messages } from './i18n';
 import { browserZone, localClock } from './localTime';
 import { costText, dayTime, priceTones, RunText, runsOf, type PriceTone } from './planText';
 import { PollStatus, StateBadge, type Tone } from './ui';
+import { useEv, type EvControl } from './useEv';
 import { usePlan } from './usePlan';
 import './plan.css';
 
@@ -435,12 +437,13 @@ function SlotsTable({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice
   );
 }
 
-function Body({ plan, ...ctx }: { plan: Plan } & Ctx) {
+function Body({ plan, ev, ...ctx }: { plan: Plan; ev: EvControl } & Ctx) {
   const { t, lang, zone } = ctx;
   const planned = plan.devices.filter((d) => d.goals.length > 0);
   return (
     <>
       <Header plan={plan} {...ctx} />
+      <EvCard control={ev} t={t} lang={lang} />
       <Inputs plan={plan} {...ctx} />
       <Notes plan={plan} t={t} />
       {plan.enabled && (
@@ -467,11 +470,12 @@ function Body({ plan, ...ctx }: { plan: Plan } & Ctx) {
 export function PlanPage({ lang }: { lang: Lang }) {
   const t = messages[lang];
   const { view } = usePlan();
+  const ev = useEv();
   const zone = browserZone();
   return (
     <>
       {view.kind === 'live' ? (
-        <Body plan={view.data} t={t} lang={lang} zone={zone} />
+        <Body plan={view.data} ev={ev} t={t} lang={lang} zone={zone} />
       ) : (
         <section class="card" aria-labelledby="plan-title">
           <header class="cardhead">

@@ -1,6 +1,7 @@
 import { control } from './control';
 import { dashboard } from './dashboard';
 import { device } from './device';
+import { ev } from './ev';
 import type { Messages } from './en';
 import { flows } from './flows';
 import { limits } from './limits';
@@ -141,6 +142,9 @@ export const pl: Messages = {
   'signalDetail.series_malformed': 'element szeregu jest błędny; odrzucono cały szereg',
   'signalDetail.series_too_large': 'szereg jest za duży (ponad 512 punktów lub 64 KiB); odrzucony, nie obcięty',
   'signalDetail.not_timestamp': 'wartość nie jest czasem z przesunięciem UTC',
+  'signalDetail.calendar_malformed': 'atrybut kalendarza jest błędny (czas, który nie jest czasem, lub atrybut złego typu); całe wydarzenie jest odrzucone',
+  'signalDetail.calendar_description_too_long': 'opis wydarzenia ma ponad 1024 znaki; całe wydarzenie jest odrzucone, nie obcięte',
+  'signalDetail.source_disconnected': 'brak połączenia z Home Assistant, teraz nic nie wiadomo',
   'role.none': 'bez roli, tylko podgląd',
   'role.phase_current': 'prąd fazy',
   'role.phase_power': 'moc na fazie',
@@ -170,6 +174,10 @@ export const pl: Messages = {
   'role.sun_setting': 'najbliższy zachód słońca',
   'role.price_curve_import': 'krzywa ceny zakupu (prognoza)',
   'role.price_curve_export': 'krzywa ceny sprzedaży (prognoza)',
+  'role.ev_soc': 'poziom naładowania auta (wejście modułu EV)',
+  'role.ev_range': 'zasięg elektryczny auta (wejście modułu EV)',
+  'role.ev_plugged': 'auto podłączone (wejście modułu EV)',
+  'role.ev_calendar': 'kalendarz wyjazdów (wejście modułu EV)',
   'directionSource.signed_signal': 'wartość ze znakiem',
   'directionSource.deadband': 'blisko zera, liczony jako pobór',
   'directionSource.pending': 'czeka na moc z tego samego odczytu, liczony jako pobór',
@@ -231,6 +239,7 @@ export const pl: Messages = {
   'issue.unknown_circuit_group': 'Urządzenie wskazuje grupę obwodu, której nie zadeklarowano w circuit_groups.',
   'issue.duplicate_zone_id': 'Dwie strefy taryfy mają to samo id.',
   'issue.dynamic_price_not_supported': 'Cena dynamiczna nie jest tu dozwolona: fallback i add są stałe (liczba lub strefy).',
+  'issue.unknown_device': 'ev: wskazuje urządzenie, którego nie zadeklarowano w devices.',
   'issue.series_value_required': 'Sygnał szeregu wymaga series.value (power_w lub energy_wh_period) albo jednostki ceny dla krzywej cen.',
   'issue.forecast_signal_unused': 'Zadeklarowano rolę prognozy, czasu słońca lub krzywej cen, ale nic jej nie czyta (sekcja planner: albo curve: w cenie economics); nic jej nie używa.',
   'issue.curve_without_signal': 'curve: bez signal: niczego nie zastępuje; cena zostaje zastępcza.',
@@ -238,6 +247,11 @@ export const pl: Messages = {
   'issue.unit_mismatch': 'Waluta w jednostce sygnału ceny to nie economics.currency; sygnał nie jest używany, obowiązuje cena zastępcza.',
   'issue.price_signal_unused': 'Zadeklarowano rolę ceny, ale żadna cena nie wskazuje tego sygnału (signal: w economics); nic go nie używa.',
   'issue.goal_without_start': 'Urządzenie ma start: restore_only, więc planer nigdy nie włączy go dla tego celu; cel nadal może je wstrzymać.',
+  'issue.ev_device_has_goal': 'Urządzenie EV ma własny cel (goal:). Moduł EV tworzy cel tego urządzenia sam, więc pozostaje wyłączony, dopóki nie usuniesz celu z urządzenia.',
+  'issue.ev_device_cannot_start': 'Urządzenie EV ma start: restore_only, więc planer nigdy nie włączy ładowarki; moduł EV może ją tylko wstrzymać.',
+  'issue.ev_device_without_sources': 'Urządzenie EV nie deklaruje sources:, więc plan EV nie odróżni dla niego energii z PV od sieciowej.',
+  'issue.ev_without_planner_dispatch': 'planner.dispatch jest wyłączone (off) albo nie ma sekcji planner:, więc moduł EV pokazuje tylko podgląd, a ładowarka działa według zasad v2.',
+  'issue.ev_calendar_zone_mismatch': 'Encja kalendarza podaje inną strefę czasową niż dodatek, więc wyjazd zaczynałby się o złej godzinie.',
   'issue.goal_dropped': 'Celu nie da się obliczyć w takiej postaci (wartość poza zakresem) i został pominięty; urządzenie nie ma celu.',
   'issue.zone_gap': 'Część chwil nie należy do żadnej strefy taryfy.',
   'issue.holidays_list_stale': 'Lista świąt nie ma daty z bieżącego roku; odnów ją.',
@@ -545,4 +559,5 @@ export const pl: Messages = {
   ...setupMode.pl,
   ...control.pl,
   ...plan.pl,
+  ...ev.pl,
 };
