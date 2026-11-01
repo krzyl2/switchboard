@@ -86,7 +86,10 @@ public sealed class GuardEngine
         if (_lastNow is { } last && now < last)
         {
             _logger.LogWarning("The clock stepped back by {Step}; overload budgets hold until new samples arrive", last - now);
-            _phases.OnClockStepBack(last, _setup!.Budget.RecoveryTime);
+            if (_setup is { } stepped)
+            {
+                _phases.OnClockStepBack(last, stepped.Budget.RecoveryTime);
+            }
 
             _lastBoundary = null;
         }

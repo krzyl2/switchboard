@@ -177,6 +177,16 @@ public sealed class GuardEngineCharacterizationTests
     }
 
     [Fact]
+    public void A_clock_step_back_before_any_setup_exists_evaluates_without_failing()
+    {
+        var s = new GuardScenario(TestDevices.Document());
+        s.ConfigurationValid(false, SetupAbsence.NotRead);
+        s.Evaluate();
+        s.Time.StepBack(TimeSpan.FromMinutes(1));
+        s.Evaluate();
+    }
+
+    [Fact]
     public void Budget_drains_stops_increases_recovers_and_holds_across_a_clock_step_back()
     {
         var s = new GuardScenario(TestDevices.Document());
