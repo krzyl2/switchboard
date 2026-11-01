@@ -92,7 +92,7 @@ internal static class PlannerFixtures
         GoalOnMet onMet = GoalOnMet.Opportunistic,
         long revision = 1,
         GoalKind kind = GoalKind.Soc) =>
-        new(device, kind, remaining, null, 90, 40, null, deadline, margin ?? TimeSpan.Zero, hard, sources, escalate, onMet, null, GoalOrigin.Config, revision);
+        new(device, kind == GoalKind.Soc ? new SocTarget(90, 40) : new EnergyTarget(90, 0, default), remaining, deadline, margin ?? TimeSpan.Zero, hard, sources, escalate, onMet, GoalOrigin.Config, revision);
 
     /// <summary>The Tuesday forecast of the worked example, kWh per local hour from 08:00 to 16:00 (before the derate).</summary>
     public static PvForecast TuesdayPv(double scale = 1)

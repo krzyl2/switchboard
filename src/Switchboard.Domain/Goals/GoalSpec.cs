@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Switchboard.Domain.Devices;
@@ -6,14 +7,28 @@ using Switchboard.Domain.Signals;
 
 namespace Switchboard.Domain.Goals;
 
-/// <summary>A goal number that is a literal in the file or read from a device-scoped signal; the entity behind a signal is not known here.</summary>
-public sealed record GoalNumber(double? Literal, SignalName? Signal)
+/// <summary>A goal number that is a literal in the file (<see cref="Literal"/>) or read from a device-scoped signal (<see cref="FromSignal"/>); the entity behind a signal is not known here.</summary>
+public abstract record GoalNumber
 {
-    public static GoalNumber Of(double value) => new(value, null);
+    private GoalNumber()
+    {
+    }
 
-    public static GoalNumber From(SignalName signal) => new(null, signal);
+    public static GoalNumber Of(double value) => new Literal(value);
 
-    public bool IsSignal => Signal is not null;
+    public static GoalNumber From(SignalName signal) => new FromSignal(signal);
+
+    /// <summary>The number as the revision fingerprint spells it: the signal's name, or the literal in round-trip form.</summary>
+    internal string Text() => this switch
+    {
+        FromSignal s => s.Signal.Value,
+        Literal l => l.Value.ToString("R", CultureInfo.InvariantCulture),
+        _ => throw new UnreachableException(),
+    };
+
+    public sealed record Literal(double Value) : GoalNumber;
+
+    public sealed record FromSignal(SignalName Signal) : GoalNumber;
 }
 
 /// <summary>
@@ -52,7 +67,7 @@ public sealed record GoalSpec(
     bool ModuleOwned = false)
 {
     /// <summary>A goal whose target, deadline or want comes from a mapped entity is an entity goal; one made of literals is a config goal; a module-owned one (never read from the file) is a module goal.</summary>
-    public GoalOrigin Origin => ModuleOwned ? GoalOrigin.Module : Target.IsSignal || Deadline?.Signal is not null || Want is not null ? GoalOrigin.Entity : GoalOrigin.Config;
+    public GoalOrigin Origin => ModuleOwned ? GoalOrigin.Module : Target is GoalNumber.FromSignal || Deadline?.Signal is not null || Want is not null ? GoalOrigin.Entity : GoalOrigin.Config;
 
     /// <summary>
     /// A fingerprint of what the goal is (FNV-1a over its canonical text): a plan entry made for another revision is not applied. It
@@ -69,8 +84,8 @@ public sealed record GoalSpec(
             Add(Hard ? "hard" : "soft");
             Add(LossFraction.ToString("R", CultureInfo.InvariantCulture));
             Add(CapacityKwh?.ToString("R", CultureInfo.InvariantCulture));
-            Add(Soc?.Signal?.Value ?? Soc?.Literal?.ToString("R", CultureInfo.InvariantCulture));
-            Add(Target.Signal?.Value ?? Target.Literal?.ToString("R", CultureInfo.InvariantCulture));
+            Add(Soc?.Text());
+            Add(Target.Text());
             Add(Deadline?.Signal?.Value ?? Deadline?.At?.ToString("HH:mm", CultureInfo.InvariantCulture));
             Add(Deadline?.Margin.ToString("c", CultureInfo.InvariantCulture));
             Add(Want?.Value);

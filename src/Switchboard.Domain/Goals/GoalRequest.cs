@@ -7,37 +7,30 @@ namespace Switchboard.Domain.Goals;
 /// What one source asks for, at one moment (15-PLANNER, Goal sources): a device wants an amount of energy by a deadline. The
 /// remaining need is already in kWh drawn (loss included), so a consumer plans with one number whatever the kind.
 /// </summary>
+/// <param name="Target">What the goal aims at and how far it is, by kind (<see cref="EnergyTarget"/> or <see cref="SocTarget"/>); a SoC goal has no ledger, so no progress or start.</param>
 /// <param name="RemainingKwh">Energy still to draw, see <see cref="GoalMath"/>; zero when met.</param>
-/// <param name="TargetKwh">An energy goal's target.</param>
-/// <param name="TargetSoc">A SoC goal's target percent.</param>
-/// <param name="CurrentSoc">A SoC goal's state of charge now.</param>
-/// <param name="DeliveredKwh">An energy goal's progress from the ledger.</param>
 /// <param name="Deadline">When the goal is due; null means the horizon end.</param>
 /// <param name="Margin">Finish this long before the deadline.</param>
-/// <param name="Since">When the goal began, from the ledger; null for a SoC goal, whose progress is the SoC signal and which has no ledger.</param>
 /// <param name="Revision">The goal's fingerprint, see <see cref="GoalSpec.Revision"/>.</param>
 /// <param name="Spread">The plan finishes this goal as late as its window allows and spreads the energy evenly over the window (the lowest power that holds it) instead of running at the device's ceiling; only a module goal asks for it.</param>
 /// <param name="QuietShortfall">Energy this goal leaves unplaced does not raise the plan's <c>goal_shortfall</c> note (a PV-only cap that a cloudy evening cannot fill).</param>
 public sealed record GoalRequest(
     DeviceName Device,
-    GoalKind Kind,
+    GoalTarget Target,
     double RemainingKwh,
-    double? TargetKwh,
-    double? TargetSoc,
-    double? CurrentSoc,
-    double? DeliveredKwh,
     DateTimeOffset? Deadline,
     TimeSpan Margin,
     bool Hard,
     SourceSet? Sources,
     bool Escalate,
     GoalOnMet OnMet,
-    DateTimeOffset? Since,
     GoalOrigin Origin,
     long Revision,
     bool Spread = false,
     bool QuietShortfall = false)
 {
+    public GoalKind Kind => Target.Kind;
+
     /// <summary>The instant the plan aims to be finished: the deadline less the margin; null without a deadline.</summary>
     public DateTimeOffset? UsableDeadline => Deadline - Margin;
 }

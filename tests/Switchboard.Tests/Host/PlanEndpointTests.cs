@@ -28,7 +28,7 @@ public sealed class PlanEndpointTests
             extra: planner));
 
     private static GoalRequest Request(GoalOrigin origin = GoalOrigin.Config, DateTimeOffset? deadline = null, bool hard = false) =>
-        new(Car, GoalKind.Energy, 8.8, 12, null, null, 4, deadline, TimeSpan.FromMinutes(30), hard, SourceSet.PvOnly, hard, GoalOnMet.Stop, Now.AddHours(-1), origin, 5);
+        new(Car, new EnergyTarget(12, 4, Now.AddHours(-1)), 8.8, deadline, TimeSpan.FromMinutes(30), hard, SourceSet.PvOnly, hard, GoalOnMet.Stop, origin, 5);
 
     [Fact]
     public void A_file_without_a_planner_section_is_not_enabled_and_has_no_dispatch_mode_but_still_shows_its_goals()

@@ -95,7 +95,7 @@ public sealed class EvManualControlTests
 
         Assert.Equal(EvAssessmentCode.Manual, snapshot.Composition.Code);
         var weekly = Assert.Single(snapshot.Composition.Goals, g => g.Kind == EvGoalKind.WeeklyFull);
-        Assert.Equal(100.0, weekly.Request.TargetSoc);
+        Assert.Equal(100.0, ((SocTarget)weekly.Request.Target).TargetPercent);
         Assert.Equal(EvMode.FullCharge, rig.Control.Manual.Mode);
         Assert.Null(rig.Saved!.LastFullAt);
 
@@ -137,7 +137,7 @@ public sealed class EvManualControlTests
         var stored = rig.GoalStore.Current.Goals[Car];
         Assert.Equal((GoalKind.Soc, 80.0, true, rig.Now + TimeSpan.FromHours(3)), (stored.Kind, stored.Target, stored.Hard, stored.Deadline));
         var request = Assert.Single(rig.ManualOffer().Requests);
-        Assert.Equal((GoalOrigin.Manual, true, true, TimeSpan.Zero, 80.0, 40.0), (request.Origin, request.Hard, request.Escalate, request.Margin, request.TargetSoc, request.CurrentSoc));
+        Assert.Equal((GoalOrigin.Manual, true, true, TimeSpan.Zero, 80.0, 40.0), (request.Origin, request.Hard, request.Escalate, request.Margin, ((SocTarget)request.Target).TargetPercent, ((SocTarget)request.Target).CurrentPercent));
         Assert.Equal(40 / 100.0 * 18 * 1.10, request.RemainingKwh, 9);
         Assert.Equal("pv_and_zone:offpeak", request.Sources!.ToText());
 

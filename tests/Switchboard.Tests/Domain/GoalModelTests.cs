@@ -16,7 +16,7 @@ public sealed class GoalModelTests
     private static readonly DeviceName Tank = DeviceName.Parse("boiler");
 
     private static GoalRequest Request(DeviceName? device = null, GoalOrigin origin = GoalOrigin.Config, DateTimeOffset? deadline = null, bool hard = false, double remaining = 5, long revision = 1) =>
-        new(device ?? Car, GoalKind.Energy, remaining, 10, null, null, 0, deadline, TimeSpan.Zero, hard, null, hard, GoalOnMet.Opportunistic, Now, origin, revision);
+        new(device ?? Car, new EnergyTarget(10, 0, Now), remaining, deadline, TimeSpan.Zero, hard, null, hard, GoalOnMet.Opportunistic, origin, revision);
 
     [Fact]
     public void The_worked_example_of_the_design_needs_9_9_kwh()

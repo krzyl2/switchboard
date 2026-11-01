@@ -87,8 +87,8 @@ public sealed class GoalConfigurationTests
 
         var goal = Assert.IsType<GoalSpec>(configuration.Devices.Single().Goal);
         Assert.Equal((GoalKind.Soc, true, 18.0, 0.10), (goal.Kind, goal.Hard, goal.CapacityKwh, goal.LossFraction));
-        Assert.Equal("device_ev_charger_soc", goal.Soc!.Signal!.Value.Value);
-        Assert.Equal(90, goal.Target.Literal);
+        Assert.Equal("device_ev_charger_soc", Assert.IsType<GoalNumber.FromSignal>(goal.Soc).Signal.Value);
+        Assert.Equal(90, Assert.IsType<GoalNumber.Literal>(goal.Target).Value);
         Assert.Equal(("device_ev_charger_goal_deadline", TimeSpan.FromMinutes(30)), (goal.Deadline!.Signal!.Value.Value, goal.Deadline.Margin));
         Assert.Equal("pv_and_zone:offpeak", goal.Sources!.ToText());
         Assert.True(goal.Escalate);
@@ -119,7 +119,7 @@ public sealed class GoalConfigurationTests
         var configuration = Valid("      kind: energy\n      target_kwh: 12\n      deadline: { at: \"06:30\" }\n");
 
         var goal = configuration.Devices.Single().Goal!;
-        Assert.Equal((GoalKind.Energy, GoalOrigin.Config, false, 12.0), (goal.Kind, goal.Origin, goal.Hard, goal.Target.Literal));
+        Assert.Equal((GoalKind.Energy, GoalOrigin.Config, false, 12.0), (goal.Kind, goal.Origin, goal.Hard, Assert.IsType<GoalNumber.Literal>(goal.Target).Value));
         Assert.Equal(new TimeOnly(6, 30), goal.Deadline!.At);
         Assert.Null(goal.Deadline.Signal);
         Assert.False(goal.Escalate);

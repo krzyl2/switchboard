@@ -69,10 +69,10 @@ public sealed class GoalSourceTests
         var request = rig.Request();
 
         Assert.Equal(9.9, request.RemainingKwh, 9);
-        Assert.Equal((GoalKind.Soc, 90.0, 40.0), (request.Kind, request.TargetSoc, request.CurrentSoc));
+        Assert.Equal((GoalKind.Soc, 90.0, 40.0), (request.Kind, ((SocTarget)request.Target).TargetPercent, ((SocTarget)request.Target).CurrentPercent));
         Assert.Equal(new DateTimeOffset(2026, 10, 25, 6, 0, 0, TimeSpan.Zero), request.Deadline);
         Assert.Equal(new DateTimeOffset(2026, 10, 25, 5, 30, 0, TimeSpan.Zero), request.UsableDeadline);
-        Assert.Equal((true, GoalOrigin.Entity, null), (request.Hard, request.Origin, request.Since));
+        Assert.Equal((true, GoalOrigin.Entity, true), (request.Hard, request.Origin, request.Target is SocTarget));
         Assert.Equal("pv_and_zone:offpeak", request.Sources!.ToText());
     }
 
@@ -219,8 +219,8 @@ public sealed class GoalSourceTests
         var request = rig.Request();
 
         Assert.Equal((12 - 4) * 1.1, request.RemainingKwh, 9);
-        Assert.Equal((12.0, 4.0, GoalOrigin.Config), (request.TargetKwh, request.DeliveredKwh, request.Origin));
-        Assert.Equal(rig.Harness.Now.AddHours(-1), request.Since);
+        Assert.Equal((12.0, 4.0, GoalOrigin.Config), (((EnergyTarget)request.Target).TargetKwh, ((EnergyTarget)request.Target).DeliveredKwh, request.Origin));
+        Assert.Equal(rig.Harness.Now.AddHours(-1), ((EnergyTarget)request.Target).Since);
         Assert.Equal(deadline, request.Deadline);
     }
 
@@ -231,7 +231,7 @@ public sealed class GoalSourceTests
 
         var request = rig.Request();
 
-        Assert.Equal((13.2, 0.0, rig.Harness.Now), (Math.Round(request.RemainingKwh, 9), request.DeliveredKwh, request.Since));
+        Assert.Equal((13.2, 0.0, rig.Harness.Now), (Math.Round(request.RemainingKwh, 9), ((EnergyTarget)request.Target).DeliveredKwh, ((EnergyTarget)request.Target).Since));
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public sealed class GoalSourceTests
 
         var request = rig.Request();
 
-        Assert.Equal(0, request.DeliveredKwh);
+        Assert.Equal(0, ((EnergyTarget)request.Target).DeliveredKwh);
         Assert.Equal(13.2, request.RemainingKwh, 9);
     }
 
@@ -256,7 +256,7 @@ public sealed class GoalSourceTests
         // sources. Here a manual request for the same device and deadline wins and the file's goal is shown as set aside.
         var rig = new Rig(EnergyGoal);
         var config = rig.Request();
-        var manual = config with { Origin = GoalOrigin.Manual, RemainingKwh = 3, Since = rig.Harness.Now };
+        var manual = config with { Origin = GoalOrigin.Manual, RemainingKwh = 3, Target = ((EnergyTarget)config.Target) with { Since = rig.Harness.Now } };
 
         var board = new GoalEvaluator([new ConfigGoalSource(), new FixedSource(manual)]).Evaluate(rig.Context());
 

@@ -75,8 +75,8 @@ public sealed class ManualGoalStoreTests
         Assert.Equal(ManualGoalResult.Begun, rig.Store.Begin(Car, GoalKind.Energy, 8, deadline, hard: true));
 
         var request = Assert.Single(rig.Store.Goals(rig.Context()).Requests);
-        Assert.Equal((Car, GoalKind.Energy, 8.0, 8.0, true, GoalOrigin.Manual), (request.Device, request.Kind, request.RemainingKwh, request.TargetKwh, request.Hard, request.Origin));
-        Assert.Equal((deadline, rig.Now, true), (request.Deadline, request.Since, request.Escalate));
+        Assert.Equal((Car, GoalKind.Energy, 8.0, 8.0, true, GoalOrigin.Manual), (request.Device, request.Kind, request.RemainingKwh, ((EnergyTarget)request.Target).TargetKwh, request.Hard, request.Origin));
+        Assert.Equal((deadline, rig.Now, true), (request.Deadline, ((EnergyTarget)request.Target).Since, request.Escalate));
         Assert.Single(rig.Changes);
     }
 
@@ -175,7 +175,7 @@ public sealed class ManualGoalStoreTests
         var request = Assert.Single(rig.Store.Goals(rig.Context()).Requests);
 
         Assert.Equal(9.9, request.RemainingKwh, 9);
-        Assert.Equal((GoalKind.Soc, 90.0, 40.0, GoalOrigin.Manual), (request.Kind, request.TargetSoc, request.CurrentSoc, request.Origin));
+        Assert.Equal((GoalKind.Soc, 90.0, 40.0, GoalOrigin.Manual), (request.Kind, ((SocTarget)request.Target).TargetPercent, ((SocTarget)request.Target).CurrentPercent, request.Origin));
 
         rig.Harness.Advance(TimeSpan.FromMinutes(31));
         Assert.Equal(GoalInactiveReason.InputStale, Assert.Single(rig.Store.Goals(rig.Context()).Inactive).Reason);
@@ -288,7 +288,7 @@ public sealed class ManualGoalStoreTests
         var board = rig.Board(new ConfigGoalSource());
 
         var applied = Assert.Single(board.Goals).Request;
-        Assert.Equal((GoalOrigin.Manual, 3.0, true), (applied.Origin, applied.TargetKwh, applied.Hard));
+        Assert.Equal((GoalOrigin.Manual, 3.0, true), (applied.Origin, ((EnergyTarget)applied.Target).TargetKwh, applied.Hard));
         Assert.Equal(GoalOrigin.Entity, Assert.Single(board.Superseded).Origin);
     }
 

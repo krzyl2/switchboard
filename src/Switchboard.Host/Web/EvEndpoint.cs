@@ -6,6 +6,7 @@ using Switchboard.Application.Configuration;
 using Switchboard.Application.Ev;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Ev;
+using Switchboard.Domain.Goals;
 using Switchboard.Domain.Planning;
 
 namespace Switchboard.Host.Web;
@@ -424,7 +425,7 @@ internal static partial class EvEndpoint
             snapshot.LastFullAt,
             [.. composition.Goals.Select(g => new EvOfferedGoalDto(
                 ApiText.Snake(g.Kind),
-                g.Request.TargetSoc ?? 0,
+                (g.Request.Target as SocTarget)?.TargetPercent ?? 0,
                 g.Request.RemainingKwh,
                 g.Request.Deadline,
                 g.Request.Hard,

@@ -46,7 +46,7 @@ namespace Switchboard.Tests.Application.Ev;
 /// </summary>
 public sealed class EvGoalSourceFailureTableTests
 {
-    private static GoalRequest Single(GoalOffer offer, double? targetSoc) => offer.Requests.Single(r => r.TargetSoc == targetSoc);
+    private static GoalRequest Single(GoalOffer offer, double? targetSoc) => offer.Requests.Single(r => ((SocTarget)r.Target).TargetPercent == targetSoc);
 
     // ---- 1 ----
 
@@ -353,7 +353,7 @@ public sealed class EvGoalSourceFailureTableTests
 
         var offer = rig.TickAndOffer();
 
-        var weekly = offer.Requests.Single(r => r.TargetSoc == 100);
+        var weekly = offer.Requests.Single(r => ((SocTarget)r.Target).TargetPercent == 100);
         Assert.Equal(EvRig.Local(dy, dmo, dd, dh), weekly.Deadline);
         Assert.False(weekly.Hard);
     }
@@ -559,7 +559,7 @@ public sealed class EvGoalSourceFailureTableTests
         // Why: protection outranks everything. What the module hands over has no power, current or setpoint in it: only an amount of energy, a target, a deadline and
         // the classes it may come from. The guard's limits and the dispatch envelope cap the charger whatever is asked (the architecture tests hold the rest).
         string[] forbidden = ["Power", "Current", "Amp", "Setpoint", "Watt", "Command", "Override"];
-        var members = typeof(EvGoalOffer).GetProperties().Concat(typeof(GoalRequest).GetProperties()).Select(p => p.Name).Where(n => n != nameof(GoalRequest.CurrentSoc)).ToList();
+        var members = typeof(EvGoalOffer).GetProperties().Concat(typeof(GoalRequest).GetProperties()).Select(p => p.Name).ToList();
 
         Assert.DoesNotContain(members, m => forbidden.Any(f => m.Contains(f, StringComparison.OrdinalIgnoreCase)));
         var rig = new EvRig();
@@ -577,7 +577,7 @@ public sealed class EvGoalSourceFailureTableTests
         var rig = new EvRig();
         rig.PlugInCar(40);
         rig.PushCalendar(rig.Trip(TimeSpan.FromHours(10), 42));
-        var first = rig.TickAndOffer().Requests.Select(r => (r.TargetSoc, r.Revision)).ToList();
+        var first = rig.TickAndOffer().Requests.Select(r => (((SocTarget)r.Target).TargetPercent, r.Revision)).ToList();
 
         rig.ChargerWatts = 3300;
         for (var i = 0; i < 5; i++)
@@ -590,7 +590,7 @@ public sealed class EvGoalSourceFailureTableTests
 
         rig.PushRange(45);
         var later = rig.TickAndOffer().Requests;
-        Assert.True(later.First().CurrentSoc > 40);
+        Assert.True(((SocTarget)later.First().Target).CurrentPercent > 40);
         Assert.All(first, f => Assert.Contains(later, r => r.Revision == f.Revision));
     }
 
@@ -654,7 +654,7 @@ public sealed class EvGoalSourceFailureTableTests
         rig.PushSoc(70);
         rig.PushPlugged();
         var offer = rig.TickAndOffer();
-        Assert.DoesNotContain(offer.Requests, r => r.TargetSoc == 100);
+        Assert.DoesNotContain(offer.Requests, r => ((SocTarget)r.Target).TargetPercent == 100);
     }
 
     [Fact]

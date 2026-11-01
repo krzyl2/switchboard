@@ -139,24 +139,24 @@ public sealed class ConfigGoalSource : IGoalSource
         var targetValue = target.Value!.Value;
         if (spec.Kind == GoalKind.Soc)
         {
-            var remaining = GoalMath.RemainingSocKwh(targetValue, soc!.Value, spec.CapacityKwh!.Value, spec.LossFraction);
-            return (new GoalRequest(spec.Device, spec.Kind, remaining, null, targetValue, soc, null, deadline, spec.Deadline?.Margin ?? TimeSpan.Zero, spec.Hard, spec.Sources, spec.Escalate, spec.OnMet, null, spec.Origin, spec.Revision), null);
+            var socTarget = new SocTarget(targetValue, soc!.Value);
+            return (new GoalRequest(spec.Device, socTarget, socTarget.Remaining(spec.CapacityKwh!.Value, spec.LossFraction), deadline, spec.Deadline?.Margin ?? TimeSpan.Zero, spec.Hard, spec.Sources, spec.Escalate, spec.OnMet, spec.Origin, spec.Revision), null);
         }
 
         var entry = context.Progress.Entry(spec.Device) is { } known && known.Continues(spec.Kind, deadline, context.Now) ? known : null;
         var delivered = entry?.DeliveredKwh ?? 0;
-        var left = GoalMath.RemainingEnergyKwh(targetValue, delivered, spec.LossFraction);
-        return (new GoalRequest(spec.Device, spec.Kind, left, targetValue, null, null, delivered, deadline, spec.Deadline?.Margin ?? TimeSpan.Zero, spec.Hard, spec.Sources, spec.Escalate, spec.OnMet, entry?.Since ?? context.Now, spec.Origin, spec.Revision), null);
+        var energyTarget = new EnergyTarget(targetValue, delivered, entry?.Since ?? context.Now);
+        return (new GoalRequest(spec.Device, energyTarget, energyTarget.Remaining(spec.LossFraction), deadline, spec.Deadline?.Margin ?? TimeSpan.Zero, spec.Hard, spec.Sources, spec.Escalate, spec.OnMet, spec.Origin, spec.Revision), null);
     }
 
     internal static (double? Value, GoalInactiveReason? Failure) Number(GoalNumber number, ImmutableDictionary<SignalName, GoalInputSample> readings)
     {
-        if (number.Literal is { } literal)
+        if (number is GoalNumber.Literal literal)
         {
-            return (literal, null);
+            return (literal.Value, null);
         }
 
-        var (reading, failure) = Fresh(readings, number.Signal!.Value);
+        var (reading, failure) = Fresh(readings, ((GoalNumber.FromSignal)number).Signal);
         if (failure is not null)
         {
             return (null, failure);

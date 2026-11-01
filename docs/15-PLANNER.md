@@ -153,7 +153,7 @@ goal:
 
 ```
 IGoalSource   (Application)   Goals(now, snapshot) -> GoalRequest[]
-GoalRequest   Device, Kind, RemainingKwh | TargetSoc, Deadline, Hard, Sources, Since, Source, Revision
+GoalRequest   Device, Target (EnergyTarget: kWh, delivered, since | SocTarget: percent, current), RemainingKwh, Deadline, Hard, Sources, Source, Revision
 ```
 
 Sources: the device's `goal:` block (config and mapped entities), the manual store (below), and later the EV module, which turns calendar trips into requests for the car's device. The planner merges requests per device. Precedence for one device and one deadline: manual over module over entity over config; the losing request is shown, not applied.

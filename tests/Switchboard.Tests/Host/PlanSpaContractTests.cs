@@ -38,7 +38,7 @@ public sealed class PlanSpaContractTests
         var input = WorkedExample();
         var plan = Solve(input);
         at = plan.ComputedAt + TimeSpan.FromMinutes(2);
-        var request = input.Goals.Single() with { Origin = GoalOrigin.Entity, DeliveredKwh = null };
+        var request = input.Goals.Single() with { Origin = GoalOrigin.Entity };
         var superseded = request with { Origin = GoalOrigin.Config, RemainingKwh = 4.4, Revision = 2 };
         var board = new GoalBoard(
             at,

@@ -97,7 +97,7 @@ public sealed class EvComposerTests
         var goal = Assert.Single(c.Goals);
         Assert.Equal(EvGoalKind.WeeklyFull, goal.Kind);
         Assert.Equal(11.88, goal.Request.RemainingKwh, 9);
-        Assert.Equal(100, goal.Request.TargetSoc);
+        Assert.Equal(100, ((SocTarget)goal.Request.Target).TargetPercent);
         Assert.Equal(Local(2026, 11, 1), goal.Request.Deadline);
         Assert.False(goal.Request.Hard);
         Assert.True(goal.Spread);
@@ -176,7 +176,7 @@ public sealed class EvComposerTests
         var c = EvComposer.Compose(Input(Friday, 10, trip));
 
         var goal = c.Goals.Single(g => g.Kind == EvGoalKind.Trip);
-        Assert.Equal((goal.Request.TargetSoc!.Value - 10) / 100 * 18 * 1.10, goal.Request.RemainingKwh, 9);
+        Assert.Equal((((SocTarget)goal.Request.Target).TargetPercent - 10) / 100 * 18 * 1.10, goal.Request.RemainingKwh, 9);
         Assert.DoesNotContain(c.Goals, g => g.Kind == EvGoalKind.Floor);
     }
 
@@ -361,7 +361,7 @@ public sealed class EvComposerTests
         // Why: EV 9: a PHEV finishes on fuel; the target is 100 %, which is also the "manual full charge" for a long trip.
         var c = EvComposer.Compose(Input(Friday, 40, new Trip("t", Local(2026, 10, 31, 6), 300)));
 
-        Assert.Equal(100, c.Goals.Single().Request.TargetSoc);
+        Assert.Equal(100, ((SocTarget)c.Goals.Single().Request.Target).TargetPercent);
         Assert.True(c.Frozen!.Target.ExceedsElectricRange);
     }
 
@@ -420,7 +420,7 @@ public sealed class EvComposerTests
             var c = EvComposer.Compose(Input(now, soc, trip, kwhPerKm: kwh, lastFull: lastFull, fullRequested: requested));
 
             Assert.NotEmpty(c.Goals);
-            var highest = c.Goals.Max(g => g.Request.TargetSoc!.Value);
+            var highest = c.Goals.Max(g => ((SocTarget)g.Request.Target).TargetPercent);
             Assert.True(Total(c) <= Math.Max(0, highest - soc) / 100 * CapacityKwh * 1.10 + 1e-9, $"#{i}: {Total(c)} kWh for {soc} -> {highest}");
             Assert.All(c.Goals, g =>
             {

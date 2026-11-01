@@ -278,19 +278,14 @@ public static class EvComposer
     {
         var request = new GoalRequest(
             input.Device,
-            GoalKind.Soc,
+            new SocTarget(c.TargetPercent, soc),
             c.NeedKwh,
-            TargetKwh: null,
-            TargetSoc: c.TargetPercent,
-            CurrentSoc: soc,
-            DeliveredKwh: null,
             c.Deadline,
             c.Margin,
             c.Hard,
             c.Sources,
             c.Escalate,
             GoalOnMet.Stop,
-            Since: null,
             GoalOrigin.Module,
             Revision(c, input));
         // Only the cap is quiet (B12: a PV-only goal a cloudy evening cannot fill); a weekly full charge left short is a real shortfall.

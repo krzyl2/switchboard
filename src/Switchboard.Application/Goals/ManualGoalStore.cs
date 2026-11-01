@@ -341,8 +341,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
             var revision = goal.Revision(device);
             if (goal.Kind == GoalKind.Energy)
             {
-                var left = GoalMath.RemainingEnergyKwh(goal.Target, goal.DeliveredKwh, loss);
-                requests.Add(new GoalRequest(device, GoalKind.Energy, left, goal.Target, null, null, goal.DeliveredKwh, goal.Deadline, TimeSpan.Zero, goal.Hard, spec?.Sources, goal.Hard, GoalOnMet.Opportunistic, goal.Since, GoalOrigin.Manual, revision));
+                var energy = new EnergyTarget(goal.Target, goal.DeliveredKwh, goal.Since);
+                requests.Add(new GoalRequest(device, energy, energy.Remaining(loss), goal.Deadline, TimeSpan.Zero, goal.Hard, spec?.Sources, goal.Hard, GoalOnMet.Opportunistic, GoalOrigin.Manual, revision));
                 continue;
             }
 
@@ -362,7 +362,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
                     continue;
                 }
 
-                requests.Add(new GoalRequest(device, GoalKind.Soc, GoalMath.RemainingSocKwh(goal.Target, estimate, capacity, loss), null, goal.Target, estimate, null, goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, null, GoalOrigin.Manual, revision));
+                var moduleSoc = new SocTarget(goal.Target, estimate);
+                requests.Add(new GoalRequest(device, moduleSoc, moduleSoc.Remaining(capacity, loss), goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, GoalOrigin.Manual, revision));
                 continue;
             }
 
@@ -379,8 +380,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
                 continue;
             }
 
-            var remaining = GoalMath.RemainingSocKwh(goal.Target, read.Value.Value, capacity, loss);
-            requests.Add(new GoalRequest(device, GoalKind.Soc, remaining, null, goal.Target, read.Value, null, goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, null, GoalOrigin.Manual, revision));
+            var soc = new SocTarget(goal.Target, read.Value.Value);
+            requests.Add(new GoalRequest(device, soc, soc.Remaining(capacity, loss), goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, GoalOrigin.Manual, revision));
         }
 
         return new GoalOffer(requests.ToImmutable(), inactive.ToImmutable());
