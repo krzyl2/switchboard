@@ -167,20 +167,9 @@ public sealed class DecisionHistoryTests : IDisposable
     private void Append(DateTimeOffset at, string id, string? device = null)
     {
         Directory.CreateDirectory(_data.Decisions);
-        var decision = new Decision(
-            id,
-            at,
-            device is null ? DecisionScope.System : DecisionScope.Device,
-            device is null ? null : DeviceName.Parse(device),
-            null,
-            null,
-            device is null ? DecisionAction.ModeResolved : DecisionAction.Release,
-            device is null ? ReasonCode.ModeShadow : ReasonCode.HeadroomAvailable,
-            null,
-            OperatingMode.Shadow,
-            false,
-            null,
-            DecisionInputs.None);
+        var decision = device is null
+            ? Decision.ForSystem(id, at, DecisionAction.ModeResolved, ReasonCode.ModeShadow, OperatingMode.Shadow, DecisionInputs.None)
+            : Decision.ForDevice(id, at, DeviceName.Parse(device), null, null, DecisionAction.Release, ReasonCode.HeadroomAvailable, OperatingMode.Shadow, DecisionInputs.None, null, null, null);
         File.AppendAllText(Path(at), DecisionJson.Serialize(decision) + "\n");
     }
 }

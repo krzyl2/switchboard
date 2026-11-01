@@ -115,23 +115,23 @@ public static class DecisionJson
             var current = Int(root, "v") == FormatVersion;
             var device = OptionalString(root, "device") is { } name ? DeviceName.Parse(name) : (DeviceName?)null;
             ReasonCode Code(string text) => Reason(text) is var code && ReasonCodes.InVersion(code, codes) ? code : throw new FormatException($"reason {text} in list version {codes}");
-            return new Decision(
-                String(root, "id"),
-                Time(root, "at"),
-                EnumValue<DecisionScope>(root, "scope"),
-                device,
-                OptionalInt(root, "stage"),
-                OptionalPhase(root, "phase"),
-                EnumValue<DecisionAction>(root, "action"),
-                Code(String(root, "reason")),
-                OptionalString(root, "overridden") is { } overridden ? Code(overridden) : null,
-                EnumValue<OperatingMode>(root, "mode"),
-                Bool(root, "commanded"),
-                OptionalString(root, "refused_by") is { } refused ? Code(refused) : null,
-                Inputs(Property(root, "inputs", JsonValueKind.Object), current, codes),
-                current ? OptionalEnum<DecisionOrigin>(root, "origin") : null,
-                current && OptionalString(root, "group") is { } group ? GroupName.Parse(group) : null,
-                current ? Level(root, "target") : null);
+            return Decision.Restore(
+                id: String(root, "id"),
+                at: Time(root, "at"),
+                scope: EnumValue<DecisionScope>(root, "scope"),
+                device: device,
+                stage: OptionalInt(root, "stage"),
+                phase: OptionalPhase(root, "phase"),
+                action: EnumValue<DecisionAction>(root, "action"),
+                reason: Code(String(root, "reason")),
+                overridden: OptionalString(root, "overridden") is { } overridden ? new OverriddenRule(Code(overridden)) : null,
+                mode: EnumValue<OperatingMode>(root, "mode"),
+                commanded: Bool(root, "commanded"),
+                refusedBy: OptionalString(root, "refused_by") is { } refused ? new RefusalReason(Code(refused)) : null,
+                inputs: Inputs(Property(root, "inputs", JsonValueKind.Object), current, codes),
+                origin: current ? OptionalEnum<DecisionOrigin>(root, "origin") : null,
+                group: current && OptionalString(root, "group") is { } group ? GroupName.Parse(group) : null,
+                target: current ? Level(root, "target") : null);
         }
         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or InvalidOperationException or KeyNotFoundException or OverflowException)
         {

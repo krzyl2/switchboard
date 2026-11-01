@@ -61,7 +61,7 @@ public sealed class DecisionKindsTests
         }
     }
 
-    private static Decision Make(DecisionAction action, DecisionScope scope, DecisionOrigin? origin) => new(
+    private static Decision Make(DecisionAction action, DecisionScope scope, DecisionOrigin? origin) => Decision.Restore(
         "k-1",
         At,
         scope,
@@ -76,5 +76,6 @@ public sealed class DecisionKindsTests
         null,
         DecisionInputs.None,
         origin,
-        scope == DecisionScope.Group ? Switchboard.Domain.Connection.GroupName.Parse("carport") : null);
+        scope == DecisionScope.Group ? Switchboard.Domain.Connection.GroupName.Parse("carport") : null,
+        null);
 }

@@ -79,11 +79,26 @@ public enum DecisionAction
     ForeignLoadDetected,
 }
 
+/// <summary>A rule protection outranked to take a decision (a min_on lockout); a type of its own so it cannot be passed where a refusal belongs.</summary>
+public readonly record struct OverriddenRule(ReasonCode Code)
+{
+    public static OverriddenRule? Of(ReasonCode? code) => code is { } c ? new OverriddenRule(c) : null;
+}
+
+/// <summary>Why a decision was not commanded (mode_shadow, a lockout); a type of its own so it cannot be passed where an overridden rule belongs.</summary>
+public readonly record struct RefusalReason(ReasonCode Code)
+{
+    public static RefusalReason? Of(ReasonCode? code) => code is { } c ? new RefusalReason(c) : null;
+}
+
 /// <summary>
 /// One recorded decision (MODE-03): what, about what, why (a reason code from the closed list of
 /// 04 §6), in which mode, whether it was commanded, and the inputs that produced it. A decision
-/// cannot exist without a defined reason: the constructor refuses one, so a decision without a
-/// reason is a construction error, never a log line.
+/// cannot exist without a defined reason: the one constructor (private) refuses one, so a decision
+/// without a reason is a construction error, never a log line. It is built through
+/// <see cref="ForDevice"/>, <see cref="ForSystem"/>, <see cref="ForEvent"/> or, when a stored line is
+/// read back, <see cref="Restore"/>; every one takes the fields by name, and the two rules that
+/// could be swapped (overridden, refused by) have types of their own.
 /// </summary>
 public sealed record Decision
 {
@@ -93,7 +108,7 @@ public sealed record Decision
     /// <param name="origin">Who decided a device change: protection, dispatch or a manual override.</param>
     /// <param name="group">The circuit group a decision is about or was caused by.</param>
     /// <param name="target">The level the device is targeted at after this decision.</param>
-    public Decision(
+    private Decision(
         string id,
         DateTimeOffset at,
         DecisionScope scope,
@@ -140,6 +155,69 @@ public sealed record Decision
         Group = group;
         Target = target;
     }
+
+    /// <summary>A decision about one device: protection, dispatch, an override or the self-test changed, deferred or judged it. Never commanded yet: the outcome of its commands comes with <see cref="WithCommand"/>.</summary>
+    public static Decision ForDevice(
+        string id,
+        DateTimeOffset at,
+        DeviceName device,
+        Phase? phase,
+        int? stage,
+        DecisionAction action,
+        ReasonCode reason,
+        OperatingMode mode,
+        DecisionInputs inputs,
+        DecisionOrigin? origin,
+        GroupName? group,
+        DeviceLevel? target,
+        OverriddenRule? overridden = null,
+        RefusalReason? refusedBy = null) =>
+        new(id, at, DecisionScope.Device, device, stage, phase, action, reason, overridden?.Code, mode, false, refusedBy?.Code, inputs, origin, group, target);
+
+    /// <summary>A decision about the whole installation: mode, kill switch, safe state, a dispatch fault.</summary>
+    public static Decision ForSystem(
+        string id,
+        DateTimeOffset at,
+        DecisionAction action,
+        ReasonCode reason,
+        OperatingMode mode,
+        DecisionInputs inputs,
+        DecisionOrigin? origin = null) =>
+        new(id, at, DecisionScope.System, null, null, null, action, reason, null, mode, false, null, inputs, origin, null, null);
+
+    /// <summary>A phase, group or system event a guard or dispatch step produced; <paramref name="scope"/> is the event's own (the constructor still refuses a phase event without a phase, a group event without a group, a device event without a device).</summary>
+    public static Decision ForEvent(
+        string id,
+        DateTimeOffset at,
+        DecisionScope scope,
+        Phase? phase,
+        GroupName? group,
+        DecisionAction action,
+        ReasonCode reason,
+        OperatingMode mode,
+        DecisionInputs inputs,
+        DecisionOrigin? origin = null) =>
+        new(id, at, scope, null, null, phase, action, reason, null, mode, false, null, inputs, origin, group, null);
+
+    /// <summary>A stored decision read back: every field as it was written.</summary>
+    public static Decision Restore(
+        string id,
+        DateTimeOffset at,
+        DecisionScope scope,
+        DeviceName? device,
+        int? stage,
+        Phase? phase,
+        DecisionAction action,
+        ReasonCode reason,
+        OverriddenRule? overridden,
+        OperatingMode mode,
+        bool commanded,
+        RefusalReason? refusedBy,
+        DecisionInputs inputs,
+        DecisionOrigin? origin,
+        GroupName? group,
+        DeviceLevel? target) =>
+        new(id, at, scope, device, stage, phase, action, reason, overridden?.Code, mode, commanded, refusedBy?.Code, inputs, origin, group, target);
 
     /// <summary>Unique within the log: the process's boot id plus a sequence number.</summary>
     public string Id { get; }

@@ -54,7 +54,7 @@ public sealed class DispatchPersistenceTests : IDisposable
     [Fact]
     public void Setpoint_target_and_a_guard_decision_without_target_round_trip()
     {
-        var charger = new Decision("test-sp", At, DecisionScope.Device, DeviceName.Parse("ev_charger"), null, Phase.L1, DecisionAction.SetSetpoint, ReasonCode.HeadroomAvailable, null, OperatingMode.Shadow, false, ReasonCode.ModeShadow, DecisionInputs.None, DecisionOrigin.Dispatch, null, DeviceLevel.At(new Amperes(13)));
+        var charger = Decision.ForDevice("test-sp", At, DeviceName.Parse("ev_charger"), Phase.L1, null, DecisionAction.SetSetpoint, ReasonCode.HeadroomAvailable, OperatingMode.Shadow, DecisionInputs.None, DecisionOrigin.Dispatch, null, DeviceLevel.At(new Amperes(13)), refusedBy: new RefusalReason(ReasonCode.ModeShadow));
         var shed = TestDecisions.Shed(At);
 
         Assert.Equal(DeviceLevel.At(new Amperes(13)), DecisionJson.TryParse(DecisionJson.Serialize(charger))!.Target);
@@ -311,19 +311,15 @@ public sealed class DispatchPersistenceTests : IDisposable
     };
 
     /// <summary>A dispatch start in shadow mode with every dispatch input filled.</summary>
-    private static Decision Start(BalanceDecisionInputs? balance = null) => new(
+    private static Decision Start(BalanceDecisionInputs? balance = null) => Decision.ForDevice(
         "test-start",
         At,
-        DecisionScope.Device,
         DeviceName.Parse("heater_l1"),
-        null,
         Phase.L1,
+        null,
         DecisionAction.SwitchOn,
         ReasonCode.HeadroomAvailable,
-        null,
         OperatingMode.Shadow,
-        false,
-        ReasonCode.ModeShadow,
         DecisionInputs.None with
         {
             Dispatch = new DispatchDecisionInputs(
@@ -345,5 +341,6 @@ public sealed class DispatchPersistenceTests : IDisposable
         },
         DecisionOrigin.Dispatch,
         GroupName.Parse("carport"),
-        DeviceLevel.Relay(true));
+        DeviceLevel.Relay(true),
+        refusedBy: new RefusalReason(ReasonCode.ModeShadow));
 }

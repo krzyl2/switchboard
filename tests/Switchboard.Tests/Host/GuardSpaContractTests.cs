@@ -147,9 +147,9 @@ public sealed partial class GuardSpaContractTests
             Balance = new BalanceDecisionInputs(240.5, 3100, 1650, 410.25, 150, 525, 1320, false),
             Economics = new EconomicsDecisionInputs("offpeak", 0.6, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
         };
-        return new Decision(
-            "contract-000000001", at, DecisionScope.Device, DeviceName.Parse("heater_l1"), null, Phase.L1, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive, null,
-            OperatingMode.Shadow, false, null, DecisionInputs.None with { Dispatch = inputs }, DecisionOrigin.Dispatch, carport, DeviceLevel.Relay(false));
+        return Decision.ForDevice(
+            "contract-000000001", at, DeviceName.Parse("heater_l1"), Phase.L1, null, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive,
+            OperatingMode.Shadow, DecisionInputs.None with { Dispatch = inputs }, DecisionOrigin.Dispatch, carport, DeviceLevel.Relay(false));
     }
 
     /// <summary>Every object in the documents by its path (array items as <c>[]</c>), with its keys in order.</summary>

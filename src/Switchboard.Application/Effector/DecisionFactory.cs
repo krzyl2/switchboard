@@ -15,8 +15,8 @@ namespace Switchboard.Application.Effector;
 /// <summary>
 /// Where the gate's decisions are built (03 EffectorGate): the mode decision, the dispatch fault,
 /// the records of guard and dispatch events, of a device's change, of a hold, of a guard intent and
-/// of the one-off offs of a removed device or an ended self-test. Every decision is made with the
-/// <see cref="Decision"/> constructor, which enforces the closed reason list and its invariants; the
+/// of the one-off offs of a removed device or an ended self-test. Every decision is made with a
+/// <see cref="Decision"/> factory over its one constructor, which enforces the closed reason list and its invariants; the
 /// factory only fills it (the id comes from the generator at the moment of construction, so the order
 /// of ids follows the order of calls). It decides nothing and keeps no state: whether to record, when
 /// and with which tickets is the gate's.
@@ -44,20 +44,13 @@ internal sealed class DecisionFactory
             : mode.DecreasesOnly ? ReasonCode.SafeState
             : mode.Missing.Contains(ModeCondition.StateUnconfirmed) ? ReasonCode.KillSwitch
             : ReasonCode.ModeShadow;
-        return new Decision(
-            _ids.Next(),
-            now,
-            DecisionScope.System,
-            null,
-            null,
-            null,
-            DecisionAction.ModeResolved,
-            reason,
-            null,
-            mode.Effective,
-            false,
-            null,
-            DecisionInputs.None with
+        return Decision.ForSystem(
+            id: _ids.Next(),
+            at: now,
+            action: DecisionAction.ModeResolved,
+            reason: reason,
+            mode: mode.Effective,
+            inputs: DecisionInputs.None with
             {
                 Mode = new ModeDecisionInputs(mode.Ceiling, mode.Note)
                 {
@@ -71,33 +64,63 @@ internal sealed class DecisionFactory
     }
 
     public Decision DispatchFault(ModeStatus mode, DateTimeOffset now) =>
-        new(_ids.Next(), now, DecisionScope.System, null, null, null, DecisionAction.StopIncreases, ReasonCode.DispatchFault, null, Recorded(mode), false, null, DecisionInputs.None, DecisionOrigin.Dispatch);
+        Decision.ForSystem(_ids.Next(), now, DecisionAction.StopIncreases, ReasonCode.DispatchFault, Recorded(mode), DecisionInputs.None, DecisionOrigin.Dispatch);
 
     /// <summary>The record of an event the guard produced.</summary>
     public Decision FromGuard(GuardEvent e, OperatingMode recordedMode, DateTimeOffset now) =>
-        new(_ids.Next(), now, e.Scope, null, null, e.Phase, e.Action, e.Reason, null, recordedMode, false, null, e.Inputs, group: e.Group);
+        Decision.ForEvent(_ids.Next(), now, e.Scope, e.Phase, e.Group, e.Action, e.Reason, recordedMode, e.Inputs);
 
     /// <summary>The record of an event dispatch produced.</summary>
     public Decision FromDispatch(DispatchEvent e, OperatingMode recordedMode, DateTimeOffset now) =>
-        new(_ids.Next(), now, e.Scope, null, null, e.Phase, e.Action, e.Reason, null, recordedMode, false, null, e.Inputs, DecisionOrigin.Dispatch);
+        Decision.ForEvent(_ids.Next(), now, e.Scope, e.Phase, null, e.Action, e.Reason, recordedMode, e.Inputs, DecisionOrigin.Dispatch);
 
     /// <summary>The active self-test's own off, sent when control is switched off while the test holds its device on.</summary>
     public Decision SelfTestOff(DeviceSpec spec, int stage, DeviceLevel off, DateTimeOffset now) =>
-        new(
-            _ids.Next(), now, DecisionScope.Device, spec.Id, spec.Stages.Length > 1 ? stage : null, spec.Phases[0], DecisionAction.SwitchOff,
-            ReasonCode.ManualOverride, null, OperatingMode.Active, false, null, DecisionInputs.None, DecisionOrigin.SelfTest, spec.CircuitGroup, off);
+        Decision.ForDevice(
+            id: _ids.Next(),
+            at: now,
+            device: spec.Id,
+            phase: spec.Phases[0],
+            stage: spec.Stages.Length > 1 ? stage : null,
+            action: DecisionAction.SwitchOff,
+            reason: ReasonCode.ManualOverride,
+            mode: OperatingMode.Active,
+            inputs: DecisionInputs.None,
+            origin: DecisionOrigin.SelfTest,
+            group: spec.CircuitGroup,
+            target: off);
 
     /// <summary>The final off of a removed device Switchboard had started.</summary>
     public Decision RemovedOff(DeviceSpec spec, DeviceName device, OperatingMode mode, DateTimeOffset now, DeviceLevel off) =>
-        new(
-            _ids.Next(), now, DecisionScope.Device, device, null, spec.Phases[0], DecisionAction.SwitchOff, ReasonCode.SafeState, null,
-            mode, false, null, DecisionInputs.None, DecisionOrigin.Dispatch, spec.CircuitGroup, off);
+        Decision.ForDevice(
+            id: _ids.Next(),
+            at: now,
+            device: device,
+            phase: spec.Phases[0],
+            stage: null,
+            action: DecisionAction.SwitchOff,
+            reason: ReasonCode.SafeState,
+            mode: mode,
+            inputs: DecisionInputs.None,
+            origin: DecisionOrigin.Dispatch,
+            group: spec.CircuitGroup,
+            target: off);
 
     /// <summary>A removed device left as it was: Switchboard lets go of it.</summary>
     public Decision RemovedRelease(DeviceName device, OperatingMode mode, DateTimeOffset now, DeviceLevel? target) =>
-        new(
-            _ids.Next(), now, DecisionScope.Device, device, null, null, DecisionAction.Release, ReasonCode.SafeState, null,
-            mode, false, null, DecisionInputs.None, DecisionOrigin.Guard, null, target);
+        Decision.ForDevice(
+            id: _ids.Next(),
+            at: now,
+            device: device,
+            phase: null,
+            stage: null,
+            action: DecisionAction.Release,
+            reason: ReasonCode.SafeState,
+            mode: mode,
+            inputs: DecisionInputs.None,
+            origin: DecisionOrigin.Guard,
+            group: null,
+            target: target);
 
     /// <summary>
     /// The record of a protective change made without a guard intent of its own (a hold re-asserted).
@@ -107,23 +130,21 @@ internal sealed class DecisionFactory
     {
         var action = limits.Values.Any(l => l == StageLimit.Off) || limits.Count == 0 && DeviceLevels.IsOff(device, held) ? DecisionAction.SwitchOff : DecisionAction.ReduceToMinimum;
         var mode = Recorded(context.Mode);
-        return new Decision(
-            _ids.Next(),
-            context.Now,
-            DecisionScope.Device,
-            device.Id,
-            from is null ? null : ChangedStage(device, from, held),
-            device.Phases[0],
-            action,
-            reason,
-            overridden,
-            mode,
-            false,
-            sent || mode == OperatingMode.Active ? null : ReasonCode.ModeShadow,
-            DecisionInputs.None with { Dispatch = DispatchInputs(context, device, state) with { Reasserted = reasserted } },
-            DecisionOrigin.Guard,
-            device.CircuitGroup,
-            held);
+        return Decision.ForDevice(
+            id: _ids.Next(),
+            at: context.Now,
+            device: device.Id,
+            phase: device.Phases[0],
+            stage: from is null ? null : ChangedStage(device, from, held),
+            action: action,
+            reason: reason,
+            mode: mode,
+            inputs: DecisionInputs.None with { Dispatch = DispatchInputs(context, device, state) with { Reasserted = reasserted } },
+            origin: DecisionOrigin.Guard,
+            group: device.CircuitGroup,
+            target: held,
+            overridden: OverriddenRule.Of(overridden),
+            refusedBy: sent || mode == OperatingMode.Active ? null : new RefusalReason(ReasonCode.ModeShadow));
     }
 
     /// <summary>The record of a device's change (or deferral, or verdict); <paramref name="hasTickets"/>: the change carries commands.</summary>
@@ -134,49 +155,44 @@ internal sealed class DecisionFactory
         // mode_shadow names shadow mode as what stopped a change; with active semantics a change
         // that needed no command is not refused by the mode.
         var refused = refusedBy ?? (action is DecisionAction.SwitchOn or DecisionAction.SwitchOff or DecisionAction.SetSetpoint && !hasTickets && mode != OperatingMode.Active ? ReasonCode.ModeShadow : null);
-        return new Decision(
-            _ids.Next(),
-            context.Now,
-            DecisionScope.Device,
-            device.Id,
-            stage,
-            device.Phases[0],
-            action,
-            reason,
-            null,
-            mode,
-            false,
-            refused,
-            DecisionInputs.None with { Dispatch = inputs },
-            origin,
-            device.CircuitGroup,
-            target);
+        return Decision.ForDevice(
+            id: _ids.Next(),
+            at: context.Now,
+            device: device.Id,
+            phase: device.Phases[0],
+            stage: stage,
+            action: action,
+            reason: reason,
+            mode: mode,
+            inputs: DecisionInputs.None with { Dispatch = inputs },
+            origin: origin,
+            group: device.CircuitGroup,
+            target: target,
+            refusedBy: RefusalReason.Of(refused));
     }
 
     /// <summary>A guard intent's record (Stage 2).</summary>
     public Decision Intent(GuardIntent intent, ReasonCode? overridden, ReasonCode? refusedBy, OperatingMode mode, DateTimeOffset now, DeviceLevel? target) =>
-        new(
-            _ids.Next(),
-            now,
-            DecisionScope.Device,
-            intent.Device,
-            intent.Stage,
-            intent.Phase,
-            intent.Target switch
+        Decision.ForDevice(
+            id: _ids.Next(),
+            at: now,
+            device: intent.Device,
+            phase: intent.Phase,
+            stage: intent.Stage,
+            action: intent.Target switch
             {
                 GuardTarget.Off => DecisionAction.SwitchOff,
                 GuardTarget.AtMinimum => DecisionAction.ReduceToMinimum,
                 _ => DecisionAction.Release,
             },
-            intent.Reason,
-            overridden,
-            mode,
-            false,
-            refusedBy,
-            intent.Inputs,
-            DecisionOrigin.Guard,
-            intent.Group,
-            target);
+            reason: intent.Reason,
+            mode: mode,
+            inputs: intent.Inputs,
+            origin: DecisionOrigin.Guard,
+            group: intent.Group,
+            target: target,
+            overridden: OverriddenRule.Of(overridden),
+            refusedBy: RefusalReason.Of(refusedBy));
 
     internal static DecisionAction ActionOf(DeviceSpec device, DeviceLevel from, DeviceLevel to)
     {

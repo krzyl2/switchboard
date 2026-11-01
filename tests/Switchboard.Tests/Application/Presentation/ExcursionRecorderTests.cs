@@ -214,7 +214,7 @@ public sealed class ExcursionRecorderTests
     }
 
     private static Decision PhaseEvent(DateTimeOffset at, Phase phase, DecisionAction action) =>
-        new($"e-{Guid.NewGuid():N}"[..20], at, DecisionScope.Phase, null, null, phase, action, ReasonCode.ReserveThreshold, null, OperatingMode.Shadow, false, null, DecisionInputs.None);
+        Decision.ForEvent($"e-{Guid.NewGuid():N}"[..20], at, DecisionScope.Phase, phase, null, action, ReasonCode.ReserveThreshold, OperatingMode.Shadow, DecisionInputs.None);
 
     /// <summary>A step with L1 at <paramref name="current"/> A (signed), reported at <paramref name="reportedAt"/> (default: the step time).</summary>
     internal static GuardStep PhaseStep(DateTimeOffset at, double current, DateTimeOffset? reportedAt = null, ImmutableArray<Decision> decisions = default)

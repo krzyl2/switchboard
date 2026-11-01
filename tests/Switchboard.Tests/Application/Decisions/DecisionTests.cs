@@ -120,7 +120,7 @@ public sealed class DecisionTests
         ReasonCode? overridden = null,
         ReasonCode? refusedBy = ReasonCode.ModeShadow,
         string? device = "heater_l1") =>
-        new(
+        Decision.Restore(
             "boot-000000001",
             At,
             DecisionScope.Device,
@@ -129,9 +129,12 @@ public sealed class DecisionTests
             null,
             DecisionAction.SwitchOff,
             reason,
-            overridden,
+            OverriddenRule.Of(overridden),
             OperatingMode.Shadow,
             false,
-            refusedBy,
-            DecisionInputs.None);
+            RefusalReason.Of(refusedBy),
+            DecisionInputs.None,
+            null,
+            null,
+            null);
 }

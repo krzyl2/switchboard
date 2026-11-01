@@ -175,7 +175,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
     }
 
     private static Decision Copy(Decision d, string id, DateTimeOffset at, DecisionAction? action = null, DeviceLevel? target = null, DispatchDecisionInputs? inputs = null) =>
-        new(id, at, d.Scope, d.Device, d.Stage, d.Phase, action ?? d.Action, d.Reason, d.Overridden, d.Mode, d.Commanded, d.RefusedBy, inputs is null ? d.Inputs : d.Inputs with { Dispatch = inputs }, d.Origin, d.Group, target ?? d.Target);
+        Decision.Restore(id, at, d.Scope, d.Device, d.Stage, d.Phase, action ?? d.Action, d.Reason, OverriddenRule.Of(d.Overridden), d.Mode, d.Commanded, RefusalReason.Of(d.RefusedBy), inputs is null ? d.Inputs : d.Inputs with { Dispatch = inputs }, d.Origin, d.Group, target ?? d.Target);
 
     // DISP-10 and DISP-08: the elements are free to rotate, so the one on the phase with the most
     // headroom (L2, the lowest base load) goes first among them, and only one increase is in flight

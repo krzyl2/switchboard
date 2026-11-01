@@ -116,7 +116,7 @@ internal static class TestSteps
 
     /// <summary>A device decision as the gate records it.</summary>
     public static Decision Device(DateTimeOffset at, string device, DecisionAction action, ReasonCode reason, DeviceLevel? target, int? stage = null, bool commanded = false, DecisionOrigin origin = DecisionOrigin.Guard, DecisionInputs? inputs = null) =>
-        new($"t-{Guid.NewGuid():N}"[..20], at, DecisionScope.Device, DeviceName.Parse(device), stage, Phase.L1, action, reason, null, OperatingMode.Shadow, commanded, commanded ? null : ReasonCode.ModeShadow, inputs ?? DecisionInputs.None, origin, null, target);
+        Decision.Restore($"t-{Guid.NewGuid():N}"[..20], at, DecisionScope.Device, DeviceName.Parse(device), stage, Phase.L1, action, reason, null, OperatingMode.Shadow, commanded, commanded ? null : new RefusalReason(ReasonCode.ModeShadow), inputs ?? DecisionInputs.None, origin, null, target);
 
     /// <summary>The dispatch inputs of a change that waited for a lockout since <paramref name="since"/> (EffectorGate records them on the deferral and on the change applied at expiry).</summary>
     public static DecisionInputs DeferredSince(DateTimeOffset since) => DecisionInputs.None with

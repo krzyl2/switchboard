@@ -16,43 +16,37 @@ internal static class TestDecisions
     private static long _sequence;
 
     public static Decision Shed(DateTimeOffset at, string device = "heater_l1", Phase phase = Phase.L1, ReasonCode reason = ReasonCode.GuardTierExceeded) =>
-        new(
+        Decision.ForDevice(
             $"test-{Interlocked.Increment(ref _sequence):D9}",
             at,
-            DecisionScope.Device,
             DeviceName.Parse(device),
-            null,
             phase,
+            null,
             DecisionAction.SwitchOff,
             reason,
-            ReasonCode.LockoutMinOn,
             OperatingMode.Shadow,
-            false,
-            ReasonCode.ModeShadow,
             new DecisionInputs(
                 new PhaseDecisionInputs(phase, true, null, new Amperes(33), new Amperes(26.4), 1.32, 4, TierReaction.ShedOneImmediately, 0.97, new Amperes(28.25), new Amperes(14.13), new Amperes(-18.87), FlowDirection.Import, at - TimeSpan.FromSeconds(1)),
                 new DeviceDecisionInputs(new RelayApplied(true), true, null, 1, 0.35, null, TimeSpan.FromSeconds(42), TimeSpan.Zero, true),
                 null,
                 null,
-                null));
+                null),
+            null,
+            null,
+            null,
+            overridden: new OverriddenRule(ReasonCode.LockoutMinOn),
+            refusedBy: new RefusalReason(ReasonCode.ModeShadow));
 
     public static Decision Event(DateTimeOffset at, DecisionAction action = DecisionAction.SafeStateEntered, ReasonCode reason = ReasonCode.SafeState) =>
-        new($"test-{Interlocked.Increment(ref _sequence):D9}", at, DecisionScope.System, null, null, null, action, reason, null, OperatingMode.Shadow, false, null, DecisionInputs.None);
+        Decision.ForSystem($"test-{Interlocked.Increment(ref _sequence):D9}", at, action, reason, OperatingMode.Shadow, DecisionInputs.None);
 
     public static Decision Mode(DateTimeOffset at) =>
-        new(
+        Decision.ForSystem(
             $"test-{Interlocked.Increment(ref _sequence):D9}",
             at,
-            DecisionScope.System,
-            null,
-            null,
-            null,
             DecisionAction.ModeResolved,
             ReasonCode.ModeShadow,
-            null,
             OperatingMode.Shadow,
-            false,
-            null,
             DecisionInputs.None with { Mode = new ModeDecisionInputs(OperatingMode.Active, ModeNote.ActiveUnavailableBeforeStage3) });
 
     public static PersistenceOptions Options(int memory = 1000, int pending = 10000, int maxPage = 500, int historyScanLines = 100_000, long historyFileBytes = 16 * 1024 * 1024) => new()

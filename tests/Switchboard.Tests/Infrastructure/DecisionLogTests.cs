@@ -399,19 +399,12 @@ public sealed class DecisionLogTests : IDisposable
     {
         // MODE-03: the cause of a system-wide safe state (here: the add-on stopping) is part of the
         // inputs the log keeps, and comes back exactly.
-        var stop = new Decision(
+        var stop = Decision.ForSystem(
             "test-cause",
             Noon,
-            DecisionScope.System,
-            null,
-            null,
-            null,
             DecisionAction.SafeStateEntered,
             ReasonCode.SafeState,
-            null,
             Switchboard.Application.Modes.OperatingMode.Shadow,
-            false,
-            null,
             DecisionInputs.None with { SafeStateCause = Switchboard.Application.Guard.SafeStateCause.Shutdown });
 
         var line = DecisionJson.Serialize(stop);
