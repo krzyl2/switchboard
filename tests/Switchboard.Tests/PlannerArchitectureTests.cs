@@ -153,11 +153,11 @@ public sealed partial class PlannerArchitectureTests
     {
         // Why: the plan is a pure function of its input (same input, same bytes). Any clock, file, network, environment or random source in the planner, the
         // verifier or their types would make that untrue.
-        var files = new[] { "Planner.cs", "PlanVerifier.cs", "PlanTypes.cs" }.Select(f => RepoPaths.Combine("src", "Switchboard.Domain", "Planning", f)).ToList();
+        var files = new[] { "Planner.cs", "PlanContext.cs", "CapacityLedger.cs", "GoalWork.cs", "GoalPlacer.cs", "SpreadPass.cs", "OrderRefiner.cs", "PlanAssembler.cs", "PlanVerifier.cs", "PlanTypes.cs" }.Select(f => RepoPaths.Combine("src", "Switchboard.Domain", "Planning", f)).ToList();
 
         var offenders = files.Where(f => Regex.IsMatch(File.ReadAllText(f), @"DateTime(Offset)?\.(Now|UtcNow)|TimeProvider|Stopwatch|System\.IO|File\.|Directory\.|HttpClient|Environment\.|new Random|Random\.Shared|Guid\.NewGuid|Task\.Delay|Thread\.Sleep")).Select(Path.GetFileName).ToList();
 
-        Assert.Equal(3, files.Count);
+        Assert.Equal(10, files.Count);
         Assert.Empty(offenders);
     }
 
