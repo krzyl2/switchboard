@@ -135,7 +135,7 @@ public sealed class ShedOrderTests
         // A battery charging at 10 A is reduced to zero charge (its floor), never switched off and
         // never pushed into discharge; one already discharging is no candidate at all (stopping a
         // discharge would raise the current).
-        var battery = new DeviceSpec(
+        var battery = new SetpointSpec(
             DeviceName.Parse("battery"),
             DeviceType.Storage,
             [new StageSpec(1, [Phase.L1], new Amperes(16))],
@@ -158,11 +158,10 @@ public sealed class ShedOrderTests
     [Fact]
     public void Relay_stages_highest_stage_first()
     {
-        var boiler = new DeviceSpec(
+        var boiler = new RelaySpec(
             DeviceName.Parse("boiler"),
             DeviceType.Stepped,
             [new StageSpec(1, [Phase.L1], new Amperes(6.6)), new StageSpec(2, [Phase.L2], new Amperes(6.6)), new StageSpec(3, [Phase.L1], new Amperes(6.6))],
-            null,
             0.3,
             null,
             TimeSpan.FromSeconds(1),
@@ -195,11 +194,10 @@ public sealed class ShedOrderTests
         Assert.Equal(["pool"], steps.Select(s => s.Device.Value));
     }
 
-    private static DeviceSpec Relay(string name, double value, params Phase[] phases) => new(
+    private static RelaySpec Relay(string name, double value, params Phase[] phases) => new(
         DeviceName.Parse(name),
         DeviceType.OnOff,
         [new StageSpec(1, phases.Length == 0 ? [Phase.L1] : [.. phases], new Amperes(6.6))],
-        null,
         value,
         null,
         TimeSpan.FromSeconds(1),
@@ -210,7 +208,7 @@ public sealed class ShedOrderTests
         Start = StartPolicy.RestoreOnly,
     };
 
-    private static DeviceSpec Charger() => new(
+    private static SetpointSpec Charger() => new(
         DeviceName.Parse("charger"),
         DeviceType.Modulating,
         [new StageSpec(1, [Phase.L1], new Amperes(20))],

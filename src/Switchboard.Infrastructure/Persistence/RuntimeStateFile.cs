@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -321,21 +322,24 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private static void WriteLevel(Utf8JsonWriter writer, string name, DeviceLevel level)
     {
         writer.WriteStartObject(name);
-        if (level.Setpoint is { } setpoint)
+        switch (level)
         {
-            writer.WriteNull("relays");
-            writer.WriteNumber("setpoint_a", setpoint.Value);
-        }
-        else
-        {
-            writer.WriteStartArray("relays");
-            foreach (var relay in level.Relays.IsDefault ? [] : level.Relays)
-            {
-                writer.WriteBooleanValue(relay);
-            }
+            case SetpointLevel setpoint:
+                writer.WriteNull("relays");
+                writer.WriteNumber("setpoint_a", setpoint.Setpoint.Value);
+                break;
+            case RelayLevel relayLevel:
+                writer.WriteStartArray("relays");
+                foreach (var relay in relayLevel.Relays.IsDefault ? [] : relayLevel.Relays)
+                {
+                    writer.WriteBooleanValue(relay);
+                }
 
-            writer.WriteEndArray();
-            writer.WriteNull("setpoint_a");
+                writer.WriteEndArray();
+                writer.WriteNull("setpoint_a");
+                break;
+            default:
+                throw new UnreachableException();
         }
 
         writer.WriteBoolean("enabled", level.Enabled);

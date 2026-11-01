@@ -76,10 +76,10 @@ internal sealed class GuardScenario
         {
             foreach (var stage in device.Stages)
             {
-                SetState(device.Id, stage.Index, device.IsSetpoint ? new SetpointApplied(device.Range!.Max) : new RelayApplied(true));
+                SetState(device.Id, stage.Index, device is SetpointSpec setpoint ? new SetpointApplied(setpoint.Range.Max) : new RelayApplied(true));
             }
 
-            if (device.HasStopActuator)
+            if (device is SetpointSpec { HasStopActuator: true })
             {
                 SetState(device.Id, DeviceStateSample.StopStage, new RelayApplied(true));
             }

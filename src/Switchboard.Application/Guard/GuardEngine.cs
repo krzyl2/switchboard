@@ -819,7 +819,7 @@ public sealed class GuardEngine
         /// <summary>Every stage state (and a stop actuator's) is fresh.</summary>
         public bool StateFresh(DeviceSpec device) =>
             device.Stages.All(s => Sample(device.Id, s.Index) is { Fresh: true })
-            && (!device.HasStopActuator || Sample(device.Id, DeviceStateSample.StopStage) is { Fresh: true });
+            && (device is not SetpointSpec { HasStopActuator: true } || Sample(device.Id, DeviceStateSample.StopStage) is { Fresh: true });
 
         public Amperes ReserveThreshold(ConstraintKey key) =>
             key.Group is { } group ? Setup.Group(group)!.ReserveThreshold(key.Phase) : Setup.ReserveThreshold(key.Phase);
@@ -959,10 +959,10 @@ public sealed class GuardEngine
             {
                 var view = View(d);
                 ImmutableArray<AppliedState?> applied = view.Counts
-                    ? d.IsSetpoint
-                        ? [new SetpointApplied(view.Target.Enabled ? view.Target.Setpoint ?? Amperes.Zero : Amperes.Zero)]
-                        : [.. view.Target.Relays.Select(on => (AppliedState?)new RelayApplied(on))]
-                    : d.IsSetpoint && view.Reported is { Enabled: false }
+                    ? d is SetpointSpec
+                        ? [new SetpointApplied(view.Target is SetpointLevel { Enabled: true } target ? target.Setpoint : Amperes.Zero)]
+                        : [.. (view.Target is RelayLevel { Relays.IsDefault: false } targetRelays ? targetRelays.Relays : []).Select(on => (AppliedState?)new RelayApplied(on))]
+                    : d is SetpointSpec && view.Reported is SetpointLevel { Enabled: false }
                         ? [new SetpointApplied(Amperes.Zero)]
                         : [.. d.Stages.Select(s => Applied(d.Id, s.Index))];
                 // A fresh draw tells a step that relieves nothing (an idle charger at a high

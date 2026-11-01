@@ -340,10 +340,10 @@ public static class DecisionJson
         }
 
         writer.WriteStartObject(name);
-        if (level.Setpoint is null)
+        if (level is RelayLevel relayLevel)
         {
             writer.WriteStartArray("relays");
-            foreach (var relay in level.Relays.IsDefault ? [] : level.Relays)
+            foreach (var relay in relayLevel.Relays.IsDefault ? [] : relayLevel.Relays)
             {
                 writer.WriteBooleanValue(relay);
             }
@@ -355,7 +355,7 @@ public static class DecisionJson
             writer.WriteNull("relays");
         }
 
-        WriteOptional(writer, "setpoint_a", level.Setpoint?.Value);
+        WriteOptional(writer, "setpoint_a", (level as SetpointLevel)?.Setpoint.Value);
         writer.WriteBoolean("enabled", level.Enabled);
         writer.WriteEndObject();
     }

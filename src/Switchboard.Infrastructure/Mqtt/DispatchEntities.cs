@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -143,8 +144,8 @@ public sealed partial class DispatchEntities : IMqttEntitySource
             Json(new Dictionary<string, object?>
             {
                 ["reported"] = State(status?.Type, status?.Reported),
-                ["intended_setpoint_a"] = intended?.Setpoint?.Value,
-                ["reported_setpoint_a"] = status?.Reported?.Setpoint?.Value,
+                ["intended_setpoint_a"] = (intended as SetpointLevel)?.Setpoint.Value,
+                ["reported_setpoint_a"] = (status?.Reported as SetpointLevel)?.Setpoint.Value,
                 ["matches"] = status?.Matches,
                 ["reason"] = Name(status?.Reason),
                 ["origin"] = status?.Origin is { } origin ? Snake(origin) : null,
@@ -186,13 +187,16 @@ public sealed partial class DispatchEntities : IMqttEntitySource
             return null;
         }
 
-        if (level.Setpoint is { } setpoint)
+        switch (level)
         {
-            return level.Enabled && setpoint.Value > 0 ? "on" : "off";
+            case SetpointLevel setpoint:
+                return setpoint.Enabled && setpoint.Setpoint.Value > 0 ? "on" : "off";
+            case RelayLevel relay:
+                var relays = relay.Relays.IsDefault ? [] : relay.Relays;
+                return relays.All(r => r) && relays.Length > 0 ? "on" : relays.Any(r => r) ? "partial" : "off";
+            default:
+                throw new UnreachableException();
         }
-
-        var relays = level.Relays.IsDefault ? [] : level.Relays;
-        return relays.All(r => r) && relays.Length > 0 ? "on" : relays.Any(r => r) ? "partial" : "off";
     }
 
     private string Config(string component, string objectId, string name, Dictionary<string, object?> extra)

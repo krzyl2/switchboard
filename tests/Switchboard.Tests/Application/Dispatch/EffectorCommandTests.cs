@@ -34,7 +34,7 @@ public sealed class EffectorCommandTests
         for (var cycle = 1; cycle <= 6; cycle++)
         {
             s.PollUntil(T0 + (cycle * Cycle), 9, 3, 3, refresh: () => s.SetDraw("ev_charger", Phase.L1, 6));
-            if (s.Ledger("ev_charger")?.Target?.Setpoint is { } target)
+            if (s.Ledger("ev_charger")?.Target?.Setpoint() is { } target)
             {
                 s.SetState("ev_charger", new SetpointApplied(target));
             }

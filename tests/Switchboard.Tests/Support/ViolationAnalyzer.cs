@@ -259,9 +259,9 @@ internal sealed class ViolationAnalyzer
 
     /// <summary>A stage a target already has off (a device that cannot switch off counts once it is at its floor).</summary>
     private static bool Off(DeviceSpec device, DeviceLevel target, int stage) =>
-        device.IsSetpoint
-            ? !target.Enabled || target.Setpoint is not { } setpoint || setpoint.Value <= 0 || (!device.CanSwitchOff && setpoint <= device.SetpointFloor)
-            : target.Relays.IsDefault || stage - 1 >= target.Relays.Length || !target.Relays[stage - 1];
+        device is SetpointSpec setpointDevice
+            ? !target.Enabled || target is not SetpointLevel { Setpoint: var setpoint } || setpoint.Value <= 0 || (!device.CanSwitchOff && setpoint <= setpointDevice.SetpointFloor)
+            : target is not RelayLevel { Relays.IsDefault: false } relays || stage - 1 >= relays.Relays.Length || !relays.Relays[stage - 1];
 
     /// <summary>Maximal runs of valid samples above <paramref name="lowerBound"/>; invalid data ends a run.</summary>
     private IEnumerable<Interval> Intervals(List<Event> events, double lowerBound)

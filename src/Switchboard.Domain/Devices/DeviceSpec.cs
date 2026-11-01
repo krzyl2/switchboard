@@ -30,34 +30,84 @@ public enum DeviceType
 /// </summary>
 public sealed record StageSpec(int Index, ImmutableArray<Phase> Phases, Amperes RatedCurrent);
 
-/// <summary>The setpoint range of a modulating or storage device, already in amperes.</summary>
-public sealed record ModulatingRange(Amperes Min, Amperes Max, Amperes Step);
+/// <summary>
+/// The setpoint range of a modulating or storage device, already in amperes: finite, with a step
+/// above zero and a maximum that is not below the minimum, because every level is counted in steps.
+/// </summary>
+public sealed record ModulatingRange
+{
+    public ModulatingRange(Amperes min, Amperes max, Amperes step)
+    {
+        if (!double.IsFinite(min.Value) || !double.IsFinite(max.Value) || !double.IsFinite(step.Value))
+        {
+            throw new ArgumentException("A setpoint range is made of finite currents.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(step.Value, nameof(step));
+        ArgumentOutOfRangeException.ThrowIfLessThan(max.Value, min.Value, nameof(max));
+        Min = min;
+        Max = max;
+        Step = step;
+    }
+
+    public Amperes Min { get; }
+
+    public Amperes Max { get; }
+
+    public Amperes Step { get; }
+}
 
 /// <summary>
 /// A declared device as protection sees it: phases, currents and shedding parameters, never an
-/// entity ID or a power. A modulating or storage device has exactly one stage whose rated current
-/// is its maximum setpoint.
+/// entity ID or a power. A device is either a <see cref="RelaySpec"/> (one or more relay stages) or a
+/// <see cref="SetpointSpec"/> (a current setpoint with exactly one stage whose rated current is its
+/// maximum); <see cref="Type"/> stays the configuration's enum and names the kind within that.
 /// </summary>
-/// <param name="ShedPriority">Replaces <paramref name="ValuePerKwh"/> as the shed key when set (DISP-02).</param>
-/// <param name="ReactionTime">From a command to the load actually changing; the shorter one sheds first on a tie.</param>
-/// <param name="NoShed">A device that physically cannot stop: never a shedding candidate (04 §2).</param>
-public sealed record DeviceSpec(
-    DeviceName Id,
-    DeviceType Type,
-    ImmutableArray<StageSpec> Stages,
-    ModulatingRange? Range,
-    double ValuePerKwh,
-    double? ShedPriority,
-    TimeSpan ReactionTime,
-    bool NoShed,
-    TimeSpan MinOn,
-    TimeSpan MinOff)
+public abstract record DeviceSpec
 {
-    /// <summary>A modulating device with a declared stop actuator (a switch, or a select, that disables it): it can be switched off.</summary>
-    public bool HasStopActuator { get; init; }
+    private protected DeviceSpec(
+        DeviceName id,
+        DeviceType type,
+        ImmutableArray<StageSpec> stages,
+        double valuePerKwh,
+        double? shedPriority,
+        TimeSpan reactionTime,
+        bool noShed,
+        TimeSpan minOn,
+        TimeSpan minOff)
+    {
+        Id = id;
+        Type = type;
+        Stages = stages;
+        ValuePerKwh = valuePerKwh;
+        ShedPriority = shedPriority;
+        ReactionTime = reactionTime;
+        NoShed = noShed;
+        MinOn = minOn;
+        MinOff = minOff;
+    }
 
-    /// <summary>The stop and resume options when the stop actuator is a select; null for a switch (or no stop actuator).</summary>
-    public StopOptions? StopOptions { get; init; }
+    public DeviceName Id { get; init; }
+
+    /// <summary>The configuration's device type; it never changes a device's kind, which its subtype fixes.</summary>
+    public DeviceType Type { get; }
+
+    public ImmutableArray<StageSpec> Stages { get; init; }
+
+    public double ValuePerKwh { get; init; }
+
+    /// <summary>Replaces <see cref="ValuePerKwh"/> as the shed key when set (DISP-02).</summary>
+    public double? ShedPriority { get; init; }
+
+    /// <summary>From a command to the load actually changing; the shorter one sheds first on a tie.</summary>
+    public TimeSpan ReactionTime { get; init; }
+
+    /// <summary>A device that physically cannot stop: never a shedding candidate (04 §2).</summary>
+    public bool NoShed { get; init; }
+
+    public TimeSpan MinOn { get; init; }
+
+    public TimeSpan MinOff { get; init; }
 
     /// <summary>The phases on which a draw-current signal measures this device's own current.</summary>
     public ImmutableArray<Phase> CurrentDrawPhases { get; init; } = [];
@@ -89,17 +139,11 @@ public sealed record DeviceSpec(
     /// <summary>What the shed order sorts by: the priority override, else the value per kWh (DISP-02).</summary>
     public double ShedKey => ShedPriority ?? ValuePerKwh;
 
-    /// <summary>A modulating or storage device: its actuator is a current setpoint.</summary>
-    public bool IsSetpoint => Type is DeviceType.Modulating or DeviceType.Storage;
-
     /// <summary>
     /// Relays switch off; a modulating device only through its stop actuator (its setpoint range
     /// excludes zero); a storage device is brought to zero charge, never switched off.
     /// </summary>
-    public bool CanSwitchOff => Type is DeviceType.OnOff or DeviceType.Stepped || (Type == DeviceType.Modulating && HasStopActuator);
-
-    /// <summary>The lowest setpoint anything targets: the range minimum, zero charge for storage (never discharge).</summary>
-    public Amperes SetpointFloor => Type == DeviceType.Storage ? Amperes.Zero : Range?.Min ?? Amperes.Zero;
+    public abstract bool CanSwitchOff { get; }
 
     /// <summary>Every phase any stage draws current on, in phase order.</summary>
     public ImmutableArray<Phase> Phases => [.. Stages.SelectMany(s => s.Phases).Distinct().Order()];
@@ -107,4 +151,57 @@ public sealed record DeviceSpec(
     public bool IsOn(Phase phase) => Stages.Any(s => s.Phases.Contains(phase));
 
     public bool HasCurrentDraw(Phase phase) => !CurrentDrawPhases.IsDefault && CurrentDrawPhases.Contains(phase);
+}
+
+/// <summary>A device that switches relays: one stage (<see cref="DeviceType.OnOff"/>) or several (<see cref="DeviceType.Stepped"/>).</summary>
+public sealed record RelaySpec : DeviceSpec
+{
+    public RelaySpec(
+        DeviceName id,
+        DeviceType type,
+        ImmutableArray<StageSpec> stages,
+        double valuePerKwh,
+        double? shedPriority,
+        TimeSpan reactionTime,
+        bool noShed,
+        TimeSpan minOn,
+        TimeSpan minOff)
+        : base(id, type is DeviceType.OnOff or DeviceType.Stepped ? type : throw new ArgumentException($"A relay device is onoff or stepped, not {type}.", nameof(type)), stages, valuePerKwh, shedPriority, reactionTime, noShed, minOn, minOff)
+    {
+    }
+
+    public override bool CanSwitchOff => true;
+}
+
+/// <summary>A device whose actuator is a current setpoint: <see cref="DeviceType.Modulating"/> or <see cref="DeviceType.Storage"/>.</summary>
+public sealed record SetpointSpec : DeviceSpec
+{
+    public SetpointSpec(
+        DeviceName id,
+        DeviceType type,
+        ImmutableArray<StageSpec> stages,
+        ModulatingRange range,
+        double valuePerKwh,
+        double? shedPriority,
+        TimeSpan reactionTime,
+        bool noShed,
+        TimeSpan minOn,
+        TimeSpan minOff)
+        : base(id, type is DeviceType.Modulating or DeviceType.Storage ? type : throw new ArgumentException($"A setpoint device is modulating or storage, not {type}.", nameof(type)), stages, valuePerKwh, shedPriority, reactionTime, noShed, minOn, minOff)
+    {
+        Range = range ?? throw new ArgumentNullException(nameof(range));
+    }
+
+    public ModulatingRange Range { get; init; }
+
+    /// <summary>A modulating device with a declared stop actuator (a switch, or a select, that disables it): it can be switched off.</summary>
+    public bool HasStopActuator { get; init; }
+
+    /// <summary>The stop and resume options when the stop actuator is a select; null for a switch (or no stop actuator).</summary>
+    public StopOptions? StopOptions { get; init; }
+
+    public override bool CanSwitchOff => Type == DeviceType.Modulating && HasStopActuator;
+
+    /// <summary>The lowest setpoint anything targets: the range minimum, zero charge for storage (never discharge).</summary>
+    public Amperes SetpointFloor => Type == DeviceType.Storage ? Amperes.Zero : Range.Min;
 }

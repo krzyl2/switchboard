@@ -667,7 +667,7 @@ public sealed class EffectorGate
         if (phases.All(device.HasCurrentDraw))
         {
             var now = phases.Select(p => DrawSample(context, device.Id, p) is { Fresh: true, Current: { } c } ? c.Value : (double?)null).ToList();
-            if (now.Any(v => v is null) || (!device.IsSetpoint && phases.Any(p => window.Before.GetValueOrDefault(p)?.DrawCurrent is null)))
+            if (now.Any(v => v is null) || (device is RelaySpec && phases.Any(p => window.Before.GetValueOrDefault(p)?.DrawCurrent is null)))
             {
                 return (Verdict.Inconclusive, 0, 0, MeasureUnit.Amperes);
             }
@@ -675,7 +675,7 @@ public sealed class EffectorGate
             var ceilingTo = phases.Sum(p => DeviceLevels.Ceiling(device, window.To, p).Value);
             var ceilingFrom = phases.Sum(p => DeviceLevels.Ceiling(device, window.From, p).Value);
             var tolerance = Verification.Tolerance(ceilingTo - ceilingFrom, settling.VerificationTolerance, settling.VerificationSigmaMultiplier, dispatchDevice.CurrentDrawSigma.Value);
-            if (device.IsSetpoint)
+            if (device is SetpointSpec)
             {
                 var drawn = now.Sum(v => v!.Value);
                 var kind = ceilingTo < ceilingFrom ? VerificationKind.SetpointDecrease : VerificationKind.SetpointIncrease;
@@ -687,7 +687,7 @@ public sealed class EffectorGate
             return (Verification.Judge(new VerificationCase(VerificationKind.Step, expected, measured, tolerance, window.ForeignStep)), expected, measured, MeasureUnit.Amperes);
         }
 
-        if (device.IsSetpoint)
+        if (device is SetpointSpec)
         {
             return (Verdict.Unverifiable, 0, 0, MeasureUnit.Amperes);
         }
@@ -862,7 +862,7 @@ public sealed class EffectorGate
     }
 
     private SelfTestTarget? SelfTestFor(DeviceSpec device) =>
-        _selfTest?.Current is { } test && test.Device == device.Id && !device.IsSetpoint && test.Stage >= 1 && test.Stage <= device.Stages.Length ? test : null;
+        _selfTest?.Current is { } test && test.Device == device.Id && device is RelaySpec && test.Stage >= 1 && test.Stage <= device.Stages.Length ? test : null;
 
     /// <summary>
     /// The self-test's wish as an ordinary change (CONN-05): on needs the guard's permission on the
@@ -974,8 +974,8 @@ public sealed class EffectorGate
             return;
         }
 
-        if (device.IsSetpoint && device.HasStopActuator && state.TargetCommanded && state.Target is { Enabled: false } stopped
-            && !previous.Enabled && !reported.Enabled)
+        if (device is SetpointSpec { HasStopActuator: true } && state.TargetCommanded && state.Target is SetpointLevel { Enabled: false } stopped
+            && previous is SetpointLevel { Enabled: false } && reported is SetpointLevel { Enabled: false } reportedStop)
         {
             // Switchboard holds the device stopped through its stop actuator and only the setpoint
             // moved (the charger's app, an automation): the user chose a new level, not to stay
@@ -983,10 +983,10 @@ public sealed class EffectorGate
             // setpoint and the stop stands; only a move of the stop itself ends the baseline (below).
             if (state.Baseline is { } baseline)
             {
-                state.Baseline = baseline with { Level = baseline.Level with { Setpoint = reported.Setpoint } };
+                state.Baseline = baseline with { Level = DeviceLevel.At(reportedStop.Setpoint, baseline.Level.Enabled) };
             }
 
-            state.Target = stopped with { Setpoint = reported.Setpoint };
+            state.Target = DeviceLevel.At(reportedStop.Setpoint, stopped.Enabled);
             if (state.Window is null or { Kind: WindowKind.Observation })
             {
                 state.Window = OpenWindow(context, device, WindowKind.Observation, previous, reported, applied: false, probe: false);
@@ -1042,12 +1042,17 @@ public sealed class EffectorGate
     /// <summary>Every component that changed between two reports now equals the target's: the device is on its way to the commanded level.</summary>
     private static bool MovesToward(DeviceSpec device, DeviceLevel previous, DeviceLevel reported, DeviceLevel target)
     {
-        if (device.IsSetpoint)
+        if (device is SetpointSpec setpointDevice)
         {
-            var setpointMoved = !Nullable.Equals(previous.Setpoint, reported.Setpoint);
-            var enabledMoved = previous.Enabled != reported.Enabled;
-            return (!setpointMoved || SameSetpoint(reported.Setpoint, target.Setpoint, device))
-                && (!enabledMoved || reported.Enabled == target.Enabled)
+            if (previous is not SetpointLevel before || reported is not SetpointLevel now || target is not SetpointLevel wanted)
+            {
+                return false;
+            }
+
+            var setpointMoved = !before.Setpoint.Equals(now.Setpoint);
+            var enabledMoved = before.Enabled != now.Enabled;
+            return (!setpointMoved || SameSetpoint(now.Setpoint, wanted.Setpoint, setpointDevice))
+                && (!enabledMoved || now.Enabled == wanted.Enabled)
                 && (setpointMoved || enabledMoved);
         }
 
@@ -1055,8 +1060,8 @@ public sealed class EffectorGate
         return changed.Count > 0 && changed.All(s => DeviceLevels.StageOn(device, reported, s.Index) == DeviceLevels.StageOn(device, target, s.Index));
     }
 
-    private static bool SameSetpoint(Amperes? a, Amperes? b, DeviceSpec device) =>
-        a is { } x && b is { } y && Math.Abs(x.Value - y.Value) <= (device.Range?.Step.Value ?? 0) / 2;
+    private static bool SameSetpoint(Amperes a, Amperes b, SetpointSpec device) =>
+        Math.Abs(a.Value - b.Value) <= device.Range.Step.Value / 2;
 
     /// <summary>
     /// A restore baseline taken while the level was unknown is decided by the first fresh report
@@ -1121,7 +1126,7 @@ public sealed class EffectorGate
         }
 
         state.ConfirmBy = null;
-        if (reported is null || state.Target is not { } target || reported.Equals(target) || (device.IsSetpoint && SameSetpoint(reported.Setpoint, target.Setpoint, device) && reported.Enabled == target.Enabled))
+        if (reported is null || state.Target is not { } target || reported.Equals(target) || (device is SetpointSpec setpointDevice && reported is SetpointLevel shown && target is SetpointLevel commanded && SameSetpoint(shown.Setpoint, commanded.Setpoint, setpointDevice) && shown.Enabled == commanded.Enabled))
         {
             return;
         }
@@ -1355,7 +1360,7 @@ public sealed class EffectorGate
         if (decrease)
         {
             TakeBaseline(context, device, state, origin, level, reported, commanding);
-            if (device.StopOptions is { } options && from.Enabled && !level.Enabled)
+            if (device is SetpointSpec { StopOptions: { } options } && from.Enabled && !level.Enabled)
             {
                 NoteOptionBefore(context, device, state, options, commanding);
             }
@@ -1479,7 +1484,7 @@ public sealed class EffectorGate
     /// </summary>
     private void WarnUndeclaredResume(DeviceSpec device, DeviceLevel from, DeviceLevel level, StartBaseline baseline, bool commanding)
     {
-        if (commanding && device.StopOptions is { } options && !from.Enabled && level.Enabled
+        if (commanding && device is SetpointSpec { StopOptions: { } options } && !from.Enabled && level.Enabled
             && baseline.OptionBefore is { } before && before != options.ResumeOption && before != options.StopOption)
         {
             _logger.LogWarning(
@@ -1492,7 +1497,7 @@ public sealed class EffectorGate
 
     /// <summary>The option a select stop actuator reports now (fresh), or null: unknown, or a switch stop.</summary>
     private static OptionText? OptionNow(StepContext context, DeviceSpec device) =>
-        device.StopOptions is not null && context.Inputs?.Protection.DeviceStates is { IsDefault: false } samples
+        device is SetpointSpec { StopOptions: not null } && context.Inputs?.Protection.DeviceStates is { IsDefault: false } samples
         && samples.FirstOrDefault(s => s.Device == device.Id && s.Stage == DeviceStateSample.StopStage) is { Fresh: true, Applied: RelayApplied { Option: { } option } }
             ? option
             : null;
@@ -1534,14 +1539,14 @@ public sealed class EffectorGate
                 Retiring = retiring,
             }));
 
-        if (device.IsSetpoint)
+        if (device is SetpointSpec setpointDevice)
         {
-            if (to.Setpoint is { } setpoint && !Nullable.Equals(from.Setpoint, to.Setpoint) && !(retiring && device.HasStopActuator))
+            if (to is SetpointLevel target && !(from is SetpointLevel unchanged && unchanged.Setpoint.Equals(target.Setpoint)) && !(retiring && setpointDevice.HasStopActuator))
             {
-                Send(DeviceCommandKind.Setpoint, device.Stages[0].Index, true, setpoint, from.Setpoint is not { } before || setpoint.Value < before.Value);
+                Send(DeviceCommandKind.Setpoint, device.Stages[0].Index, true, target.Setpoint, from is not SetpointLevel before || target.Setpoint.Value < before.Setpoint.Value);
             }
 
-            if (device.HasStopActuator && from.Enabled != to.Enabled)
+            if (setpointDevice.HasStopActuator && from.Enabled != to.Enabled)
             {
                 Send(DeviceCommandKind.Enable, device.Stages[0].Index, to.Enabled, null, !to.Enabled);
             }
@@ -1552,7 +1557,7 @@ public sealed class EffectorGate
         foreach (var stage in device.Stages)
         {
             var on = DeviceLevels.StageOn(device, to, stage.Index);
-            if (DeviceLevels.StageOn(device, from, stage.Index) != on || from.Relays.IsDefault)
+            if (DeviceLevels.StageOn(device, from, stage.Index) != on || from is not RelayLevel { Relays.IsDefault: false })
             {
                 Send(DeviceCommandKind.Relay, stage.Index, on, null, !on);
             }
@@ -1749,14 +1754,14 @@ public sealed class EffectorGate
     /// <summary>A relay device's level with one stage switched on or off.</summary>
     private static DeviceLevel WithStage(DeviceSpec device, DeviceLevel level, int stage, bool on)
     {
-        var relays = (level.Relays.IsDefault || level.Relays.Length != device.Stages.Length ? [.. device.Stages.Select(_ => false)] : level.Relays).ToArray();
+        var relays = (level is RelayLevel { Relays.IsDefault: false } current && current.Relays.Length == device.Stages.Length ? current.Relays : [.. device.Stages.Select(_ => false)]).ToArray();
         relays[stage - 1] = on;
-        return new DeviceLevel([.. relays], null, true);
+        return new RelayLevel([.. relays]);
     }
 
     private static DecisionAction ActionOf(DeviceSpec device, DeviceLevel from, DeviceLevel to)
     {
-        if (device.IsSetpoint)
+        if (device is SetpointSpec)
         {
             return from.Enabled != to.Enabled ? (to.Enabled ? DecisionAction.SwitchOn : DecisionAction.SwitchOff) : DecisionAction.SetSetpoint;
         }

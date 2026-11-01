@@ -298,7 +298,7 @@ public sealed class ActivePhaseTestTests
     {
         var status = run.Harness.Steps[^1].DispatchStatus!.Devices.Single(d => d.Id == HeaterL1);
         Assert.Equal(Switchboard.Domain.Devices.DeviceLevel.Relay(false), status.Reported);
-        Assert.False(status.Intended?.Relays[0] ?? false);
+        Assert.False(status.Intended?.Relays()[0] ?? false);
         Assert.Null(run.Slot.Current);
         Assert.Equal(ActuatorService(false), run.Path.Calls.Last(c => c.Call.Entity.Value == "switch.grzalka_2").Call.Service);
     }

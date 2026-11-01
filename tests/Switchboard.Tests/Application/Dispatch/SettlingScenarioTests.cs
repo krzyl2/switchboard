@@ -85,7 +85,7 @@ public sealed class SettlingScenarioTests
         Assert.Null(ledger.Window);
         Assert.Equal(Verdict.NotApplied, ledger.History.Single().Verdict);
         Assert.Equal(0, ledger.Mismatches);
-        Assert.True(ledger.Target!.Relays[0]);
+        Assert.True(ledger.Target!.Relays()[0]);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class SettlingScenarioTests
 
         s.Override("heater_l1", OverrideMode.Auto);
         s.PollUntil(T0 + (5 * Cycle), 3, 3, 3);
-        Assert.False(s.Ledger("heater_l1")!.Target!.Relays[0]);
+        Assert.False(s.Ledger("heater_l1")!.Target!.Relays()[0]);
         Assert.Contains(s.DecisionsFor("heater_l1"), d => d.Action == DecisionAction.SwitchOff && d.Reason == ReasonCode.DeviceUnresponsive);
         var commands = port.Commands.Count;
         var retry = marked.At + TimeSpan.FromMinutes(2);

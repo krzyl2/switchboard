@@ -34,17 +34,55 @@ public enum DeviceStateInvalidReason
 
 /// <summary>
 /// One stage's applied state as protection sees it. <see cref="Applied"/> is null unless the
-/// state is <see cref="Fresh"/>: a stale "off" must never exclude a device from protection.
+/// state is <see cref="Fresh"/>: a stale "off" must never exclude a device from protection, so a
+/// sample that is not fresh cannot be built with an applied state.
 /// </summary>
-/// <param name="Stage">The stage number, starting at 1; <see cref="StopStage"/> for a modulating device's stop actuator.</param>
-public sealed record DeviceStateSample(
-    DeviceName Device,
-    int Stage,
-    bool Fresh,
-    DeviceStateInvalidReason? InvalidReason,
-    AppliedState? Applied,
-    DateTimeOffset? ReportedAt)
+public sealed record DeviceStateSample
 {
     /// <summary>The stage number under which a stop actuator's on/off state is reported (its enabled flag).</summary>
     public const int StopStage = 0;
+
+    /// <param name="stage">The stage number, starting at 1; <see cref="StopStage"/> for a modulating device's stop actuator.</param>
+    /// <exception cref="ArgumentException">An applied state of a sample that is not fresh.</exception>
+    public DeviceStateSample(
+        DeviceName device,
+        int stage,
+        bool fresh,
+        DeviceStateInvalidReason? invalidReason,
+        AppliedState? applied,
+        DateTimeOffset? reportedAt)
+    {
+        if (applied is not null && !fresh)
+        {
+            throw new ArgumentException("A state that is not fresh carries no applied state.", nameof(applied));
+        }
+
+        Device = device;
+        Stage = stage;
+        Fresh = fresh;
+        InvalidReason = invalidReason;
+        Applied = applied;
+        ReportedAt = reportedAt;
+    }
+
+    public DeviceName Device { get; }
+
+    /// <summary>The stage number, starting at 1; <see cref="StopStage"/> for a modulating device's stop actuator.</summary>
+    public int Stage { get; }
+
+    public bool Fresh { get; }
+
+    public DeviceStateInvalidReason? InvalidReason { get; }
+
+    public AppliedState? Applied { get; }
+
+    public DateTimeOffset? ReportedAt { get; }
+
+    /// <summary>A fresh state with its applied value.</summary>
+    public static DeviceStateSample Known(DeviceName device, int stage, AppliedState applied, DateTimeOffset? reportedAt) =>
+        new(device, stage, true, null, applied, reportedAt);
+
+    /// <summary>A state that is not known, and why: it carries no applied value.</summary>
+    public static DeviceStateSample Unknown(DeviceName device, int stage, DeviceStateInvalidReason reason, DateTimeOffset? reportedAt) =>
+        new(device, stage, false, reason, null, reportedAt);
 }

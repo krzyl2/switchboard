@@ -85,7 +85,7 @@ public sealed class RestoreBaselineTests
         s.Charger(10, 10);
         s.ChangeMode(DispatchScenario.Active, start: true);
 
-        s.PollUntil(Later + TimeSpan.FromMinutes(15), 3, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 10, s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 10));
+        s.PollUntil(Later + TimeSpan.FromMinutes(15), 3, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 10, s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 10));
 
         Assert.All(
             port.Submitted.Where(c => c.Device.Value == "ev_charger" && c.Setpoint is not null),

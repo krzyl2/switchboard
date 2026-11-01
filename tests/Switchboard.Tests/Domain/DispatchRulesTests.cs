@@ -4,6 +4,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Domain;
 
@@ -41,7 +42,7 @@ public sealed class DispatchRulesTests
         // not headroom_insufficient.
         var result = Allocate(14, Charger(basis: 6, max: 8), Heater("h", off: true));
 
-        Assert.Equal(8, Level(result[0], Charger(basis: 6, max: 8)).Setpoint!.Value.Value);
+        Assert.Equal(8, Level(result[0], Charger(basis: 6, max: 8)).Setpoint()!.Value.Value);
         Assert.Equal((0, AllocationLimit.Rank), (result[1].Wish, result[1].Limit));
         Assert.Equal(AllocationLimit.Headroom, Allocate(3, Heater("h", off: true)).Single().Limit);
     }
@@ -71,7 +72,7 @@ public sealed class DispatchRulesTests
         // threshold, so no heater is started into the headroom the car may take any moment.
         var result = Allocate(16, Charger(basis: 16, max: 16), Heater("h", off: true));
 
-        Assert.Equal(16, Level(result[0], Charger(basis: 16, max: 16)).Setpoint!.Value.Value);
+        Assert.Equal(16, Level(result[0], Charger(basis: 16, max: 16)).Setpoint()!.Value.Value);
         Assert.Equal(0, result[1].Wish);
     }
 
@@ -83,7 +84,7 @@ public sealed class DispatchRulesTests
         var heater = Heater("h", off: false) with { MinAllowed = 1 };
         var result = Allocate(14, Charger(basis: 6, max: 14), heater);
 
-        Assert.True(Level(result[0], Charger(basis: 6, max: 14)).Setpoint!.Value.Value <= 14 - 6.6 - 1.3 + 1e-9);
+        Assert.True(Level(result[0], Charger(basis: 6, max: 14)).Setpoint()!.Value.Value <= 14 - 6.6 - 1.3 + 1e-9);
         Assert.Equal(1, result[1].Allocated);
     }
 
@@ -183,11 +184,10 @@ public sealed class DispatchRulesTests
         Assert.Equal(Verdict.Match, Verification.Judge(new VerificationCase(VerificationKind.SetpointDecrease, 6, 6.2, 1, false)));
     }
 
-    private static readonly DeviceSpec ThreePhaseHeater = new(
+    private static readonly RelaySpec ThreePhaseHeater = new(
         DeviceName.Parse("boiler"),
         DeviceType.OnOff,
         [new StageSpec(1, [Phase.L1, Phase.L2, Phase.L3], new Amperes(6.6))],
-        null,
         0.3,
         null,
         TimeSpan.FromSeconds(1),
@@ -207,7 +207,7 @@ public sealed class DispatchRulesTests
 
     private static AllocationDevice Charger(double basis, double max)
     {
-        var spec = new DeviceSpec(
+        var spec = new SetpointSpec(
             DeviceName.Parse("charger"),
             DeviceType.Modulating,
             [new StageSpec(1, [Phase.L1], new Amperes(20))],

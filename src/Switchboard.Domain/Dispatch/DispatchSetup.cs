@@ -36,7 +36,7 @@ public sealed record DispatchDevice(
         var total = Watts.Zero;
         foreach (var stage in Spec.Stages)
         {
-            if (!Spec.IsSetpoint && stage.Phases.Contains(phase) && !level.Relays.IsDefault && stage.Index - 1 < level.Relays.Length && level.Relays[stage.Index - 1])
+            if (Spec is RelaySpec && stage.Phases.Contains(phase) && level is RelayLevel { Relays.IsDefault: false } relays && stage.Index - 1 < relays.Relays.Length && relays.Relays[stage.Index - 1])
             {
                 total += StagePower[stage.Index - 1] / stage.Phases.Length;
             }

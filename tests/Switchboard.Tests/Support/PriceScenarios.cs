@@ -52,7 +52,7 @@ internal sealed class PriceScenarios
             var device = s.Setup.Device(Switchboard.Domain.Devices.DeviceName.Parse(name))!;
             foreach (var stage in device.Stages)
             {
-                s.SetState(device.Id, stage.Index, device.IsSetpoint ? new Switchboard.Domain.Devices.SetpointApplied(device.SetpointFloor) : new Switchboard.Domain.Devices.RelayApplied(false));
+                s.SetState(device.Id, stage.Index, device is Switchboard.Domain.Devices.SetpointSpec setpoint ? new Switchboard.Domain.Devices.SetpointApplied(setpoint.SetpointFloor) : new Switchboard.Domain.Devices.RelayApplied(false));
             }
         }
 

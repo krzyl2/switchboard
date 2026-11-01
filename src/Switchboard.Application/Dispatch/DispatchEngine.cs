@@ -205,13 +205,13 @@ public sealed partial class DispatchEngine
                 var load = input.Guard.Envelope.Device(device.Id);
                 var power = input.Inputs.DevicePowers.IsDefault ? null : input.Inputs.DevicePowers.FirstOrDefault(p => p.Device == device.Id && p.Phase == phase);
                 Watts? own = device.HasPowerDraw(phase) ? power is { Fresh: true, Power: { } w } ? w : null
-                    : device.Spec.IsSetpoint ? null
+                    : device.Spec is SetpointSpec ? null
                     : load?.Reported is { } reported ? device.RatedPower(reported, phase)
                     : null;
                 // A commanded change counts as ours until the reported state shows it (the meter may
                 // see the load first): only in active mode, where something was really applied.
                 if (active && input.Ledger.Entry(device.Id) is { TargetCommanded: true, CommandRefuted: false, Target: { } target }
-                    && !device.Spec.IsSetpoint && !device.HasPowerDraw(phase) && load?.Reported is { } shown && !shown.Equals(target))
+                    && device.Spec is RelaySpec && !device.HasPowerDraw(phase) && load?.Reported is { } shown && !shown.Equals(target))
                 {
                     own = own + device.RatedPower(target, phase) - device.RatedPower(shown, phase);
                 }
@@ -631,7 +631,7 @@ public sealed partial class DispatchEngine
     /// <summary>The lowest level a min_on lockout (target timeline) still allows: a relay stage that is on and locked stays on.</summary>
     private static int LockedMinimum(DeviceSpec spec, ImmutableArray<DeviceLevel> levels, DeviceLevel basis, IReadOnlyLockouts lockouts, DateTimeOffset now)
     {
-        if (spec.IsSetpoint)
+        if (spec is SetpointSpec)
         {
             var on = DeviceLevels.Ceiling(spec, basis, spec.Phases[0]) > Amperes.Zero;
             var canStop = spec.CanSwitchOff || spec.Type == DeviceType.Storage;

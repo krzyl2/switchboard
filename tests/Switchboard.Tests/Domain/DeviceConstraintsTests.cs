@@ -44,15 +44,9 @@ public sealed class DeviceConstraintsTests
     // Stages on their own phases, declared out of phase order, two on the same phase.
     private static readonly DeviceSpec Stepped = Device("stepped", DeviceType.Stepped, [Stage(1, Phase.L3), Stage(2, Phase.L1), Stage(3, Phase.L3)]);
 
-    private static readonly DeviceSpec Charger = Device("charger", DeviceType.Modulating, [Stage(1, Phase.L1, Phase.L2, Phase.L3)]) with
-    {
-        Range = new ModulatingRange(new Amperes(6), new Amperes(16), new Amperes(1)),
-    };
+    private static readonly DeviceSpec Charger = Device("charger", DeviceType.Modulating, [Stage(1, Phase.L1, Phase.L2, Phase.L3)], new ModulatingRange(new Amperes(6), new Amperes(16), new Amperes(1)));
 
-    private static readonly DeviceSpec Battery = Device("battery", DeviceType.Storage, [Stage(1, Phase.L2)]) with
-    {
-        Range = new ModulatingRange(Amperes.Zero, new Amperes(10), new Amperes(1)),
-    };
+    private static readonly DeviceSpec Battery = Device("battery", DeviceType.Storage, [Stage(1, Phase.L2)], new ModulatingRange(Amperes.Zero, new Amperes(10), new Amperes(1)));
 
     public static TheoryData<string> Cases => [.. Matrix().Keys];
 
@@ -104,7 +98,7 @@ public sealed class DeviceConstraintsTests
 
         // A level that does not carry the flag (none at all, a shorter one, a setpoint's) has the
         // stage off: lockouts and records never start on a stage nobody switched on.
-        Assert.False(DeviceLevels.StageOn(Stepped, new DeviceLevel(default, null, true), 1));
+        Assert.False(DeviceLevels.StageOn(Stepped, new RelayLevel(default), 1));
         Assert.False(DeviceLevels.StageOn(Stepped, DeviceLevel.Relay(true), 2));
         Assert.False(DeviceLevels.StageOn(Stepped, DeviceLevel.At(new Amperes(10)), 1));
     }
@@ -117,7 +111,7 @@ public sealed class DeviceConstraintsTests
         Assert.True(DeviceLevels.StageOn(Charger, DeviceLevel.At(new Amperes(10)), 1));
         Assert.False(DeviceLevels.StageOn(Charger, DeviceLevel.At(new Amperes(10), enabled: false), 1));
         Assert.False(DeviceLevels.StageOn(Battery, DeviceLevel.At(Amperes.Zero), 1));
-        Assert.False(DeviceLevels.StageOn(Charger, new DeviceLevel([], null, true), 1));
+        Assert.False(DeviceLevels.StageOn(Charger, new RelayLevel([]), 1));
         Assert.False(DeviceLevels.StageOn(Charger, DeviceLevel.Relay(true), 1));
     }
 
@@ -163,11 +157,16 @@ public sealed class DeviceConstraintsTests
 
     private static StageSpec Stage(int index, params Phase[] phases) => new(index, [.. phases], new Amperes(6));
 
-    private static DeviceSpec Device(string name, DeviceType type, ImmutableArray<StageSpec> stages) =>
-        new(DeviceName.Parse(name), type, stages, null, 1, null, TimeSpan.FromSeconds(10), false, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60))
-        {
-            Start = StartPolicy.RestoreOnly,
-        };
+    private static DeviceSpec Device(string name, DeviceType type, ImmutableArray<StageSpec> stages, ModulatingRange? range = null) =>
+        range is null
+            ? new RelaySpec(DeviceName.Parse(name), type, stages, 1, null, TimeSpan.FromSeconds(10), false, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60))
+            {
+                Start = StartPolicy.RestoreOnly,
+            }
+            : new SetpointSpec(DeviceName.Parse(name), type, stages, range, 1, null, TimeSpan.FromSeconds(10), false, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60))
+            {
+                Start = StartPolicy.RestoreOnly,
+            };
 
     private static CircuitGroupSpec Group(ImmutableArray<Phase> phases) =>
         new(Carport, Breaker, phases, phases.ToImmutableDictionary(p => p, _ => Amperes.Zero), phases.ToImmutableDictionary(p => p, _ => TimeSpan.FromSeconds(30)), true, []);

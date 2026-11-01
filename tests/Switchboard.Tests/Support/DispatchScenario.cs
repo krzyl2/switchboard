@@ -116,7 +116,7 @@ internal static class DispatchScenario
             var device = s.Setup.Device(DeviceName.Parse(name))!;
             foreach (var stage in device.Stages)
             {
-                s.SetState(device.Id, stage.Index, device.IsSetpoint ? new SetpointApplied(device.SetpointFloor) : new RelayApplied(false));
+                s.SetState(device.Id, stage.Index, device is SetpointSpec setpoint ? new SetpointApplied(setpoint.SetpointFloor) : new RelayApplied(false));
             }
         }
 

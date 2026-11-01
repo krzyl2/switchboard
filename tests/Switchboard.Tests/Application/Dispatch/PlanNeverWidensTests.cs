@@ -115,7 +115,7 @@ public sealed class PlanNeverWidensTests
     }
 
     private static double Watts(GuardScenario s, DeviceName device, DeviceLevel level) =>
-        s.DispatchSetup.Device(device)!.StagePower.Where((_, i) => !level.Relays.IsDefault && i < level.Relays.Length && level.Relays[i]).Sum(w => w.Value);
+        s.DispatchSetup.Device(device)!.StagePower.Where((_, i) => !level.Relays().IsDefault && i < level.Relays().Length && level.Relays()[i]).Sum(w => w.Value);
 
     [Fact]
     public void Over_random_worlds_and_random_plans_every_increase_keeps_the_guards_permission_the_headroom_and_the_plans_narrow_limits()

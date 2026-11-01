@@ -48,7 +48,7 @@ public static class LoadModel
             return Discharge(spec, reported, phase);
         }
 
-        return !spec.IsSetpoint && reported is not null ? DeviceLevels.Ceiling(spec, reported, phase) : Amperes.Zero;
+        return spec is RelaySpec && reported is not null ? DeviceLevels.Ceiling(spec, reported, phase) : Amperes.Zero;
     }
 
     /// <summary>
@@ -103,7 +103,7 @@ public static class LoadModel
 
     /// <summary>A storage device's reported discharge on a phase as a negative current (zero when charging, idle, unknown or not storage).</summary>
     private static Amperes Discharge(DeviceSpec spec, DeviceLevel? reported, Phase phase) =>
-        spec.Type == DeviceType.Storage && spec.IsOn(phase) && reported is { Enabled: true, Setpoint: { } setpoint } && setpoint < Amperes.Zero
+        spec.Type == DeviceType.Storage && spec.IsOn(phase) && reported is SetpointLevel { Enabled: true, Setpoint: var setpoint } && setpoint < Amperes.Zero
             ? setpoint
             : Amperes.Zero;
 }

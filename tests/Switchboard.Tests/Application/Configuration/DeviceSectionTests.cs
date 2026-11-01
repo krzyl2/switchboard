@@ -207,7 +207,7 @@ public sealed class DeviceSectionTests
         var battery = configuration.Devices.Single(d => d.Id.Value == "battery");
         Assert.Equal((DeviceType.Storage, -10.0, 16.0), (battery.Type, battery.Range!.Min.Value, battery.Range.Max.Value));
         Assert.False(battery.ToSpec().CanSwitchOff);
-        Assert.Equal(0, battery.ToSpec().SetpointFloor.Value);
+        Assert.Equal(0, ((SetpointSpec)battery.ToSpec()).SetpointFloor.Value);
     }
 
     [Theory]

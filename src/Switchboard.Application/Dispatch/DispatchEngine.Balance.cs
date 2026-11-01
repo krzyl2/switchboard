@@ -601,7 +601,7 @@ public sealed partial class DispatchEngine
         var spec = plan.Device.Spec;
         var from = plan.Levels[index];
         var to = plan.Levels[index + 1];
-        var turnsOn = spec.IsSetpoint ? DeviceLevels.IsOff(spec, from) && !DeviceLevels.IsOff(spec, to) : to.StagesOn > from.StagesOn;
+        var turnsOn = spec is SetpointSpec ? DeviceLevels.IsOff(spec, from) && !DeviceLevels.IsOff(spec, to) : to.StagesOn > from.StagesOn;
         return turnsOn ? spec.MinOn : TimeSpan.Zero;
     }
 
@@ -610,7 +610,7 @@ public sealed partial class DispatchEngine
     {
         var spec = plan.Device.Spec;
         var level = plan.Levels[index];
-        return spec.IsSetpoint
+        return spec is SetpointSpec
             ? spec.Phases.Sum(p => DeviceLevels.Ceiling(spec, level, p).Value) * config.Voltage.Value
             : spec.Phases.Sum(p => plan.Device.RatedPower(level, p).Value);
     }

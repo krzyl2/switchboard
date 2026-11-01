@@ -244,7 +244,7 @@ public sealed class DispatchEngineTests
         Assert.Equal([("ev_charger", DecisionAction.SetSetpoint), ("heater_l1", DecisionAction.SwitchOff)], changes.Select(d => (d.Device!.Value.Value, d.Action)).Order());
         Assert.Single(changes.Select(d => d.At).Distinct());
         Assert.Equal(ReasonCode.ValueRankBelowCutoff, changes.Single(d => d.Device!.Value.Value == "heater_l1").Reason);
-        Assert.Equal(12, changes.Single(d => d.Device!.Value.Value == "ev_charger").Target!.Setpoint!.Value.Value);
+        Assert.Equal(12, changes.Single(d => d.Device!.Value.Value == "ev_charger").Target!.Setpoint()!.Value.Value);
     }
 
     [Fact]
@@ -291,8 +291,8 @@ public sealed class DispatchEngineTests
 
         var targets = s.DecisionsFor("battery").Select(d => d.Target).ToList();
         Assert.NotEmpty(targets);
-        Assert.All(targets, t => Assert.True(t!.Setpoint!.Value.Value >= 0));
-        Assert.Equal(0, s.Ledger("battery")!.Target!.Setpoint!.Value.Value);
+        Assert.All(targets, t => Assert.True(t!.Setpoint()!.Value.Value >= 0));
+        Assert.Equal(0, s.Ledger("battery")!.Target!.Setpoint()!.Value.Value);
     }
 
     [Fact]
@@ -322,7 +322,7 @@ public sealed class DispatchEngineTests
         s.PollUntil(T0 + (8 * Cycle), 0.5, 3, 3);
 
         var charge = Assert.Single(s.DecisionsFor("battery"));
-        Assert.Equal((DecisionAction.SetSetpoint, ReasonCode.HeadroomAvailable, 2.0), (charge.Action, charge.Reason, charge.Target!.Setpoint!.Value.Value));
+        Assert.Equal((DecisionAction.SetSetpoint, ReasonCode.HeadroomAvailable, 2.0), (charge.Action, charge.Reason, charge.Target!.Setpoint()!.Value.Value));
         Assert.Equal(12.0, s.Envelope(Phase.L1).InFlight.Value, 9);
         Assert.Equal(12.5, s.Envelope(Phase.L1).EstimatedCurrent!.Value.Value, 9);
     }
@@ -359,7 +359,7 @@ public sealed class DispatchEngineTests
         }
 
         s.Evaluate();
-        Assert.All(new[] { "heater_l1", "heater_l2", "heater_l3" }, h => Assert.False(s.Ledger(h)!.Target!.Relays[0]));
+        Assert.All(new[] { "heater_l1", "heater_l2", "heater_l3" }, h => Assert.False(s.Ledger(h)!.Target!.Relays()[0]));
         s.RunUntil(T0 + TimeSpan.FromMinutes(2));
         var released = s.Decisions.Count;
 
@@ -374,7 +374,7 @@ public sealed class DispatchEngineTests
         Assert.Equal(3, starts.Select(d => d.At).Distinct().Count());
         var ranks = s.Dispatches[^1].Devices.ToDictionary(d => d.Device.Value, d => d.StartRank);
         Assert.Equal(starts.Select(d => d.Device!.Value.Value).OrderBy(d => ranks[d]), starts.Select(d => d.Device!.Value.Value));
-        Assert.All(new[] { "heater_l1", "heater_l2", "heater_l3" }, h => Assert.True(s.Ledger(h)!.Target!.Relays[0]));
+        Assert.All(new[] { "heater_l1", "heater_l2", "heater_l3" }, h => Assert.True(s.Ledger(h)!.Target!.Relays()[0]));
     }
 
     [Fact]
@@ -386,7 +386,7 @@ public sealed class DispatchEngineTests
         // running, and never plans a level of the old declaration.
         var s = Scenario(DispatchDevices.Boiler, off: ["boiler"], control: OneBoundary);
         s.PollUntil(T0 + Cycle, 3, 3, 3);
-        Assert.Equal(3, s.Ledger("boiler")!.Target!.Relays.Length);
+        Assert.Equal(3, s.Ledger("boiler")!.Target!.Relays().Length);
 
         var twoStages = DispatchDevices.Boiler.ReplaceLineEndings("\n");
         twoStages = twoStages[..twoStages.LastIndexOf("      - { actuator: switch.boiler_3", StringComparison.Ordinal)];
@@ -397,8 +397,8 @@ public sealed class DispatchEngineTests
         Assert.True(s.Last.AtBoundary);
         s.PollUntil(T0 + (4 * Cycle), 3, 3, 3);
 
-        Assert.All(s.Dispatches.Where(d => d.At >= T0 + (2 * Cycle)).SelectMany(d => d.Wishes), w => Assert.Equal(2, w.Level.Relays.Length));
-        Assert.True(s.Ledger("boiler")!.Target is null || s.Ledger("boiler")!.Target!.Relays.Length == 2);
+        Assert.All(s.Dispatches.Where(d => d.At >= T0 + (2 * Cycle)).SelectMany(d => d.Wishes), w => Assert.Equal(2, w.Level.Relays().Length));
+        Assert.True(s.Ledger("boiler")!.Target is null || s.Ledger("boiler")!.Target!.Relays().Length == 2);
     }
 
     [Fact]
@@ -439,12 +439,12 @@ public sealed class DispatchEngineTests
         void Refresh() => s.SetDraw("ev_charger", Phase.L1, 0);
         s.Override("heater_l1", OverrideMode.ForceOn);
         s.PollUntil(T0 + TimeSpan.FromMinutes(2), 2.6, 1.8, 2, Refresh);
-        Assert.True(s.Ledger("heater_l1")!.Target!.Relays[0]);
+        Assert.True(s.Ledger("heater_l1")!.Target!.Relays()[0]);
 
         s.PollUntil(T0 + TimeSpan.FromMinutes(20), 2.6, 1.8, 2, Refresh);
 
         Assert.DoesNotContain(s.DecisionsFor("ev_charger"), d => d.Action == DecisionAction.SetSetpoint);
-        Assert.Equal(6, s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 6);
+        Assert.Equal(6, s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 6);
         Assert.True(s.Envelope(Phase.L1).Available!.Value.Value >= 0);
     }
 
@@ -509,7 +509,7 @@ public sealed class DispatchEngineTests
         s.PollUntil(T0 + (10 * Cycle), 3, 13, 3);
 
         Assert.Single(s.DecisionsFor("heater_l1"));
-        Assert.True(s.Ledger("heater_l1")!.Target!.Relays[0]);
+        Assert.True(s.Ledger("heater_l1")!.Target!.Relays()[0]);
         Assert.Equal(6.6, s.Envelope(Phase.L1).InFlight.Value, 9);
         Assert.Null(s.Ledger("heater_l2")!.Target);
     }

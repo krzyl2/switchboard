@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -78,40 +79,44 @@ public static class ShedOrder
     public static ImmutableArray<DeviceName> Rank(IEnumerable<DeviceSpec> devices) =>
         [.. devices.Where(d => !d.NoShed).OrderBy(d => d.ShedKey).ThenBy(d => d.ReactionTime).ThenBy(d => d.Id).Select(d => d.Id)];
 
-    private static IEnumerable<ShedStep> StepsOf(ShedCandidate candidate, Phase phase)
+    private static IEnumerable<ShedStep> StepsOf(ShedCandidate candidate, Phase phase) => candidate.Spec switch
     {
-        var spec = candidate.Spec;
-        if (spec.IsSetpoint)
+        SetpointSpec setpointSpec => SetpointSteps(candidate, setpointSpec),
+        RelaySpec relaySpec => RelaySteps(candidate, relaySpec, phase),
+        _ => throw new UnreachableException(),
+    };
+
+    private static IEnumerable<ShedStep> SetpointSteps(ShedCandidate candidate, SetpointSpec spec)
+    {
+        var stage = spec.Stages[0];
+        var floor = spec.SetpointFloor;
+        var limit = candidate.Limited.TryGetValue(stage.Index, out var held) ? held : (StageLimit?)null;
+        var setpoint = AppliedOf(candidate, stage.Index) is SetpointApplied s ? s.Setpoint : spec.Range.Max;
+
+        // Nothing to take: already held off, held at the floor of a device that cannot switch
+        // off, or drawing nothing (a storage device that is not charging is never a candidate:
+        // stopping a discharge would raise the current).
+        if (limit == StageLimit.Off || (limit == StageLimit.AtMinimum && !spec.CanSwitchOff) || setpoint.Value <= 0)
         {
-            var stage = spec.Stages[0];
-            var floor = spec.SetpointFloor;
-            var limit = candidate.Limited.TryGetValue(stage.Index, out var held) ? held : (StageLimit?)null;
-            var setpoint = AppliedOf(candidate, stage.Index) is SetpointApplied s ? s.Setpoint : spec.Range!.Max;
-
-            // Nothing to take: already held off, held at the floor of a device that cannot switch
-            // off, or drawing nothing (a storage device that is not charging is never a candidate:
-            // stopping a discharge would raise the current).
-            if (limit == StageLimit.Off || (limit == StageLimit.AtMinimum && !spec.CanSwitchOff) || setpoint.Value <= 0)
-            {
-                yield break;
-            }
-
-            if (limit is null && setpoint > floor)
-            {
-                yield return Step(candidate, stage.Index, ShedAction.ReduceToMinimum, setpoint - floor, floor);
-            }
-
-            // Only a device with a stop path is switched off after the reduction; one that cannot
-            // switch off is never a step, so the next real candidate is taken instead.
-            if (spec.CanSwitchOff)
-            {
-                var remaining = setpoint > floor ? floor : setpoint;
-                yield return Step(candidate, stage.Index, ShedAction.SwitchOff, remaining, Amperes.Zero);
-            }
-
             yield break;
         }
 
+        if (limit is null && setpoint > floor)
+        {
+            yield return Step(candidate, stage.Index, ShedAction.ReduceToMinimum, setpoint - floor, floor);
+        }
+
+        // Only a device with a stop path is switched off after the reduction; one that cannot
+        // switch off is never a step, so the next real candidate is taken instead.
+        if (spec.CanSwitchOff)
+        {
+            var remaining = setpoint > floor ? floor : setpoint;
+            yield return Step(candidate, stage.Index, ShedAction.SwitchOff, remaining, Amperes.Zero);
+        }
+    }
+
+    private static IEnumerable<ShedStep> RelaySteps(ShedCandidate candidate, RelaySpec spec, Phase phase)
+    {
         var stages = spec.Stages
             .Where(s => s.Phases.Contains(phase)
                 && !(candidate.Limited.TryGetValue(s.Index, out var held) && held == StageLimit.Off)

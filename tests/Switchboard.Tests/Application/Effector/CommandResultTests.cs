@@ -80,7 +80,7 @@ public sealed class CommandResultTests
 
         var on = s.Decisions.First(d => d.Action == DecisionAction.SwitchOn);
         Assert.Equal((false, ReasonCode.CommandFailed), (on.Commanded, on.RefusedBy));
-        Assert.False(s.Ledger(on.Device!.Value.Value)!.Target?.Relays[0] ?? false);
+        Assert.False(s.Ledger(on.Device!.Value.Value)!.Target?.Relays()[0] ?? false);
     }
 
     [Theory]

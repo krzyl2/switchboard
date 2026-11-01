@@ -59,8 +59,8 @@ public static class DeviceStateInterpreter
         };
         return applied is null
             ? Unknown(DeviceStateInvalidReason.Unrecognized)
-            : new DeviceStateSample(device, stage, true, null, applied, reportedAt);
+            : DeviceStateSample.Known(device, stage, applied, reportedAt);
 
-        DeviceStateSample Unknown(DeviceStateInvalidReason reason) => new(device, stage, false, reason, null, reportedAt);
+        DeviceStateSample Unknown(DeviceStateInvalidReason reason) => DeviceStateSample.Unknown(device, stage, reason, reportedAt);
     }
 }

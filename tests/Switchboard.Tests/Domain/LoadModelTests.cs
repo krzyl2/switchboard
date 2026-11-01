@@ -2,6 +2,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Domain;
 
@@ -12,7 +13,7 @@ namespace Switchboard.Tests.Domain;
 /// </summary>
 public sealed class LoadModelTests
 {
-    private static readonly DeviceSpec Charger = new(
+    private static readonly SetpointSpec Charger = new(
         DeviceName.Parse("charger"),
         DeviceType.Modulating,
         [new StageSpec(1, [Phase.L1], new Amperes(20))],
@@ -27,13 +28,12 @@ public sealed class LoadModelTests
         Start = StartPolicy.RestoreOnly,
     };
 
-    private static readonly DeviceSpec MeasuredCharger = Charger with { CurrentDrawPhases = [Phase.L1] };
+    private static readonly SetpointSpec MeasuredCharger = Charger with { CurrentDrawPhases = [Phase.L1] };
 
-    private static readonly DeviceSpec Heater = new(
+    private static readonly RelaySpec Heater = new(
         DeviceName.Parse("heater"),
         DeviceType.OnOff,
         [new StageSpec(1, [Phase.L1], new Amperes(6.6))],
-        null,
         0.35,
         null,
         TimeSpan.FromSeconds(1),
@@ -93,7 +93,7 @@ public sealed class LoadModelTests
         // the current by 10 A, to 5 A charge by 15 A: the estimate must count the step from the signed
         // discharge, or shadow would invent the discharge's 10 A as headroom. A charge setpoint is
         // still a ceiling, never a draw.
-        var battery = Charger with { Id = DeviceName.Parse("battery"), Type = DeviceType.Storage, Range = new ModulatingRange(new Amperes(-10), new Amperes(16), new Amperes(1)) };
+        var battery = Storage(new ModulatingRange(new Amperes(-10), new Amperes(16), new Amperes(1)));
         var discharging = DeviceLevel.At(new Amperes(-10));
         var basis = LoadModel.Contribution(battery, Phase.L1, discharging, null);
 
@@ -169,20 +169,29 @@ public sealed class LoadModelTests
     public void Levels_step_from_floor_and_storage_never_targets_discharge()
     {
         // DISP-01: a storage range of −10…16 A is offered from zero charge up, never below.
-        var battery = Charger with
-        {
-            Id = DeviceName.Parse("battery"),
-            Type = DeviceType.Storage,
-            Range = new ModulatingRange(new Amperes(-10), new Amperes(16), new Amperes(2)),
-            Stages = [new StageSpec(1, [Phase.L1], new Amperes(16))],
-        };
+        var battery = Storage(new ModulatingRange(new Amperes(-10), new Amperes(16), new Amperes(2))) with { Stages = [new StageSpec(1, [Phase.L1], new Amperes(16))] };
 
         var levels = DeviceLevels.All(battery);
 
-        Assert.Equal([0.0, 2, 4, 6, 8, 10, 12, 14, 16], levels.Select(l => l.Setpoint!.Value.Value));
-        Assert.All(levels, l => Assert.True(l.Setpoint!.Value.Value >= 0));
-        Assert.Equal(0, DeviceLevels.Off(battery).Setpoint!.Value.Value);
+        Assert.Equal([0.0, 2, 4, 6, 8, 10, 12, 14, 16], levels.Select(l => l.Setpoint()!.Value.Value));
+        Assert.All(levels, l => Assert.True(l.Setpoint()!.Value.Value >= 0));
+        Assert.Equal(0, DeviceLevels.Off(battery).Setpoint()!.Value.Value);
         Assert.Equal(15, DeviceLevels.All(Charger).Length);
         Assert.False(DeviceLevels.All(Charger with { HasStopActuator = true })[0].Enabled);
     }
+
+    private static SetpointSpec Storage(ModulatingRange range) => new(
+        DeviceName.Parse("battery"),
+        DeviceType.Storage,
+        Charger.Stages,
+        range,
+        Charger.ValuePerKwh,
+        Charger.ShedPriority,
+        Charger.ReactionTime,
+        Charger.NoShed,
+        Charger.MinOn,
+        Charger.MinOff)
+    {
+        Start = Charger.Start,
+    };
 }

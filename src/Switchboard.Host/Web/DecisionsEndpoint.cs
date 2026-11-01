@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
@@ -318,5 +319,11 @@ internal static class ApiText
         applied is SetpointApplied setpoint ? setpoint.Setpoint.Value : null;
 
     public static LevelDto? Level(DeviceLevel? level) =>
-        level is null ? null : new LevelDto(level.Setpoint is null ? [.. level.Relays.IsDefault ? [] : level.Relays] : null, level.Setpoint?.Value, level.Enabled);
+        level switch
+        {
+            null => null,
+            SetpointLevel setpoint => new LevelDto(null, setpoint.Setpoint.Value, setpoint.Enabled),
+            RelayLevel relay => new LevelDto([.. relay.Relays.IsDefault ? [] : relay.Relays], null, relay.Enabled),
+            _ => throw new UnreachableException(),
+        };
 }

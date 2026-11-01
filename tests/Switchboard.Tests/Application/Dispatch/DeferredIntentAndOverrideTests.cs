@@ -68,7 +68,7 @@ public sealed class DeferredIntentAndOverrideTests
 
         Assert.DoesNotContain(s.DecisionsFor("heater_l1"), d => d.Action == DecisionAction.SwitchOn);
         Assert.False(s.Envelope(Phase.L1).IncreasesAllowed);
-        Assert.False(s.Ledger("heater_l1")!.Target?.Relays[0] ?? false);
+        Assert.False(s.Ledger("heater_l1")!.Target?.Relays()[0] ?? false);
     }
 
     [Fact]
@@ -252,8 +252,8 @@ public sealed class DeferredIntentAndOverrideTests
 
         // The deferral waits for the forced 20 A (what the API, the MQTT entity and the SPA show),
         // not for the 6 A the charger is already at; nothing is applied meanwhile.
-        Assert.Equal(20, s.Ledger("ev_charger")!.Deferred!.Target.Setpoint!.Value.Value);
-        Assert.Equal(6, s.Ledger("ev_charger")!.Target!.Setpoint!.Value.Value);
+        Assert.Equal(20, s.Ledger("ev_charger")!.Deferred!.Target.Setpoint()!.Value.Value);
+        Assert.Equal(6, s.Ledger("ev_charger")!.Target!.Setpoint()!.Value.Value);
     }
 
     [Fact]

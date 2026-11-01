@@ -128,7 +128,7 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
         double min;
         double max;
         double? stepW = null;
-        if (spec.Range is { } range && spec.Stages.Length > 0)
+        if (spec is SetpointSpec { Range: var range } && spec.Stages.Length > 0)
         {
             var phases = spec.Stages[0].Phases.Length;
             stepW = range.Step.Value * voltage.Value * phases;
@@ -179,7 +179,7 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
             text.Append(stage.Index).Append(':').Append(string.Join(',', stage.Phases)).Append(':').Append(stage.RatedCurrent.Value.ToString("R", CultureInfo.InvariantCulture)).Append(';');
         }
 
-        if (spec.Range is { } range)
+        if (spec is SetpointSpec { Range: var range })
         {
             text.Append(range.Min.Value.ToString("R", CultureInfo.InvariantCulture)).Append('/').Append(range.Max.Value.ToString("R", CultureInfo.InvariantCulture));
         }

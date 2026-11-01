@@ -214,7 +214,7 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var element = at0700.Devices.Single(d => d.Id.Value == "heater_l1");
 
         Assert.True(firstL1Start.At > chargerFloor.At, $"heater_l1 started at {firstL1Start.At:O}, before the charger was lowered at {chargerFloor.At:O}.");
-        Assert.True(charger.Intended!.Setpoint!.Value.Value > 6, "The charger should hold more than its floor of L1's headroom.");
+        Assert.True(charger.Intended!.Setpoint()!.Value.Value > 6, "The charger should hold more than its floor of L1's headroom.");
         Assert.True(charger.StartRank < element.StartRank);
         Assert.Equal(ReasonCode.ValueRankBelowCutoff, element.Reason);
     }
@@ -233,10 +233,10 @@ public sealed class DispatchSyntheticReplayTests(DispatchSyntheticReplayRun run,
         var restored = ChargerRestore(run.Shadow);
 
         Assert.Equal(l1.Current!.Value.Value, l1.EffectiveCurrent!.Value.Value, 3);
-        Assert.Equal((6.0, false), (held.Target!.Setpoint!.Value.Value, held.Target.Enabled));
+        Assert.Equal((6.0, false), (held.Target!.Setpoint()!.Value.Value, held.Target!.Enabled));
         Assert.Equal((DispatchSyntheticReplayRun.At(6, 3), ReasonCode.HeadroomAvailable), (restored.At, restored.Reason));
         Assert.True(restored.Target!.Enabled);
-        Assert.InRange(restored.Target.Setpoint!.Value.Value, 6.5, 19.5);
+        Assert.InRange(restored.Target.Setpoint()!.Value.Value, 6.5, 19.5);
     }
 
     /// <summary>The charger's first restore by dispatch: enabled again (from the stop) or a raised setpoint.</summary>

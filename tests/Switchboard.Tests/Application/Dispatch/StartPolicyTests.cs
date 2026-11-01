@@ -26,7 +26,7 @@ public sealed class StartPolicyTests
         s.PollUntil(T0 + TimeSpan.FromMinutes(5), 3, 3, 3);
 
         Assert.DoesNotContain(s.DecisionsFor("heater_l1"), d => d.Action == DecisionAction.SwitchOn);
-        Assert.False(s.Ledger("heater_l1")?.Target?.Relays[0] ?? false);
+        Assert.False(s.Ledger("heater_l1")?.Target?.Relays()[0] ?? false);
     }
 
     [Fact]
@@ -67,15 +67,15 @@ public sealed class StartPolicyTests
         var s = DispatchScenario.Create(RestoreOnly(DispatchDevices.HeaterAndCharger), ["heater_l1"], OneBoundary, mode: DispatchScenario.Active, port: port);
         s.Follow(port);
         s.Charger(12, 12);
-        s.PollUntil(T0 + TimeSpan.FromMinutes(1), 15, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12));
+        s.PollUntil(T0 + TimeSpan.FromMinutes(1), 15, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12));
 
         // Overload: the charger is reduced.
-        s.PollUntil(T0 + TimeSpan.FromMinutes(2), 33, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12));
+        s.PollUntil(T0 + TimeSpan.FromMinutes(2), 33, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12));
         var lowest = port.Submitted.Where(c => c.Device.Value == "ev_charger" && c.Setpoint is not null).Min(c => c.Setpoint!.Value.Value);
         Assert.True(lowest < 12, $"the charger was not reduced (lowest {lowest} A)");
 
         // Plenty of headroom afterwards: back up to 12 A, the level it had, never to its 20 A maximum.
-        s.PollUntil(T0 + TimeSpan.FromMinutes(15), 3, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint?.Value ?? 12));
+        s.PollUntil(T0 + TimeSpan.FromMinutes(15), 3, 3, 3, () => s.Charger(s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12, s.Ledger("ev_charger")?.Target?.Setpoint()?.Value ?? 12));
         var setpoints = port.Submitted.Where(c => c.Device.Value == "ev_charger" && c.Setpoint is not null).Select(c => c.Setpoint!.Value.Value).ToList();
         Assert.Equal(12, setpoints[^1]);
         Assert.All(setpoints, v => Assert.True(v <= 12, $"the charger was raised to {v} A, above the 12 A it had"));

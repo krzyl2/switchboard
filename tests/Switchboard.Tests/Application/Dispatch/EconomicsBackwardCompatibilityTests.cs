@@ -36,7 +36,7 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
     internal static string F(double? value) => value is { } v ? v.ToString("R", CultureInfo.InvariantCulture) : "-";
 
     internal static string Level(DeviceLevel? level) =>
-        level is null ? "-" : $"{string.Join(',', (level.Relays.IsDefault ? [] : level.Relays).Select(r => r ? 1 : 0))}|{F(level.Setpoint?.Value)}|{level.Enabled}";
+        level is null ? "-" : $"{string.Join(',', (level.Relays().IsDefault ? [] : level.Relays()).Select(r => r ? 1 : 0))}|{F(level.Setpoint()?.Value)}|{level.Enabled}";
 
     internal static void Add(StringBuilder text, IEnumerable<Switchboard.Application.Decisions.Decision> decisions, DispatchEvaluation? dispatch)
     {

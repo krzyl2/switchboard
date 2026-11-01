@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
@@ -145,26 +146,33 @@ public sealed record DeviceDefinition(
     public DeviceSpec ToSpec() => ToSpec([]);
 
     /// <summary>The spec with the phases whose draw current is derived from the draw power (see <see cref="DerivedCurrentPhases"/>).</summary>
-    public DeviceSpec ToSpec(IReadOnlyCollection<Phase> voltagePhases) => new(
-        Id,
-        Type,
-        [.. Stages.Select(s => new StageSpec(s.Index, s.Phases, s.RatedCurrent))],
-        Range,
-        ValuePerKwh,
-        ShedPriority,
-        ReactionTime,
-        NoShed,
-        MinOn,
-        MinOff)
+    public DeviceSpec ToSpec(IReadOnlyCollection<Phase> voltagePhases)
     {
-        HasStopActuator = StopActuator is not null,
-        StopOptions = StopOptions,
-        CurrentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Concat(DerivedCurrentPhases(voltagePhases)).Distinct().Order()],
-        CircuitGroup = CircuitGroup,
-        Start = Start,
-        ActuatorRevision = ActuatorRevision,
-        StateReportsOnChange = StateReports == StateFreshness.OnChange,
-    };
+        ImmutableArray<StageSpec> stages = [.. Stages.Select(s => new StageSpec(s.Index, s.Phases, s.RatedCurrent))];
+        ImmutableArray<Phase> currentDrawPhases = Draw is null ? [] : [.. Draw.Current.Keys.Concat(DerivedCurrentPhases(voltagePhases)).Distinct().Order()];
+        return Type switch
+        {
+            DeviceType.OnOff or DeviceType.Stepped => new RelaySpec(Id, Type, stages, ValuePerKwh, ShedPriority, ReactionTime, NoShed, MinOn, MinOff)
+            {
+                CurrentDrawPhases = currentDrawPhases,
+                CircuitGroup = CircuitGroup,
+                Start = Start,
+                ActuatorRevision = ActuatorRevision,
+                StateReportsOnChange = StateReports == StateFreshness.OnChange,
+            },
+            DeviceType.Modulating or DeviceType.Storage => new SetpointSpec(Id, Type, stages, Range ?? throw new InvalidOperationException($"The {Type} device '{Id}' has no setpoint range."), ValuePerKwh, ShedPriority, ReactionTime, NoShed, MinOn, MinOff)
+            {
+                HasStopActuator = StopActuator is not null,
+                StopOptions = StopOptions,
+                CurrentDrawPhases = currentDrawPhases,
+                CircuitGroup = CircuitGroup,
+                Start = Start,
+                ActuatorRevision = ActuatorRevision,
+                StateReportsOnChange = StateReports == StateFreshness.OnChange,
+            },
+            _ => throw new UnreachableException(),
+        };
+    }
 }
 
 /// <summary>

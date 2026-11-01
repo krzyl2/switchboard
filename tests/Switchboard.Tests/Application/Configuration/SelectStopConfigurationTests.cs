@@ -47,7 +47,7 @@ public sealed class SelectStopConfigurationTests
         var charger = configuration.Devices.Single();
         Assert.Equal(new StopOptions(OptionText.Parse("1"), OptionText.Parse("0")), charger.StopOptions);
         Assert.True(charger.ToSpec().CanSwitchOff);
-        Assert.Equal(charger.StopOptions, charger.ToSpec().StopOptions);
+        Assert.Equal(charger.StopOptions, ((SetpointSpec)charger.ToSpec()).StopOptions);
         Assert.Equal((SignalKind.State, SignalRole.DeviceState), configuration.Signals.Single(s => s.Name.Value == "device_charger_stop") is var stop ? (stop.Kind, stop.Role) : default);
     }
 

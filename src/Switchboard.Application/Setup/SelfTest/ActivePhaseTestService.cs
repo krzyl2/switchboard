@@ -395,7 +395,7 @@ public sealed class ActivePhaseTestService : IActiveTestTransitions
     {
         var declared = _runtime.Configuration?.Devices.Any(d => d.Id == test.Device) == true;
         var intended = step.DispatchStatus?.Devices.FirstOrDefault(d => d.Id == test.Device)?.Intended;
-        var intendedOn = intended is { Relays.IsDefault: false } level && test.Stage - 1 < level.Relays.Length && level.Relays[test.Stage - 1];
+        var intendedOn = intended is RelayLevel { Relays.IsDefault: false } level && test.Stage - 1 < level.Relays.Length && level.Relays[test.Stage - 1];
         if (declared && !(on == false && !intendedOn))
         {
             if (now < test.CleanupDeadline)
@@ -494,7 +494,7 @@ public sealed class ActivePhaseTestService : IActiveTestTransitions
         {
             refusals.Add(new ActiveTestRefusal(ActiveTestRefusalCode.StateUnknown));
         }
-        else if (!reported.Relays.IsDefault && stage - 1 < reported.Relays.Length && reported.Relays[stage - 1])
+        else if (reported is RelayLevel { Relays.IsDefault: false } reportedRelays && stage - 1 < reportedRelays.Relays.Length && reportedRelays.Relays[stage - 1])
         {
             refusals.Add(new ActiveTestRefusal(ActiveTestRefusalCode.DeviceOn));
         }

@@ -195,6 +195,16 @@ public sealed partial class SignalArchitectureTests
                 continue;
             }
 
+            // A property typed as an abstract base (a device spec, a level, an applied state) holds
+            // whatever its subtypes declare.
+            if (type.IsAbstract)
+            {
+                foreach (var derived in type.Assembly.GetTypes().Where(t => t.IsSubclassOf(type)))
+                {
+                    pending.Push(derived);
+                }
+            }
+
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 pending.Push(property.PropertyType);

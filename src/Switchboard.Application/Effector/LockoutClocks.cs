@@ -155,7 +155,7 @@ public sealed class LockoutClocks : ILockoutView, IReadOnlyLockouts
             SetpointApplied setpoint => setpoint.Setpoint.Value > 0,
             _ => (bool?)null,
         };
-        if (on == true && device.HasStopActuator)
+        if (on == true && device is SetpointSpec { HasStopActuator: true })
         {
             return Sample(DeviceStateSample.StopStage) is { Fresh: true, Applied: RelayApplied stop } ? stop.On : null;
         }

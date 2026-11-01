@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Units;
@@ -17,18 +18,29 @@ public static class DeviceLevels
     public static ImmutableArray<DeviceLevel> All(DeviceSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
-        var levels = ImmutableArray.CreateBuilder<DeviceLevel>();
-        if (!spec.IsSetpoint)
+        return spec switch
         {
-            for (var on = 0; on <= spec.Stages.Length; on++)
-            {
-                levels.Add(new DeviceLevel([.. spec.Stages.Select(s => s.Index <= on)], null, true));
-            }
+            RelaySpec relay => RelayLevels(relay),
+            SetpointSpec setpoint => SetpointLevels(setpoint),
+            _ => throw new UnreachableException(),
+        };
+    }
 
-            return levels.ToImmutable();
+    private static ImmutableArray<DeviceLevel> RelayLevels(RelaySpec spec)
+    {
+        var levels = ImmutableArray.CreateBuilder<DeviceLevel>();
+        for (var on = 0; on <= spec.Stages.Length; on++)
+        {
+            levels.Add(new RelayLevel([.. spec.Stages.Select(s => s.Index <= on)]));
         }
 
-        var range = spec.Range!;
+        return levels.ToImmutable();
+    }
+
+    private static ImmutableArray<DeviceLevel> SetpointLevels(SetpointSpec spec)
+    {
+        var levels = ImmutableArray.CreateBuilder<DeviceLevel>();
+        var range = spec.Range;
         if (spec.HasStopActuator)
         {
             levels.Add(DeviceLevel.At(range.Min, enabled: false));
@@ -51,15 +63,23 @@ public static class DeviceLevels
     public static DeviceLevel Off(DeviceSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
-        return spec.IsSetpoint
-            ? DeviceLevel.At(spec.SetpointFloor, enabled: !spec.HasStopActuator)
-            : new DeviceLevel([.. spec.Stages.Select(_ => false)], null, true);
+        return spec switch
+        {
+            RelaySpec relay => new RelayLevel([.. relay.Stages.Select(_ => false)]),
+            SetpointSpec setpoint => DeviceLevel.At(setpoint.SetpointFloor, enabled: !setpoint.HasStopActuator),
+            _ => throw new UnreachableException(),
+        };
     }
 
     public static DeviceLevel Max(DeviceSpec spec)
     {
         ArgumentNullException.ThrowIfNull(spec);
-        return spec.IsSetpoint ? DeviceLevel.At(spec.Range!.Max) : new DeviceLevel([.. spec.Stages.Select(_ => true)], null, true);
+        return spec switch
+        {
+            RelaySpec relay => new RelayLevel([.. relay.Stages.Select(_ => true)]),
+            SetpointSpec setpoint => DeviceLevel.At(setpoint.Range.Max),
+            _ => throw new UnreachableException(),
+        };
     }
 
     /// <summary>
@@ -71,22 +91,32 @@ public static class DeviceLevels
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(sample);
-        if (!spec.IsSetpoint)
+        return spec switch
         {
-            var relays = ImmutableArray.CreateBuilder<bool>(spec.Stages.Length);
-            foreach (var stage in spec.Stages)
-            {
-                if (sample(stage.Index) is not { Fresh: true, Applied: RelayApplied relay })
-                {
-                    return null;
-                }
+            RelaySpec relay => ReportedRelays(relay, sample),
+            SetpointSpec setpoint => ReportedSetpoint(setpoint, sample),
+            _ => throw new UnreachableException(),
+        };
+    }
 
-                relays.Add(relay.On);
+    private static RelayLevel? ReportedRelays(RelaySpec spec, Func<int, DeviceStateSample?> sample)
+    {
+        var relays = ImmutableArray.CreateBuilder<bool>(spec.Stages.Length);
+        foreach (var stage in spec.Stages)
+        {
+            if (sample(stage.Index) is not { Fresh: true, Applied: RelayApplied relay })
+            {
+                return null;
             }
 
-            return new DeviceLevel(relays.MoveToImmutable(), null, true);
+            relays.Add(relay.On);
         }
 
+        return new RelayLevel(relays.MoveToImmutable());
+    }
+
+    private static SetpointLevel? ReportedSetpoint(SetpointSpec spec, Func<int, DeviceStateSample?> sample)
+    {
         if (sample(spec.Stages[0].Index) is not { Fresh: true, Applied: SetpointApplied setpoint })
         {
             return null;
@@ -103,7 +133,7 @@ public static class DeviceLevels
             enabled = stop.On;
         }
 
-        return DeviceLevel.At(setpoint.Setpoint, enabled);
+        return new SetpointLevel(setpoint.Setpoint, enabled);
     }
 
     /// <summary>What protection's holds leave of a level: an Off stage is off (a setpoint at its floor, disabled if it can be), AtMinimum caps a setpoint at its floor.</summary>
@@ -117,19 +147,30 @@ public static class DeviceLevels
             return level;
         }
 
-        if (!spec.IsSetpoint)
+        return spec switch
         {
-            var relays = level.Relays.IsDefault ? [.. spec.Stages.Select(_ => false)] : level.Relays;
-            return level with { Relays = [.. relays.Select((on, i) => on && !(limits.TryGetValue(i + 1, out var held) && held == StageLimit.Off))] };
-        }
+            RelaySpec relay => CapRelays(relay, level, limits),
+            SetpointSpec setpoint => CapSetpoint(setpoint, level, limits),
+            _ => throw new UnreachableException(),
+        };
+    }
 
+    private static DeviceLevel CapRelays(RelaySpec spec, DeviceLevel level, IReadOnlyDictionary<int, StageLimit> limits)
+    {
+        // A level of another kind says nothing about this device's stages: all of them off.
+        var relays = level is RelayLevel { Relays.IsDefault: false } held ? held.Relays : [.. spec.Stages.Select(_ => false)];
+        return new RelayLevel([.. relays.Select((on, i) => on && !(limits.TryGetValue(i + 1, out var limit) && limit == StageLimit.Off))]);
+    }
+
+    private static DeviceLevel CapSetpoint(SetpointSpec spec, DeviceLevel level, IReadOnlyDictionary<int, StageLimit> limits)
+    {
         if (!limits.TryGetValue(spec.Stages[0].Index, out var limit))
         {
             return level;
         }
 
         var floor = spec.SetpointFloor;
-        var setpoint = level.Setpoint is { } s ? Amperes.Min(s, floor) : floor;
+        var setpoint = level is SetpointLevel s ? Amperes.Min(s.Setpoint, floor) : floor;
         return limit == StageLimit.Off && spec.HasStopActuator
             ? DeviceLevel.At(floor, enabled: false)
             : DeviceLevel.At(setpoint, level.Enabled);
@@ -140,11 +181,16 @@ public static class DeviceLevels
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(level);
-        if (spec.IsSetpoint)
+        return spec switch
         {
-            return level.Enabled && level.Setpoint is { } setpoint && spec.IsOn(phase) ? Amperes.Max(setpoint, Amperes.Zero) : Amperes.Zero;
-        }
+            SetpointSpec setpoint => level is SetpointLevel { Enabled: true } on && setpoint.IsOn(phase) ? Amperes.Max(on.Setpoint, Amperes.Zero) : Amperes.Zero,
+            RelaySpec relay => RelayCeiling(relay, level, phase),
+            _ => throw new UnreachableException(),
+        };
+    }
 
+    private static Amperes RelayCeiling(RelaySpec spec, DeviceLevel level, Signals.Phase phase)
+    {
         var total = Amperes.Zero;
         foreach (var stage in spec.Stages)
         {
@@ -165,9 +211,12 @@ public static class DeviceLevels
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(level);
-        return spec.IsSetpoint
-            ? level.Enabled && level.Setpoint is { Value: > 0 }
-            : !level.Relays.IsDefault && stage - 1 < level.Relays.Length && level.Relays[stage - 1];
+        return spec switch
+        {
+            SetpointSpec => level is SetpointLevel { Enabled: true, Setpoint.Value: > 0 },
+            RelaySpec => level is RelayLevel { Relays.IsDefault: false } relays && stage - 1 < relays.Relays.Length && relays.Relays[stage - 1],
+            _ => throw new UnreachableException(),
+        };
     }
 
     /// <summary>The sum of a level's ceilings over the device's phases: how increases and decreases are told apart.</summary>
@@ -190,14 +239,20 @@ public static class DeviceLevels
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
-        if (spec.IsSetpoint || spec.Stages.Length == 1)
+        return spec switch
         {
-            return to;
-        }
+            SetpointSpec => to,
+            RelaySpec { Stages.Length: 1 } => to,
+            RelaySpec relay => TowardRelays(relay, from, to, maxStages),
+            _ => throw new UnreachableException(),
+        };
+    }
 
+    private static RelayLevel TowardRelays(RelaySpec spec, DeviceLevel from, DeviceLevel to, int maxStages)
+    {
         // A level of another declaration (another stage count) says nothing about this one's relays.
-        var relays = (from.Relays.IsDefault || from.Relays.Length != spec.Stages.Length ? [.. spec.Stages.Select(_ => false)] : from.Relays).ToArray();
-        var wanted = to.Relays.ToArray();
+        var relays = (from is RelayLevel { Relays.IsDefault: false } current && current.Relays.Length == spec.Stages.Length ? current.Relays : [.. spec.Stages.Select(_ => false)]).ToArray();
+        var wanted = (to as RelayLevel ?? throw new ArgumentException("A relay device is moved toward a relay level.", nameof(to))).Relays.ToArray();
         var changes = 0;
         for (var i = 0; i < relays.Length && changes < maxStages; i++)
         {
@@ -217,7 +272,7 @@ public static class DeviceLevels
             }
         }
 
-        return new DeviceLevel([.. relays], null, true);
+        return new RelayLevel([.. relays]);
     }
 
     /// <summary>The number of relay stages (or the stop actuator) that differ between two levels.</summary>
@@ -226,11 +281,13 @@ public static class DeviceLevels
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
-        if (spec.IsSetpoint)
+        return spec switch
         {
-            return from.Enabled != to.Enabled ? 1 : 0;
-        }
-
-        return from.Relays.Zip(to.Relays).Count(p => p.First != p.Second);
+            SetpointSpec => from.Enabled != to.Enabled ? 1 : 0,
+            RelaySpec => Flags(from).Zip(Flags(to)).Count(p => p.First != p.Second),
+            _ => throw new UnreachableException(),
+        };
     }
+
+    private static ImmutableArray<bool> Flags(DeviceLevel level) => level is RelayLevel { Relays.IsDefault: false } relays ? relays.Relays : [];
 }
