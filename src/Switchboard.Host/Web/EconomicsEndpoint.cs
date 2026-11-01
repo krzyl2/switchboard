@@ -157,9 +157,9 @@ internal static class EconomicsEndpoint
             now,
             true,
             economics.Currency,
-            economics.Tariff is { } spec ? Tariff(new Tariff(spec, holidays, zone), spec, now, prices) : null,
+            economics.Tariff is { } spec ? Tariff(Switchboard.Domain.Economics.Tariff.For(spec, holidays, zone), spec, now, prices) : null,
             economics.Settlement is { } settlement
-                ? new SettlementDto(ApiText.Snake(settlement.Model), settlement.ExportPrice is { } export ? Export(new Tariff(export, holidays, zone), export, now, prices) : null)
+                ? new SettlementDto(ApiText.Snake(settlement.Model), settlement.ExportPrice is { } export ? Export(Switchboard.Domain.Economics.Tariff.For(export, holidays, zone), export, now, prices) : null)
                 : null,
             stale,
             issues,
@@ -167,8 +167,8 @@ internal static class EconomicsEndpoint
                 result.Configuration,
                 PriceBook.At(
                     now,
-                    economics.Tariff is { } import ? new Tariff(import, holidays, zone) : null,
-                    economics.Settlement?.ExportPrice is { } exportSpec ? new Tariff(exportSpec, holidays, zone) : null,
+                    economics.Tariff is { } import ? Switchboard.Domain.Economics.Tariff.For(import, holidays, zone) : null,
+                    economics.Settlement?.ExportPrice is { } exportSpec ? Switchboard.Domain.Economics.Tariff.For(exportSpec, holidays, zone) : null,
                     prices),
                 dispatch?.Economics),
             statistics is null ? null : Savings(result.Configuration, economics, statistics, now, zone, range));

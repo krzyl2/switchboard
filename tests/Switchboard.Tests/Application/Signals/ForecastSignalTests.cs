@@ -319,8 +319,8 @@ public sealed class ForecastSignalTests
         var snapshot = store.Snapshot();
 
         Assert.Equal(
-            new Tariff(spec, HolidayCalendar.Empty, TimeZoneInfo.Utc).PriceAt(store.Now, snapshot.Prices),
-            new Tariff(withCurve, HolidayCalendar.Empty, TimeZoneInfo.Utc).PriceAt(store.Now, snapshot.Prices));
+            Tariff.For(spec, HolidayCalendar.Empty, TimeZoneInfo.Utc).PriceAt(store.Now, snapshot.Prices),
+            Tariff.For(withCurve, HolidayCalendar.Empty, TimeZoneInfo.Utc).PriceAt(store.Now, snapshot.Prices));
         Assert.Equal(0.45, snapshot.Prices!.Usable(market));
         Assert.DoesNotContain(curve, snapshot.Prices.Samples.Keys);
         Assert.Equal(SignalState.Fresh, snapshot.Forecast!.Sample(curve)!.State);

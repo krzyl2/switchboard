@@ -64,7 +64,7 @@ public sealed class PolishCalendarTariffTests
     }
 
     private static Tariff G13With(IEnumerable<DateOnly> holidays) =>
-        new(Example.Tariff!, new HolidayCalendar(holidays), Warsaw);
+        Tariff.For(Example.Tariff!, new HolidayCalendar(holidays), Warsaw);
 
     [Fact]
     public void Easter_oracle_matches_known_dates()

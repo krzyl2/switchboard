@@ -55,11 +55,11 @@ internal static class PlannerFixtures
         {
             var snippet = File.ReadAllText(RepoPaths.Combine("deploy", "examples", "economics-g13.yaml"));
             var economics = TestConfigurations.Valid(TestConfigurations.ThreePhase() + "\n" + snippet).Configuration!.Economics!;
-            return new Tariff(economics.Tariff!, economics.Holidays, Warsaw);
+            return Tariff.For(economics.Tariff!, economics.Holidays, Warsaw);
         }
     }
 
-    public static readonly Tariff Export = new(new FlatPrice(0.35), HolidayCalendar.Empty, Warsaw);
+    public static readonly Tariff Export = Tariff.For(new FlatPrice(0.35), HolidayCalendar.Empty, Warsaw);
 
     public static DateTimeOffset Local(int year, int month, int day, int hour, int minute = 0)
     {

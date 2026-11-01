@@ -15,7 +15,7 @@ public sealed class PlanInputsTests
     private static readonly ForecastParameters Parameters = new(Hour, 0.85, TimeSpan.FromDays(14), 0.8, 400);
 
     // Peak 07:30-13:00 on workdays at 0.40, off-peak 0.10: the zone edge at :30 falls inside an hourly slot on purpose.
-    private static readonly Tariff Import = new(
+    private static readonly Tariff Import = Tariff.For(
         new ZonedPrice(
             [
                 new TariffZone("peak", 0.40, [new ZoneRule([DayClass.Workday], [], [new HoursRange((7 * 60) + 30, 13 * 60)])]),
@@ -25,7 +25,7 @@ public sealed class PlanInputsTests
         HolidayCalendar.Empty,
         Warsaw);
 
-    private static readonly Tariff Export = new(new FlatPrice(0.35), HolidayCalendar.Empty, Warsaw);
+    private static readonly Tariff Export = Tariff.For(new FlatPrice(0.35), HolidayCalendar.Empty, Warsaw);
 
     // Wednesday 2026-07-15 (CEST).
     private static DateTimeOffset At(int hour, int minute = 0, int day = 15) => new(2026, 7, day, hour, minute, 0, TimeSpan.FromHours(2));
@@ -50,7 +50,7 @@ public sealed class PlanInputsTests
     {
         // Why: api/plan's slots must agree with what dispatch will pay. Where the tariff changes on the hour, each hourly slot's price equals the tariff's price at its start,
         // across 2026-03-29 (23 h) and 2026-10-25 (25 h) where a 24-hour assumption would shift every price by an hour.
-        var onTheHour = new Tariff(
+        var onTheHour = Tariff.For(
             new ZonedPrice([new TariffZone("peak", 0.40, [new ZoneRule([DayClass.Workday, DayClass.Weekend], [], [new HoursRange(7 * 60, 13 * 60), new HoursRange(16 * 60, 21 * 60)])]), new TariffZone("offpeak", 0.10, [])], "offpeak"),
             HolidayCalendar.Empty,
             Warsaw);

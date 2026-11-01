@@ -184,7 +184,7 @@ public sealed class SettlementTests
     private static Tariff G13()
     {
         var economics = TestConfigurations.Valid(TestConfigurations.Example.TrimEnd() + "\n\n" + File.ReadAllText(RepoPaths.Combine("deploy", "examples", "economics-g13.yaml"))).Configuration!.Economics!;
-        return new Tariff(economics.Tariff!, economics.Holidays, Warsaw);
+        return Tariff.For(economics.Tariff!, economics.Holidays, Warsaw);
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public sealed class SettlementTests
     public void A_period_inside_one_zone_keeps_that_zone_and_a_flat_price_is_flat()
     {
         var inside = PeriodPrice.Mean(G13(), new DateTimeOffset(2026, 7, 15, 5, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 15, 6, 0, 0, TimeSpan.Zero))!.Value;
-        var flat = PeriodPrice.Mean(new Tariff(new FlatPrice(0.42), HolidayCalendar.Empty, Warsaw), new DateTimeOffset(2026, 7, 15, 5, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 15, 6, 0, 0, TimeSpan.Zero))!.Value;
+        var flat = PeriodPrice.Mean(Tariff.For(new FlatPrice(0.42), HolidayCalendar.Empty, Warsaw), new DateTimeOffset(2026, 7, 15, 5, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 15, 6, 0, 0, TimeSpan.Zero))!.Value;
 
         Assert.Equal((1.10, PriceBasis.Zone, "morning_peak"), (inside.PerKwh, inside.Basis, inside.Zone));
         Assert.Equal((0.42, PriceBasis.Flat, null), (flat.PerKwh, flat.Basis, flat.Zone));
@@ -218,7 +218,7 @@ public sealed class SettlementTests
     {
         var t = new DateTimeOffset(2026, 7, 15, 5, 0, 0, TimeSpan.Zero);
 
-        Assert.Null(PeriodPrice.Mean(new Tariff(new FlatPrice(0.42), HolidayCalendar.Empty, Warsaw), t, t));
+        Assert.Null(PeriodPrice.Mean(Tariff.For(new FlatPrice(0.42), HolidayCalendar.Empty, Warsaw), t, t));
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public sealed class SettlementTests
             "base");
         var from = new DateTimeOffset(2026, 10, 25, 0, 0, 0, TimeSpan.Zero);
 
-        var mean = PeriodPrice.Mean(new Tariff(spec, HolidayCalendar.Empty, Warsaw), from, from.AddHours(3))!.Value;
+        var mean = PeriodPrice.Mean(Tariff.For(spec, HolidayCalendar.Empty, Warsaw), from, from.AddHours(3))!.Value;
 
         Assert.Equal(5.0 / 3, mean.PerKwh, 9);
     }

@@ -30,8 +30,8 @@ public static class PlanSourceMapper
         return new PlanInputSources(
             zone,
             holidays,
-            import is null ? null : new Tariff(import, holidays, zone),
-            export is null ? null : new Tariff(export, holidays, zone),
+            import is null ? null : Tariff.For(import, holidays, zone),
+            export is null ? null : Tariff.For(export, holidays, zone),
             Curve(import, forecast),
             Curve(export, forecast),
             Pv(forecast, zone, now),

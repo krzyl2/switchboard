@@ -62,8 +62,8 @@ public sealed partial class DispatchEngine
             _tariffs = (
                 economics,
                 zone.Id,
-                economics.Tariff is { } import ? new Tariff(import, economics.Holidays, zone) : null,
-                economics.ExportPrice is { } export ? new Tariff(export, economics.Holidays, zone) : null);
+                economics.Tariff is { } import ? Tariff.For(import, economics.Holidays, zone) : null,
+                economics.ExportPrice is { } export ? Tariff.For(export, economics.Holidays, zone) : null);
         }
 
         var (_, _, importTariff, exportTariff) = _tariffs.Value;

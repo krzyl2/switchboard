@@ -19,7 +19,7 @@ public sealed class TariffTests
     private static readonly EconomicsDefinition G13Definition =
         TestConfigurations.Valid(TestConfigurations.ThreePhase() + "\n" + G13Snippet).Configuration!.Economics!;
 
-    private static readonly Tariff G13 = new(G13Definition.Tariff!, G13Definition.Holidays, Warsaw);
+    private static readonly Tariff G13 = Tariff.For(G13Definition.Tariff!, G13Definition.Holidays, Warsaw);
 
     /// <summary>A local Warsaw wall-clock time as an instant (an ambiguous time takes the first, summer-time, occurrence).</summary>
     private static DateTimeOffset Local(int year, int month, int day, int hour, int minute)
@@ -107,7 +107,7 @@ public sealed class TariffTests
     [Fact]
     public void A_flat_price_has_one_price_no_zone_and_never_changes()
     {
-        var flat = new Tariff(new FlatPrice(0.80), HolidayCalendar.Empty, Warsaw);
+        var flat = Tariff.For(new FlatPrice(0.80), HolidayCalendar.Empty, Warsaw);
         var at = Local(2026, 7, 15, 8, 0);
 
         Assert.Equal(new PricePoint(0.80, PriceBasis.Flat, null), flat.PriceAt(at));
@@ -164,7 +164,7 @@ public sealed class TariffTests
     }
 
     private static Tariff Night(string hours, string? defaultZone = "day", TimeZoneInfo? zone = null) =>
-        new(
+        Tariff.For(
             new ZonedPrice(
                 [new TariffZone("night", 0.4, [Rule(hours)]), new TariffZone("day", 1.0, [])],
                 defaultZone),
@@ -198,7 +198,7 @@ public sealed class TariffTests
     [Fact]
     public void The_first_listed_zone_wins_and_the_default_zone_takes_the_rest()
     {
-        var overlapping = new Tariff(
+        var overlapping = Tariff.For(
             new ZonedPrice(
                 [new TariffZone("a", 1, [Rule("08:00-12:00")]), new TariffZone("b", 2, [Rule("10:00-14:00")]), new TariffZone("rest", 3, [])],
                 "rest"),
@@ -214,7 +214,7 @@ public sealed class TariffTests
     public void A_weekday_name_matches_that_weekday_even_on_a_holiday()
     {
         var date = new DateOnly(2026, 11, 11);
-        var tariff = new Tariff(
+        var tariff = Tariff.For(
             new ZonedPrice([new TariffZone("wed", 1, [Rule("00:00-24:00", [DayClass.Wednesday])]), new TariffZone("rest", 2, [])], "rest"),
             new HolidayCalendar([date]),
             Warsaw);

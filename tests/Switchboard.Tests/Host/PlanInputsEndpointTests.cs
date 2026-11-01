@@ -75,7 +75,7 @@ public sealed class PlanInputsEndpointTests
         // Why: the plan's price per slot must be what dispatch pays. A 24-hour assumption on 2026-03-29 (23 h) or 2026-10-25 (25 h) would shift every price
         // after the change by an hour; the slot grid is cut on the zone's offset change and the slot's start and end carry the offset in force.
         var config = Config(HourlyTariff);
-        var tariff = new Tariff(config.Configuration!.Economics!.Tariff!, HolidayCalendar.Empty, Warsaw);
+        var tariff = Tariff.For(config.Configuration!.Economics!.Tariff!, HolidayCalendar.Empty, Warsaw);
         var at = Local(year, month, day, hour, offsetHours);
 
         var slots = Build(config, at).Slots;

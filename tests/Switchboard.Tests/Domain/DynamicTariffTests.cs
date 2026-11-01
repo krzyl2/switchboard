@@ -35,7 +35,7 @@ public sealed class DynamicTariffTests
     private static PriceInputs Inputs(SignalState state = SignalState.Fresh, double? value = 0.30, SignalDetail detail = SignalDetail.None) =>
         new(ImmutableDictionary<SignalName, PriceSample>.Empty.Add(Market, new PriceSample(state, detail, value, Reported)));
 
-    private static Tariff Dynamic(PriceSpec? add, PriceSpec fallback) => new(new DynamicPrice(Market, fallback, add), HolidayCalendar.Empty, Warsaw);
+    private static Tariff Dynamic(PriceSpec? add, PriceSpec fallback) => Tariff.For(new DynamicPrice(Market, fallback, add), HolidayCalendar.Empty, Warsaw);
 
     [Fact]
     public void A_fresh_signal_plus_the_add_of_the_moment_is_the_price_and_the_basis_is_live()
@@ -129,8 +129,8 @@ public sealed class DynamicTariffTests
     public void A_static_spec_ignores_the_inputs_entirely()
     {
         // Why: ECO-15. Prices handed to a flat or zoned tariff change nothing, so a file without a dynamic spec behaves as before.
-        var flat = new Tariff(new FlatPrice(0.5), HolidayCalendar.Empty, Warsaw);
-        var zoned = new Tariff(FallbackZones, HolidayCalendar.Empty, Warsaw);
+        var flat = Tariff.For(new FlatPrice(0.5), HolidayCalendar.Empty, Warsaw);
+        var zoned = Tariff.For(FallbackZones, HolidayCalendar.Empty, Warsaw);
 
         Assert.Equal(flat.PriceAt(Peak), flat.PriceAt(Peak, Inputs()));
         Assert.Equal(zoned.PriceAt(Peak), zoned.PriceAt(Peak, Inputs()));
