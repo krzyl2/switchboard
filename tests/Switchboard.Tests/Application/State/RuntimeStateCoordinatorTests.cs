@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
+using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
@@ -175,6 +176,54 @@ public sealed class RuntimeStateCoordinatorTests
     }
 
     [Fact]
+    public async Task A_control_switch_change_announced_late_never_overwrites_a_newer_one()
+    {
+        // MQTT allows control and its thread stalls after the switch changed but before state.json is
+        // told; the user switches control off in the UI meanwhile. Memory says off, so state.json must
+        // too, or a restart would bring control back on although the user switched it off.
+        var coordinator = Coordinator();
+        var control = Switches().Control;
+        using var changed = new ManualResetEventSlim();
+        using var uiDone = new ManualResetEventSlim();
+        control.Changed += (_, status) => Stall(status.Allowed, changed, uiDone);
+        coordinator.Attach(control);
+
+        var mqtt = Task.Run(() => control.Set(true, ControlSwitchSource.Mqtt));
+        Assert.True(changed.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(ControlSetResult.Applied, control.Set(false, ControlSwitchSource.Api));
+        uiDone.Set();
+        Assert.Equal(ControlSetResult.Applied, await mqtt);
+        await coordinator.FlushAsync(CancellationToken.None);
+
+        Assert.False(control.Status.Allowed);
+        Assert.Equal((false, ControlSwitchSource.Api), (_store.Saved[^1].Control.Allowed, _store.Saved[^1].Control.Source));
+    }
+
+    [Fact]
+    public async Task A_kill_switch_change_announced_late_never_overwrites_a_newer_one()
+    {
+        // The same race on the kill switch: a release from MQTT announced after the user engaged it
+        // again in the UI must not leave state.json released, or a restart would drop the hold.
+        var coordinator = Coordinator();
+        var killSwitch = Switches().KillSwitch;
+        killSwitch.Set(true, KillSwitchSource.Api);
+        using var changed = new ManualResetEventSlim();
+        using var uiDone = new ManualResetEventSlim();
+        killSwitch.Changed += (_, status) => Stall(!status.Engaged, changed, uiDone);
+        killSwitch.Changed += (_, status) => coordinator.OnKillSwitchChanged(status); // as Attach(runner, killSwitch) wires it
+
+        var mqtt = Task.Run(() => killSwitch.Set(false, KillSwitchSource.Mqtt));
+        Assert.True(changed.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(KillSwitchSetResult.Applied, killSwitch.Set(true, KillSwitchSource.Api));
+        uiDone.Set();
+        Assert.Equal(KillSwitchSetResult.Applied, await mqtt);
+        await coordinator.FlushAsync(CancellationToken.None);
+
+        Assert.True(killSwitch.Status.Engaged);
+        Assert.True(_store.Saved[^1].KillSwitch);
+    }
+
+    [Fact]
     public async Task Other_changes_wait_for_the_save_interval()
     {
         // A device state seen off is worth keeping for display, but not a write per change.
@@ -271,6 +320,27 @@ public sealed class RuntimeStateCoordinatorTests
         MsOptions.Create(TestDecisions.Options()),
         TimeProvider.System,
         NullLogger<RuntimeStateCoordinator>.Instance);
+
+    private (KillSwitchState KillSwitch, ControlSwitchState Control) Switches()
+    {
+        var inbox = new GuardInbox();
+        var clock = new SignalClock(_scenario.Time);
+        var killSwitch = new KillSwitchState(inbox, clock, NullLogger<KillSwitchState>.Instance);
+        return (killSwitch, new ControlSwitchState(inbox, killSwitch, clock, NullLogger<ControlSwitchState>.Instance));
+    }
+
+    /// <summary>
+    /// A listener ahead of the coordinator: it holds the stalled thread's announcement, after its change is in memory,
+    /// until the other thread's change has been made and announced.
+    /// </summary>
+    private static void Stall(bool stalled, ManualResetEventSlim changed, ManualResetEventSlim otherDone)
+    {
+        if (stalled)
+        {
+            changed.Set();
+            _ = otherDone.Wait(TimeSpan.FromSeconds(10));
+        }
+    }
 
     private void Step(RuntimeStateCoordinator coordinator)
     {

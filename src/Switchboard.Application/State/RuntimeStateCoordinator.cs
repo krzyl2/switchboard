@@ -43,6 +43,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private long _overridesVersion = -1;
     private long _goalsVersion = -1;
     private long _manualGoalsVersion = -1;
+    private long _killSwitchVersion = -1;
+    private long _controlVersion = -1;
     private string? _writeError;
 
     /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
@@ -162,17 +164,22 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         control.Changed += (_, status) => OnControlChanged(status);
     }
 
-    /// <summary>Called after the control switch changed in memory; the write is best effort.</summary>
+    /// <summary>
+    /// Called after the control switch changed in memory; the write is best effort. Two changes from different threads (MQTT and
+    /// the API) may be announced out of order: a status older than the last one applied is ignored, so state.json never keeps a
+    /// position the user already left.
+    /// </summary>
     public void OnControlChanged(ControlSwitchStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
         lock (_gate)
         {
-            if (_current.Control == status)
+            if (status.Version <= _controlVersion || _current.Control == status)
             {
                 return;
             }
 
+            _controlVersion = status.Version;
             _current = _current with { Control = status };
             Enqueue(_current, status.ChangedAt ?? _lastQueuedAt);
         }
@@ -298,12 +305,21 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         ImmutableDictionary<Domain.Devices.DeviceName, Domain.Goals.GoalLedgerEntry> b) =>
         a.Count == b.Count && a.All(x => b.TryGetValue(x.Key, out var y) && (x.Value.Kind, x.Value.Since, x.Value.Deadline) == (y.Kind, y.Since, y.Deadline));
 
-    /// <summary>Called by the kill switch after it is already in force; the write is best effort.</summary>
+    /// <summary>
+    /// Called by the kill switch after it is already in force; the write is best effort. A status older than the last one applied
+    /// (announced late by another thread) is ignored, like an out-of-order control switch change.
+    /// </summary>
     public void OnKillSwitchChanged(KillSwitchStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
         lock (_gate)
         {
+            if (status.Version <= _killSwitchVersion)
+            {
+                return;
+            }
+
+            _killSwitchVersion = status.Version;
             _current = _current with { KillSwitch = status.Engaged, KillSwitchChangedAt = status.ChangedAt };
             Enqueue(_current, status.ChangedAt ?? _lastQueuedAt);
         }

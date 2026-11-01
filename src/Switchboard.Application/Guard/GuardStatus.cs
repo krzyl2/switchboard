@@ -105,6 +105,9 @@ public sealed record KillSwitchStatus(bool Engaged, DateTimeOffset? ChangedAt, K
 
     /// <summary>Engaged by a corrupt state.json at start and held until the user confirms: no release is accepted before.</summary>
     public bool Locked { get; init; }
+
+    /// <summary>Grows with every change the kill switch announces, so a listener told late can see a newer position was already announced.</summary>
+    public long Version { get; init; }
 }
 
 public sealed record BreakerStatus(

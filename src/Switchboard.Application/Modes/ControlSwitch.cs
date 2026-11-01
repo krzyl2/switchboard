@@ -28,6 +28,9 @@ public sealed record ControlSwitchStatus(bool Allowed, DateTimeOffset? ChangedAt
 {
     /// <summary>A fresh install: control off, nothing locked (shadow stays the default, D7).</summary>
     public static ControlSwitchStatus Default { get; } = new(false, null, ControlSwitchSource.Default, false, null);
+
+    /// <summary>Grows with every change the switch announces, so a listener told late can see a newer position was already announced; never persisted.</summary>
+    public long Version { get; init; }
 }
 
 public enum ControlSetResult
@@ -107,9 +110,10 @@ public sealed class ControlSwitchState : IControlSwitch
         ArgumentNullException.ThrowIfNull(status);
         lock (_gate)
         {
-            _status = status.Locked
+            // Not announced, so the version stays; it only ever grows.
+            _status = (status.Locked
                 ? status with { Allowed = false }
-                : status with { Source = status.Source == ControlSwitchSource.Default ? ControlSwitchSource.Default : ControlSwitchSource.Restored };
+                : status with { Source = status.Source == ControlSwitchSource.Default ? ControlSwitchSource.Default : ControlSwitchSource.Restored }) with { Version = _status.Version };
         }
 
         if (_status.Locked)
@@ -129,7 +133,7 @@ public sealed class ControlSwitchState : IControlSwitch
         ControlSwitchStatus status;
         lock (_gate)
         {
-            status = new ControlSwitchStatus(false, _time.GetUtcNow(), ControlSwitchSource.Default, true, reason);
+            status = new ControlSwitchStatus(false, _time.GetUtcNow(), ControlSwitchSource.Default, true, reason) { Version = _status.Version + 1 };
             _status = status;
         }
 
@@ -155,7 +159,7 @@ public sealed class ControlSwitchState : IControlSwitch
                 return ControlSetResult.RefusedLocked;
             }
 
-            status = _status with { Allowed = allowed, ChangedAt = _time.GetUtcNow(), Source = source };
+            status = _status with { Allowed = allowed, ChangedAt = _time.GetUtcNow(), Source = source, Version = _status.Version + 1 };
             _status = status;
         }
 
@@ -180,7 +184,7 @@ public sealed class ControlSwitchState : IControlSwitch
                 return false;
             }
 
-            status = _status with { Locked = false, LockReason = null, ChangedAt = _time.GetUtcNow() };
+            status = _status with { Locked = false, LockReason = null, ChangedAt = _time.GetUtcNow(), Version = _status.Version + 1 };
             _status = status;
         }
 

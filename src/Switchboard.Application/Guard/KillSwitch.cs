@@ -68,7 +68,8 @@ public sealed class KillSwitchState : IKillSwitchControl
     {
         lock (_gate)
         {
-            _status = engaged ? new KillSwitchStatus(true, changedAt, KillSwitchSource.Restored) : KillSwitchStatus.Off;
+            // Not announced, so the version stays; it only ever grows.
+            _status = (engaged ? new KillSwitchStatus(true, changedAt, KillSwitchSource.Restored) : KillSwitchStatus.Off) with { Version = _status.Version };
         }
 
         _inbox.Post(GuardTrigger.KillSwitch);
@@ -83,7 +84,7 @@ public sealed class KillSwitchState : IKillSwitchControl
         KillSwitchStatus status;
         lock (_gate)
         {
-            status = new KillSwitchStatus(true, _time.GetUtcNow(), KillSwitchSource.CorruptState) { Locked = true };
+            status = new KillSwitchStatus(true, _time.GetUtcNow(), KillSwitchSource.CorruptState) { Locked = true, Version = _status.Version + 1 };
             _status = status;
         }
 
@@ -107,7 +108,7 @@ public sealed class KillSwitchState : IKillSwitchControl
                 return KillSwitchSetResult.RefusedLocked;
             }
 
-            status = new KillSwitchStatus(engaged, _time.GetUtcNow(), source) { Locked = _status.Locked };
+            status = new KillSwitchStatus(engaged, _time.GetUtcNow(), source) { Locked = _status.Locked, Version = _status.Version + 1 };
             _status = status;
         }
 
@@ -132,9 +133,9 @@ public sealed class KillSwitchState : IKillSwitchControl
                 return false;
             }
 
-            status = _status.Source == KillSwitchSource.CorruptState
+            status = (_status.Source == KillSwitchSource.CorruptState
                 ? new KillSwitchStatus(false, _time.GetUtcNow(), KillSwitchSource.Confirmation)
-                : _status with { Locked = false };
+                : _status with { Locked = false }) with { Version = _status.Version + 1 };
             _status = status;
         }
 
