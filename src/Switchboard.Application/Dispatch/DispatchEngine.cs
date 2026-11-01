@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Effector;
-using Switchboard.Application.Modes;
+using Switchboard.Application.Planning;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
@@ -41,12 +41,25 @@ public sealed partial class DispatchEngine
 {
     private readonly Dictionary<DeviceName, DeviceState> _devices = [];
     private readonly PhaseRanking _ranking = new();
-    private readonly ForeignLoadTracker _foreign = new();
+    private readonly ForeignLoadObserver _foreign = new();
+    private readonly BalanceTracker _balanceTracker = new();
+    private readonly EconomicsTracker _economicsTracker;
+    private readonly PlanReader _planReader;
     private ImmutableArray<DispatchWish> _wishes = [];
     private ImmutableArray<DeviceDispatchState> _states = [];
+    private ImmutableArray<DevicePhasePower> _devicePowers = [];
     private DispatchSetup? _setup;
     private long _overrideVersion;
     private DateTimeOffset? _lastNow;
+
+    /// <param name="time">Only its <see cref="TimeProvider.LocalTimeZone"/> is read, for the tariff zones: the engine never reads the time itself, every call is handed <c>now</c>.</param>
+    /// <param name="plan">The plan, as dispatch may read it (15-PLANNER); null, or a view whose mode is off, is exactly the v2 dispatch.</param>
+    public DispatchEngine(TimeProvider time, IPlanView? plan = null)
+    {
+        ArgumentNullException.ThrowIfNull(time);
+        _economicsTracker = new EconomicsTracker(time);
+        _planReader = new PlanReader(plan);
+    }
 
     public DispatchEvaluation Evaluate(DispatchInput input, DateTimeOffset now)
     {
@@ -55,8 +68,7 @@ public sealed partial class DispatchEngine
         {
             // A backward clock step: report times from before it are not comparable with what comes after.
             _foreign.Reset();
-            _free.Reset();
-            _freeNet.Reset();
+            _balanceTracker.Reset();
         }
 
         _lastNow = now;
@@ -66,15 +78,9 @@ public sealed partial class DispatchEngine
             // Without a valid configuration dispatch wants nothing; protection holds the last devices off.
             _wishes = [];
             _states = [];
-            _balance = null;
-            _economics = null;
-            _fallbackChanges = [];
-            ResetFallbackTracking();
-            _classes.Clear();
-            ResetPlan();
-            _free.Reset();
-            _freeNet.Reset();
-            _valueOrder.Reset();
+            _balanceTracker.Reset();
+            _economicsTracker.Reset();
+            _planReader.Reset();
             foreach (var state in _devices.Values)
             {
                 state.ConfirmStreak = 0;
@@ -88,14 +94,11 @@ public sealed partial class DispatchEngine
         var events = new List<DispatchEvent>();
         var ours = new Dictionary<Phase, Watts?>();
         var devicePowers = ImmutableArray.CreateBuilder<DevicePhasePower>();
-        ObserveForeignLoad(input, setup, events, ours, devicePowers);
-        var (exportSample, ownLoad) = OwnFlows(input, setup, ours);
-        _balance = ObserveBalance(input, setup, exportSample, ownLoad, now);
-        _ownLoad = ownLoad;
-        _netFree = ObserveNetFree(setup, exportSample, now);
-        _economics = ObserveEconomics(setup, now, input.Prices);
+        _foreign.Observe(input, setup, events, ours, devicePowers);
+        _balanceTracker.Observe(input, setup, ours, now);
+        _economicsTracker.Observe(setup, now, input.Prices);
         _devicePowers = devicePowers.ToImmutable();
-        ObservePlan(input, setup, now);
+        _planReader.Observe(input, setup, now, _devicePowers);
 
         var overridesChanged = input.Overrides.Version != _overrideVersion;
         var changed = overridesChanged
@@ -113,15 +116,7 @@ public sealed partial class DispatchEngine
                 _ranking.Observe(PhaseRanking.Propose(headroom), setup.Timing.PhaseRankingStabilityCycles);
             }
 
-            // The value order follows prices only where a device's value does; its adoption is the phase ranking's rule.
-            if (_economics is { Setup.OrderFollowsPrices: true } economics)
-            {
-                _valueOrder.Observe(economics.Keys(), economics.Setup.Parameters.OrderMinGapFraction, economics.Setup.Parameters.OrderStabilityCycles);
-            }
-            else
-            {
-                _valueOrder.Reset();
-            }
+            _economicsTracker.AdoptOrder();
         }
 
         if (guard.AtBoundary || changed.Count > 0)
@@ -144,7 +139,7 @@ public sealed partial class DispatchEngine
             var rank = _ranking.Adopted.IndexOf(p);
             return new PhaseDispatchState(p, foreign, baseline, rank < 0 ? null : rank + 1) { Ours = ours.GetValueOrDefault(p) };
         });
-        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = _devicePowers, Balance = _balance, Economics = _economics?.ToView(), TariffFallback = _fallbackChanges };
+        return new DispatchEvaluation(now, _wishes, [.. events], _states, [.. phases], _ranking.Adopted) { DevicePowers = _devicePowers, Balance = _balanceTracker.View, Economics = _economicsTracker.Context?.ToView(), TariffFallback = _economicsTracker.FallbackChanges };
     }
 
     /// <summary>Dispatch adds no deadline of its own: it acts at the guard's cycle boundaries.</summary>
@@ -177,88 +172,15 @@ public sealed partial class DispatchEngine
             _foreign.Reset();
         }
 
-        // A configuration change adopts the next value order at once (14-ECONOMICS).
-        _valueOrder.Reset();
-        _classes.Clear();
+        _economicsTracker.SetupChanged();
         _setup = setup;
-    }
-
-    /// <summary>
-    /// Foreign load per phase (04 §4): house load minus our devices (their power draw, else a
-    /// relay's rated power while reported on; unknown while a device on the phase is a setpoint
-    /// device without a power draw). In active mode a commanded change the reported state does not
-    /// show yet counts as ours (the meter may see the load before the relay reports), so our own
-    /// command is never foreign, until its verification refuted it: a relay that measurably did not
-    /// follow is not counted as on, so a real kettle is not hidden behind it and the end of its
-    /// command is no "foreign" rise that would excuse its next mismatch. What it counted (ours per
-    /// phase, each device's power and where it came from) is handed back for read-only consumers.
-    /// </summary>
-    private void ObserveForeignLoad(DispatchInput input, DispatchSetup setup, List<DispatchEvent> events, Dictionary<Phase, Watts?> oursByPhase, ImmutableArray<DevicePhasePower>.Builder devicePowers)
-    {
-        var active = input.Mode.Effective == OperatingMode.Active;
-        foreach (var phase in setup.Phases)
-        {
-            var dispatch = input.Inputs.For(phase);
-            Watts? ours = Watts.Zero;
-            foreach (var device in setup.Devices.Where(d => d.Spec.IsOn(phase)))
-            {
-                var load = input.Guard.Envelope.Device(device.Id);
-                var power = input.Inputs.DevicePowers.IsDefault ? null : input.Inputs.DevicePowers.FirstOrDefault(p => p.Device == device.Id && p.Phase == phase);
-                Watts? own = device.HasPowerDraw(phase) ? power is { Fresh: true, Power: { } w } ? w : null
-                    : device.Spec is SetpointSpec ? null
-                    : load?.Reported is { } reported ? device.RatedPower(reported, phase)
-                    : null;
-                // A commanded change counts as ours until the reported state shows it (the meter may
-                // see the load first): only in active mode, where something was really applied.
-                if (active && input.Ledger.Entry(device.Id) is { TargetCommanded: true, CommandRefuted: false, Target: { } target }
-                    && device.Spec is RelaySpec && !device.HasPowerDraw(phase) && load?.Reported is { } shown && !shown.Equals(target))
-                {
-                    own = own + device.RatedPower(target, phase) - device.RatedPower(shown, phase);
-                }
-
-                ours = ours is { } sum && own is { } add ? sum + add : null;
-                devicePowers.Add(new DevicePhasePower(
-                    device.Id,
-                    phase,
-                    own,
-                    own is null ? PowerSource.Unknown : device.HasPowerDraw(phase) ? PowerSource.Measured : PowerSource.RatedModel));
-            }
-
-            oursByPhase[phase] = ours;
-            Watts? foreign = dispatch is { DataValid: true, Load: { } houseLoad } && ours is { } controlled ? houseLoad - controlled : null;
-            if (_foreign.Observe(phase, foreign, dispatch?.PowerReportedAt, setup.ForeignLoad))
-            {
-                var (_, baseline) = _foreign.Last(phase);
-                events.Add(new DispatchEvent(
-                    DecisionScope.Phase,
-                    phase,
-                    DecisionAction.ForeignLoadDetected,
-                    ReasonCode.ForeignLoad,
-                    DecisionInputs.None with
-                    {
-                        Dispatch = new DispatchDecisionInputs(
-                            [new ConstraintHeadroom(ConstraintKey.Main(phase), input.Guard.Envelope.For(ConstraintKey.Main(phase))?.Available, null)],
-                            setup.StartHysteresis,
-                            setup.StopHysteresis,
-                            null,
-                            ImmutableDictionary<Phase, Amperes>.Empty,
-                            ImmutableDictionary<ConstraintKey, Amperes>.Empty,
-                            null,
-                            new VerificationInputs(baseline?.Value ?? 0, foreign!.Value.Value, MeasureUnit.Watts, Verdict.Inconclusive),
-                            TimeSpan.Zero,
-                            TimeSpan.Zero,
-                            null,
-                            OverrideMode.Auto),
-                    }));
-            }
-        }
     }
 
     private void Allocate(DispatchInput input, DispatchSetup setup, ProtectionSetup protection, DateTimeOffset now, bool atBoundary, HashSet<DeviceName> overrideChanged)
     {
         var guard = input.Guard;
         var envelope = guard.Envelope;
-        var order = UrgentFirst(StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted, OrderKey()));
+        var order = _planReader.UrgentFirst(StartOrder.For(setup.Devices.Select(d => d.Spec), id => setup.Device(id)?.RotationGroup, _ranking.Adopted, _economicsTracker.OrderKey()));
         var plans = new List<Plan>();
         var openWindows = setup.Devices
             .Select(d => (Device: d, Window: input.Ledger.Entry(d.Id)?.Window))
@@ -301,7 +223,7 @@ public sealed partial class DispatchEngine
 
             var plan = new Plan(device, i + 1, levels, basis, basisIndex, capIndex, constraints, mode, unresponsive && !probeDue)
             {
-                Entry = _planEntries.GetValueOrDefault(spec.Id),
+                Entry = _planReader.Entry(spec.Id),
                 GuardAllows = guardAllows,
                 WindowFree = windowFree,
                 OwnWindow = blocking.Any(w => w.Device.Id == spec.Id),
@@ -390,8 +312,8 @@ public sealed partial class DispatchEngine
         // device is judged again on the new result: a device that could not rise on the first read (its headroom was taken by one
         // worth more) may rise on the next, and must not escape the gate. The gate only narrows, so the passes end (at most one per
         // device). Without economics it is the 0.9 single pass, byte for byte (ECO-15).
-        var passes = _economics is null ? 1 : plans.Count + 1;
-        for (var pass = 0; pass < passes && ApplyAllowanceGate(plans, result, _balance, _devicePowers, setup, input); pass++)
+        var passes = _economicsTracker.Context is null ? 1 : plans.Count + 1;
+        for (var pass = 0; pass < passes && ApplyAllowanceGate(plans, result, _balanceTracker.View, _devicePowers, setup, input); pass++)
         {
             result = Run(plans, available, setup);
         }
@@ -523,7 +445,7 @@ public sealed partial class DispatchEngine
                 pending = blocked;
             }
 
-            _economics?.Classes[plan.Device.Id] = plan.EnergyClass;
+            _economicsTracker.Context?.Classes[plan.Device.Id] = plan.EnergyClass;
             var fresh = atBoundary || overrideChanged.Contains(plan.Device.Id);
             var blockedOverride = plan.Mode == OverrideMode.ForceOn && plan.BlockedBy is not null;
             wishes.Add(new DispatchWish(
@@ -534,7 +456,7 @@ public sealed partial class DispatchEngine
                 change,
                 blockedOverride ? plan.BlockedBy : null,
                 fresh,
-                Inputs(plan, allocation, guard, input, setup, now, _balance, _economics?.Block(plan.Device.Id, plan.EnergyClass), PlanBlock(plan)))
+                Inputs(plan, allocation, guard, input, setup, now, _balanceTracker.View, _economicsTracker.Context?.Block(plan.Device.Id, plan.EnergyClass), _planReader.Block(plan.Entry, plan.Device.Id)))
             {
                 PendingLevel = blockedOverride ? DeviceLevels.Toward(spec, plan.Basis, plan.Levels[plan.CapIndex], setup.Timing.MaxStepChangeStages) : null,
             });

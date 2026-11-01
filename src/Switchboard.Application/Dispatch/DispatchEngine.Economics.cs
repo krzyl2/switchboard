@@ -1,202 +1,215 @@
-using System.Collections.Immutable;
-using Switchboard.Application.Decisions;
-using Switchboard.Application.Planning;
-using Switchboard.Domain.Devices;
-using Switchboard.Domain.Dispatch;
+using Switchboard.Domain.Balance;
+using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Application.Dispatch;
 
 /// <summary>
-/// The economics of the dispatch loop (14-ECONOMICS, slice 3): the prices and values of a step on the injected clock's local
-/// time, the live value order and the read-only exposure. Nothing here can raise a load: order decides who is asked first, the
-/// allowance gate (<see cref="ApplyAllowanceGate"/>) only narrows, and the guard never sees any of it.
+/// The sources and price test half of the allowance gate (14-ECONOMICS, slice 3): what the surplus class and the active tariff
+/// zone say for a device with <c>sources</c>, and why a start or an increase is withheld or a run is stopped. The prices and
+/// values themselves are the <see cref="EconomicsTracker"/>'s. Nothing here can raise a load: the gate only narrows, and the guard
+/// never sees any of it.
 /// </summary>
 public sealed partial class DispatchEngine
 {
-    private readonly TimeProvider _time;
-    private readonly ValueOrder _valueOrder = new();
-    private EconomicsContext? _economics;
-
-    /// <summary>The energy class each device was allowed on at the last cycle boundary; kept between boundaries so the read-only view does not flicker.</summary>
-    private readonly Dictionary<DeviceName, EnergySource?> _classes = [];
-    private (EconomicsSetup Setup, string ZoneId, Tariff? Import, Tariff? Export)? _tariffs;
-
-    // Whether each dynamic price was at its fallback at the previous step: a change is an event, a steady state is not.
-    private bool _importInFallback;
-    private bool _exportInFallback;
-    private ImmutableArray<TariffFallbackChange> _fallbackChanges = [];
-
-    /// <summary>A dispatch engine on the system's time zone (tests that do not use prices).</summary>
-    public DispatchEngine()
-        : this(TimeProvider.System)
-    {
-    }
-
-    /// <param name="time">Only its <see cref="TimeProvider.LocalTimeZone"/> is read, for the tariff zones: the engine never reads the time itself, every call is handed <c>now</c>.</param>
-    /// <param name="plan">The plan, as dispatch may read it (15-PLANNER); null, or a view whose mode is off, is exactly the v2 dispatch.</param>
-    public DispatchEngine(TimeProvider time, IPlanView? plan = null)
-    {
-        ArgumentNullException.ThrowIfNull(time);
-        _time = time;
-        _plan = plan;
-    }
-
     /// <summary>
-    /// The prices, values and sources of this step: the tariff zone and the two prices in force at <paramref name="now"/> on the
-    /// local clock (a 23- or 25-hour day is the zone rules' business), and per device the effective value and the order key,
-    /// <c>shed_priority ?? v_eff</c>. Null without an <c>economics:</c> section.
+    /// Why a running device with sources should come down one stage, or null while it stays (14-ECONOMICS: a stop needs neither
+    /// class to hold; the zone class is never stopped by the balance). The surplus class stops on the settlement rule as in 0.9;
+    /// an unknown balance stops only a device Switchboard started; a value that no longer covers the forgone export stops it too.
     /// </summary>
-    private EconomicsContext? ObserveEconomics(DispatchSetup setup, DateTimeOffset now, PriceInputs? priceInputs)
+    private static ReasonCode? StopReason(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, Plan plan, DispatchInput input)
     {
-        _fallbackChanges = [];
-        if (setup.Economics is not { } economics)
+        if (ZoneOf(economics, device).Ok(running: true))
         {
-            ResetFallbackTracking();
             return null;
         }
 
-        var zone = _time.LocalTimeZone;
-        if (_tariffs is not { } cached || !ReferenceEquals(cached.Setup, economics) || cached.ZoneId != zone.Id)
+        var pv = PvOf(economics, device, surplus, load, 0);
+        return pv.Allowance.Decision switch
         {
-            _tariffs = (
-                economics,
-                zone.Id,
-                economics.Tariff is { } import ? Tariff.For(import, economics.Holidays, zone) : null,
-                economics.ExportPrice is { } export ? Tariff.For(export, economics.Holidays, zone) : null);
-        }
-
-        var (_, _, importTariff, exportTariff) = _tariffs.Value;
-        var prices = PriceBook.At(now, importTariff, exportTariff, priceInputs);
-        TrackFallback(economics, prices);
-        var devices = new Dictionary<DeviceName, DeviceEcon>();
-        foreach (var device in economics.Devices)
-        {
-            var value = EffectiveValue.At(device.Value, prices);
-            var key = setup.Device(device.Device)?.Spec.ShedPriority ?? value.PerKwh;
-            devices[device.Device] = new DeviceEcon(device, value, key);
-        }
-
-        return new EconomicsContext(economics, now, importTariff, prices, devices, _classes, priceInputs);
+            AllowanceDecision.Stop => PvReason(economics, AllowanceDecision.Stop),
+            AllowanceDecision.Unknown => input.Ledger.Entry(plan.Device.Id)?.SelfStarted is not null ? ReasonCode.BalanceUnknown : null,
+            _ => pv.Worth ? null : ReasonCode.ValueBelowCost,
+        };
     }
 
     /// <summary>
-    /// A dynamic price entering or leaving its fallback is reported once per change (the runner logs it): no decision and no reason
-    /// code, the basis of the price is in the decision inputs. A static price never is at a fallback.
+    /// A plan entry of <c>defer</c> also brings a running device down when it runs on the active zone (a device whose sources do not open the zone now is left to <see cref="StopReason"/>) and the surplus does not hold it: the plan places its energy in a later slot, so buying
+    /// it from the zone now is what the plan is there to avoid (15-PLANNER). The surplus class is not the plan's to refuse: a device the surplus rule still holds
+    /// (settlement says start or hold and the value covers the forgone export) keeps running. It is the stop a zone's end makes, one stage a step
+    /// through <see cref="LowerOneStage"/>, so min_on, persistence and the guard act as for any other stop; without an entry (mode off, no valid plan) nothing here runs.
     /// </summary>
-    private void TrackFallback(EconomicsSetup economics, PriceBook prices)
+    private ReasonCode? DeferStop(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, Plan plan)
     {
-        var changes = ImmutableArray.CreateBuilder<TariffFallbackChange>();
-        Track("import", economics.Tariff, prices.Import, ref _importInFallback, changes);
-        Track("export", economics.ExportPrice, prices.Export, ref _exportInFallback, changes);
-        _fallbackChanges = changes.ToImmutable();
-
-        static void Track(string name, PriceSpec? spec, PricePoint? point, ref bool inFallback, ImmutableArray<TariffFallbackChange>.Builder changes)
+        if (!_planReader.GateFor(plan.Entry).Defers)
         {
-            var now = spec is DynamicPrice && point?.Basis == PriceBasis.Fallback;
-            if (now != inFallback && spec is DynamicPrice dynamic)
+            return null;
+        }
+
+        // Only a device that is running on the active zone: with the zone not open for it (a pv_only device, outside its zone, value below the
+        // price) StopReason alone decides, so an unknown balance stays on the v2 side (it stops only a device Switchboard started).
+        if (!ZoneOf(economics, device).Ok(running: true))
+        {
+            return null;
+        }
+
+        // The surplus holds the run (settlement says start or hold and the value covers the forgone export), and an unknown balance holds it too: a blip of the
+        // balance input must not end a run the surplus rule would restart a minute later (v2 stops on an unknown balance only a device Switchboard started).
+        if (PvOf(economics, device, surplus, load, 0) is { Allowance.Decision: AllowanceDecision.Unknown } or { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold })
+        {
+            return null;
+        }
+
+        return ReasonCode.PlanDeferred;
+    }
+
+    /// <summary>
+    /// The stages a device with sources may rise by, from its level, with the load of each granted stage added before the next
+    /// is judged; sets the reason and the class the increase is made for, or why it is withheld.
+    /// </summary>
+    private static int GrantWithSources(EconomicsContext economics, DeviceEcon device, Plan plan, SurplusView surplus, ref double? load, int top, HourlyBalanceSetup config, PlanGate planGate)
+    {
+        var index = plan.BasisIndex;
+        EnergySource? granted = null;
+        ReasonCode? refusal = null;
+        ReasonCode? opened = null;
+        while (index < top)
+        {
+            var candidate = PlannedPower(plan, index + 1, config) - PlannedPower(plan, index, config);
+            if (candidate <= 0)
             {
-                changes.Add(new TariffFallbackChange(name, dynamic.Signal.Value, now));
+                break;
             }
 
-            inFallback = now;
-        }
-    }
-
-    private void ResetFallbackTracking()
-    {
-        _importInFallback = false;
-        _exportInFallback = false;
-    }
-
-    /// <summary>
-    /// The shed key of the start order while values follow prices: the adopted tier of the device, best tier = highest key. The
-    /// tiers are adopted by the DISP-10 rule (<see cref="ValueOrder"/>), so a price tick moves nothing until it has held for
-    /// economics.order_stability_cycles boundaries and moved two keys apart by economics.order_min_gap_fraction.
-    /// </summary>
-    private Func<DeviceSpec, double>? OrderKey()
-    {
-        if (_economics is not { Setup.OrderFollowsPrices: true } economics)
-        {
-            return null;
-        }
-
-        var tiers = _valueOrder.Adopted.IsEmpty
-            ? ValueOrder.Propose(economics.Keys(), economics.Setup.Parameters.OrderMinGapFraction)
-            : _valueOrder.Adopted;
-        return spec => tiers.TryGetValue(spec.Id, out var tier) ? -tier : double.NegativeInfinity;
-    }
-
-    /// <summary>One device's value and order key at an instant.</summary>
-    private sealed record DeviceEcon(DeviceEconomics Spec, EffectiveValue VEff, double OrderKey);
-
-    /// <summary>The economics of one step, read by the allowance gate, the order and the exposure.</summary>
-    private sealed class EconomicsContext(EconomicsSetup setup, DateTimeOffset now, Tariff? importTariff, PriceBook prices, Dictionary<DeviceName, DeviceEcon> devices, Dictionary<DeviceName, EnergySource?> classes, PriceInputs? priceInputs)
-    {
-        private TariffChange? _next;
-        private bool _nextKnown;
-
-        public EconomicsSetup Setup => setup;
-
-        public DateTimeOffset Now => now;
-
-        public PriceBook Prices => prices;
-
-        /// <summary>The tariff zone now; null for a flat or absent tariff.</summary>
-        public string? Zone => prices.Import?.Zone;
-
-        /// <summary>The first minute whose zone differs from now (only evaluated when a start asks for the zone-end margin).</summary>
-        public TariffChange? NextChange
-        {
-            get
+            var pv = PvOf(economics, device, surplus, load, candidate, Commitment(plan, index));
+            var zone = ZoneOf(economics, device);
+            var pvOk = pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth;
+            var zoneOk = zone.Ok(running: index > 0);
+            if (!pvOk && zoneOk && planGate.Defers)
             {
-                if (!_nextKnown)
+                // The plan places this device's energy in a later slot: the zone class is not used now (the surplus class is not the plan's to refuse).
+                refusal = ReasonCode.PlanDeferred;
+                break;
+            }
+
+            if (!pvOk && !zoneOk && planGate.Opens is { } opening)
+            {
+                // The class the plan adds, behind everything above (guard, envelope, persistence, lockouts): its slot, or an urgent goal. No price test, no zone-end margin.
+                opened ??= opening;
+                granted ??= new EnergySource.Grid(null);
+                if (load is { } drawing)
                 {
-                    _next = importTariff?.NextChange(now, priceInputs);
-                    _nextKnown = true;
+                    load = drawing + candidate;
                 }
 
-                return _next;
+                index++;
+                continue;
+            }
+
+            if (!pvOk && !zoneOk)
+            {
+                refusal = Refusal(economics, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
+                break;
+            }
+
+            granted ??= pvOk ? EnergySource.Surplus.Instance : new EnergySource.Grid(null);
+            if (load is { } running)
+            {
+                load = running + candidate;
+            }
+
+            index++;
+        }
+
+        if (index == plan.BasisIndex && refusal is null)
+        {
+            // Nothing was judged (the cap leaves no stage): say why the next stage would not be given, as 0.9 says it with the balance.
+            // When an energy class is open for it the cap (guard, envelope, rank) is the limit, not the sources: no energy refusal then.
+            var next = plan.BasisIndex + 1 < plan.Levels.Length ? Math.Max(0, PlannedPower(plan, plan.BasisIndex + 1, config) - PlannedPower(plan, plan.BasisIndex, config)) : 0;
+            var pv = PvOf(economics, device, surplus, load, next, Commitment(plan, plan.BasisIndex));
+            var zone = ZoneOf(economics, device);
+            var open = (pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth) || zone.Ok(running: plan.BasisIndex > 0);
+            if (!open)
+            {
+                refusal = Refusal(economics, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
             }
         }
 
-        public Dictionary<DeviceName, EnergySource?> Classes => classes;
-
-        public DeviceEcon? Device(DeviceName name) => devices.GetValueOrDefault(name);
-
-        public IReadOnlyDictionary<DeviceName, double> Keys() => devices.ToDictionary(d => d.Key, d => d.Value.OrderKey);
-
-        public EconomicsDecisionInputs? Block(DeviceName name, EnergySource? energyClass) =>
-            Device(name) is { } device
-                ? new EconomicsDecisionInputs(
-                    Zone,
-                    prices.Import?.PerKwh,
-                    prices.Export?.PerKwh,
-                    PriceBasisOf(prices),
-                    device.VEff.PerKwh,
-                    device.VEff.Basis,
-                    device.OrderKey,
-                    energyClass,
-                    device.Spec.Sources?.ToText(),
-                    setup.Settlement.Id)
-                : null;
-
-        /// <summary>
-        /// The one basis a decision records. A dynamic price must never be hidden behind a static one: with either price at its
-        /// fallback the basis is fallback, else with either live it is live, else it is the import price's (else the export price's).
-        /// </summary>
-        private static PriceBasis? PriceBasisOf(PriceBook prices) =>
-            prices.Import?.Basis == PriceBasis.Fallback || prices.Export?.Basis == PriceBasis.Fallback
-                ? PriceBasis.Fallback
-                : prices.Import?.Basis == PriceBasis.Live || prices.Export?.Basis == PriceBasis.Live
-                    ? PriceBasis.Live
-                    : prices.Import?.Basis ?? prices.Export?.Basis;
-
-        public EconomicsView ToView() => new(
-            Zone,
-            prices.Import,
-            prices.Export,
-            setup.Settlement.Id,
-            [.. devices.Values.Select(d => new DeviceEconomicsView(d.Spec.Device, d.VEff, d.OrderKey, d.Spec.Sources, Classes.GetValueOrDefault(d.Spec.Device)))]);
+        plan.BalanceAllows = index > plan.BasisIndex;
+        plan.BalanceReason = refusal;
+        plan.EnergyClass = granted;
+        plan.GrantReason = opened is { } byPlan && index > plan.BasisIndex ? byPlan : granted switch
+        {
+            EnergySource.Surplus => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusAvailable : ReasonCode.BalanceSurplus,
+            EnergySource.Grid => ReasonCode.ZoneAllowed,
+            _ => null,
+        };
+        return index;
     }
+
+    /// <summary>What the surplus class says for a candidate: the settlement model's allowance, and whether the value covers the forgone export (the test is off while no export price exists).</summary>
+    private readonly record struct PvState(Allowance Allowance, bool Worth);
+
+    private static PvState PvOf(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, double candidate, TimeSpan commitment = default)
+    {
+        var allowance = load is { } running
+            ? economics.Setup.Settlement.Decide(surplus, new Watts(running), new Watts(candidate), commitment)
+            : new Allowance(AllowanceDecision.Unknown, AllowanceReason.InputUnknown);
+        var cost = EnergyCost.Pv(economics.Setup.Settlement, economics.Now, economics.Prices);
+        return new PvState(allowance, cost is not { } price || ValueTest.Worth(device.VEff, price, economics.Setup.Parameters.MinMargin));
+    }
+
+    /// <summary>What the active tariff zone says for a device: whether it is one of its sources, whether the value covers the import price, and whether a start still has the zone-end margin.</summary>
+    private readonly record struct ZoneState(bool Allowed, bool Worth, bool MarginOk)
+    {
+        public bool Ok(bool running) => Allowed && Worth && (running || MarginOk);
+    }
+
+    private static ZoneState ZoneOf(EconomicsContext economics, DeviceEcon device)
+    {
+        if (ZoneId.Of(economics.Zone) is not { } zone || device.Spec.Sources is not { } sources || !sources.AllowsZone(zone))
+        {
+            return default;
+        }
+
+        var worth = EnergyCost.ZoneEnergy(economics.Prices) is { } cost && ValueTest.Worth(device.VEff, cost, economics.Setup.Parameters.MinMargin);
+        var margin = economics.NextChange is not { } next || next.At - economics.Now >= economics.Setup.Parameters.ZoneEndMargin;
+        return new ZoneState(true, worth, margin);
+    }
+
+    /// <summary>
+    /// Why a start or increase is withheld: the first energy class in the device's sources that is open now says (surplus, then the
+    /// active zone); the surplus is open when its inputs are unknown (the reason is then that nothing can be told), when the
+    /// settlement says energy is wanted but the value does not cover the price, or when there is surplus that the candidate does
+    /// not fit in, or while the settlement says Hold (the projection sits inside the band, as in 0.9). With no such class open the reason is source_not_allowed: what is available now is not among the sources.
+    /// </summary>
+    private static ReasonCode Refusal(EconomicsContext economics, PvState pv, bool surplusPresent, ZoneState zone)
+    {
+        if (pv.Allowance.Decision == AllowanceDecision.Unknown)
+        {
+            return ReasonCode.BalanceUnknown;
+        }
+
+        if (pv.Allowance.Decision == AllowanceDecision.Start)
+        {
+            return ReasonCode.ValueBelowCost;
+        }
+
+        if (surplusPresent || pv.Allowance.Decision == AllowanceDecision.Hold)
+        {
+            return economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow;
+        }
+
+        return zone is { Allowed: true, Worth: false } ? ReasonCode.ValueBelowCost : ReasonCode.SourceNotAllowed;
+    }
+
+    /// <summary>The reason code of a settlement decision: the hourly balance's projection or net billing's surplus.</summary>
+    private static ReasonCode PvReason(EconomicsContext economics, AllowanceDecision decision) =>
+        decision switch
+        {
+            AllowanceDecision.Unknown => ReasonCode.BalanceUnknown,
+            AllowanceDecision.Start => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusAvailable : ReasonCode.BalanceSurplus,
+            _ => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow,
+        };
 }

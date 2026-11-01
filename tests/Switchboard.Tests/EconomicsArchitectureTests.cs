@@ -152,6 +152,7 @@ public sealed partial class EconomicsArchitectureTests
             .Append(RepoPaths.Combine("src", "Switchboard.Application", "Configuration", "EconomicsSectionParser.cs"))
             .Append(RepoPaths.Combine("src", "Switchboard.Host", "Web", "EconomicsEndpoint.cs"))
             .Append(RepoPaths.Combine("src", "Switchboard.Application", "Dispatch", "DispatchEngine.Economics.cs"))
+            .Append(RepoPaths.Combine("src", "Switchboard.Application", "Dispatch", "EconomicsTracker.cs"))
             .ToList();
         var offenders = files.Where(f => EntityLiteral().IsMatch(File.ReadAllText(f))).Select(Path.GetFileName).ToList();
 
