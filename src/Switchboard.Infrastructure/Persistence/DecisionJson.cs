@@ -15,6 +15,7 @@ using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
 
@@ -45,7 +46,6 @@ public static class DecisionJson
     /// <summary>The format 0.3.x wrote: no origin, group, target or dispatch inputs.</summary>
     public const int LegacyFormatVersion = 1;
 
-    private const string TimeFormat = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
 
     // A bound on untrusted content, far above any stepped device a configuration declares.
     private const int MaxStages = 64;
@@ -61,7 +61,7 @@ public static class DecisionJson
             writer.WriteNumber("v", FormatVersion);
             writer.WriteNumber("codes", ReasonCodes.ListVersion);
             writer.WriteString("id", decision.Id);
-            writer.WriteString("at", FormatTime(decision.At));
+            writer.WriteString("at", PresentationJson.Time(decision.At));
             writer.WriteString("scope", Snake(decision.Scope));
             WriteOptional(writer, "device", decision.Device?.Value);
             WriteOptional(writer, "stage", decision.Stage);
@@ -87,8 +87,8 @@ public static class DecisionJson
         writer.WriteNumber("v", FormatVersion);
         writer.WriteStartObject("gap");
         writer.WriteNumber("dropped", dropped);
-        writer.WriteString("first_at", FormatTime(firstAt));
-        writer.WriteString("last_at", FormatTime(lastAt));
+        writer.WriteString("first_at", PresentationJson.Time(firstAt));
+        writer.WriteString("last_at", PresentationJson.Time(lastAt));
         writer.WriteEndObject();
     });
 
@@ -157,7 +157,7 @@ public static class DecisionJson
             writer.WriteNumber("reserve_threshold_a", phase.ReserveThreshold.Value);
             WriteOptional(writer, "headroom_a", phase.Headroom?.Value);
             WriteOptional(writer, "direction", phase.Direction is { } direction ? Snake(direction) : null);
-            WriteOptional(writer, "reported_at", phase.ReportedAt is { } reported ? FormatTime(reported) : null);
+            WriteOptional(writer, "reported_at", phase.ReportedAt is { } reported ? PresentationJson.Time(reported) : null);
             writer.WriteEndObject();
         }
 
@@ -267,7 +267,7 @@ public static class DecisionJson
 
         writer.WriteNumber("min_on_remaining_s", dispatch.MinOnRemaining.TotalSeconds);
         writer.WriteNumber("min_off_remaining_s", dispatch.MinOffRemaining.TotalSeconds);
-        WriteOptional(writer, "deferred_since", dispatch.DeferredSince is { } since ? FormatTime(since) : null);
+        WriteOptional(writer, "deferred_since", dispatch.DeferredSince is { } since ? PresentationJson.Time(since) : null);
         writer.WriteString("override", Snake(dispatch.Override));
         if (dispatch.Reasserted)
         {
@@ -295,9 +295,9 @@ public static class DecisionJson
             writer.WriteStartObject("plan");
             writer.WriteString("status", PlanDecisionInputs.FreshStatus);
             writer.WriteString("plan_id", plan.PlanId);
-            writer.WriteString("computed_at", FormatTime(plan.ComputedAt));
-            writer.WriteString("slot_start", FormatTime(plan.SlotStart));
-            writer.WriteString("slot_end", FormatTime(plan.SlotEnd));
+            writer.WriteString("computed_at", PresentationJson.Time(plan.ComputedAt));
+            writer.WriteString("slot_start", PresentationJson.Time(plan.SlotStart));
+            writer.WriteString("slot_end", PresentationJson.Time(plan.SlotEnd));
             writer.WriteString("want", plan.Want);
             WriteOptional(writer, "class", plan.Class is { } planClass ? EnergySourceText.Plan(planClass) : null);
             writer.WriteNumber("energy_kwh", plan.EnergyKwh);
@@ -628,10 +628,8 @@ public static class DecisionJson
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
-    private static string FormatTime(DateTimeOffset time) => time.UtcDateTime.ToString(TimeFormat, CultureInfo.InvariantCulture);
-
     private static DateTimeOffset ParseTime(string text) =>
-        DateTimeOffset.ParseExact(text, TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        DateTimeOffset.ParseExact(text, PresentationJson.TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
 
     private static void WriteOptional(Utf8JsonWriter writer, string name, string? value)
     {
@@ -727,7 +725,4 @@ public static class DecisionJson
     private static TEnum Parse<TEnum>(string? text)
         where TEnum : struct, Enum =>
         Enum.GetValues<TEnum>().Where(v => Snake(v) == text).Select(v => (TEnum?)v).SingleOrDefault() ?? throw new FormatException(text);
-
-    internal static string Snake<TEnum>(TEnum value)
-        where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 }

@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Setup;
+using Switchboard.Infrastructure.Persistence;
 
 namespace Switchboard.Infrastructure.Configuration;
 
@@ -69,18 +70,14 @@ public sealed partial class ConfigurationDocumentStore : ISetupDocumentStore
             string? backup = null;
             try
             {
-                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    stream.Write(bytes);
-                    stream.Flush(flushToDisk: true);
-                }
+                AtomicFile.WriteTemporary(temporary, bytes, FileMode.CreateNew);
 
                 if (current.Exists)
                 {
                     backup = Backup();
                 }
 
-                File.Move(temporary, FullPath, overwrite: true);
+                AtomicFile.Replace(temporary, FullPath);
             }
             finally
             {

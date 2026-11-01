@@ -15,6 +15,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
 
@@ -44,7 +45,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
 {
     public const string FileName = "state.json";
     public const string CorruptSuffix = ".corrupt";
-    public const string TemporarySuffix = ".tmp";
+    public const string TemporarySuffix = AtomicFile.TemporarySuffix;
 
     // Bounds on untrusted content, far above anything a valid configuration produces (64 devices).
     private const int MaxDevices = 256;
@@ -126,15 +127,7 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             throw new IOException($"the state is {payload.Length} bytes, above the {_maxBytes} byte limit");
         }
 
-        Directory.CreateDirectory(_directory);
-        var temporary = FilePath + TemporarySuffix;
-        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            stream.Write(payload);
-            stream.Flush(flushToDisk: true);
-        }
-
-        File.Move(temporary, FilePath, overwrite: true);
+        AtomicFile.Write(FilePath, payload);
     }
 
     internal static byte[] Serialize(RuntimeState state)
@@ -708,9 +701,6 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
         return groups.ToImmutable();
     }
 
-    private static string Snake<TEnum>(TEnum value)
-        where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
-
     private static StageLastKnown? Stage(JsonElement element, string path)
     {
         if (element.ValueKind == JsonValueKind.Null)
@@ -807,19 +797,6 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
             && DateTimeOffset.TryParseExact(element.GetString(), "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)
                 ? value
                 : throw new InvalidStateException($"{path} is not an ISO 8601 round-trip time");
-    }
-
-    private static void WriteTime(Utf8JsonWriter writer, string name, DateTimeOffset? value)
-    {
-        if (value is { } time)
-        {
-            // UTC with a Z: unambiguous for a person editing the file, and read back by "O".
-            writer.WriteString(name, time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture));
-        }
-        else
-        {
-            writer.WriteNull(name);
-        }
     }
 
     private static bool IsDiscoveryKey(string? value)

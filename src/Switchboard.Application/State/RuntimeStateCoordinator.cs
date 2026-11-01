@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Decisions;
@@ -26,14 +25,12 @@ namespace Switchboard.Application.State;
 /// </summary>
 public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
 {
-    private readonly IRuntimeStateStore _store;
     private readonly Func<BudgetParameters?> _thresholds;
     private readonly PersistenceOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<RuntimeStateCoordinator> _logger;
     private readonly object _gate = new();
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+    private readonly LatestStateWriter<RuntimeState> _writer;
     private RuntimeState _current;
     private RuntimeState? _lastQueued;
     private DateTimeOffset? _lastQueuedAt;
@@ -45,7 +42,6 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private long _manualGoalsVersion = -1;
     private long _killSwitchVersion = -1;
     private long _controlVersion = -1;
-    private string? _writeError;
 
     /// <param name="thresholds">The budget thresholds in force (null before a valid configuration), for crossing detection.</param>
     public RuntimeStateCoordinator(
@@ -58,13 +54,13 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     {
         ArgumentNullException.ThrowIfNull(loaded);
         ArgumentNullException.ThrowIfNull(options);
-        _store = store;
         Loaded = loaded;
         _thresholds = thresholds;
         _options = options.Value;
         _time = time;
         _logger = logger;
         _current = loaded.State;
+        _writer = new LatestStateWriter<RuntimeState>("state.json", store.Save, $"retrying every {_options.WriteRetryInterval}", logger);
     }
 
     /// <summary>What was found at start; applied to the guard, the kill switch and the mode before the first evaluation.</summary>
@@ -93,12 +89,9 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     {
         get
         {
-            lock (_gate)
-            {
-                return _writeError is { } error
-                    ? new StateFileReport(Loaded.Status, $"state.json could not be written ({error}); the kill switch and the budgets hold in memory only until it can.", false)
-                    : new StateFileReport(Loaded.Status, Loaded.Warning, true);
-            }
+            return _writer.Error is { } error
+                ? new StateFileReport(Loaded.Status, $"state.json could not be written ({error}); the kill switch and the budgets hold in memory only until it can.", false)
+                : new StateFileReport(Loaded.Status, Loaded.Warning, true);
         }
     }
 
@@ -341,29 +334,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     }
 
     /// <summary>The writer: one write per wake-up, the latest state only; after a failure, retries on its own clock.</summary>
-    public async Task RunAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (true)
-            {
-                if (WriteFailing)
-                {
-                    await Task.Delay(_options.WriteRetryInterval, _time, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    await _wake.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-                }
-
-                await WritePendingAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Stopping; the final state is written by FlushAsync.
-        }
-    }
+    public Task RunAsync(CancellationToken cancellationToken) =>
+        _writer.RunAsync(WritePendingAsync, (_options.WriteRetryInterval, _time), cancellationToken);
 
     /// <summary>Writes whatever is queued now, once; used at shutdown after the shutdown safe state.</summary>
     public Task FlushAsync(CancellationToken cancellationToken)
@@ -380,36 +352,20 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         return WritePendingAsync(cancellationToken);
     }
 
-    private bool WriteFailing
+    private Task WritePendingAsync(CancellationToken cancellationToken) =>
+        _writer.WriteAsync(NextPending, NotifySaved, cancellationToken);
+
+    private (RuntimeState State, Action Commit)? NextPending()
     {
-        get
+        lock (_gate)
         {
-            lock (_gate)
+            if (_pending is not { } pending || pending.Version <= _savedVersion)
             {
-                return _writeError is not null;
-            }
-        }
-    }
-
-    private async Task WritePendingAsync(CancellationToken cancellationToken)
-    {
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            Pending? pending;
-            lock (_gate)
-            {
-                pending = _pending;
+                return null;
             }
 
-            if (pending is null || pending.Version <= _savedVersion)
+            return (pending.State, () =>
             {
-                return;
-            }
-
-            try
-            {
-                _store.Save(pending.State);
                 lock (_gate)
                 {
                     _savedVersion = pending.Version;
@@ -417,33 +373,8 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
                     {
                         _pending = null;
                     }
-
-                    if (_writeError is not null)
-                    {
-                        _logger.LogInformation("state.json is writable again");
-                        _writeError = null;
-                    }
                 }
-
-                NotifySaved(pending.State);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                lock (_gate)
-                {
-                    if (_writeError is null)
-                    {
-                        // Once per failure streak: a full disk must not flood the log every retry.
-                        _logger.LogError("state.json could not be written: {Reason}; retrying every {Interval}", ex.Message, _options.WriteRetryInterval);
-                    }
-
-                    _writeError = ex.Message;
-                }
-            }
-        }
-        finally
-        {
-            _writeLock.Release();
+            });
         }
     }
 
@@ -468,7 +399,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
         _pending = new Pending(stamped, ++_version);
         _lastQueued = stamped;
         _lastQueuedAt = at ?? _lastQueuedAt;
-        _wake.Writer.TryWrite(true);
+        _writer.Wake();
     }
 
     private bool ThresholdCrossed(ImmutableDictionary<Phase, BudgetMemory> before, ImmutableDictionary<Phase, BudgetMemory> after)

@@ -17,7 +17,7 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
     where T : class
 {
     public const string CorruptSuffix = ".corrupt";
-    public const string TemporarySuffix = ".tmp";
+    public const string TemporarySuffix = AtomicFile.TemporarySuffix;
 
     private readonly string _directory;
     private readonly ILogger _logger;
@@ -86,16 +86,7 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
     public void Save(T state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        var payload = SerializeWithinCap(state);
-        Directory.CreateDirectory(_directory);
-        var temporary = FilePath + TemporarySuffix;
-        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            stream.Write(payload);
-            stream.Flush(flushToDisk: true);
-        }
-
-        Move(temporary, FilePath);
+        AtomicFile.Write(FilePath, SerializeWithinCap(state), Move);
     }
 
     /// <summary>Serialises, trimming the state until it fits under MaxBytes (the oldest history goes first), so the reader never refuses what the writer wrote.</summary>
@@ -127,7 +118,7 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
     }
 
     /// <summary>The atomic replace; overridable so a test can make it fail.</summary>
-    protected virtual void Move(string temporary, string target) => File.Move(temporary, target, overwrite: true);
+    protected virtual void Move(string temporary, string target) => AtomicFile.Replace(temporary, target);
 
     protected abstract byte[] Serialize(T state);
 
@@ -172,6 +163,9 @@ public abstract class PresentationFile<T> : IPresentationStore<T>
 /// <summary>Strict JSON reading and writing shared by the presentation files.</summary>
 internal static class PresentationJson
 {
+    /// <summary>How every time in a data file is written: UTC with a Z, seven decimals.</summary>
+    public const string TimeFormat = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
+
     public static void WriteTime(Utf8JsonWriter writer, string name, DateTimeOffset? value)
     {
         if (value is { } time)
@@ -185,7 +179,7 @@ internal static class PresentationJson
     }
 
     /// <summary>UTC with a Z: unambiguous for a person reading the file, and read back by "O".</summary>
-    public static string Time(DateTimeOffset time) => time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+    public static string Time(DateTimeOffset time) => time.UtcDateTime.ToString(TimeFormat, CultureInfo.InvariantCulture);
 
     /// <summary>The object's properties, which must be exactly <paramref name="expected"/>, each once.</summary>
     public static Dictionary<string, JsonElement> Keys(JsonElement element, string path, params string[] expected)

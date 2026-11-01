@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
@@ -38,11 +37,9 @@ public sealed class PhaseEvidencePersistence
     private readonly IPhaseEvidenceFile _file;
     private readonly TimeProvider _signalTime;
     private readonly ILogger<PhaseEvidencePersistence> _logger;
-    private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly LatestStateWriter<PhaseEvidenceState> _writer;
     private long _changes;
     private long _saved;
-    private bool _failing;
 
     public PhaseEvidencePersistence(PhaseEvidenceStore store, IPhaseEvidenceFile file, SignalClock clock, ILogger<PhaseEvidencePersistence> logger)
     {
@@ -50,12 +47,13 @@ public sealed class PhaseEvidencePersistence
         ArgumentNullException.ThrowIfNull(clock);
         _store = store;
         _file = file;
+        _writer = new LatestStateWriter<PhaseEvidenceState>("phase-evidence.json", file.Save, "the evidence is kept in memory and written with the next change", logger);
         _signalTime = clock.Time;
         _logger = logger;
         _store.Changed += (_, _) =>
         {
             Interlocked.Increment(ref _changes);
-            _wake.Writer.TryWrite(true);
+            _writer.Wake();
         };
     }
 
@@ -83,56 +81,18 @@ public sealed class PhaseEvidencePersistence
         _saved = Interlocked.Read(ref _changes);
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (await _wake.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                _wake.Reader.TryRead(out _);
-                await FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Stopping; the final state is written by FlushAsync.
-        }
-    }
+    public Task RunAsync(CancellationToken cancellationToken) =>
+        _writer.RunAsync(FlushAsync, retry: null, cancellationToken);
 
     /// <summary>Writes the store if it changed since the last write.</summary>
-    public async Task FlushAsync(CancellationToken cancellationToken)
-    {
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var changes = Interlocked.Read(ref _changes);
-            if (changes == _saved)
-            {
-                return;
-            }
+    public Task FlushAsync(CancellationToken cancellationToken) =>
+        _writer.WriteAsync(NextChange, saved: null, cancellationToken);
 
-            try
-            {
-                _file.Save(new PhaseEvidenceState(_signalTime.GetUtcNow(), _store.Snapshot()));
-                _saved = changes;
-                if (_failing)
-                {
-                    _logger.LogInformation("phase-evidence.json is writable again");
-                    _failing = false;
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                if (!_failing)
-                {
-                    _logger.LogError("phase-evidence.json could not be written: {Reason}; the evidence is kept in memory and written with the next change", ex.Message);
-                    _failing = true;
-                }
-            }
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+    private (PhaseEvidenceState State, Action Commit)? NextChange()
+    {
+        var changes = Interlocked.Read(ref _changes);
+        return changes == _saved
+            ? null
+            : (new PhaseEvidenceState(_signalTime.GetUtcNow(), _store.Snapshot()), () => _saved = changes);
     }
 }
