@@ -1,0 +1,284 @@
+== quiet: evaluations=19 now=2026-10-24T12:02:00.0000000+00:00 deadline=2026-10-24T12:02:30.0000000+00:00 export=A3B1F5BCC2C6CBF7
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== 1.12 In: evaluations=36 now=2026-10-24T12:04:00.0000000+00:00 deadline=2026-10-24T12:04:30.0000000+00:00 export=147F939D3C83E3C2
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== 1.32 In: evaluations=46 now=2026-10-24T12:05:00.0000000+00:00 deadline=2026-10-24T12:05:30.0000000+00:00 export=8F4C7F8467BA7B90
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== 1.8 In: evaluations=62 now=2026-10-24T12:07:00.0000000+00:00 deadline=2026-10-24T12:07:30.0000000+00:00 export=950542404F75DD34
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== inside the reserve: evaluations=78 now=2026-10-24T12:09:00.0000000+00:00 deadline=2026-10-24T12:09:30.0000000+00:00 export=E93BD706827554BE
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== released: evaluations=136 now=2026-10-24T12:16:00.0000000+00:00 deadline=2026-10-24T12:16:30.0000000+00:00 export=B0A530BE25812065
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+-- evaluations
+# 0 2026-10-24T12:00:10.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=4086EB2AEECC8700
+# 1 2026-10-24T12:00:20.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=91AD73C929D20D1B
+# 2 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=True valid=True safe=False/None/ hash=413F222A81713622
+# 3 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=673E12E0C7F8245D
+# 4 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=2DA5574B315DC876
+# 5 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=D87114282189CAE9
+# 6 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=94676661A47B7D14
+# 7 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=0F9F7FE5C97540F4
+# 8 2026-10-24T12:01:01.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=DF8F0A9782710F53
+# 9 2026-10-24T12:01:10.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=A8B0DC4B0DB0A070
+# 10 2026-10-24T12:01:20.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=8CBCA0A9EB206D89
+# 11 2026-10-24T12:01:20.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=09B2A050914B117C
+# 12 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=78A500C5CD6234BD
+# 13 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=4F66CE81CC04B39E
+# 14 2026-10-24T12:01:40.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=5A171BD8622094FD
+# 15 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=B55AFB385BA1252D
+# 16 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=B6B0F8A277ABA029
+# 17 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=7E19CAB0C53FC7C2
+# 18 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=D401DCCC2FF6C31D
+# 19 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=FFB12CCEA47398DA
+# 20 2026-10-24T12:02:20.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=58078D8EC068BC87
+# 21 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=E67CC69C29383DC3
+# 22 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=87A7D9C45BD7CC56
+# 23 2026-10-24T12:02:40.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=BF91DFBDD74A3C5B
+# 24 2026-10-24T12:02:50.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=DBC0C0ACCEC3E8F0
+# 25 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=EA627A5DBB666807
+   intent ev_charger stage= AtMinimum GuardTierExceeded phase=L1 group= over= cause=
+   event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
+   limit ev_charger 1=AtMinimum
+# 26 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=6CE71E95C0E79B7F
+   limit ev_charger 1=AtMinimum
+# 27 2026-10-24T12:03:10.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=9D612DDD05BBBD29
+   limit ev_charger 1=AtMinimum
+# 28 2026-10-24T12:03:20.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=AC3198081455A3F3
+   limit ev_charger 1=AtMinimum
+# 29 2026-10-24T12:03:20.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=FDB0FCE9A4B2C69F
+   limit ev_charger 1=AtMinimum
+# 30 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=True valid=True safe=False/None/ hash=C0C98DCE306310F3
+   limit ev_charger 1=AtMinimum
+# 31 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=E98D660DE29DBBC1
+   limit ev_charger 1=AtMinimum
+# 32 2026-10-24T12:03:40.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=043596BCD86F8CE9
+   limit ev_charger 1=AtMinimum
+# 33 2026-10-24T12:03:50.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=79BB00B54CC37E92
+   limit ev_charger 1=AtMinimum
+# 34 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=True valid=True safe=False/None/ hash=4B5C2FA1212D456C
+   limit ev_charger 1=AtMinimum
+# 35 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=8FAB1CAA591E02A0
+   limit ev_charger 1=AtMinimum
+# 36 2026-10-24T12:04:10.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=7CD3ED7A42CBB44B
+   limit ev_charger 1=AtMinimum
+# 37 2026-10-24T12:04:15.0000001+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=E7E829C2C6D12A3B
+   limit ev_charger 1=AtMinimum
+# 38 2026-10-24T12:04:20.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=6B7656F82F314092
+   limit ev_charger 1=AtMinimum
+# 39 2026-10-24T12:04:22.5000001+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=A5F2A97CC2C9705D
+   limit ev_charger 1=AtMinimum
+# 40 2026-10-24T12:04:30.0000000+00:00 cycle=59761449 boundary=True valid=True safe=False/None/ hash=9E1B0106FA0AA436
+   limit ev_charger 1=AtMinimum
+# 41 2026-10-24T12:04:30.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=EBD25AC8464C3D63
+   limit ev_charger 1=AtMinimum
+# 42 2026-10-24T12:04:40.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=478DF73DB0191C32
+   limit ev_charger 1=AtMinimum
+# 43 2026-10-24T12:04:50.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=A08EB96D91AA79EB
+   limit ev_charger 1=AtMinimum
+# 44 2026-10-24T12:05:00.0000000+00:00 cycle=59761450 boundary=True valid=True safe=False/None/ hash=A4843633E997445E
+   event Phase group= phase=L1 StopIncreases GuardBudgetLow cause=
+   limit ev_charger 1=AtMinimum
+# 45 2026-10-24T12:05:00.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=1038FD1E3F35FE8F
+   limit ev_charger 1=AtMinimum
+# 46 2026-10-24T12:05:10.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=677F4162FB1FB3AE
+   limit ev_charger 1=AtMinimum
+# 47 2026-10-24T12:05:20.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=207F2F59EC8E80AB
+   limit ev_charger 1=AtMinimum
+# 48 2026-10-24T12:05:30.0000000+00:00 cycle=59761451 boundary=True valid=True safe=False/None/ hash=EB1279B35E682CE2
+   limit ev_charger 1=AtMinimum
+# 49 2026-10-24T12:05:30.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=8449D6C966CBEE42
+   limit ev_charger 1=AtMinimum
+# 50 2026-10-24T12:05:40.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=68CCB3554BC43A4E
+   limit ev_charger 1=AtMinimum
+# 51 2026-10-24T12:05:50.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=6DC01FFEEA72E144
+   limit ev_charger 1=AtMinimum
+# 52 2026-10-24T12:06:00.0000000+00:00 cycle=59761452 boundary=True valid=True safe=False/None/ hash=BFC3FFABA9604FFE
+   limit ev_charger 1=AtMinimum
+# 53 2026-10-24T12:06:00.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=E0A6AD1CE4D1CAC6
+   limit ev_charger 1=AtMinimum
+# 54 2026-10-24T12:06:10.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=CB6343EDCCBE6888
+   limit ev_charger 1=AtMinimum
+# 55 2026-10-24T12:06:20.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=CF6D199269BB09A2
+   limit ev_charger 1=AtMinimum
+# 56 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=True valid=True safe=False/None/ hash=E04C70DEB611A43D
+   limit ev_charger 1=AtMinimum
+# 57 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=DF0D18C28156AB97
+   limit ev_charger 1=AtMinimum
+# 58 2026-10-24T12:06:40.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=BD4949A2C8974648
+   limit ev_charger 1=AtMinimum
+# 59 2026-10-24T12:06:50.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=D6F0637C9B903C8C
+   limit ev_charger 1=AtMinimum
+# 60 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=True valid=True safe=False/None/ hash=9DEB161FD1821E04
+   limit ev_charger 1=AtMinimum
+# 61 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=4F6BEF04028201D9
+   limit ev_charger 1=AtMinimum
+# 62 2026-10-24T12:07:10.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=12B012D5D0CC2DFD
+   limit ev_charger 1=AtMinimum
+# 63 2026-10-24T12:07:20.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=482CFC8A8109890E
+   limit ev_charger 1=AtMinimum
+# 64 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=4F42E56995F105DF
+   event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
+   limit ev_charger 1=AtMinimum
+# 65 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=84E4878DB53C7C63
+   limit ev_charger 1=AtMinimum
+# 66 2026-10-24T12:07:40.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=6457BF6BCB2F7D3E
+   limit ev_charger 1=AtMinimum
+# 67 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=24C0902717DA4560
+   limit ev_charger 1=AtMinimum
+# 68 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=True valid=True safe=False/None/ hash=672E9DFB938822D9
+   limit ev_charger 1=AtMinimum
+# 69 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=False valid=True safe=False/None/ hash=7BBDC003377327ED
+   limit ev_charger 1=AtMinimum
+# 70 2026-10-24T12:08:10.0000000+00:00 cycle=59761456 boundary=False valid=True safe=False/None/ hash=C54712A59C66FEF3
+   limit ev_charger 1=AtMinimum
+# 71 2026-10-24T12:08:20.0000000+00:00 cycle=59761456 boundary=False valid=True safe=False/None/ hash=F5806D932A037005
+   limit ev_charger 1=AtMinimum
+# 72 2026-10-24T12:08:30.0000000+00:00 cycle=59761457 boundary=True valid=True safe=False/None/ hash=9DD52E01126B7684
+   limit ev_charger 1=AtMinimum
+# 73 2026-10-24T12:08:30.0000000+00:00 cycle=59761457 boundary=False valid=True safe=False/None/ hash=12A26FF6645D8C3B
+   limit ev_charger 1=AtMinimum
+# 74 2026-10-24T12:08:40.0000000+00:00 cycle=59761457 boundary=False valid=True safe=False/None/ hash=2D636083C82A206B
+   limit ev_charger 1=AtMinimum
+# 75 2026-10-24T12:08:50.0000000+00:00 cycle=59761457 boundary=False valid=True safe=False/None/ hash=0CDA12A7D48D8A4C
+   limit ev_charger 1=AtMinimum
+# 76 2026-10-24T12:09:00.0000000+00:00 cycle=59761458 boundary=True valid=True safe=False/None/ hash=C22F3AC83A76CC33
+   limit ev_charger 1=AtMinimum
+# 77 2026-10-24T12:09:00.0000000+00:00 cycle=59761458 boundary=False valid=True safe=False/None/ hash=05DB24A469257A86
+   limit ev_charger 1=AtMinimum
+# 78 2026-10-24T12:09:10.0000000+00:00 cycle=59761458 boundary=False valid=True safe=False/None/ hash=2EC78A0AF2287540
+   limit ev_charger 1=AtMinimum
+# 79 2026-10-24T12:09:20.0000000+00:00 cycle=59761458 boundary=False valid=True safe=False/None/ hash=A7C31713DBB45C4D
+   limit ev_charger 1=AtMinimum
+# 80 2026-10-24T12:09:30.0000000+00:00 cycle=59761459 boundary=True valid=True safe=False/None/ hash=0A5DA19B5F8D1419
+   limit ev_charger 1=AtMinimum
+# 81 2026-10-24T12:09:30.0000000+00:00 cycle=59761459 boundary=False valid=True safe=False/None/ hash=B6C058FC9910E7BF
+   limit ev_charger 1=AtMinimum
+# 82 2026-10-24T12:09:40.0000000+00:00 cycle=59761459 boundary=False valid=True safe=False/None/ hash=DF0818931C268BA2
+   limit ev_charger 1=AtMinimum
+# 83 2026-10-24T12:09:40.0000000+00:00 cycle=59761459 boundary=False valid=True safe=False/None/ hash=1EEE863D4276CFCA
+   limit ev_charger 1=AtMinimum
+# 84 2026-10-24T12:09:50.0000000+00:00 cycle=59761459 boundary=False valid=True safe=False/None/ hash=57E78D067F8BF5AE
+   limit ev_charger 1=AtMinimum
+# 85 2026-10-24T12:10:00.0000000+00:00 cycle=59761460 boundary=True valid=True safe=False/None/ hash=2605A84F81166747
+   limit ev_charger 1=AtMinimum
+# 86 2026-10-24T12:10:00.0000000+00:00 cycle=59761460 boundary=False valid=True safe=False/None/ hash=5F8BF8E96D70C42E
+   limit ev_charger 1=AtMinimum
+# 87 2026-10-24T12:10:10.0000000+00:00 cycle=59761460 boundary=False valid=True safe=False/None/ hash=8187586C6FC85EB4
+   limit ev_charger 1=AtMinimum
+# 88 2026-10-24T12:10:20.0000000+00:00 cycle=59761460 boundary=False valid=True safe=False/None/ hash=820843A12512AA0E
+   limit ev_charger 1=AtMinimum
+# 89 2026-10-24T12:10:30.0000000+00:00 cycle=59761461 boundary=True valid=True safe=False/None/ hash=E0414691F31FB4A8
+   limit ev_charger 1=AtMinimum
+# 90 2026-10-24T12:10:30.0000000+00:00 cycle=59761461 boundary=False valid=True safe=False/None/ hash=EFB68C7142F31BEF
+   limit ev_charger 1=AtMinimum
+# 91 2026-10-24T12:10:40.0000000+00:00 cycle=59761461 boundary=False valid=True safe=False/None/ hash=0555B5E4278F59B4
+   limit ev_charger 1=AtMinimum
+# 92 2026-10-24T12:10:50.0000000+00:00 cycle=59761461 boundary=False valid=True safe=False/None/ hash=8F26516FCF68A731
+   limit ev_charger 1=AtMinimum
+# 93 2026-10-24T12:11:00.0000000+00:00 cycle=59761462 boundary=True valid=True safe=False/None/ hash=EA66A2E3E684A114
+   limit ev_charger 1=AtMinimum
+# 94 2026-10-24T12:11:00.0000000+00:00 cycle=59761462 boundary=False valid=True safe=False/None/ hash=70236D5CDA3B74D0
+   limit ev_charger 1=AtMinimum
+# 95 2026-10-24T12:11:10.0000000+00:00 cycle=59761462 boundary=False valid=True safe=False/None/ hash=6914D20807B8DA14
+   limit ev_charger 1=AtMinimum
+# 96 2026-10-24T12:11:20.0000000+00:00 cycle=59761462 boundary=False valid=True safe=False/None/ hash=02BB5DED72B9BDE9
+   limit ev_charger 1=AtMinimum
+# 97 2026-10-24T12:11:30.0000000+00:00 cycle=59761463 boundary=True valid=True safe=False/None/ hash=812B48AC8AAEB0CD
+   limit ev_charger 1=AtMinimum
+# 98 2026-10-24T12:11:30.0000000+00:00 cycle=59761463 boundary=False valid=True safe=False/None/ hash=8595E9C35A97B4D9
+   limit ev_charger 1=AtMinimum
+# 99 2026-10-24T12:11:40.0000000+00:00 cycle=59761463 boundary=False valid=True safe=False/None/ hash=FFE5197715947881
+   limit ev_charger 1=AtMinimum
+# 100 2026-10-24T12:11:50.0000000+00:00 cycle=59761463 boundary=False valid=True safe=False/None/ hash=BAD418638CE0082E
+   limit ev_charger 1=AtMinimum
+# 101 2026-10-24T12:12:00.0000000+00:00 cycle=59761464 boundary=True valid=True safe=False/None/ hash=43DC9556248A8E5B
+   limit ev_charger 1=AtMinimum
+# 102 2026-10-24T12:12:00.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=484C7D5396F35937
+   limit ev_charger 1=AtMinimum
+# 103 2026-10-24T12:12:10.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=BEA70F30E35B0EC4
+   limit ev_charger 1=AtMinimum
+# 104 2026-10-24T12:12:10.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=9C94CA07E51E4708
+   limit ev_charger 1=AtMinimum
+# 105 2026-10-24T12:12:20.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=52DDECC38305D519
+   limit ev_charger 1=AtMinimum
+# 106 2026-10-24T12:12:30.0000000+00:00 cycle=59761465 boundary=True valid=True safe=False/None/ hash=6ABEF24A588EF0F2
+   intent ev_charger stage= Released HeadroomAvailable phase= group= over= cause=
+   event Phase group= phase=L1 IncreasesAllowed HeadroomAvailable cause=
+# 107 2026-10-24T12:12:30.0000000+00:00 cycle=59761465 boundary=False valid=True safe=False/None/ hash=ADFC91571D24CA1A
+# 108 2026-10-24T12:12:40.0000000+00:00 cycle=59761465 boundary=False valid=True safe=False/None/ hash=ABD693EAA1F7809B
+# 109 2026-10-24T12:12:50.0000000+00:00 cycle=59761465 boundary=False valid=True safe=False/None/ hash=52B6435700D49D72
+# 110 2026-10-24T12:13:00.0000000+00:00 cycle=59761466 boundary=True valid=True safe=False/None/ hash=A8EBD3A1F801A3D6
+# 111 2026-10-24T12:13:00.0000000+00:00 cycle=59761466 boundary=False valid=True safe=False/None/ hash=BDCE95571D345EDC
+# 112 2026-10-24T12:13:10.0000000+00:00 cycle=59761466 boundary=False valid=True safe=False/None/ hash=2B65D8AE564B448C
+# 113 2026-10-24T12:13:20.0000000+00:00 cycle=59761466 boundary=False valid=True safe=False/None/ hash=B58C6A61275F8D84
+# 114 2026-10-24T12:13:30.0000000+00:00 cycle=59761467 boundary=True valid=True safe=False/None/ hash=29880BF326AABE76
+# 115 2026-10-24T12:13:30.0000000+00:00 cycle=59761467 boundary=False valid=True safe=False/None/ hash=1D48134A382169F1
+# 116 2026-10-24T12:13:40.0000000+00:00 cycle=59761467 boundary=False valid=True safe=False/None/ hash=9037755F0C4BC435
+# 117 2026-10-24T12:13:50.0000000+00:00 cycle=59761467 boundary=False valid=True safe=False/None/ hash=7D10BB58DC3630B7
+# 118 2026-10-24T12:14:00.0000000+00:00 cycle=59761468 boundary=True valid=True safe=False/None/ hash=7CA418C33FAE12FA
+# 119 2026-10-24T12:14:00.0000000+00:00 cycle=59761468 boundary=False valid=True safe=False/None/ hash=C98F7387486763EB
+# 120 2026-10-24T12:14:10.0000000+00:00 cycle=59761468 boundary=False valid=True safe=False/None/ hash=88DBC0E14BF3EFA4
+# 121 2026-10-24T12:14:20.0000000+00:00 cycle=59761468 boundary=False valid=True safe=False/None/ hash=4E6BD6AC3F1AF40A
+# 122 2026-10-24T12:14:30.0000000+00:00 cycle=59761469 boundary=True valid=True safe=False/None/ hash=D40E98C72FECDF21
+# 123 2026-10-24T12:14:30.0000000+00:00 cycle=59761469 boundary=False valid=True safe=False/None/ hash=4396BCBA1BCF8D14
+# 124 2026-10-24T12:14:40.0000000+00:00 cycle=59761469 boundary=False valid=True safe=False/None/ hash=A9CA801808538C30
+# 125 2026-10-24T12:14:50.0000000+00:00 cycle=59761469 boundary=False valid=True safe=False/None/ hash=1EB3BBDC4875FC28
+# 126 2026-10-24T12:15:00.0000000+00:00 cycle=59761470 boundary=True valid=True safe=False/None/ hash=8F38EC4EE51E1725
+# 127 2026-10-24T12:15:00.0000000+00:00 cycle=59761470 boundary=False valid=True safe=False/None/ hash=365137390A3B01C3
+# 128 2026-10-24T12:15:10.0000000+00:00 cycle=59761470 boundary=False valid=True safe=False/None/ hash=05DA8B43901AFBD6
+# 129 2026-10-24T12:15:20.0000000+00:00 cycle=59761470 boundary=False valid=True safe=False/None/ hash=E9754797505B709B
+# 130 2026-10-24T12:15:30.0000000+00:00 cycle=59761471 boundary=True valid=True safe=False/None/ hash=596F05825B5E6C67
+# 131 2026-10-24T12:15:30.0000000+00:00 cycle=59761471 boundary=False valid=True safe=False/None/ hash=C58723DCAC5B1455
+# 132 2026-10-24T12:15:40.0000000+00:00 cycle=59761471 boundary=False valid=True safe=False/None/ hash=75D36369C97EEB81
+# 133 2026-10-24T12:15:50.0000000+00:00 cycle=59761471 boundary=False valid=True safe=False/None/ hash=A7779695F42C12B2
+# 134 2026-10-24T12:16:00.0000000+00:00 cycle=59761472 boundary=True valid=True safe=False/None/ hash=64F9C8C4FEACDD7D
+# 135 2026-10-24T12:16:00.0000000+00:00 cycle=59761472 boundary=False valid=True safe=False/None/ hash=F4DF06ADB0BA6FE4

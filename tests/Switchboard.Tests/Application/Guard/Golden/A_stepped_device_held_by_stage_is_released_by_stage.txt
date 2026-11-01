@@ -1,0 +1,168 @@
+== overload: evaluations=22 now=2026-10-24T12:02:00.0000000+00:00 deadline=2026-10-24T12:02:30.0000000+00:00 export=714417E59F3BF18B
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== released: evaluations=72 now=2026-10-24T12:08:00.0000000+00:00 deadline=2026-10-24T12:08:30.0000000+00:00 export=7F89357C0E4AC707
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+-- evaluations
+# 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=F5F0C800B6A93ECB
+# 1 2026-10-24T12:00:10.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=DEC314884776DA83
+   intent boiler stage=3 Off GuardTierExceeded phase=L1 group= over= cause=
+   limit boiler 3=Off
+# 2 2026-10-24T12:00:11.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=7E4623E05F326692
+   limit boiler 3=Off
+# 3 2026-10-24T12:00:15.0000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=FA8904CC75319F1B
+   limit boiler 3=Off
+# 4 2026-10-24T12:00:20.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=D1D6E93C9E0FC79D
+   limit boiler 3=Off
+# 5 2026-10-24T12:00:22.5000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=07DA6B1B5F86B314
+   intent boiler stage=2 Off GuardBudgetLow phase=L1 group= over= cause=
+   limit boiler 2=Off,3=Off
+# 6 2026-10-24T12:00:23.5000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=432C0DEA15AD16E1
+   limit boiler 2=Off,3=Off
+# 7 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=True valid=True safe=False/None/ hash=4AF29D6700FCA602
+   intent boiler stage=1 Off GuardBudgetLow phase=L1 group= over= cause=
+   limit boiler 1=Off,2=Off,3=Off
+# 8 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=135B5379670AA83A
+   limit boiler 1=Off,2=Off,3=Off
+# 9 2026-10-24T12:00:31.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=7020A93CB5CF57B0
+   limit boiler 1=Off,2=Off,3=Off
+# 10 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=28F47DAA0AF4E56F
+   limit boiler 1=Off,2=Off,3=Off
+# 11 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=23336988516C525D
+   limit boiler 1=Off,2=Off,3=Off
+# 12 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=8EE69FEDAD85E9FC
+   event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
+   event Phase group= phase=L1 StopIncreases GuardBudgetLow cause=
+   limit boiler 1=Off,2=Off,3=Off
+# 13 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=3EABFB88D450BE1E
+   limit boiler 1=Off,2=Off,3=Off
+# 14 2026-10-24T12:01:10.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=89798DF416A95543
+   limit boiler 1=Off,2=Off,3=Off
+# 15 2026-10-24T12:01:20.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=3E451538F72CD669
+   limit boiler 1=Off,2=Off,3=Off
+# 16 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=C5ED766B4FBAEB2E
+   limit boiler 1=Off,2=Off,3=Off
+# 17 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=21334DE39B043D3E
+   limit boiler 1=Off,2=Off,3=Off
+# 18 2026-10-24T12:01:40.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=22AD2D5E3DA535DF
+   limit boiler 1=Off,2=Off,3=Off
+# 19 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=488100112B1346B5
+   limit boiler 1=Off,2=Off,3=Off
+# 20 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=6C1D6F41437658FC
+   limit boiler 1=Off,2=Off,3=Off
+# 21 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=4F1EFFF39ECD4E0D
+   limit boiler 1=Off,2=Off,3=Off
+# 22 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=B302A9EB9311918B
+   limit boiler 1=Off,2=Off,3=Off
+# 23 2026-10-24T12:02:20.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=BCA13CE6F794E0BC
+   limit boiler 1=Off,2=Off,3=Off
+# 24 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=E6C06FF1F040431C
+   event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
+   limit boiler 1=Off,2=Off,3=Off
+# 25 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=CD2AAFFE3C17DA5C
+   limit boiler 1=Off,2=Off,3=Off
+# 26 2026-10-24T12:02:40.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=E66169D715029108
+   limit boiler 1=Off,2=Off,3=Off
+# 27 2026-10-24T12:02:50.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=197EB4BC74A0F8AA
+   limit boiler 1=Off,2=Off,3=Off
+# 28 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=93CBCA44E178CC78
+   limit boiler 1=Off,2=Off,3=Off
+# 29 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=56159A2FD4452518
+   limit boiler 1=Off,2=Off,3=Off
+# 30 2026-10-24T12:03:10.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=99148AE07D26D402
+   limit boiler 1=Off,2=Off,3=Off
+# 31 2026-10-24T12:03:20.0000000+00:00 cycle=59761446 boundary=False valid=True safe=False/None/ hash=09C2E08073AB5F4E
+   limit boiler 1=Off,2=Off,3=Off
+# 32 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=True valid=True safe=False/None/ hash=15668F4C4DF92F86
+   limit boiler 1=Off,2=Off,3=Off
+# 33 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=DD39B1A8FF5BC65B
+   limit boiler 1=Off,2=Off,3=Off
+# 34 2026-10-24T12:03:40.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=34595A389B4D3974
+   limit boiler 1=Off,2=Off,3=Off
+# 35 2026-10-24T12:03:50.0000000+00:00 cycle=59761447 boundary=False valid=True safe=False/None/ hash=A001416464F25CE0
+   limit boiler 1=Off,2=Off,3=Off
+# 36 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=True valid=True safe=False/None/ hash=C870E38777F049AE
+   limit boiler 1=Off,2=Off,3=Off
+# 37 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=B8945FCFF4935865
+   limit boiler 1=Off,2=Off,3=Off
+# 38 2026-10-24T12:04:10.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=2DEBE13B6D2E104B
+   limit boiler 1=Off,2=Off,3=Off
+# 39 2026-10-24T12:04:20.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=DCA7025F1C2914D5
+   limit boiler 1=Off,2=Off,3=Off
+# 40 2026-10-24T12:04:30.0000000+00:00 cycle=59761449 boundary=True valid=True safe=False/None/ hash=B3E55BF8C585B4E4
+   limit boiler 1=Off,2=Off,3=Off
+# 41 2026-10-24T12:04:30.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=DC837A695AC87761
+   limit boiler 1=Off,2=Off,3=Off
+# 42 2026-10-24T12:04:40.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=7C7054185B24992F
+   limit boiler 1=Off,2=Off,3=Off
+# 43 2026-10-24T12:04:40.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=9C71CD7A06C61B50
+   limit boiler 1=Off,2=Off,3=Off
+# 44 2026-10-24T12:04:50.0000000+00:00 cycle=59761449 boundary=False valid=True safe=False/None/ hash=D9785BB4C7751905
+   limit boiler 1=Off,2=Off,3=Off
+# 45 2026-10-24T12:05:00.0000000+00:00 cycle=59761450 boundary=True valid=True safe=False/None/ hash=08A4EE1CE2B403C1
+   limit boiler 1=Off,2=Off,3=Off
+# 46 2026-10-24T12:05:00.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=B25A07DEE0743A08
+   limit boiler 1=Off,2=Off,3=Off
+# 47 2026-10-24T12:05:10.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=DED2DDC5E71D72C2
+   limit boiler 1=Off,2=Off,3=Off
+# 48 2026-10-24T12:05:20.0000000+00:00 cycle=59761450 boundary=False valid=True safe=False/None/ hash=7D88485A330D4EEC
+   limit boiler 1=Off,2=Off,3=Off
+# 49 2026-10-24T12:05:30.0000000+00:00 cycle=59761451 boundary=True valid=True safe=False/None/ hash=18BF5F89B92D8413
+   limit boiler 1=Off,2=Off,3=Off
+# 50 2026-10-24T12:05:30.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=85C3221927E64921
+   limit boiler 1=Off,2=Off,3=Off
+# 51 2026-10-24T12:05:40.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=970F05EB124A2C77
+   limit boiler 1=Off,2=Off,3=Off
+# 52 2026-10-24T12:05:50.0000000+00:00 cycle=59761451 boundary=False valid=True safe=False/None/ hash=FFDC516B72DCD889
+   limit boiler 1=Off,2=Off,3=Off
+# 53 2026-10-24T12:06:00.0000000+00:00 cycle=59761452 boundary=True valid=True safe=False/None/ hash=86A2C8AA20215C2A
+   limit boiler 1=Off,2=Off,3=Off
+# 54 2026-10-24T12:06:00.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=95C7EB537AC0A6B8
+   limit boiler 1=Off,2=Off,3=Off
+# 55 2026-10-24T12:06:10.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=349BA7F6AED25643
+   limit boiler 1=Off,2=Off,3=Off
+# 56 2026-10-24T12:06:20.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=B4051C01F919A5AE
+   limit boiler 1=Off,2=Off,3=Off
+# 57 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=True valid=True safe=False/None/ hash=19626BEF48DA051C
+   limit boiler 1=Off,2=Off,3=Off
+# 58 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=7DD716C3E799C076
+   limit boiler 1=Off,2=Off,3=Off
+# 59 2026-10-24T12:06:40.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=DBA194D444A53D67
+   limit boiler 1=Off,2=Off,3=Off
+# 60 2026-10-24T12:06:50.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=BF4018FD910AA6D4
+   limit boiler 1=Off,2=Off,3=Off
+# 61 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=True valid=True safe=False/None/ hash=9A9A090E7D076996
+   limit boiler 1=Off,2=Off,3=Off
+# 62 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=5627A1ADDB30D114
+   limit boiler 1=Off,2=Off,3=Off
+# 63 2026-10-24T12:07:10.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=2B75B4557433B138
+   limit boiler 1=Off,2=Off,3=Off
+# 64 2026-10-24T12:07:10.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=EAAECCC9548DB5DC
+   limit boiler 1=Off,2=Off,3=Off
+# 65 2026-10-24T12:07:20.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=1CB720CB911CBD5F
+   limit boiler 1=Off,2=Off,3=Off
+# 66 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=DF99C6D20F0C556F
+   intent boiler stage=1 Released HeadroomAvailable phase= group= over= cause=
+   intent boiler stage=2 Released HeadroomAvailable phase= group= over= cause=
+   intent boiler stage=3 Released HeadroomAvailable phase= group= over= cause=
+   event Phase group= phase=L1 IncreasesAllowed HeadroomAvailable cause=
+# 67 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=E4CA690E53DAB227
+# 68 2026-10-24T12:07:40.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=4686B77600704949
+# 69 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=C036F3CACC2666AC
+# 70 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=True valid=True safe=False/None/ hash=936E0384952AA433
+# 71 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=False valid=True safe=False/None/ hash=F145DBB8512BF229

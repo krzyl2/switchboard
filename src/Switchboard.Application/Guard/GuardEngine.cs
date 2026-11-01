@@ -2,14 +2,12 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Effector;
-using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
-using Switchboard.Domain.Units;
 
 namespace Switchboard.Application.Guard;
 
@@ -41,11 +39,9 @@ public sealed class GuardEngine
     private readonly ILockoutView _lockouts;
     private readonly IInFlightView _inFlight;
     private readonly ILogger<GuardEngine> _logger;
-    private readonly Dictionary<ConstraintKey, PhaseGuard> _phases = [];
-    private readonly Dictionary<StageKey, Limit> _limits = [];
+    private readonly PhaseGuards _phases = new();
+    private readonly HoldLedger _holds = new();
     private ProtectionSetup? _setup;
-    private GuardMemory? _restored;
-    private DateTimeOffset _restoredAt;
     private bool _killSwitch;
     private ReasonCode? _systemSafe;
     private SafeStateCause? _systemSafeCause;
@@ -73,30 +69,12 @@ public sealed class GuardEngine
     public void Restore(GuardMemory memory, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(memory);
-        _restored = memory;
-        _restoredAt = now;
+        _phases.Restore(memory, now);
     }
 
     /// <summary>What to persist now (budgets at the last evaluation); never a lockout.</summary>
-    public GuardMemory Export()
-    {
-        var at = _lastNow ?? _restoredAt;
-        var recovery = _setup?.Budget.RecoveryTime ?? TimeSpan.MaxValue;
-
-        // A phase not yet seen in this process (no valid configuration so far) keeps what was restored.
-        var budgets = (_restored?.Budgets ?? ImmutableDictionary<Phase, BudgetMemory>.Empty)
-            .SetItems(_phases.Where(p => p.Key.Group is null).Select(p => KeyValuePair.Create(p.Key.Phase, new BudgetMemory(p.Value.Budget(at, recovery), at))));
-        var groups = _restored?.GroupBudgets ?? ImmutableDictionary<GroupName, ImmutableDictionary<Phase, BudgetMemory>>.Empty;
-        foreach (var group in _phases.Where(p => p.Key.Group is not null).GroupBy(p => p.Key.Group!.Value))
-        {
-            groups = groups.SetItem(
-                group.Key,
-                (groups.GetValueOrDefault(group.Key) ?? ImmutableDictionary<Phase, BudgetMemory>.Empty)
-                    .SetItems(group.Select(p => KeyValuePair.Create(p.Key.Phase, new BudgetMemory(p.Value.Budget(at, recovery), at)))));
-        }
-
-        return new GuardMemory(budgets, _cleanShutdown) { GroupBudgets = groups };
-    }
+    public GuardMemory Export() =>
+        _phases.Export(_lastNow ?? _phases.RestoredAt, _setup?.Budget.RecoveryTime ?? TimeSpan.MaxValue, _cleanShutdown);
 
     public GuardEvaluation Evaluate(GuardInput input, DateTimeOffset now)
     {
@@ -108,10 +86,7 @@ public sealed class GuardEngine
         if (_lastNow is { } last && now < last)
         {
             _logger.LogWarning("The clock stepped back by {Step}; overload budgets hold until new samples arrive", last - now);
-            foreach (var phase in _phases.Values)
-            {
-                phase.OnClockStepBack(last, _setup!.Budget.RecoveryTime);
-            }
+            _phases.OnClockStepBack(last, _setup!.Budget.RecoveryTime);
 
             _lastBoundary = null;
         }
@@ -147,7 +122,8 @@ public sealed class GuardEngine
         var atBoundary = _lastBoundary is { } previous && cycleIndex > previous;
         _lastBoundary = cycleIndex;
 
-        var context = new Context(this, active, protection, now, input.Mode);
+        var load = new LoadEstimator(_phases, _holds, _inFlight, _lockouts, active, protection, now, input.Mode);
+        var context = new Context(load, new GuardStatusProjector(load, _phases, _holds, _lockouts));
         var timerSteps = new HashSet<ConstraintKey>();
         foreach (var phase in active.Phases)
         {
@@ -169,7 +145,7 @@ public sealed class GuardEngine
             foreach (var phase in group.Phases)
             {
                 var key = new ConstraintKey(group.Id, phase);
-                var (valid, reading, reason) = context.GroupReading(group, phase, configurationValid);
+                var (valid, reading, reason) = context.Load.GroupReading(group, phase, configurationValid);
                 if (_phases[key].Update(valid, reading, reason, group.CurrentMaxAge.GetValueOrDefault(phase), active.Budget.RecoveryTime, now))
                 {
                     timerSteps.Add(key);
@@ -182,18 +158,18 @@ public sealed class GuardEngine
             : !configurationValid ? (ReasonCode.SafeState, ConfigurationCause(protection))
             : invalid.Length == active.Phases.Length ? (SafeReason(_phases[ConstraintKey.Main(invalid[0])].InvalidReason), MeterCause(invalid))
             : ((ReasonCode?)null, (SafeStateCause?)null);
-        var invalidKeys = Keys(active).Where(k => !_phases[k].Valid).ToImmutableArray();
+        var invalidKeys = PhaseGuards.Keys(active).Where(k => !_phases[k].Valid).ToImmutableArray();
         UpdateSafeStateEvents(systemReason, cause, invalidKeys, now, events, context);
 
         HoldUnsafeDevices(context, systemReason, cause, intents);
-        foreach (var key in Keys(active).Where(k => systemReason is null && _phases[k].Valid))
+        foreach (var key in PhaseGuards.Keys(active).Where(k => systemReason is null && _phases[k].Valid))
         {
             React(context, key, atBoundary, timerSteps.Contains(key), intents, events);
         }
 
         if (atBoundary && !_shutdown)
         {
-            foreach (var key in Keys(active))
+            foreach (var key in PhaseGuards.Keys(active))
             {
                 BoundaryEvents(context, key, systemReason, events);
             }
@@ -214,54 +190,8 @@ public sealed class GuardEngine
     }
 
     /// <summary>The next moment the guard must evaluate without new input: a cycle boundary, a band timer, a budget threshold.</summary>
-    public DateTimeOffset? NextDeadline(DateTimeOffset now)
-    {
-        if (_setup is not { } setup)
-        {
-            return null;
-        }
-
-        var cycle = setup.Timing.Cycle.Ticks;
-        var next = DateTimeOffset.UnixEpoch + TimeSpan.FromTicks((((now - DateTimeOffset.UnixEpoch).Ticks / cycle) + 1) * cycle);
-        void Consider(DateTimeOffset? candidate)
-        {
-            if (candidate is { } at && at > now && at < next)
-            {
-                next = at;
-            }
-        }
-
-        var budget = setup.Budget;
-        foreach (var guard in _phases.Values.Where(g => g.Valid && !g.ChainBroken))
-        {
-            Consider(guard.NextTimerExpiry());
-            var at = guard.CommittedAt!.Value;
-            var b = guard.CommittedBudget;
-            var m = guard.HeldMultiple;
-            var profile = guard.Profile;
-            var recovery = budget.RecoveryTime;
-            foreach (var crossing in new[]
-            {
-                OverloadBudget.TimeUntilBelow(b, budget.StopIncreasesBelow, m, profile, recovery),
-                OverloadBudget.TimeUntilBelow(b, budget.ShedOneBelow, m, profile, recovery),
-                OverloadBudget.TimeUntilAtOrBelow(b, budget.TopTierAtOrBelow, m, profile, recovery),
-                OverloadBudget.TimeUntilNotBelow(b, budget.StopIncreasesBelow, m, profile, recovery),
-                OverloadBudget.TimeUntilNotBelow(b, budget.ShedOneBelow, m, profile, recovery),
-                OverloadBudget.TimeUntilNotBelow(b, 1, m, profile, recovery),
-            })
-            {
-                if (crossing is { } dt && dt <= guard.MaxAge)
-                {
-                    Consider(at + dt);
-                }
-            }
-        }
-
-        return next;
-    }
-
-    private static IEnumerable<ConstraintKey> Keys(ProtectionSetup setup) =>
-        setup.Phases.Select(ConstraintKey.Main).Concat(setup.Groups.SelectMany(g => g.Phases.Select(p => new ConstraintKey(g.Id, p))));
+    public DateTimeOffset? NextDeadline(DateTimeOffset now) =>
+        _setup is not { } setup ? null : _phases.NextDeadline(setup, now);
 
     private static ReasonCode SafeReason(ProtectionInvalidReason? reason) => reason switch
     {
@@ -288,50 +218,18 @@ public sealed class GuardEngine
             return;
         }
 
-        foreach (var key in _limits.Keys.Where(k => setup.Device(k.Device) is not { } d || k.Stage > d.Stages.Length).ToList())
+        foreach (var key in _holds.DropUndeclared(setup))
         {
             // The device is no longer declared: it can never be commanded again, so there is nothing to hold.
             _logger.LogInformation("Device {Device} stage {Stage} is no longer declared; protection no longer holds it", key.Device, key.Stage);
-            _limits.Remove(key);
         }
 
-        var keys = Keys(setup).ToHashSet();
-        foreach (var key in _phases.Keys.Where(k => !keys.Contains(k)).ToList())
+        foreach (var key in _phases.Apply(setup))
         {
-            _phases.Remove(key);
             _phaseSafe = _phaseSafe.Remove(key);
         }
 
-        foreach (var key in keys)
-        {
-            var breaker = key.Group is { } id ? setup.Group(id)!.Breaker : setup.Breaker;
-            if (_phases.TryGetValue(key, out var guard))
-            {
-                guard.Reconfigure(breaker);
-            }
-            else
-            {
-                _phases[key] = new PhaseGuard(key.Phase, RestoredBudget(key, setup.Budget.RecoveryTime), breaker);
-            }
-        }
-
         _setup = setup;
-    }
-
-    private double RestoredBudget(ConstraintKey key, TimeSpan recovery)
-    {
-        var saved = _restored is not { } memory ? null
-            : key.Group is { } group ? memory.GroupBudgets.GetValueOrDefault(group)?.GetValueOrDefault(key.Phase)
-            : memory.Budgets.GetValueOrDefault(key.Phase);
-        if (saved is null)
-        {
-            return 1;
-        }
-
-        var budget = Math.Clamp(saved.Budget, 0, 1);
-        return _restored!.CleanShutdown && _restoredAt >= saved.At
-            ? Math.Min(1, budget + ((double)(_restoredAt - saved.At).Ticks / recovery.Ticks))
-            : budget;
     }
 
     /// <summary>
@@ -371,7 +269,7 @@ public sealed class GuardEngine
 
         foreach (var (key, reason) in _phaseSafe.Where(p => !invalid.Contains(p.Key)))
         {
-            events.Add(KeyEvent(key, DecisionAction.SafeStateExited, reason, context.PhaseInputs(key)));
+            events.Add(KeyEvent(key, DecisionAction.SafeStateExited, reason, context.Project.PhaseInputs(key)));
             _phaseSafe = _phaseSafe.Remove(key);
         }
 
@@ -385,7 +283,7 @@ public sealed class GuardEngine
             var reason = SafeReason(_phases[key].InvalidReason);
             if (!_phaseSafe.TryGetValue(key, out var recorded) || recorded != reason)
             {
-                events.Add(KeyEvent(key, DecisionAction.SafeStateEntered, reason, context.PhaseInputs(key)));
+                events.Add(KeyEvent(key, DecisionAction.SafeStateEntered, reason, context.Project.PhaseInputs(key)));
                 _phaseSafe = _phaseSafe.SetItem(key, reason);
             }
         }
@@ -420,7 +318,7 @@ public sealed class GuardEngine
                 key = bad;
                 reason = SafeReason(_phases[bad].InvalidReason);
             }
-            else if (!context.StateFresh(device))
+            else if (!context.Load.StateFresh(device))
             {
                 // Its own state is unknown: it may be on, so it is held off (SIG-05); being unknown,
                 // the hold counts as no relief beyond a measured draw.
@@ -446,7 +344,7 @@ public sealed class GuardEngine
         var guard = _phases[key];
         var profile = guard.Profile;
         var measured = guard.Multiple;
-        var effective = context.Effective(key);
+        var effective = context.Load.Effective(key);
         var effectiveBand = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
         var budget = guard.Budget(context.Now, setup.Budget.RecoveryTime);
 
@@ -517,14 +415,14 @@ public sealed class GuardEngine
             // Recorded once per exporting overload, not at every reaction it blocks.
             if (!guard.ExportBlocked)
             {
-                events.Add(KeyEvent(key, DecisionAction.CannotReduceExporting, demand.Reason, context.PhaseInputs(key)));
+                events.Add(KeyEvent(key, DecisionAction.CannotReduceExporting, demand.Reason, context.Project.PhaseInputs(key)));
             }
 
             guard.ExportBlocked = true;
             return;
         }
 
-        var steps = ShedOrder.For(key.Phase, context.Candidates(key));
+        var steps = ShedOrder.For(key.Phase, context.Load.Candidates(key));
         if (demand.Kind == DemandKind.One)
         {
             if (steps.FirstOrDefault() is { } step && setup.Device(step.Device) is { } device)
@@ -560,20 +458,20 @@ public sealed class GuardEngine
         }
 
         var timing = setup.Timing;
-        var threshold = context.ReserveThreshold(key);
-        var effective = context.Effective(key);
+        var threshold = context.Load.ReserveThreshold(key);
+        var effective = context.Load.Effective(key);
         var over = effective.Signed > threshold;
         guard.ReserveOverStreak = over ? guard.ReserveOverStreak + 1 : 0;
         guard.ReserveClearStreak = over ? 0 : guard.ReserveClearStreak + 1;
         if (!guard.ReductionRequested && guard.ReserveOverStreak >= timing.PersistenceDownCycles)
         {
             guard.ReductionRequested = true;
-            events.Add(KeyEvent(key, DecisionAction.RequestReduction, ReasonCode.ReserveThreshold, context.PhaseInputs(key)));
+            events.Add(KeyEvent(key, DecisionAction.RequestReduction, ReasonCode.ReserveThreshold, context.Project.PhaseInputs(key)));
         }
         else if (guard.ReductionRequested && guard.ReserveClearStreak >= timing.PersistenceUpCycles)
         {
             guard.ReductionRequested = false;
-            events.Add(KeyEvent(key, DecisionAction.ReductionRequestCleared, ReasonCode.HeadroomAvailable, context.PhaseInputs(key)));
+            events.Add(KeyEvent(key, DecisionAction.ReductionRequestCleared, ReasonCode.HeadroomAvailable, context.Project.PhaseInputs(key)));
         }
 
         var budget = guard.Budget(context.Now, setup.Budget.RecoveryTime);
@@ -583,12 +481,12 @@ public sealed class GuardEngine
         if (!guard.IncreasesStopped && guard.BudgetLowStreak >= timing.PersistenceDownCycles)
         {
             guard.IncreasesStopped = true;
-            events.Add(KeyEvent(key, DecisionAction.StopIncreases, ReasonCode.GuardBudgetLow, context.PhaseInputs(key)));
+            events.Add(KeyEvent(key, DecisionAction.StopIncreases, ReasonCode.GuardBudgetLow, context.Project.PhaseInputs(key)));
         }
         else if (guard.IncreasesStopped && guard.BudgetOkStreak >= timing.PersistenceUpCycles)
         {
             guard.IncreasesStopped = false;
-            events.Add(KeyEvent(key, DecisionAction.IncreasesAllowed, ReasonCode.HeadroomAvailable, context.PhaseInputs(key)));
+            events.Add(KeyEvent(key, DecisionAction.IncreasesAllowed, ReasonCode.HeadroomAvailable, context.Project.PhaseInputs(key)));
         }
 
         // A boundary counts towards release only when everything is comfortably inside: measured
@@ -614,7 +512,7 @@ public sealed class GuardEngine
             .Where(i => setup.Device(i.Device) is not null)
             .SelectMany(i => setup.ConstraintsOf(setup.Device(i.Device)!))
             .ToHashSet();
-        foreach (var key in Keys(setup))
+        foreach (var key in PhaseGuards.Keys(setup))
         {
             var guard = _phases[key];
             if (systemReason is not null || _killSwitch || !guard.Valid || held.Contains(key))
@@ -637,13 +535,13 @@ public sealed class GuardEngine
         }
 
         var up = context.Setup.Timing.PersistenceUpCycles;
-        foreach (var key in _limits.Keys.OrderBy(k => k.Device).ThenBy(k => k.Stage).ToList())
+        foreach (var key in _holds.Held())
         {
             var device = context.Setup.Device(key.Device)!;
-            if (context.Setup.ConstraintsOf(device).All(k => _phases[k].Valid && _phases[k].ReleaseStreak >= up) && context.StateFresh(device))
+            if (context.Setup.ConstraintsOf(device).All(k => _phases[k].Valid && _phases[k].ReleaseStreak >= up) && context.Load.StateFresh(device))
             {
-                var group = _limits[key].Group;
-                _limits.Remove(key);
+                var group = _holds.GroupOf(key);
+                _holds.Release(key);
                 intents.Add(new GuardIntent(
                     key.Device,
                     StageOf(device, key.Stage),
@@ -652,7 +550,7 @@ public sealed class GuardEngine
                     null,
                     IntentUrgency.Protective,
                     null,
-                    context.Inputs(device, key.Stage, ConstraintKey.Main(device.Phases[0])))
+                    context.Project.Inputs(device, key.Stage, ConstraintKey.Main(device.Phases[0])))
                 {
                     Group = group,
                 });
@@ -666,12 +564,11 @@ public sealed class GuardEngine
     private void Hold(Context context, DeviceSpec device, int stage, GuardTarget target, ReasonCode reason, ConstraintKey? key, List<GuardIntent> intents, SafeStateCause? cause = null)
     {
         var stageKey = new StageKey(device.Id, stage);
-        if (_limits.TryGetValue(stageKey, out var held) && (held.Target == GuardTarget.Off && target == GuardTarget.AtMinimum || (held.Target == target && held.Reason == reason)))
+        if (!_holds.Hold(stageKey, target, reason, key))
         {
             return;
         }
 
-        _limits[stageKey] = new Limit(target, reason, key?.Phase, key?.Group);
         var overridden = target == GuardTarget.Off && _lockouts.MinOnRemaining(device.Id, stage, context.Now) > TimeSpan.Zero
             ? ReasonCode.LockoutMinOn
             : (ReasonCode?)null;
@@ -683,7 +580,7 @@ public sealed class GuardEngine
             key?.Phase,
             IntentUrgency.Protective,
             overridden,
-            context.Inputs(device, stage, key ?? ConstraintKey.Main(device.Phases[0])) with { SafeStateCause = cause })
+            context.Project.Inputs(device, stage, key ?? ConstraintKey.Main(device.Phases[0])) with { SafeStateCause = cause })
         {
             Group = key?.Group,
         });
@@ -694,58 +591,17 @@ public sealed class GuardEngine
     private GuardEvaluation Finish(GuardInput input, DateTimeOffset now, List<GuardIntent> intents, List<GuardEvent> events, Context? context, long cycleIndex, bool atBoundary, bool configurationValid)
     {
         var setup = context?.Setup;
-        var status = new GuardStatus(
-            now,
-            input.Mode,
-            input.KillSwitch,
-            CurrentSafeState(),
-            setup is null ? null : new BreakerStatus(
-                setup.Breaker.Rating,
-                setup.Breaker.Characteristic,
-                setup.Breaker.ContinuousMultiple,
-                setup.Breaker.ContinuousCurrent,
-                setup.Breaker.Tiers.Bands),
-            context is null ? [] : [.. setup!.Phases.Select(p => context.PhaseStatus(ConstraintKey.Main(p)))],
-            context is null ? [] : [.. setup!.Devices.Select(context.DeviceStatus)])
-        {
-            Groups = context is null ? [] : [.. setup!.Groups.SelectMany(g => g.Phases.Select(p => new GroupGuardStatus(g.Id, context.PhaseStatus(new ConstraintKey(g.Id, p)))))],
-        };
+        var holdsAll = _killSwitch || _systemSafe is not null;
+        var status = GuardStatusProjector.Status(context?.Project, input, now, GuardStatusProjector.SafeState(_systemSafe, _systemSafeSince, _phases, _phaseSafe), holdsAll);
         return new GuardEvaluation(now, status, [.. intents], [.. events], setup?.Timing, cycleIndex)
         {
-            Envelope = context?.Envelope() ?? DispatchEnvelope.Empty,
+            Envelope = context?.Project.Envelope(holdsAll) ?? DispatchEnvelope.Empty,
             Setup = _setup,
             ConfigurationValid = configurationValid,
             AtBoundary = atBoundary,
-            Limits = CurrentLimits(),
+            Limits = _holds.Current(),
         };
     }
-
-    private ImmutableDictionary<DeviceName, ImmutableDictionary<int, StageLimit>> CurrentLimits() =>
-        _limits
-            .Where(l => l.Value.Target != GuardTarget.Released)
-            .GroupBy(l => l.Key.Device)
-            .ToImmutableDictionary(g => g.Key, g => g.ToImmutableDictionary(l => l.Key.Stage, l => l.Value.Target == GuardTarget.Off ? StageLimit.Off : StageLimit.AtMinimum));
-
-    private SafeStateStatus CurrentSafeState()
-    {
-        if (_systemSafe is { } system)
-        {
-            return new SafeStateStatus(true, SafeStateScope.All, system, [.. _phases.Keys.Where(k => k.Group is null).Select(k => k.Phase).Order()], _systemSafeSince);
-        }
-
-        var phases = _phaseSafe.Where(p => p.Key.Group is null).ToList();
-        if (phases.Count == 0)
-        {
-            return SafeStateStatus.None;
-        }
-
-        var since = phases.Select(p => _phases[p.Key].InvalidSince).Where(s => s is not null).Min();
-        return new SafeStateStatus(true, SafeStateScope.Phases, phases[0].Value, [.. phases.Select(p => p.Key.Phase).Order()], since);
-    }
-
-    private readonly record struct StageKey(DeviceName Device, int Stage);
-
-    private sealed record Limit(GuardTarget Target, ReasonCode Reason, Phase? Phase, GroupName? Group);
 
     private enum DemandKind
     {
@@ -767,445 +623,11 @@ public sealed class GuardEngine
             other.Kind > Kind || (other.Kind == Kind && other.Reason == ReasonCode.GuardTierExceeded) ? other : this;
     }
 
-    /// <summary>The estimated current: measured plus the counted in-flight changes, with its multiple of In.</summary>
-    private readonly record struct EffectiveCurrent(Amperes Signed, double Multiple, Amperes InFlight);
-
-    /// <summary>How the load model sees one device right now: applied state, resolved target, and whether its change counts.</summary>
-    private readonly record struct DeviceView(DeviceSpec Spec, DeviceLevel? Reported, DeviceLevel Target, bool Counts, InFlightEntry? Ledger);
-
-    /// <summary>One evaluation's view: the setup, the latest device states and draws, the ledger, the time.</summary>
-    private sealed class Context
+    /// <summary>One evaluation's views: what the load is (the estimator) and what is shown of it (the projector).</summary>
+    private sealed record Context(LoadEstimator Load, GuardStatusProjector Project)
     {
-        private readonly GuardEngine _engine;
-        private readonly ProtectionInputs? _protection;
-        private readonly ImmutableDictionary<(DeviceName, int), DeviceStateSample> _samples;
-        private readonly ImmutableDictionary<(DeviceName, Phase), DeviceDrawSample> _draws;
-        private readonly ImmutableDictionary<DeviceName, int> _ranks;
-        private readonly DeviceStateInvalidReason _absent;
-        private readonly bool _active;
+        public ProtectionSetup Setup => Load.Setup;
 
-        public Context(GuardEngine engine, ProtectionSetup setup, ProtectionInputs? protection, DateTimeOffset now, ModeStatus mode)
-        {
-            _engine = engine;
-            _protection = protection;
-            Setup = setup;
-            Now = now;
-            _active = mode.Effective == OperatingMode.Active;
-            var current = protection is { Setup: not null } && !protection.DeviceStates.IsDefault;
-            _samples = current
-                ? protection!.DeviceStates.ToImmutableDictionary(s => (s.Device, s.Stage))
-                : ImmutableDictionary<(DeviceName, int), DeviceStateSample>.Empty;
-            _draws = current && !protection!.DeviceDraws.IsDefault
-                ? protection.DeviceDraws.ToImmutableDictionary(d => (d.Device, d.Phase))
-                : ImmutableDictionary<(DeviceName, Phase), DeviceDrawSample>.Empty;
-            _absent = current ? DeviceStateInvalidReason.Missing : DeviceStateInvalidReason.ConfigurationInvalid;
-            _ranks = ShedOrder.Rank(setup.Devices).Select((d, i) => (d, i)).ToImmutableDictionary(x => x.d, x => x.i + 1);
-        }
-
-        public ProtectionSetup Setup { get; }
-
-        public DateTimeOffset Now { get; }
-
-        public DeviceStateSample? Sample(DeviceName device, int stage) => _samples.GetValueOrDefault((device, stage));
-
-        public DeviceDrawSample? Draw(DeviceName device, Phase phase) => _draws.GetValueOrDefault((device, phase));
-
-        /// <summary>Why a stage's state is unknown; null when it is fresh.</summary>
-        public DeviceStateInvalidReason? InvalidReason(DeviceName device, int stage) =>
-            Sample(device, stage) is { } sample ? sample.InvalidReason : _absent;
-
-        public AppliedState? Applied(DeviceName device, int stage) => Sample(device, stage) is { Fresh: true } s ? s.Applied : null;
-
-        /// <summary>Every stage state (and a stop actuator's) is fresh.</summary>
-        public bool StateFresh(DeviceSpec device) =>
-            device.Stages.All(s => Sample(device.Id, s.Index) is { Fresh: true })
-            && (device is not SetpointSpec { HasStopActuator: true } || Sample(device.Id, DeviceStateSample.StopStage) is { Fresh: true });
-
-        public Amperes ReserveThreshold(ConstraintKey key) =>
-            key.Group is { } group ? Setup.Group(group)!.ReserveThreshold(key.Phase) : Setup.ReserveThreshold(key.Phase);
-
-        /// <summary>
-        /// A device as the load model sees it: its applied state, its target (the ledger's, else the
-        /// applied state, with protection's holds applied, including those made earlier in this
-        /// evaluation) and whether the change counts: in shadow mode while target and applied state
-        /// differ, in active mode while its command window is open (then measurement rules).
-        /// </summary>
-        public DeviceView View(DeviceSpec device)
-        {
-            var reported = DeviceLevels.Reported(device, stage => Sample(device.Id, stage));
-            var ledger = _engine._inFlight.For(device.Id);
-            var target = DeviceLevels.Cap(device, ledger?.Target ?? reported ?? DeviceLevels.Max(device), LimitsOf(device.Id));
-            var differs = !target.Equals(reported ?? DeviceLevels.Max(device));
-            var counts = !_active ? differs : ledger is null || !target.Equals(ledger.Target) ? differs : ledger.WindowOpen;
-            return new DeviceView(device, reported, target, counts, ledger);
-        }
-
-        /// <summary>The device's share of the measured current on a phase, or (an estimated group) its worst-case term.</summary>
-        public Amperes Basis(DeviceView view, Phase phase, bool groupTerm)
-        {
-            if (_active && view.Ledger is { WindowOpen: true } ledger && view.Target.Equals(ledger.Target))
-            {
-                var captured = groupTerm ? ledger.GroupTermAtCommand : ledger.ContributionAtCommand;
-                if (captured.TryGetValue(phase, out var atCommand))
-                {
-                    return atCommand;
-                }
-            }
-
-            var draw = Draw(view.Spec.Id, phase);
-            return groupTerm ? LoadModel.GroupTerm(view.Spec, phase, view.Reported, draw) : LoadModel.Contribution(view.Spec, phase, view.Reported, draw);
-        }
-
-        /// <summary>
-        /// The counted change on a phase. While an active command's window is open it is the change
-        /// from the level the command started at, against the contribution captured then: the relay
-        /// may report "on" before the meter sees its load, and the estimate must not drop it early.
-        /// </summary>
-        public Amperes Delta(DeviceView view, Phase phase, bool groupTerm)
-        {
-            if (!view.Counts)
-            {
-                return Amperes.Zero;
-            }
-
-            var from = _active && view.Ledger is { WindowOpen: true, From: { } started } ledger && view.Target.Equals(ledger.Target) ? started : view.Reported;
-            return LoadModel.InFlightDelta(view.Spec, phase, view.Target, from, Basis(view, phase, groupTerm));
-        }
-
-        private bool Estimated(ConstraintKey key) => key.Group is { } group && Setup.Group(group) is { SubMetered: false };
-
-        private IEnumerable<DeviceSpec> DevicesOn(ConstraintKey key) =>
-            Setup.Devices.Where(d => d.IsOn(key.Phase) && (key.Group is not { } group || Setup.Group(group)!.Members.Contains(d.Id)));
-
-        /// <summary>
-        /// A circuit group phase's reading: the sub-meter when there is one; otherwise the worst-case
-        /// sum of its members (fresh draw, relay rated when on or unknown, setpoint or its maximum
-        /// when unknown), a new sample whenever the main meter or a member input reports.
-        /// </summary>
-        public (bool Valid, CurrentReading? Reading, ProtectionInvalidReason? Reason) GroupReading(CircuitGroupSpec group, Phase phase, bool configurationValid)
-        {
-            if (!configurationValid)
-            {
-                return (false, null, ProtectionInvalidReason.ConfigurationInvalid);
-            }
-
-            var entry = _protection?.Groups.IsDefault == false ? _protection.Groups.FirstOrDefault(g => g.Group == group.Id && g.Phase == phase) : null;
-            if (group.SubMetered)
-            {
-                return entry is { DataValid: true, Current: { } current } ? (true, current, null) : (false, null, entry?.InvalidReason ?? ProtectionInvalidReason.CurrentMissing);
-            }
-
-            var main = _protection?.For(phase);
-            if (entry is not { DataValid: true } || main is not { DataValid: true, Current: { } mainReading })
-            {
-                return (false, null, entry?.InvalidReason ?? main?.InvalidReason ?? ProtectionInvalidReason.CurrentAwaiting);
-            }
-
-            var total = Amperes.Zero;
-            var reportedAt = mainReading.ReportedAt;
-            foreach (var device in DevicesOn(new ConstraintKey(group.Id, phase)))
-            {
-                var reported = DeviceLevels.Reported(device, stage => Sample(device.Id, stage));
-                total += LoadModel.GroupTerm(device, phase, reported, Draw(device.Id, phase));
-                foreach (var at in device.Stages.Select(s => Sample(device.Id, s.Index)?.ReportedAt).Append(Draw(device.Id, phase)?.ReportedAt))
-                {
-                    if (at is { } time && time > reportedAt && time <= Now)
-                    {
-                        reportedAt = time;
-                    }
-                }
-            }
-
-            return (true, new CurrentReading(total, total, FlowDirection.Import, DirectionSource.SignedSignal, reportedAt), null);
-        }
-
-        /// <summary>
-        /// The estimate I_est on a constraint: measured plus every counted in-flight change of the
-        /// devices on it. A would-start adds its ceiling, a would-stop relieves at most what the
-        /// device really draws (a charger at 20 A with no car relieves nothing), and the holds made
-        /// earlier in this evaluation count at once. On an exporting phase the multiple is the larger
-        /// of measured and estimated magnitude: shedding there raises the current.
-        /// </summary>
-        public EffectiveCurrent Effective(ConstraintKey key)
-        {
-            var guard = _engine._phases[key];
-            if (guard.Reading is not { } reading)
-            {
-                return new EffectiveCurrent(Amperes.Zero, 0, Amperes.Zero);
-            }
-
-            var estimated = Estimated(key);
-            var delta = Amperes.Zero;
-            foreach (var device in DevicesOn(key))
-            {
-                delta += Delta(View(device), key.Phase, estimated);
-            }
-
-            var rating = guard.Profile.Rating.Value;
-            var signed = reading.Signed.Value + delta.Value;
-            return reading.Signed.Value >= 0
-                ? new EffectiveCurrent(new Amperes(Math.Max(0, signed)), Math.Max(0, signed) / rating, delta)
-                : new EffectiveCurrent(new Amperes(signed), Math.Max(reading.Magnitude.Value, Math.Abs(signed)) / rating, delta);
-        }
-
-        /// <summary>
-        /// Shed candidates from the same view as the estimate: a device whose change counts is seen at
-        /// its target (a would-started heater is shed before a running device worth more), any other
-        /// at its applied state (unknown counts as on at full rating).
-        /// </summary>
-        public IReadOnlyList<ShedCandidate> Candidates(ConstraintKey key) =>
-        [
-            .. DevicesOn(key).Select(d =>
-            {
-                var view = View(d);
-                ImmutableArray<AppliedState?> applied = view.Counts
-                    ? d is SetpointSpec
-                        ? [new SetpointApplied(view.Target is SetpointLevel { Enabled: true } target ? target.Setpoint : Amperes.Zero)]
-                        : [.. (view.Target is RelayLevel { Relays.IsDefault: false } targetRelays ? targetRelays.Relays : []).Select(on => (AppliedState?)new RelayApplied(on))]
-                    : d is SetpointSpec && view.Reported is SetpointLevel { Enabled: false }
-                        ? [new SetpointApplied(Amperes.Zero)]
-                        : [.. d.Stages.Select(s => Applied(d.Id, s.Index))];
-                // A fresh draw tells a step that relieves nothing (an idle charger at a high
-                // setpoint); a device seen at its target is relieved by its in-flight change instead.
-                var draw = !view.Counts && d.HasCurrentDraw(key.Phase) && Draw(d.Id, key.Phase) is { Fresh: true, Current: { } current } ? current : (Amperes?)null;
-                return new ShedCandidate(d, applied, _engine._lockouts.UnderMinOn(d.Id, Now), LimitsOf(d.Id)) { Draw = draw };
-            }),
-        ];
-
-        public ImmutableDictionary<int, StageLimit> LimitsOf(DeviceName device) =>
-            _engine._limits
-                .Where(l => l.Key.Device == device && l.Value.Target != GuardTarget.Released)
-                .ToImmutableDictionary(l => l.Key.Stage, l => l.Value.Target == GuardTarget.Off ? StageLimit.Off : StageLimit.AtMinimum);
-
-        public DecisionInputs PhaseInputs(ConstraintKey key) => new(PhaseDecision(key), null, null, null, null);
-
-        public DecisionInputs Inputs(DeviceSpec device, int stage, ConstraintKey key)
-        {
-            var sample = Sample(device.Id, stage);
-            return new DecisionInputs(
-                PhaseDecision(key),
-                new DeviceDecisionInputs(
-                    sample is { Fresh: true } ? sample.Applied : null,
-                    sample is { Fresh: true },
-                    InvalidReason(device.Id, stage),
-                    _ranks.TryGetValue(device.Id, out var rank) ? rank : null,
-                    device.ValuePerKwh,
-                    device.ShedPriority,
-                    _engine._lockouts.MinOnRemaining(device.Id, stage, Now),
-                    _engine._lockouts.MinOffRemaining(device.Id, stage, Now),
-                    device.CanSwitchOff),
-                null,
-                null,
-                null);
-        }
-
-        public PhaseGuardStatus PhaseStatus(ConstraintKey key)
-        {
-            var guard = _engine._phases[key];
-            var profile = guard.Profile;
-            var threshold = ReserveThreshold(key);
-            var continuous = profile.ContinuousCurrent;
-            var budget = guard.Budget(Now, Setup.Budget.RecoveryTime);
-            var trend = !guard.Valid || guard.ChainBroken ? BudgetTrend.Held
-                : guard.Consuming ? BudgetTrend.Consuming
-                : budget < 1 ? BudgetTrend.Recovering
-                : BudgetTrend.Full;
-            if (!guard.Valid || guard.Reading is not { } reading)
-            {
-                return new PhaseGuardStatus(
-                    key.Phase, false, guard.InvalidReason, null, null, null, null, null, continuous, threshold, null, null, null, null,
-                    budget, trend, OverloadBudget.RecoveryRemaining(budget, Setup.Budget.RecoveryTime), false, guard.ReductionRequested,
-                    guard.Seen ? PhaseGuardState.SafeState : PhaseGuardState.Unknown, null, null);
-            }
-
-            var measured = guard.Multiple;
-            var band = profile.BandIndex(measured);
-            var effective = Effective(key);
-            var effectiveReaction = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
-            var toReserve = threshold - effective.Signed;
-            var lowBudget = OverloadBudget.IsBelow(budget, Setup.Budget.StopIncreasesBelow);
-            var state = profile.Band(band).Reaction == TierReaction.ShedAllOnPhase
-                || effectiveReaction == TierReaction.ShedOneImmediately
-                || guard.AnyTimerExpired
-                || OverloadBudget.IsBelow(budget, Setup.Budget.ShedOneBelow) ? PhaseGuardState.Shedding
-                : effectiveReaction is TierReaction.ReduceOrdinaryCycle or TierReaction.ReduceNextCycle || guard.ReductionRequested ? PhaseGuardState.Reducing
-                : effectiveReaction == TierReaction.Hold || lowBudget ? PhaseGuardState.Hold
-                : PhaseGuardState.Normal;
-            return new PhaseGuardStatus(
-                key.Phase,
-                true,
-                null,
-                reading.Signed,
-                effective.Signed,
-                measured,
-                band,
-                profile.Band(band).Reaction,
-                continuous,
-                threshold,
-                threshold - reading.Signed,
-                continuous - reading.Signed,
-                toReserve,
-                continuous - effective.Signed,
-                budget,
-                trend,
-                OverloadBudget.RecoveryRemaining(budget, Setup.Budget.RecoveryTime),
-                IncreasesAllowed(key, effective, toReserve, lowBudget),
-                guard.ReductionRequested,
-                state,
-                reading.Direction,
-                reading.ReportedAt);
-        }
-
-        private bool IncreasesAllowed(ConstraintKey key, EffectiveCurrent effective, Amperes toReserve, bool lowBudget) =>
-            toReserve > Amperes.Zero && BreakerAllows(key, effective, lowBudget);
-
-        /// <summary>Everything an increase needs except the reserve threshold: what a manual override is held to.</summary>
-        private bool BreakerAllows(ConstraintKey key, EffectiveCurrent effective, bool lowBudget)
-        {
-            var guard = _engine._phases[key];
-            var profile = guard.Profile;
-            var effectiveReaction = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
-            return !_engine._killSwitch
-                && _engine._systemSafe is null
-                && guard.Valid
-                && !lowBudget
-                && (effectiveReaction == TierReaction.MayAdd || guard.Reading!.Direction == FlowDirection.Export);
-        }
-
-        public DeviceGuardStatus DeviceStatus(DeviceSpec device)
-        {
-            var unsafePhases = device.Phases.Where(p => !_engine._phases[ConstraintKey.Main(p)].Valid).ToImmutableArray();
-            var unsafeStages = device.Stages.Where(s => Sample(device.Id, s.Index) is not { Fresh: true }).Select(s => s.Index).ToImmutableArray();
-            var groupUnsafe = Setup.ConstraintsOf(device).Any(k => k.Group is not null && !_engine._phases[k].Valid);
-            var limits = device.Stages
-                .Select(s => _engine._limits.TryGetValue(new StageKey(device.Id, s.Index), out var l) ? l : null)
-                .ToList();
-            var state = !unsafePhases.IsEmpty || !unsafeStages.IsEmpty || groupUnsafe || !StateFresh(device) ? DeviceGuardState.Unsafe
-                : limits.Any(l => l?.Target == GuardTarget.Off) ? DeviceGuardState.Shed
-                : limits.Any(l => l?.Target == GuardTarget.AtMinimum) ? DeviceGuardState.Reduced
-                : DeviceGuardState.Allowed;
-            var reason = limits.FirstOrDefault(l => l?.Target == GuardTarget.Off)?.Reason
-                ?? limits.FirstOrDefault(l => l is not null)?.Reason
-                ?? (state == DeviceGuardState.Unsafe ? ReasonCode.GuardStaleSignal : (ReasonCode?)null);
-            return new DeviceGuardStatus(
-                device.Id,
-                device.Type,
-                device.Phases,
-                state,
-                reason,
-                [.. device.Stages.Select((s, i) => new DeviceStageStatus(
-                    s.Index,
-                    Applied(device.Id, s.Index),
-                    Sample(device.Id, s.Index) is { Fresh: true },
-                    InvalidReason(device.Id, s.Index),
-                    limits[i]?.Target))],
-                _ranks.TryGetValue(device.Id, out var rank) ? rank : null,
-                device.ValuePerKwh,
-                device.ShedPriority,
-                device.NoShed,
-                device.CanSwitchOff,
-                device.Stages.Select(s => _engine._lockouts.MinOnRemaining(device.Id, s.Index, Now)).Max(),
-                device.Stages.Select(s => _engine._lockouts.MinOffRemaining(device.Id, s.Index, Now)).Max(),
-                unsafePhases,
-                unsafeStages);
-        }
-
-        /// <summary>
-        /// The envelope for dispatch (03): per main and group phase E = min(In − reserve, may_add
-        /// top × In) − I_est and the guard's permissions; per device its contribution, estimate and
-        /// in-flight change, so dispatch never reads a current of its own (SIG-04).
-        /// </summary>
-        public DispatchEnvelope Envelope()
-        {
-            var entries = ImmutableArray.CreateBuilder<EnvelopeEntry>();
-            foreach (var key in GuardEngine.Keys(Setup))
-            {
-                var guard = _engine._phases[key];
-                var budget = guard.Budget(Now, Setup.Budget.RecoveryTime);
-                var lowBudget = OverloadBudget.IsBelow(budget, Setup.Budget.StopIncreasesBelow);
-                if (!guard.Valid || guard.Reading is null)
-                {
-                    entries.Add(new EnvelopeEntry(key, false, null, null, null, Amperes.Zero, false, guard.ReductionRequested, lowBudget, null));
-                    continue;
-                }
-
-                var effective = Effective(key);
-                var threshold = ReserveThreshold(key);
-                var top = guard.Profile.Rating * guard.Profile.MayAddUpTo;
-                entries.Add(new EnvelopeEntry(
-                    key,
-                    true,
-                    Amperes.Min(threshold, top) - effective.Signed,
-                    top - effective.Signed,
-                    effective.Signed,
-                    effective.InFlight,
-                    IncreasesAllowed(key, effective, threshold - effective.Signed, lowBudget),
-                    guard.ReductionRequested,
-                    lowBudget,
-                    guard.Reading.ReportedAt)
-                {
-                    OverrideAllowed = BreakerAllows(key, effective, lowBudget),
-                });
-            }
-
-            var devices = ImmutableArray.CreateBuilder<DeviceLoad>();
-            foreach (var device in Setup.Devices)
-            {
-                var view = View(device);
-                var contribution = device.Phases.ToImmutableDictionary(p => p, p => LoadModel.Contribution(device, p, view.Reported, Draw(device.Id, p)));
-                var estimate = ImmutableDictionary.CreateBuilder<ConstraintKey, Amperes>();
-                var inFlight = ImmutableDictionary.CreateBuilder<ConstraintKey, Amperes>();
-                foreach (var key in Setup.ConstraintsOf(device))
-                {
-                    var groupTerm = Estimated(key);
-                    var delta = Delta(view, key.Phase, groupTerm);
-                    var basis = groupTerm ? LoadModel.GroupTerm(device, key.Phase, view.Reported, Draw(device.Id, key.Phase)) : contribution[key.Phase];
-                    estimate[key] = basis + delta;
-                    inFlight[key] = delta;
-                }
-
-                var draws = device.CurrentDrawPhases.IsDefault ? [] : device.CurrentDrawPhases.Select(p => Draw(device.Id, p)).ToList();
-                devices.Add(new DeviceLoad(
-                    device.Id,
-                    view.Reported,
-                    contribution,
-                    estimate.ToImmutable(),
-                    inFlight.ToImmutable(),
-                    LimitsOf(device.Id),
-                    draws.All(d => d is { Fresh: true }),
-                    draws.Where(d => d?.ReportedAt is not null).ToImmutableDictionary(d => d!.Phase, d => d!.ReportedAt!.Value)));
-            }
-
-            return new DispatchEnvelope(entries.ToImmutable(), devices.ToImmutable());
-        }
-
-        private PhaseDecisionInputs PhaseDecision(ConstraintKey key)
-        {
-            var guard = _engine._phases[key];
-            var profile = guard.Profile;
-            var threshold = ReserveThreshold(key);
-            var budget = guard.Budget(Now, Setup.Budget.RecoveryTime);
-            if (!guard.Valid || guard.Reading is not { } reading)
-            {
-                return new PhaseDecisionInputs(key.Phase, false, guard.InvalidReason, null, null, null, null, null, budget, profile.ContinuousCurrent, threshold, null, null, null);
-            }
-
-            var band = profile.BandIndex(guard.Multiple);
-            return new PhaseDecisionInputs(
-                key.Phase,
-                true,
-                null,
-                reading.Signed,
-                Effective(key).Signed,
-                guard.Multiple,
-                band,
-                profile.Band(band).Reaction,
-                budget,
-                profile.ContinuousCurrent,
-                threshold,
-                threshold - reading.Signed,
-                reading.Direction,
-                reading.ReportedAt);
-        }
+        public DateTimeOffset Now => Load.Now;
     }
 }

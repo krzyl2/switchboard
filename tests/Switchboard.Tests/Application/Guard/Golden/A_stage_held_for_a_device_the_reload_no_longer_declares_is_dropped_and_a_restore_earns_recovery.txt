@@ -1,0 +1,40 @@
+== restored: evaluations=1 now=2026-10-24T12:00:00.0000000+00:00 deadline=2026-10-24T12:00:30.0000000+00:00 export=5D118BC82071D64C
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== held: evaluations=2 now=2026-10-24T12:00:00.0000000+00:00 deadline=2026-10-24T12:00:30.0000000+00:00 export=5D118BC82071D64C
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+== redeclared: evaluations=5 now=2026-10-24T12:00:30.0000000+00:00 deadline=2026-10-24T12:01:00.0000000+00:00 export=B3AC5C07E6D0F0E4
+   .Budgets
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   BudgetMemory
+   .Budget
+   .CleanShutdown
+   .GroupBudgets
+-- evaluations
+# 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=BB63A672A381D28B
+# 1 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=True/Phases/GuardStaleSignal hash=4400A5709F10619D
+   intent heater_l3 stage= Off GuardStaleSignal phase=L3 group= over=LockoutMinOn cause=
+   event Phase group= phase=L3 SafeStateEntered GuardStaleSignal cause=
+   limit heater_l3 1=Off
+# 2 2026-10-24T12:00:01.0000000+00:00 cycle=59761440 boundary=False valid=True safe=True/Phases/GuardStaleSignal hash=0DE128D2CE48C585
+# 3 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=True valid=True safe=True/Phases/GuardStaleSignal hash=F64261D8E758D066
+# 4 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=A7EF6639066B9752
+   event Phase group= phase=L3 SafeStateExited GuardStaleSignal cause=

@@ -1,0 +1,9 @@
+== no setup: evaluations=2 now=2026-10-24T12:00:00.0000000+00:00 deadline= export=941C577F4773B78D
+   .Budgets
+   .CleanShutdown
+   .GroupBudgets
+-- evaluations
+# 0 2026-10-24T12:00:00.0000000+00:00 cycle=0 boundary=False valid=False safe=True/All/SafeState hash=975225D16199783E
+   event System group= phase= SafeStateEntered SafeState cause=Starting
+# 1 2026-10-24T12:00:00.0000000+00:00 cycle=0 boundary=False valid=False safe=True/All/SafeState hash=323D15C626D67342
+   event System group= phase= SafeStateEntered SafeState cause=ConfigurationMissing
