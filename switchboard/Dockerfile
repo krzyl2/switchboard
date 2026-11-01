@@ -6,7 +6,9 @@
 # BUILD_FROM must be a global ARG declared before the first FROM: an ARG declared between
 # FROM lines is not visible to a later FROM. Since Supervisor 2026.04 BUILD_FROM is no longer
 # passed by default, so the default here is the real value, pinned to an exact base release.
-ARG BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie-2026.10.0
+# Every base image is pinned by tag and by the digest of its multi-arch index: a tag can be pushed
+# again, a digest cannot. docs/10-STACK.md records both; update them together.
+ARG BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie-2026.10.0@sha256:a7f262f331e2a4f4e3e02173da932a8d8c26f3d5758a5f59903d46de1f728e5b
 # Empty means "use <Version> from Directory.Build.props" (local dev builds).
 ARG BUILD_VERSION=""
 # Set by buildx per platform; global so the last FROM can pick the per-arch label stage.
@@ -15,7 +17,7 @@ ARG TARGETARCH
 # ── Stage 1: SPA build (Node, discarded) ─────────────────────────────────────
 # Pinned to BUILDPLATFORM: the output is plain JS/CSS, identical for every target arch,
 # so emulating this stage under QEMU for the arm64 leg would only cost time.
-FROM --platform=$BUILDPLATFORM node:24.21.0-alpine3.24 AS ui-build
+FROM --platform=$BUILDPLATFORM node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS ui-build
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -30,7 +32,7 @@ RUN npm run build
 # and the arm64 image. Argus learned the hard way that running the SDK under QEMU for the
 # arm64 leg buys nothing and can segfault the build.
 # The tag is the exact SDK that global.json pins.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.402 AS dotnet-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.402@sha256:747cbade5bfd918a175ac32f8f1d931edec2c7d0d5397a3de72eaef1ac1f66d2 AS dotnet-build
 ARG BUILD_VERSION
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
@@ -76,7 +78,11 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
 # arch-correct build for the image being built. The packages.microsoft.com feed does not
 # carry every runtime for arm64 on Debian, which is why Argus moved off apt for this.
 # Native dependencies come from Debian (trixie package names); curl is in the base image.
+# The script is fetched at a fixed commit of dotnet/install-scripts (what https://dot.net/v1/dotnet-install.sh
+# served when it was pinned) and must match its sha256 before it runs.
 ARG DOTNET_ASPNETCORE_VERSION=10.0.13
+ARG DOTNET_INSTALL_COMMIT=5147e32300a8e908f5d737c8cff63a76b4b63531
+ARG DOTNET_INSTALL_SHA256=082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -85,7 +91,8 @@ RUN apt-get update \
         libssl3t64 \
         libstdc++6 \
         tzdata \
-    && curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && curl -fsSL "https://raw.githubusercontent.com/dotnet/install-scripts/${DOTNET_INSTALL_COMMIT}/src/dotnet-install.sh" -o /tmp/dotnet-install.sh \
+    && echo "${DOTNET_INSTALL_SHA256}  /tmp/dotnet-install.sh" | sha256sum -c - \
     && bash /tmp/dotnet-install.sh \
         --runtime aspnetcore \
         --version "${DOTNET_ASPNETCORE_VERSION}" \

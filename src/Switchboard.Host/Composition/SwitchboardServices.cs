@@ -100,7 +100,8 @@ public static class SwitchboardServices
 
         services.AddSingleton(sp => new IngressAccessPolicy(
             sp.GetRequiredService<IOptions<IngressOptions>>().Value,
-            sp.GetRequiredService<RuntimeEnvironment>().DevTrustAllRequests));
+            sp.GetRequiredService<RuntimeEnvironment>().DevTrustAllRequests,
+            sp.GetRequiredService<RuntimeEnvironment>().IsAddon));
 
         // Started in this order, stopped in reverse: the guard stops first (shutdown safe state
         // recorded and, in active mode, sent through the command path while it still runs, decision

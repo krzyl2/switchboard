@@ -96,6 +96,24 @@ public sealed class AddonPackagingTests
     }
 
     [Fact]
+    public void Every_base_image_is_pinned_by_digest_and_the_install_script_by_checksum()
+    {
+        // A tag can be pushed again under the same name; a digest cannot. The install script runs as
+        // root in the image build, so it runs only when its bytes are the ones that were reviewed.
+        var dockerfile = Dockerfile();
+        var images = Regex.Matches(dockerfile, @"^FROM\s+(?:--platform=\S+\s+)?(\S+)", RegexOptions.Multiline)
+            .Select(m => m.Groups[1].Value)
+            .Where(image => !image.StartsWith("runtime", StringComparison.Ordinal) && image != "${BUILD_FROM}")
+            .Append(Regex.Match(dockerfile, @"^ARG BUILD_FROM=(\S+)", RegexOptions.Multiline).Groups[1].Value)
+            .ToList();
+
+        Assert.Equal(3, images.Count);
+        Assert.All(images, image => Assert.Matches(@"^[^@\s]+:[^@\s]+@sha256:[0-9a-f]{64}$", image));
+        Assert.Matches(@"ARG DOTNET_INSTALL_SHA256=[0-9a-f]{64}\n", dockerfile.ReplaceLineEndings("\n"));
+        Assert.Matches(@"dotnet-install\.sh"" -o /tmp/dotnet-install\.sh \\\n\s+&& echo ""\$\{DOTNET_INSTALL_SHA256\}  /tmp/dotnet-install\.sh"" \| sha256sum -c - \\\n\s+&& bash /tmp/dotnet-install\.sh", dockerfile.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public void Image_arch_labels_use_the_manifest_arch_names()
     {
         // Docker calls ARM "arm64"; Home Assistant calls it "aarch64". The label must carry

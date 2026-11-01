@@ -1,8 +1,12 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Switchboard.Application.Connectivity;
+using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Host;
 
@@ -67,6 +71,28 @@ public sealed class WebSurfaceTests
         var context = await SendAsync(factory, "/api/status", "10.0.0.5");
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Dev_trust_flag_is_refused_in_an_add_on_with_an_error_at_startup()
+    {
+        // The add-on holds a Supervisor token: a development flag left in its environment must never
+        // open the web surface to peers that skipped Home Assistant's authentication.
+        using var root = new TempWebRoot();
+        var logs = new LogCapture();
+        using var addon = new SwitchboardHostFactory(root.Path, new Dictionary<string, string?>
+        {
+            ["SUPERVISOR_TOKEN"] = "supervisor-token",
+            ["SWITCHBOARD_DEV_TRUST_ALL_REQUESTS"] = "true",
+        });
+        using var factory = addon.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+
+        var foreign = await SendAsync(factory, "/api/status", "10.0.0.5");
+        var proxy = await SendAsync(factory, "/api/status", Supervisor);
+
+        Assert.Equal((StatusCodes.Status403Forbidden, StatusCodes.Status200OK), (foreign.Response.StatusCode, proxy.Response.StatusCode));
+        Assert.Contains(logs.Entries, e => e.Level == LogLevel.Error && e.Text.Contains("SWITCHBOARD_DEV_TRUST_ALL_REQUESTS", StringComparison.Ordinal));
+        Assert.DoesNotContain(logs.Entries, e => e.Text.Contains("source-address check is OFF", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -185,6 +211,29 @@ public sealed class WebSurfaceTests
     }
 
     [Fact]
+    public async Task The_spa_carries_a_content_security_policy_that_fits_the_ingress_frame()
+    {
+        // The page can release the kill switch and allow control: injected script must not run, data
+        // must not leave for another origin, and only Home Assistant's own page (the same origin through
+        // the ingress proxy) may frame it.
+        using var root = new TempWebRoot("<!doctype html>");
+        using var factory = new SwitchboardHostFactory(root.Path);
+
+        foreach (var path in new[] { "/", "/index.html", "/some/client/route", "/api/status" })
+        {
+            var context = await SendAsync(factory, path, Supervisor, ingressPath: "/api/hassio_ingress/Zx9_token");
+            var policy = context.Response.Headers.ContentSecurityPolicy.ToString().Split(';', StringSplitOptions.TrimEntries);
+
+            Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+            Assert.Contains("default-src 'self'", policy);
+            Assert.Contains("object-src 'none'", policy);
+            Assert.Contains("base-uri 'self'", policy);
+            Assert.Contains("frame-ancestors 'self'", policy);
+            Assert.DoesNotContain(policy, d => d.Contains("unsafe-", StringComparison.Ordinal) || d.Contains('*', StringComparison.Ordinal) || d.StartsWith("script-src", StringComparison.Ordinal) || d.StartsWith("connect-src", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public async Task Spa_shell_is_revalidated_and_hashed_bundles_are_cached_for_good()
     {
         // After an add-on update a cached shell would point at hashed bundles the new image no
@@ -237,7 +286,7 @@ public sealed class WebSurfaceTests
     }
 
     private static Task<HttpContext> SendAsync(
-        SwitchboardHostFactory factory, string path, string remote, string? ingressPath = null, string method = "GET") =>
+        WebApplicationFactory<Program> factory, string path, string remote, string? ingressPath = null, string method = "GET") =>
         factory.Server.SendAsync(context =>
         {
             context.Request.Method = method;

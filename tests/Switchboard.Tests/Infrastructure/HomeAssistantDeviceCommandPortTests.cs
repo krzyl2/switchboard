@@ -341,6 +341,30 @@ public sealed class HomeAssistantDeviceCommandPortTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task An_unexpected_fault_in_the_send_is_answered_and_never_stalls_the_actuator()
+    {
+        // Nobody awaits a send: a fault left unanswered would keep the relay's slot in flight for good,
+        // and its next protective off would never leave.
+        _port.Submit(Relay("heater_l1", on: true));
+        _port.Flush();
+        (await _channel.NextAsync()).Completion.TrySetException(new InvalidOperationException("injected"));
+        await UntilAsync(() => Results().Count == 1);
+
+        // Whether the call reached Home Assistant is unknown, as when the link closes before the answer.
+        var faulted = Results().Single();
+        Assert.Equal((CommandOutcome.TimedOut, (CommandNotSentReason?)null), (faulted.Outcome, faulted.NotSent));
+        Assert.Contains("injected", faulted.Detail, StringComparison.Ordinal);
+
+        var off = _port.Submit(Relay("heater_l1", on: false));
+        _port.Flush();
+        var sent = await _channel.NextAsync();
+        Assert.Equal(("switch.heater_1", ActuatorService.TurnOff), (sent.Call.Entity.Value, sent.Call.Service));
+        sent.Answer(CommandOutcome.Acknowledged);
+        await UntilAsync(() => Results().Any(r => r.Ticket == off));
+        Assert.Equal((CommandOutcome.Acknowledged, (CommandNotSentReason?)null), Outcome(off));
+    }
+
+    [Fact]
     public async Task The_shutdown_waits_until_the_last_offs_are_answered()
     {
         _port.Submit(Relay("heater_l1", on: false));

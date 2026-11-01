@@ -313,6 +313,14 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
         {
             outcome = new CallOutcome(CommandOutcome.TimedOut, "the add-on stopped before the answer");
         }
+        catch (Exception ex)
+        {
+            // Nobody awaits this send: an exception left here would keep the slot in flight for
+            // good and stall every later command for this actuator, a protective off included.
+            // Whether the call left is unknown, as when the link closes before the answer.
+            _logger.LogError(ex, "Sending a command for {Device} failed unexpectedly", queued.Command.Device);
+            outcome = new CallOutcome(CommandOutcome.TimedOut, $"the send failed unexpectedly ({ex.Message})");
+        }
 
         lock (_gate)
         {

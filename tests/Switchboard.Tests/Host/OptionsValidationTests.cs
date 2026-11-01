@@ -47,6 +47,11 @@ public sealed class OptionsValidationTests
             (homeAssistant.CommandTimeout, homeAssistant.ShutdownCommandWait, homeAssistant.CloseTimeout));
         var configuration = provider.GetRequiredService<IOptions<ConfigurationOptions>>().Value;
         Assert.Equal((TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(5), 262144), (configuration.ReloadDebounce, configuration.PollInterval, configuration.MaxFileBytes));
+
+        // The largest legitimate body is the wizard's draft of a configuration file at its size limit,
+        // and JSON spells a document out longer than YAML: the global limit leaves it room.
+        Assert.Equal(1048576, ingress.MaxRequestBodyBytes);
+        Assert.True(ingress.MaxRequestBodyBytes >= 4L * configuration.MaxFileBytes, "Switchboard:Ingress:MaxRequestBodyBytes would refuse the wizard's draft of a configuration file at its size limit.");
         var persistence = provider.GetRequiredService<IOptions<PersistenceOptions>>().Value;
         Assert.Equal(
             (TimeSpan.FromMinutes(1), 0.05, 65536, 1000, 10000, 500, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1)),
@@ -179,6 +184,8 @@ public sealed class OptionsValidationTests
     [InlineData("Switchboard:Ingress:Port", "0")]
     [InlineData("Switchboard:Ingress:Port", "70000")]
     [InlineData("Switchboard:Ingress:TrustedProxy", "supervisor")]
+    [InlineData("Switchboard:Ingress:MaxRequestBodyBytes", "1024")]
+    [InlineData("Switchboard:Ingress:MaxRequestBodyBytes", "30000000")]
     public void Ingress_nonsense_is_rejected(string key, string value)
     {
         using var provider = Build((key, value));

@@ -12,15 +12,20 @@ public sealed class IngressAccessPolicy
 {
     private readonly IPAddress _trustedProxy;
 
-    public IngressAccessPolicy(IngressOptions options, bool trustAllRequests)
+    /// <param name="addon">Running under the Supervisor: the development trust flag is refused there.</param>
+    public IngressAccessPolicy(IngressOptions options, bool trustAllRequests, bool addon)
     {
         ArgumentNullException.ThrowIfNull(options);
         _trustedProxy = Normalize(IPAddress.Parse(options.TrustedProxy));
-        TrustAllRequests = trustAllRequests;
+        TrustAllRequests = trustAllRequests && !addon;
+        TrustAllRefused = trustAllRequests && addon;
     }
 
     /// <summary>Dev compose only (SWITCHBOARD_DEV_TRUST_ALL_REQUESTS); logged as a warning at startup.</summary>
     public bool TrustAllRequests { get; }
+
+    /// <summary>The development trust flag is set in an add-on and ignored: the source-address check stays on; logged as an error at startup.</summary>
+    public bool TrustAllRefused { get; }
 
     public bool IsAllowed(IPAddress? remote)
     {

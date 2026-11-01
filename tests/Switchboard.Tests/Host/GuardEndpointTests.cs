@@ -4,8 +4,10 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Guard;
+using Switchboard.Application.Options;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Signals;
 using Switchboard.Host.Hosting;
@@ -156,6 +158,53 @@ public sealed class GuardEndpointTests
     }
 
     [Fact]
+    public async Task A_body_above_the_global_limit_is_refused_unread_even_where_the_endpoint_sets_no_limit()
+    {
+        // The kill switch endpoint holds no limit of its own: without the global one it would read
+        // megabytes into memory, and this padded body would still engage the kill switch.
+        using var root = new TempWebRoot();
+        using var factory = WithGuard(root.Path);
+        _ = factory.Server;
+        var limit = factory.Services.GetRequiredService<IOptions<IngressOptions>>().Value.MaxRequestBodyBytes;
+        var body = Encoding.UTF8.GetBytes("""{"engaged":true}""" + new string(' ', checked((int)limit)));
+
+        var context = await factory.Server.SendAsync(request =>
+        {
+            request.Request.Method = "POST";
+            request.Request.Path = "/api/guard/kill-switch";
+            request.Connection.RemoteIpAddress = IPAddress.Parse(Supervisor);
+            request.Request.ContentType = "application/json";
+            request.Request.ContentLength = body.Length;
+            request.Request.Body = new MemoryStream(body);
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
+        Assert.False(factory.Services.GetRequiredService<KillSwitchState>().Status.Engaged);
+    }
+
+    [Fact]
+    public async Task A_chunked_body_the_server_cuts_off_at_the_global_limit_is_answered_413_and_changes_nothing()
+    {
+        // Without a declared length only the server sees the body pass the limit, mid-read: that must
+        // read as a refused body, not as an unhandled exception from the endpoint.
+        using var root = new TempWebRoot();
+        using var factory = WithGuard(root.Path);
+        _ = factory.Server;
+
+        var context = await factory.Server.SendAsync(request =>
+        {
+            request.Request.Method = "POST";
+            request.Request.Path = "/api/guard/kill-switch";
+            request.Connection.RemoteIpAddress = IPAddress.Parse(Supervisor);
+            request.Request.ContentType = "application/json";
+            request.Request.Body = new CutOffBody();
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
+        Assert.False(factory.Services.GetRequiredService<KillSwitchState>().Status.Engaged);
+    }
+
+    [Fact]
     public async Task Kill_switch_post_answers_with_the_evaluated_status()
     {
         using var root = new TempWebRoot();
@@ -209,4 +258,36 @@ public sealed class GuardEndpointTests
                 context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body ?? string.Empty));
             }
         });
+
+    /// <summary>A chunked body as Kestrel reads it once it passes the request's limit: the read throws 413.</summary>
+    private sealed class CutOffBody : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw TooLarge();
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromException<int>(TooLarge());
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromException<int>(TooLarge());
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        private static BadHttpRequestException TooLarge() => new("Request body too large.", StatusCodes.Status413PayloadTooLarge);
+    }
 }

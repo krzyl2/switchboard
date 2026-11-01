@@ -8,6 +8,12 @@ internal static class WebPipeline
 {
     private const string SpaEntry = "index.html";
 
+    // The SPA loads its bundle, its stylesheet and the API from its own origin only (relative URLs under
+    // the ingress path), and has no inline script or style; the favicon is a data: URL. The ingress
+    // panel is an iframe of the Home Assistant page on the same origin, so 'self' may frame it.
+    private const string ContentSecurityPolicy =
+        "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+
     // The shell must be revalidated on every load: after an add-on update a cached index.html would
     // point at hashed bundles the new image no longer has. Hashed bundles never change.
     private static readonly StaticFileOptions SpaFiles = new()
@@ -28,8 +34,15 @@ internal static class WebPipeline
 
     public static WebApplication UseSwitchboardWeb(this WebApplication app)
     {
+        app.Use((context, next) =>
+        {
+            context.Response.Headers.ContentSecurityPolicy = ContentSecurityPolicy;
+            return next(context);
+        });
+
         // The guard runs first so a refused peer reaches nothing, not even static files.
         app.UseMiddleware<IngressGuardMiddleware>();
+        app.UseMiddleware<RequestBodyLimitMiddleware>();
         app.UseMiddleware<IngressPathBaseMiddleware>();
         app.UseStaticFiles(SpaFiles);
         app.UseRouting();

@@ -70,7 +70,7 @@ Keys left at their Supervisor defaults are omitted (`startup: application`, `boo
 
 - **Home Assistant**: `SUPERVISOR_TOKEN` from the environment, with `homeassistant_api: true`. WebSocket through the Supervisor proxy; no user-supplied token anywhere.
 - **MQTT**: Supervisor service discovery (`services: mqtt:need`). Manual broker settings only as a fallback for the standalone path. Client id `switchboard-<install id>`, the install id generated once into `/data/mqtt-client.json`.
-- **Ingress**: authentication is Home Assistant's. The add-on exposes no other port. There is no outbound connection other than to HA and the broker.
+- **Ingress**: authentication is Home Assistant's. The add-on exposes no other port. There is no outbound connection other than to HA and the broker. Only the Supervisor's ingress proxy and loopback may connect; `SWITCHBOARD_DEV_TRUST_ALL_REQUESTS` (dev compose) is refused in an add-on, with an error at startup. Every request body is capped by `Switchboard:Ingress:MaxRequestBodyBytes` (1 MiB, sized for the wizard's draft; 413 above it), and every response carries a `Content-Security-Policy` that allows only the page's own origin (`'self'`, the favicon's `data:` URL) and framing by Home Assistant's own page.
 
 ## Persistence
 

@@ -55,10 +55,18 @@ internal static class StartupReport
             }
         }
 
-        if (services.GetRequiredService<IngressAccessPolicy>().TrustAllRequests)
+        var ingress = services.GetRequiredService<IngressAccessPolicy>();
+        if (ingress.TrustAllRequests)
         {
             logger.LogWarning(
                 "{Variable} is set: the ingress source-address check is OFF. Development use only.",
+                EnvironmentVariableNames.DevTrustAllRequests);
+        }
+
+        if (ingress.TrustAllRefused)
+        {
+            logger.LogError(
+                "{Variable} is set, but it is for the development stack only and is refused in an add-on: the ingress source-address check stays on.",
                 EnvironmentVariableNames.DevTrustAllRequests);
         }
     }

@@ -26,7 +26,7 @@ Ingress SPA. Argus moved to Preact with a hand-written CSS token system and dark
 
 ## Pinning rules
 
-Pin every dependency to an exact version. Prefer versions at least two weeks old. Record the chosen versions and their release dates here when the decision is made, as Argus does in its own `CLAUDE.md` — that table turned out to be the single most useful thing in that repository when a dependency broke.
+Pin every dependency to an exact version. Prefer versions at least two weeks old. Container base images are pinned by tag and by the digest of their multi-arch index (`tag@sha256:…`), and `dotnet-install.sh` by commit and sha256: update the table and `switchboard/Dockerfile` together. Record the chosen versions and their release dates here when the decision is made, as Argus does in its own `CLAUDE.md` — that table turned out to be the single most useful thing in that repository when a dependency broke.
 
 ## What not to use
 
@@ -59,6 +59,7 @@ Filled 2026-10-23 (Stage 0). Two-week cutoff: 2026-10-09.
 | HA WebSocket client | in-house | — | `System.Net.WebSockets`; protocol is small, no version coupling, Stage 1 needs `subscribe_entities` with `last_reported` |
 | .NET SDK (`global.json`, `rollForward: latestPatch`) | 10.0.402 | 2026-10-13 | Installed SDK; ships ASP.NET Core 10.0.13 |
 | ASP.NET Core runtime (image, `dotnet-install.sh`) | 10.0.13 | 2026-10-13 | Matches the SDK; security release — under the two-week rule, deliberately |
+| `dotnet-install.sh` (dotnet/install-scripts) | commit `5147e32300a8e908f5d737c8cff63a76b4b63531`, sha256 `082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e` | 2026-05-05 | What `https://dot.net/v1/dotnet-install.sh` served on 2026-11-01; fetched at the commit and checked before it runs. MIT |
 | MQTTnet | 5.2.0.1603 | 2026-07-01 | Latest 5.x past the cutoff; has a net10.0 target. MIT |
 | Microsoft.Extensions.Options | 10.0.12 | 2026-09-08 | Options validation in Application. MIT |
 | Microsoft.Extensions.Logging.Abstractions | 10.0.12 | 2026-09-08 | `ILogger` in Application without ASP.NET Core. MIT |
@@ -77,9 +78,9 @@ Filled 2026-10-23 (Stage 0). Two-week cutoff: 2026-10-09.
 | vitest | 5.0.3 | 2026-09-30 | SPA tests. MIT |
 | @testing-library/preact | 3.2.4 | 2024-05-27 | Component tests; 3.2.5+ is under the cutoff. MIT |
 | jsdom | 30.1.2 | 2026-10-04 | Test DOM. MIT |
-| ghcr.io/home-assistant/base-debian | trixie-2026.10.0 | 2026-10-08 | Runtime base (Debian 13, s6-overlay 3.2.3.2, bashio). Apache-2.0 |
-| mcr.microsoft.com/dotnet/sdk | 10.0.402 | 2026-10-13 | Build stage; same SDK as `global.json` |
-| node | 24.21.0-alpine3.24 | 2026-09-07 | SPA build stage; Node 24 LTS |
+| ghcr.io/home-assistant/base-debian | trixie-2026.10.0@sha256:a7f262f331e2a4f4e3e02173da932a8d8c26f3d5758a5f59903d46de1f728e5b | 2026-10-08 | Runtime base (Debian 13, s6-overlay 3.2.3.2, bashio). Apache-2.0 |
+| mcr.microsoft.com/dotnet/sdk | 10.0.402@sha256:747cbade5bfd918a175ac32f8f1d931edec2c7d0d5397a3de72eaef1ac1f66d2 | 2026-10-13 | Build stage; same SDK as `global.json` |
+| node | 24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 | 2026-09-07 | SPA build stage; Node 24 LTS |
 | ghcr.io/home-assistant/home-assistant | 2026.10.0 | 2026-10-07 | Dev stack / e2e only |
 | eclipse-mosquitto | 2.0.22 | 2025-07-11 | Dev stack / e2e only. The tag is rebuilt upstream; pin by digest if byte-identical rebuilds matter |
 
