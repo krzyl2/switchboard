@@ -487,7 +487,7 @@ internal static class DeviceSectionParser
             return (null, null);
         }
 
-        var known = PriceSpecs.ZoneIds(economics?.Tariff).ToHashSet(StringComparer.Ordinal);
+        var known = PriceSpecs.ZoneIds(economics?.Tariff).Select(id => new ZoneId(id)).ToHashSet();
         var effective = declared!.Narrow(known, out var dropped);
         foreach (var zone in dropped)
         {

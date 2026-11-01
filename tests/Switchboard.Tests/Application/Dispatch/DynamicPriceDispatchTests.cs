@@ -46,7 +46,7 @@ public sealed class DynamicPriceDispatchTests
         Assert.NotEmpty(Starts(s, "dev"));
         var block = Block(s);
         Assert.Equal((0.20, PriceBasis.Live), (block.ExportPrice, block.PriceBasis));
-        Assert.Equal(EnergyClass.Pv, block.Class);
+        Assert.Equal(TestEnergy.Pv, block.Class);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public sealed class DynamicPriceDispatchTests
 
         var block = Block(s);
         Assert.Equal(("morning_peak", 0.70, PriceBasis.Live), (block.Zone, block.ImportPrice!.Value, block.PriceBasis));
-        Assert.Equal(EnergyClass.Zone, block.Class);
+        Assert.Equal(TestEnergy.Zone, block.Class);
         Assert.Contains(Starts(s, "dev"), d => d.Reason == ReasonCode.ZoneAllowed);
     }
 

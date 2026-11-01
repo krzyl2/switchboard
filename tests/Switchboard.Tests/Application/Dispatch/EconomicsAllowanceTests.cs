@@ -134,7 +134,7 @@ public sealed class EconomicsAllowanceTests
         }
     }
 
-    private static string ClassName(EnergyClass? energyClass) => energyClass is { } c ? c.ToString().ToLowerInvariant() : "none";
+    private static string ClassName(EnergySource? energyClass) => energyClass is { } c ? EnergySourceText.Class(c) : "none";
 
     [Fact]
     public void The_heaters_that_may_only_take_surplus_do_not_start_at_23_00_while_the_car_that_may_take_off_peak_does()
@@ -150,7 +150,7 @@ public sealed class EconomicsAllowanceTests
         Assert.All(["heater_l1", "heater_l2", "heater_l3"], heater => Assert.Equal(ReasonCode.SourceNotAllowed, Pending(s, heater)));
         var start = Assert.Single(Starts(s, "ev_charger"));
         Assert.Equal(ReasonCode.ZoneAllowed, start.Reason);
-        Assert.Equal((EnergyClass.Zone, "offpeak"), (start.Inputs.Dispatch!.Economics!.Class, start.Inputs.Dispatch.Economics.Zone));
+        Assert.Equal((TestEnergy.Zone, "offpeak"), (start.Inputs.Dispatch!.Economics!.Class, start.Inputs.Dispatch.Economics.Zone));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public sealed class EconomicsAllowanceTests
 
         Assert.Equal(ReasonCode.BalanceProjectionLow, Assert.Single(Stops(s, "heater_l1")).Reason);
         Assert.Empty(Stops(s, "ev_charger"));
-        Assert.Equal(EnergyClass.Zone, Block(s, "ev_charger")!.Class);
+        Assert.Equal(TestEnergy.Zone, Block(s, "ev_charger")!.Class);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public sealed class EconomicsAllowanceTests
 
         var start = Assert.Single(Starts(s, "dev"));
         Assert.Null(start.Inputs.Dispatch!.Economics!.ExportPrice);
-        Assert.Equal(EnergyClass.Pv, start.Inputs.Dispatch.Economics.Class);
+        Assert.Equal(TestEnergy.Pv, start.Inputs.Dispatch.Economics.Class);
     }
 
     [Theory]
@@ -364,10 +364,10 @@ public sealed class EconomicsAllowanceTests
         Run(s, Feed(s, -100), 3);
 
         var car = Assert.Single(Starts(s, "ev_charger")).Inputs.Dispatch!.Economics!;
-        Assert.Equal(("offpeak", 0.60, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
+        Assert.Equal(("offpeak", 0.60, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, TestEnergy.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
             (car.Zone, car.ImportPrice, car.ExportPrice, car.PriceBasis, car.VEff, car.ValueBasis, car.OrderKey, car.Class, car.Sources, car.Settlement));
         var heater = s.Dispatches[^1].Wish(DeviceName.Parse("heater_l1"))!.Inputs.Economics!;
-        Assert.Equal((0.35, "pv_only", (EnergyClass?)null), (heater.VEff, heater.Sources, heater.Class));
+        Assert.Equal((0.35, "pv_only", (EnergySource?)null), (heater.VEff, heater.Sources, heater.Class));
     }
 
     [Fact]
@@ -382,7 +382,7 @@ public sealed class EconomicsAllowanceTests
 
         Assert.Equal(s.Dispatches[^1].Economics, status.Economics);
         Assert.Equal("offpeak", status.Economics!.Zone);
-        Assert.Equal(EnergyClass.Zone, status.Economics.Devices.Single(d => d.Device.Value == "ev_charger").Class);
+        Assert.Equal(TestEnergy.Zone, status.Economics.Devices.Single(d => d.Device.Value == "ev_charger").Class);
     }
 
     [Fact]

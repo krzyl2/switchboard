@@ -763,7 +763,7 @@ public sealed partial class DispatchEngine
         public ReasonCode? GrantReason { get; set; }
 
         /// <summary>The energy class that allows the device in this step (the surplus or the active zone); null when neither does or it is not judged.</summary>
-        public EnergyClass? EnergyClass { get; set; }
+        public EnergySource? EnergyClass { get; set; }
 
         /// <summary>The allowance gate (balance or sources) leaves the device room to rise; false withholds every increase this cycle.</summary>
         public bool BalanceAllows { get; set; } = true;

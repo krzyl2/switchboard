@@ -27,23 +27,6 @@ public enum PlanWant
     None,
 }
 
-/// <summary>The energy classes of a plan entry (15-PLANNER): <c>pv</c> (surplus, the forgone export) or <c>zone:&lt;id&gt;</c> (bought in a tariff zone).</summary>
-public static class PlanClasses
-{
-    public const string Pv = "pv";
-    public const string ZonePrefix = "zone";
-
-    /// <summary>The class of grid energy in <paramref name="zone"/>; a slot that no single zone holds has the bare class <c>zone</c>.</summary>
-    public static string Zone(string? zone) => zone is null ? ZonePrefix : ZonePrefix + ":" + zone;
-
-    public static bool IsPv(string? text) => text == Pv;
-
-    public static bool IsZone(string? text) => text is not null && (text == ZonePrefix || text.StartsWith(ZonePrefix + ":", StringComparison.Ordinal));
-
-    /// <summary>The zone id of a zone class; null for <c>pv</c>, for the bare class and for anything else.</summary>
-    public static string? ZoneId(string? text) => text is not null && text.StartsWith(ZonePrefix + ":", StringComparison.Ordinal) ? text[(ZonePrefix.Length + 1)..] : null;
-}
-
 /// <summary>How a device draws power, for the plan.</summary>
 public enum PlanDeviceKind
 {
@@ -100,10 +83,10 @@ public sealed record PlanInput(
 public sealed record PlanGoalRef(string Id, long Revision, long SpecIdentity);
 
 /// <summary>One slot of one device in the plan.</summary>
-/// <param name="Class">Wholly surplus: <c>pv</c>; any grid energy in the slot: <c>zone:&lt;id&gt;</c> of the dearest zone used (or the bare <c>zone</c> where no single zone holds the slot); null unless run or urgent.</param>
+/// <param name="Class">Wholly surplus: <see cref="EnergySource.Surplus"/> (text <c>pv</c>); any grid energy in the slot: <see cref="EnergySource.Grid"/> of the dearest zone used (text <c>zone:&lt;id&gt;</c>, or the bare <c>zone</c> where no single zone holds the slot); null unless run or urgent.</param>
 /// <param name="EnergyKwh">The slot's budget for the device.</param>
 /// <param name="MaxPowerW">The ceiling for the slot: at most the device's maximum, at most what the static limits leave; zero unless run or urgent.</param>
-public sealed record PlanEntry(DateTimeOffset Start, DateTimeOffset End, PlanWant Want, string? Class, double EnergyKwh, double MaxPowerW, PlanGoalRef? Goal);
+public sealed record PlanEntry(DateTimeOffset Start, DateTimeOffset End, PlanWant Want, EnergySource? Class, double EnergyKwh, double MaxPowerW, PlanGoalRef? Goal);
 
 /// <summary>One goal as the plan treats it.</summary>
 /// <param name="PlannedKwh">Energy the plan places for the goal.</param>
@@ -246,7 +229,7 @@ public sealed record PlanSnapshot
 
             foreach (var e in device.Entries)
             {
-                text.Append("entry ").Append(T(e.Start)).Append(' ').Append(T(e.End)).Append(' ').Append(e.Want).Append(' ').Append(e.Class ?? "-").Append(' ')
+                text.Append("entry ").Append(T(e.Start)).Append(' ').Append(T(e.End)).Append(' ').Append(e.Want).Append(' ').Append(e.Class is { } entryClass ? EnergySourceText.Plan(entryClass) : "-").Append(' ')
                     .Append(N(e.EnergyKwh)).Append(' ').Append(N(e.MaxPowerW)).Append(' ')
                     .Append(e.Goal is { } r ? r.Id + "/" + r.Revision.ToString(CultureInfo.InvariantCulture) + "/" + r.SpecIdentity.ToString(CultureInfo.InvariantCulture) : "-").Append('\n');
             }

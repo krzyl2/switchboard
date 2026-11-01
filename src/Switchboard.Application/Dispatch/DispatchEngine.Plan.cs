@@ -5,6 +5,7 @@ using Switchboard.Domain.Balance;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Decisions;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Planning;
 
 namespace Switchboard.Application.Dispatch;
@@ -188,7 +189,7 @@ public sealed partial class DispatchEngine
         return entry.Want switch
         {
             PlanWant.Urgent => new PlanGate(false, ReasonCode.GoalDeadlineUrgent),
-            PlanWant.Run when PlanClasses.IsZone(entry.Class) && entry.GoalAllowsZone => new PlanGate(false, ReasonCode.PlanSlotTarget),
+            PlanWant.Run when entry.Class is EnergySource.Grid && entry.GoalAllowsZone => new PlanGate(false, ReasonCode.PlanSlotTarget),
             _ => PlanGate.None,
         };
     }

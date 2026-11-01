@@ -401,7 +401,7 @@ public sealed class PlannerServiceTests(ITestOutputHelper output)
         rig.Time.SetUtcNow(Local(2026, 10, 27, 12).ToUniversalTime());
         await rig.FirstPlan();
         Assert.Equal(PlanWant.Run, rig.Entry()!.Want);
-        Assert.Equal(PlanClasses.Pv, rig.Entry()!.Class);
+        Assert.Equal(TestEnergy.Pv, rig.Entry()!.Class);
 
         rig.World.PvScale = 0;
         rig.Time.Advance(TimeSpan.FromMinutes(14));
@@ -414,11 +414,11 @@ public sealed class PlannerServiceTests(ITestOutputHelper output)
         rig.Time.Advance(TimeSpan.FromMinutes(15));
         await rig.Step();
         Assert.Equal(PlanWant.Run, rig.Entry()!.Want);
-        Assert.Equal(PlanClasses.Pv, rig.Entry()!.Class);
+        Assert.Equal(TestEnergy.Pv, rig.Entry()!.Class);
         rig.Time.Advance(TimeSpan.FromMinutes(15));
         await rig.Step();
 
-        Assert.Equal("zone:offpeak", rig.Entry()!.Class);
+        Assert.Equal(TestEnergy.ZoneOf("offpeak"), rig.Entry()!.Class);
         Assert.Empty(PlanVerifier.Verify(rig.World.Capture(rig.Time.GetUtcNow())!.Input, rig.State.Plan!));
     }
 

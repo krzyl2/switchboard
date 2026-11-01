@@ -110,7 +110,7 @@ public sealed class PlanNeverWidensTests
         var feed = Feed(s, wh);
         feed();
         s.PollUntil(s.Now + TimeSpan.FromMinutes(4), l1, l2, 1, feed);
-        var entryText = string.Join(", ", entries.Select(e => $"{e.Key}:{e.Value.Want}/{e.Value.Class ?? "-"}/{e.Value.EnergyKwh}/{e.Value.MaxPowerW}/{e.Value.GoalAllowsZone}"));
+        var entryText = string.Join(", ", entries.Select(e => $"{e.Key}:{e.Value.Want}/{(e.Value.Class is { } entryClass ? EnergySourceText.Plan(entryClass) : "-")}/{e.Value.EnergyKwh}/{e.Value.MaxPowerW}/{e.Value.GoalAllowsZone}"));
         return new Scenario(seed, $"seed {seed}: {at:u} {mode} export {export} W, balance {wh?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}, L1 {l1} A, L2 {l2} A, {string.Join(", ", parts)}; plan {entryText}", s, mode, entries, restoreOnly);
     }
 
@@ -162,12 +162,12 @@ public sealed class PlanNeverWidensTests
                         urgent += wish.Reason == ReasonCode.GoalDeadlineUrgent ? 1 : 0;
                         Assert.True(scenario.Mode == PlannerDispatchMode.Full, $"{where} rises on the plan's own class in narrow mode");
                         Assert.NotNull(entry);
-                        Assert.Equal(EnergyClass.Zone, economics!.Class);
+                        Assert.Equal(TestEnergy.Zone, economics!.Class);
                         Assert.True(wish.Reason == ReasonCode.GoalDeadlineUrgent
                             ? entry.Want == PlanWant.Urgent
-                            : entry.Want == PlanWant.Run && PlanClasses.IsZone(entry.Class) && entry.GoalAllowsZone, $"{where} rises on the plan class for an entry that does not allow it ({entry.Want}, {entry.Class})");
+                            : entry.Want == PlanWant.Run && entry.Class is EnergySource.Grid && entry.GoalAllowsZone, $"{where} rises on the plan class for an entry that does not allow it ({entry.Want}, {entry.Class})");
                     }
-                    else if (economics?.Sources is { } sources && economics.Class == EnergyClass.Zone)
+                    else if (economics?.Sources is { } sources && economics.Class == TestEnergy.Zone)
                     {
                         // Not the plan's doing: v2's own rule for a zone start still holds (the zone is one of the device's sources).
                         Assert.True(economics.Zone is not null && new SourceSetParse(sources).Allows(economics.Zone), $"{where} rises on the zone {economics.Zone} that is not among its sources {sources}");
@@ -178,7 +178,7 @@ public sealed class PlanNeverWidensTests
                         Assert.Fail($"{where} rises under a Done entry");
                     }
 
-                    if (entry is { Want: PlanWant.Defer } && economics?.Class == EnergyClass.Zone)
+                    if (entry is { Want: PlanWant.Defer } && economics?.Class == TestEnergy.Zone)
                     {
                         Assert.Fail($"{where} rises on a zone under a Defer entry");
                     }
@@ -203,6 +203,6 @@ public sealed class PlanNeverWidensTests
     /// <summary>The sources a decision recorded, parsed back for the one question asked of them.</summary>
     private readonly struct SourceSetParse(string text)
     {
-        public bool Allows(string zone) => SourceSet.TryParse(text, out var set, out _) && set!.AllowsZone(zone);
+        public bool Allows(string zone) => SourceSet.TryParse(text, out var set, out _) && set!.AllowsZone(new ZoneId(zone));
     }
 }

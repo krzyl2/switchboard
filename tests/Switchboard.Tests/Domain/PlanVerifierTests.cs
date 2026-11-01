@@ -96,7 +96,7 @@ public sealed class PlanVerifierTests
         // never ask for what the guard's envelope could never allow.
         var (input, plan) = Valid();
         var slot = plan.Slots[0].Slot;
-        PlanEntry Run2(DateTimeOffset start, DateTimeOffset end) => new(start, end, PlanWant.Run, "zone:z", 2, 2000, plan.Device(DeviceA)!.Goals[0].Ref is { } g ? g : null);
+        PlanEntry Run2(DateTimeOffset start, DateTimeOffset end) => new(start, end, PlanWant.Run, TestEnergy.ZoneOf("z"), 2, 2000, plan.Device(DeviceA)!.Goals[0].Ref is { } g ? g : null);
         var broken = plan
             .WithDevices([.. plan.Devices.Select(d => d.Device == DeviceA
                 ? d with { Entries = Replace(d.Entries, d.Entries[0], Run2(slot.Start, slot.End)) }
@@ -143,7 +143,7 @@ public sealed class PlanVerifierTests
         var (input, plan) = Valid();
         var entries = plan.Device(DeviceA)!.Entries;
         var spare = entries.First(e => e.Want != PlanWant.Run);
-        var broken = Edit(plan, DeviceA, e => Replace(e, spare, spare with { Want = PlanWant.Run, Class = "zone:z", EnergyKwh = 1, MaxPowerW = 2000 }));
+        var broken = Edit(plan, DeviceA, e => Replace(e, spare, spare with { Want = PlanWant.Run, Class = TestEnergy.ZoneOf("z"), EnergyKwh = 1, MaxPowerW = 2000 }));
 
         AssertFound(input, broken, PlanViolationCode.EnergyExceedsNeed);
     }
@@ -155,7 +155,7 @@ public sealed class PlanVerifierTests
         var (input, plan) = Valid();
         var slot = plan.Slots[3].Slot;
         var target = plan.Device(DeviceA)!.Entries.Single(e => e.Start == slot.Start);
-        var broken = Edit(plan, DeviceA, e => Replace(e, target, target with { Want = PlanWant.Run, Class = PlanClasses.Pv, EnergyKwh = 2, MaxPowerW = 2000 }));
+        var broken = Edit(plan, DeviceA, e => Replace(e, target, target with { Want = PlanWant.Run, Class = TestEnergy.Pv, EnergyKwh = 2, MaxPowerW = 2000 }));
 
         AssertFound(input, broken, PlanViolationCode.SurplusExceeded);
     }
@@ -166,11 +166,11 @@ public sealed class PlanVerifierTests
         // Why: the plan never invents a want, and it never asks for a device that dispatch may not start (restore only). Both would be the plan commanding by another name.
         var (input, plan) = Valid();
         var none = plan.Device(DeviceB)!.Entries[0];
-        AssertFound(input, Edit(plan, DeviceB, e => Replace(e, none, none with { Want = PlanWant.Run, Class = "zone:z", EnergyKwh = 1, MaxPowerW = 2000 })), PlanViolationCode.NotPlannable);
+        AssertFound(input, Edit(plan, DeviceB, e => Replace(e, none, none with { Want = PlanWant.Run, Class = TestEnergy.ZoneOf("z"), EnergyKwh = 1, MaxPowerW = 2000 })), PlanViolationCode.NotPlannable);
 
         var (inputR, planR) = Valid(aCanStart: false);
         var idle = planR.Device(DeviceA)!.Entries[0];
-        AssertFound(inputR, Edit(planR, DeviceA, e => Replace(e, idle, idle with { Want = PlanWant.Run, Class = "zone:z", EnergyKwh = 1, MaxPowerW = 2000 })), PlanViolationCode.NotPlannable);
+        AssertFound(inputR, Edit(planR, DeviceA, e => Replace(e, idle, idle with { Want = PlanWant.Run, Class = TestEnergy.ZoneOf("z"), EnergyKwh = 1, MaxPowerW = 2000 })), PlanViolationCode.NotPlannable);
 
         var defer = plan.Device(DeviceA)!.Entries.First(e => e.Want == PlanWant.Defer);
         AssertFound(input, Edit(plan, DeviceA, e => Replace(e, defer, defer with { EnergyKwh = 1 })), PlanViolationCode.NotPlannable);

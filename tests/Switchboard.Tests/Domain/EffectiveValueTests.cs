@@ -1,5 +1,6 @@
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Economics;
+using Switchboard.Tests.Support;
 
 namespace Switchboard.Tests.Domain;
 
@@ -71,7 +72,7 @@ public sealed class EffectiveValueTests
     public void Worth_is_not_fooled_by_floating_point_noise_in_the_difference()
     {
         // 0.7 - 0.2 is 0.49999999999999994 in binary floating point: a value exactly one margin above the cost must still be worth it.
-        Assert.True(ValueTest.Worth(new EffectiveValue(0.7, ValueBasis.Static), new EnergyCost(EnergyClass.Zone, "a", 0.2), 0.5));
+        Assert.True(ValueTest.Worth(new EffectiveValue(0.7, ValueBasis.Static), new EnergyCost(TestEnergy.ZoneOf("a"), 0.2), 0.5));
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public sealed class EffectiveValueTests
         // The car (2.03) may buy off-peak (0.60) but a heater (0.35) must not.
         var offpeak = EnergyCost.ZoneEnergy(new PriceBook(new PricePoint(0.60, PriceBasis.Zone, "offpeak"), null))!.Value;
 
-        Assert.Equal((EnergyClass.Zone, "offpeak"), (offpeak.Class, offpeak.Zone));
+        Assert.Equal(TestEnergy.ZoneOf("offpeak"), offpeak.Source);
         Assert.True(ValueTest.Worth(new EffectiveValue(2.03, ValueBasis.Static), offpeak, 0));
         Assert.False(ValueTest.Worth(new EffectiveValue(0.35, ValueBasis.Static), offpeak, 0));
     }
@@ -95,16 +96,16 @@ public sealed class EffectiveValueTests
     }
 
     [Theory]
-    [InlineData("pv_only", true, false, "pv_only")]
-    [InlineData("any", true, true, "any")]
-    [InlineData("pv_and_zone:offpeak", true, false, "pv_and_zone:offpeak")]
-    [InlineData("pv_and_zone: weekend , offpeak", true, false, "pv_and_zone:offpeak,weekend")]
-    [InlineData("  pv_only ", true, false, "pv_only")]
-    public void Valid_sources_parse_and_print_canonically(string text, bool pv, bool allZones, string canonical)
+    [InlineData("pv_only", false, "pv_only")]
+    [InlineData("any", true, "any")]
+    [InlineData("pv_and_zone:offpeak", false, "pv_and_zone:offpeak")]
+    [InlineData("pv_and_zone: weekend , offpeak", false, "pv_and_zone:offpeak,weekend")]
+    [InlineData("  pv_only ", false, "pv_only")]
+    public void Valid_sources_parse_and_print_canonically(string text, bool allZones, string canonical)
     {
         Assert.True(SourceSet.TryParse(text, out var set, out var problem), problem);
 
-        Assert.Equal((pv, allZones, canonical), (set!.Pv, set.AllZones, set.ToText()));
+        Assert.Equal((allZones, canonical), (set!.AllZones, set.ToText()));
     }
 
     [Theory]
@@ -130,12 +131,12 @@ public sealed class EffectiveValueTests
     {
         SourceSet.TryParse("pv_and_zone:ghost,offpeak", out var set, out _);
 
-        var narrowed = set!.Narrow(new HashSet<string> { "offpeak", "morning_peak" }, out var dropped);
+        var narrowed = set!.Narrow(new HashSet<ZoneId> { new("offpeak"), new("morning_peak") }, out var dropped);
 
-        Assert.Equal(["ghost"], dropped);
+        Assert.Equal([new ZoneId("ghost")], dropped);
         Assert.Equal("pv_and_zone:offpeak", narrowed.ToText());
-        Assert.Equal("pv_only", set.Narrow(new HashSet<string>(), out _).ToText());
-        Assert.Equal("any", SourceSet.Any.Narrow(new HashSet<string>(), out var none).ToText());
+        Assert.Equal("pv_only", set.Narrow(new HashSet<ZoneId>(), out _).ToText());
+        Assert.Equal("any", SourceSet.Any.Narrow(new HashSet<ZoneId>(), out var none).ToText());
         Assert.Empty(none);
     }
 
@@ -144,10 +145,10 @@ public sealed class EffectiveValueTests
     {
         SourceSet.TryParse("pv_and_zone:offpeak", out var some, out _);
 
-        Assert.True(some!.AllowsZone("offpeak"));
-        Assert.False(some.AllowsZone("morning_peak"));
-        Assert.False(SourceSet.PvOnly.AllowsZone("offpeak"));
-        Assert.True(SourceSet.Any.AllowsZone("anything"));
+        Assert.True(some!.AllowsZone(new ZoneId("offpeak")));
+        Assert.False(some.AllowsZone(new ZoneId("morning_peak")));
+        Assert.False(SourceSet.PvOnly.AllowsZone(new ZoneId("offpeak")));
+        Assert.True(SourceSet.Any.AllowsZone(new ZoneId("anything")));
     }
 
     [Fact]

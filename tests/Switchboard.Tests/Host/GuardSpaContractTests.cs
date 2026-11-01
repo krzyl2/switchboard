@@ -65,7 +65,7 @@ public sealed partial class GuardSpaContractTests
         { DecisionsContract, "OVERRIDE_MODES", Snake<OverrideMode>() },
         { DecisionsContract, "PRICE_BASES", Snake<PriceBasis>() },
         { DecisionsContract, "VALUE_BASES", Snake<ValueBasis>() },
-        { DecisionsContract, "ENERGY_CLASSES", [.. Snake<EnergyClass>(), "none"] },
+        { DecisionsContract, "ENERGY_CLASSES", [EnergySourceText.Pv, EnergySourceText.Zone, "none"] },
         { DecisionsContract, "SETTLEMENT_MODELS", Snake<SettlementModelId>() },
     };
 
@@ -145,7 +145,7 @@ public sealed partial class GuardSpaContractTests
             OverrideMode.Auto)
         {
             Balance = new BalanceDecisionInputs(240.5, 3100, 1650, 410.25, 150, 525, 1320, false),
-            Economics = new EconomicsDecisionInputs("offpeak", 0.6, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
+            Economics = new EconomicsDecisionInputs("offpeak", 0.6, 0.35, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, TestEnergy.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting),
         };
         return Decision.ForDevice(
             "contract-000000001", at, DeviceName.Parse("heater_l1"), Phase.L1, null, DecisionAction.MarkedUnresponsive, ReasonCode.DeviceUnresponsive,

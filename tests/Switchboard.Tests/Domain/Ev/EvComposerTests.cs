@@ -147,7 +147,7 @@ public sealed class EvComposerTests
         Assert.Null(floor.Request.Deadline);
         Assert.True(floor.Request.Hard);
         Assert.False(floor.Request.Escalate);
-        Assert.Equal(["offpeak"], floor.Request.Sources!.Zones);
+        Assert.Equal([new ZoneId("offpeak")], floor.Request.Sources!.Zones);
         Assert.Equal(SourceSet.PvOnly, cap.Request.Sources);
         Assert.Equal(GoalOnMet.Stop, cap.Request.OnMet);
         Assert.False(cap.Spread);

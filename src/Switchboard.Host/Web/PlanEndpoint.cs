@@ -7,6 +7,7 @@ using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Goals;
@@ -293,7 +294,7 @@ internal static partial class PlanEndpoint
         var first = planned?.Goals.FirstOrDefault();
         return new PlanDeviceDto(name, goals.FirstOrDefault(), goals)
         {
-            Entries = planned is null ? [] : [.. planned.Entries.Select(e => new PlanEntryDto(e.Start, e.End, ApiText.Snake(e.Want), e.Class, e.EnergyKwh, e.MaxPowerW))],
+            Entries = planned is null ? [] : [.. planned.Entries.Select(e => new PlanEntryDto(e.Start, e.End, ApiText.Snake(e.Want), e.Class is { } entryClass ? EnergySourceText.Plan(entryClass) : null, e.EnergyKwh, e.MaxPowerW))],
             ShortfallKwh = planned is null ? null : planned.Goals.Sum(g => g.ShortfallKwh),
             PredictedCompletion = first?.PredictedCompletion,
         };

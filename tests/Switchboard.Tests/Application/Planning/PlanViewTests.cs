@@ -253,7 +253,7 @@ public sealed class PlanViewTests
         // device's own sources in charge (the planner's value test is not the dispatch's to trust blindly).
         var world = new World();
         world.Republish(new PlanState(world.Plan, false, null, [], TimeSpan.FromDays(10)));
-        var zone = world.Plan.Slots.Select(s => s.Slot.Start).First(t => world.Plan.EntryAt(Car, t) is { Want: PlanWant.Run, Class: { } c } && PlanClasses.IsZone(c));
+        var zone = world.Plan.Slots.Select(s => s.Slot.Start).First(t => world.Plan.EntryAt(Car, t) is { Want: PlanWant.Run, Class: EnergySource.Grid });
         var goal = world.Plan.Device(Car)!.Goals[0].Ref;
 
         Assert.True(world.View.For(Car, zone)!.GoalAllowsZone);

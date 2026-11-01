@@ -268,7 +268,7 @@ public sealed partial class DispatchEngine
                 plan.BalanceReason = ReasonCode.BalanceProjectionLow;
                 if (plan.BalanceAllows && economics is not null)
                 {
-                    plan.EnergyClass = EnergyClass.Pv;
+                    plan.EnergyClass = EnergySource.Surplus.Instance;
                 }
             }
             else
@@ -285,8 +285,8 @@ public sealed partial class DispatchEngine
         foreach (var plan in gated.Where(p => kinds.TryGetValue(p, out var kind) && kind == GateKind.Sources && p.EnergyClass is null && p.BasisIndex > 0 && p.BalanceStop is null))
         {
             var device = economics!.Device(plan.Device.Id)!;
-            plan.EnergyClass = plan.PlanKeeps || ZoneOf(economics, device).Ok(running: true) ? EnergyClass.Zone
-                : PvOf(economics, device, surplus, load, 0) is { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold } ? EnergyClass.Pv
+            plan.EnergyClass = plan.PlanKeeps || ZoneOf(economics, device).Ok(running: true) ? new EnergySource.Grid(null)
+                : PvOf(economics, device, surplus, load, 0) is { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold } ? EnergySource.Surplus.Instance
                 : null;
         }
 
@@ -345,7 +345,7 @@ public sealed partial class DispatchEngine
                 }
 
                 var pv = PvOf(economics, high, surplus, running - shed, candidate, commitment);
-                if (pv.Allowance.Decision == AllowanceDecision.Start && (high.Spec.Sources is null || (high.Spec.Sources.Pv && pv.Worth))
+                if (pv.Allowance.Decision == AllowanceDecision.Start && (high.Spec.Sources is null || pv.Worth)
                     && LowerOneStage(cheaper, ReasonCode.ValueRankBelowCutoff))
                 {
                     return true;
@@ -399,7 +399,7 @@ public sealed partial class DispatchEngine
 
         // The surplus holds the run (settlement says start or hold and the value covers the forgone export), and an unknown balance holds it too: a blip of the
         // balance input must not end a run the surplus rule would restart a minute later (v2 stops on an unknown balance only a device Switchboard started).
-        if (device.Spec.Sources!.Pv && PvOf(economics, device, surplus, load, 0) is { Allowance.Decision: AllowanceDecision.Unknown } or { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold })
+        if (PvOf(economics, device, surplus, load, 0) is { Allowance.Decision: AllowanceDecision.Unknown } or { Worth: true, Allowance.Decision: AllowanceDecision.Start or AllowanceDecision.Hold })
         {
             return null;
         }
@@ -414,7 +414,7 @@ public sealed partial class DispatchEngine
     private static int GrantWithSources(EconomicsContext economics, DeviceEcon device, Plan plan, SurplusView surplus, ref double? load, int top, HourlyBalanceSetup config, PlanGate planGate)
     {
         var index = plan.BasisIndex;
-        EnergyClass? granted = null;
+        EnergySource? granted = null;
         ReasonCode? refusal = null;
         ReasonCode? opened = null;
         while (index < top)
@@ -427,7 +427,7 @@ public sealed partial class DispatchEngine
 
             var pv = PvOf(economics, device, surplus, load, candidate, Commitment(plan, index));
             var zone = ZoneOf(economics, device);
-            var pvOk = device.Spec.Sources!.Pv && pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth;
+            var pvOk = pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth;
             var zoneOk = zone.Ok(running: index > 0);
             if (!pvOk && zoneOk && planGate.Defers)
             {
@@ -440,7 +440,7 @@ public sealed partial class DispatchEngine
             {
                 // The class the plan adds, behind everything above (guard, envelope, persistence, lockouts): its slot, or an urgent goal. No price test, no zone-end margin.
                 opened ??= opening;
-                granted ??= EnergyClass.Zone;
+                granted ??= new EnergySource.Grid(null);
                 if (load is { } drawing)
                 {
                     load = drawing + candidate;
@@ -452,11 +452,11 @@ public sealed partial class DispatchEngine
 
             if (!pvOk && !zoneOk)
             {
-                refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
+                refusal = Refusal(economics, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
                 break;
             }
 
-            granted ??= pvOk ? EnergyClass.Pv : EnergyClass.Zone;
+            granted ??= pvOk ? EnergySource.Surplus.Instance : new EnergySource.Grid(null);
             if (load is { } running)
             {
                 load = running + candidate;
@@ -472,10 +472,10 @@ public sealed partial class DispatchEngine
             var next = plan.BasisIndex + 1 < plan.Levels.Length ? Math.Max(0, PlannedPower(plan, plan.BasisIndex + 1, config) - PlannedPower(plan, plan.BasisIndex, config)) : 0;
             var pv = PvOf(economics, device, surplus, load, next, Commitment(plan, plan.BasisIndex));
             var zone = ZoneOf(economics, device);
-            var open = (device.Spec.Sources!.Pv && pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth) || zone.Ok(running: plan.BasisIndex > 0);
+            var open = (pv.Allowance.Decision == AllowanceDecision.Start && pv.Worth) || zone.Ok(running: plan.BasisIndex > 0);
             if (!open)
             {
-                refusal = Refusal(economics, device, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
+                refusal = Refusal(economics, pv, PvOf(economics, device, surplus, load, 0).Allowance.Decision == AllowanceDecision.Start, zone);
             }
         }
 
@@ -484,8 +484,8 @@ public sealed partial class DispatchEngine
         plan.EnergyClass = granted;
         plan.GrantReason = opened is { } byPlan && index > plan.BasisIndex ? byPlan : granted switch
         {
-            EnergyClass.Pv => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusAvailable : ReasonCode.BalanceSurplus,
-            EnergyClass.Zone => ReasonCode.ZoneAllowed,
+            EnergySource.Surplus => economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusAvailable : ReasonCode.BalanceSurplus,
+            EnergySource.Grid => ReasonCode.ZoneAllowed,
             _ => null,
         };
         return index;
@@ -511,7 +511,7 @@ public sealed partial class DispatchEngine
 
     private static ZoneState ZoneOf(EconomicsContext economics, DeviceEcon device)
     {
-        if (economics.Zone is not { } zone || device.Spec.Sources is not { } sources || !sources.AllowsZone(zone))
+        if (ZoneId.Of(economics.Zone) is not { } zone || device.Spec.Sources is not { } sources || !sources.AllowsZone(zone))
         {
             return default;
         }
@@ -527,24 +527,21 @@ public sealed partial class DispatchEngine
     /// settlement says energy is wanted but the value does not cover the price, or when there is surplus that the candidate does
     /// not fit in, or while the settlement says Hold (the projection sits inside the band, as in 0.9). With no such class open the reason is source_not_allowed: what is available now is not among the sources.
     /// </summary>
-    private static ReasonCode Refusal(EconomicsContext economics, DeviceEcon device, PvState pv, bool surplusPresent, ZoneState zone)
+    private static ReasonCode Refusal(EconomicsContext economics, PvState pv, bool surplusPresent, ZoneState zone)
     {
-        if (device.Spec.Sources!.Pv)
+        if (pv.Allowance.Decision == AllowanceDecision.Unknown)
         {
-            if (pv.Allowance.Decision == AllowanceDecision.Unknown)
-            {
-                return ReasonCode.BalanceUnknown;
-            }
+            return ReasonCode.BalanceUnknown;
+        }
 
-            if (pv.Allowance.Decision == AllowanceDecision.Start)
-            {
-                return ReasonCode.ValueBelowCost;
-            }
+        if (pv.Allowance.Decision == AllowanceDecision.Start)
+        {
+            return ReasonCode.ValueBelowCost;
+        }
 
-            if (surplusPresent || pv.Allowance.Decision == AllowanceDecision.Hold)
-            {
-                return economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow;
-            }
+        if (surplusPresent || pv.Allowance.Decision == AllowanceDecision.Hold)
+        {
+            return economics.Setup.Settlement.Id == SettlementModelId.NetBilling ? ReasonCode.SurplusLow : ReasonCode.BalanceProjectionLow;
         }
 
         return zone is { Allowed: true, Worth: false } ? ReasonCode.ValueBelowCost : ReasonCode.SourceNotAllowed;

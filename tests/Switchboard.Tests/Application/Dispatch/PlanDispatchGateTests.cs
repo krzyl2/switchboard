@@ -93,7 +93,7 @@ public sealed class PlanDispatchGateTests
         var start = s.FirstStart();
 
         Assert.Equal(ReasonCode.BalanceSurplus, start.Reason);
-        Assert.Equal(Switchboard.Domain.Economics.EnergyClass.Pv, start.Inputs.Dispatch!.Economics!.Class);
+        Assert.Equal(TestEnergy.Pv, start.Inputs.Dispatch!.Economics!.Class);
     }
 
     [Theory]
@@ -331,8 +331,8 @@ public sealed class PlanDispatchGateTests
         var start = s.FirstStart();
 
         Assert.Equal(ReasonCode.PlanSlotTarget, start.Reason);
-        Assert.Equal(Switchboard.Domain.Economics.EnergyClass.Zone, start.Inputs.Dispatch!.Economics!.Class);
-        Assert.Equal(("run", "zone:offpeak", "full"), (start.Inputs.Dispatch.Plan!.Want, start.Inputs.Dispatch.Plan.Class, start.Inputs.Dispatch.Plan.Mode));
+        Assert.Equal(TestEnergy.Zone, start.Inputs.Dispatch!.Economics!.Class);
+        Assert.Equal(("run", "zone:offpeak", "full"), (start.Inputs.Dispatch.Plan!.Want, Switchboard.Domain.Economics.EnergySourceText.Plan(start.Inputs.Dispatch.Plan.Class!), start.Inputs.Dispatch.Plan.Mode));
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public sealed class PlanDispatchGateTests
 
         Assert.True(v2.Stopped());
         Assert.False(s.Stopped());
-        Assert.Equal(Switchboard.Domain.Economics.EnergyClass.Zone, s.S.Dispatches[^1].Economics!.Devices.Single(d => d.Device == Dev).Class);
+        Assert.Equal(TestEnergy.Zone, s.S.Dispatches[^1].Economics!.Devices.Single(d => d.Device == Dev).Class);
     }
 
     // Urgent --------------------------------------------------------------------------------------------------------------------------------

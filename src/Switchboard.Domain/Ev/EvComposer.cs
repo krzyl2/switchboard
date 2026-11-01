@@ -171,7 +171,7 @@ public static class EvComposer
         var fullRequested = input.FullChargeRequested || input.Mode == EvMode.FullCharge;
         var midnight = NextLocalMidnight(input.Now, input.Zone);
         var cheap = input.CheapZone;
-        var cheapSources = cheap is null ? SourceSet.PvOnly : new SourceSet(true, false, [cheap]);
+        var cheapSources = cheap is null ? SourceSet.PvOnly : SourceSet.PvAnd([new ZoneId(cheap)]);
         var candidates = new List<Candidate>();
         FrozenTarget? frozen = input.Frozen;
         var weeklyReached = false;

@@ -284,7 +284,7 @@ public static class DecisionJson
             writer.WriteNumber("v_eff", economics.VEff);
             writer.WriteString("value_basis", Snake(economics.ValueBasis));
             writer.WriteNumber("order_key", economics.OrderKey);
-            writer.WriteString("class", economics.Class is { } energyClass ? Snake(energyClass) : NoEnergyClass);
+            writer.WriteString("class", economics.Class is { } energyClass ? EnergySourceText.Class(energyClass) : NoEnergyClass);
             WriteOptional(writer, "sources", economics.Sources);
             writer.WriteString("settlement", Snake(economics.Settlement));
             writer.WriteEndObject();
@@ -299,7 +299,7 @@ public static class DecisionJson
             writer.WriteString("slot_start", FormatTime(plan.SlotStart));
             writer.WriteString("slot_end", FormatTime(plan.SlotEnd));
             writer.WriteString("want", plan.Want);
-            WriteOptional(writer, "class", plan.Class);
+            WriteOptional(writer, "class", plan.Class is { } planClass ? EnergySourceText.Plan(planClass) : null);
             writer.WriteNumber("energy_kwh", plan.EnergyKwh);
             writer.WriteNumber("delivered_kwh", plan.DeliveredKwh);
             writer.WriteNumber("max_power_w", plan.MaxPowerW);
@@ -457,9 +457,10 @@ public static class DecisionJson
         var want = String(e, "want");
         var mode = String(e, "mode");
         var status = String(e, "status");
-        var energyClass = OptionalString(e, "class");
+        var energyClassText = OptionalString(e, "class");
+        EnergySource? energyClass = null;
         if (!PlanDecisionInputs.Wants.Contains(want) || !PlanDecisionInputs.Modes.Contains(mode) || status != PlanDecisionInputs.FreshStatus
-            || (energyClass is not null && energyClass != "pv" && energyClass != "zone" && !energyClass.StartsWith("zone:", StringComparison.Ordinal)))
+            || (energyClassText is not null && !EnergySourceText.TryParsePlan(energyClassText, out energyClass)))
         {
             throw new FormatException("plan");
         }
@@ -504,7 +505,7 @@ public static class DecisionJson
             Double(e, "v_eff"),
             EnumValue<ValueBasis>(e, "value_basis"),
             Double(e, "order_key"),
-            energyClass == NoEnergyClass ? null : Parse<EnergyClass>(energyClass),
+            energyClass == NoEnergyClass ? null : EnergySourceText.TryParseClass(energyClass, out var parsedClass) ? parsedClass : throw new FormatException("class"),
             sources,
             EnumValue<SettlementModelId>(e, "settlement"));
     }

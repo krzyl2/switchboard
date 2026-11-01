@@ -28,7 +28,7 @@ internal sealed class ScriptedPlanView(PlannerDispatchMode mode) : IPlanView
 
     /// <summary>An entry around <paramref name="now"/> (a slot of an hour, half of it on each side).</summary>
     public static PlanEntryView Entry(DateTimeOffset now, PlanWant want, string? klass = null, double energyKwh = 5, double maxPowerW = 10_000, bool goalAllowsZone = true) =>
-        new("plan-1", now - TimeSpan.FromMinutes(5), now - TimeSpan.FromMinutes(30), now + TimeSpan.FromMinutes(30), want, klass, energyKwh, maxPowerW, goalAllowsZone);
+        new("plan-1", now - TimeSpan.FromMinutes(5), now - TimeSpan.FromMinutes(30), now + TimeSpan.FromMinutes(30), want, EnergySourceText.TryParsePlan(klass, out var energyClass) ? energyClass : null, energyKwh, maxPowerW, goalAllowsZone);
 }
 
 /// <summary>What is in force now, as the plan view compares a plan with it; every answer can be changed by the test.</summary>

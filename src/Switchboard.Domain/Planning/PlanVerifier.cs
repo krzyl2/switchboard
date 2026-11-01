@@ -144,7 +144,7 @@ public static class PlanVerifier
                     capacity[(key.Key, index)] = capacity.GetValueOrDefault((key.Key, index)) + (entry.EnergyKwh * key.Share);
                 }
 
-                if (PlanClasses.IsPv(entry.Class))
+                if (entry.Class is EnergySource.Surplus)
                 {
                     surplusUsed[index] += entry.EnergyKwh;
                 }
@@ -207,18 +207,13 @@ public static class PlanVerifier
         foreach (var goal in goals.Where(g => !GoalMath.IsMet(g.RemainingKwh)))
         {
             var sources = goal.Sources ?? device.Sources ?? SourceSet.Any;
-            if (PlanClasses.IsPv(entry.Class))
+            if (entry.Class is EnergySource.Surplus)
             {
-                if (sources.Pv || (entry.Want == PlanWant.Urgent && goal.Hard))
-                {
-                    return true;
-                }
-
-                continue;
+                return true;
             }
 
-            var zone = PlanClasses.ZoneId(entry.Class) ?? slot.Zone;
-            if (sources.AllZones || (zone is not null && sources.Zones.Contains(zone)) || (entry.Want == PlanWant.Urgent && goal.Hard))
+            var zone = (entry.Class as EnergySource.Grid)?.Zone ?? ZoneId.Of(slot.Zone);
+            if (sources.AllZones || (zone is { } zoneId && sources.Zones.Contains(zoneId)) || (entry.Want == PlanWant.Urgent && goal.Hard))
             {
                 return true;
             }
@@ -293,7 +288,7 @@ public static class PlanVerifier
         plan.Devices.Any(other =>
             other.Device != device.Id
             && devices.TryGetValue(other.Device, out var o)
-            && other.Entries.Any(e => e.Want is PlanWant.Run or PlanWant.Urgent && e.EnergyKwh > Tolerance && (PlanClasses.IsPv(e.Class) || o.Keys.Any(k => device.Keys.Any(x => x.Key == k.Key)))));
+            && other.Entries.Any(e => e.Want is PlanWant.Run or PlanWant.Urgent && e.EnergyKwh > Tolerance && (e.Class is EnergySource.Surplus || o.Keys.Any(k => device.Keys.Any(x => x.Key == k.Key)))));
 
     /// <summary>The most the device could draw for the goal before its deadline with nothing else competing, from the raw input.</summary>
     private static double DeliverableAlone(PlanInput input, PlanDevice device, GoalRequest goal)
@@ -321,12 +316,12 @@ public static class PlanVerifier
             }
 
             var reach = ceilingKw * (end - start).TotalHours;
-            var grid = slot.Import is not null && (anyZone || sources.AllZones || (slot.Zone is not null && sources.Zones.Contains(slot.Zone)));
+            var grid = slot.Import is not null && (anyZone || sources.AllZones || (ZoneId.Of(slot.Zone) is { } slotZone && sources.Zones.Contains(slotZone)));
             if (grid)
             {
                 total += reach;
             }
-            else if (sources.Pv && slot.SurplusKwh > Tolerance)
+            else if (slot.SurplusKwh > Tolerance)
             {
                 // Without the grid the slot holds only its surplus.
                 total += Math.Min(reach, slot.SurplusKwh);

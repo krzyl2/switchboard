@@ -19,7 +19,7 @@ public sealed partial class DispatchEngine
     private EconomicsContext? _economics;
 
     /// <summary>The energy class each device was allowed on at the last cycle boundary; kept between boundaries so the read-only view does not flicker.</summary>
-    private readonly Dictionary<DeviceName, EnergyClass?> _classes = [];
+    private readonly Dictionary<DeviceName, EnergySource?> _classes = [];
     private (EconomicsSetup Setup, string ZoneId, Tariff? Import, Tariff? Export)? _tariffs;
 
     // Whether each dynamic price was at its fallback at the previous step: a change is an event, a steady state is not.
@@ -131,7 +131,7 @@ public sealed partial class DispatchEngine
     private sealed record DeviceEcon(DeviceEconomics Spec, EffectiveValue VEff, double OrderKey);
 
     /// <summary>The economics of one step, read by the allowance gate, the order and the exposure.</summary>
-    private sealed class EconomicsContext(EconomicsSetup setup, DateTimeOffset now, Tariff? importTariff, PriceBook prices, Dictionary<DeviceName, DeviceEcon> devices, Dictionary<DeviceName, EnergyClass?> classes, PriceInputs? priceInputs)
+    private sealed class EconomicsContext(EconomicsSetup setup, DateTimeOffset now, Tariff? importTariff, PriceBook prices, Dictionary<DeviceName, DeviceEcon> devices, Dictionary<DeviceName, EnergySource?> classes, PriceInputs? priceInputs)
     {
         private TariffChange? _next;
         private bool _nextKnown;
@@ -160,13 +160,13 @@ public sealed partial class DispatchEngine
             }
         }
 
-        public Dictionary<DeviceName, EnergyClass?> Classes => classes;
+        public Dictionary<DeviceName, EnergySource?> Classes => classes;
 
         public DeviceEcon? Device(DeviceName name) => devices.GetValueOrDefault(name);
 
         public IReadOnlyDictionary<DeviceName, double> Keys() => devices.ToDictionary(d => d.Key, d => d.Value.OrderKey);
 
-        public EconomicsDecisionInputs? Block(DeviceName name, EnergyClass? energyClass) =>
+        public EconomicsDecisionInputs? Block(DeviceName name, EnergySource? energyClass) =>
             Device(name) is { } device
                 ? new EconomicsDecisionInputs(
                     Zone,

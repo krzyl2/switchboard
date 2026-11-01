@@ -121,9 +121,9 @@ public sealed class EconomicsNeverWidensTests
 
                 Assert.True(economics.Class is not null, $"{where} rises with no energy class");
 
-                if (economics.Class == EnergyClass.Zone)
+                if (economics.Class == TestEnergy.Zone)
                 {
-                    Assert.True(sources is not null && economics.Zone is not null && sources.AllowsZone(economics.Zone), $"{where} rises on the zone {economics.Zone} that is not among its sources (or declares none)");
+                    Assert.True(sources is not null && economics.Zone is not null && sources.AllowsZone(new ZoneId(economics.Zone)), $"{where} rises on the zone {economics.Zone} that is not among its sources (or declares none)");
                     Assert.True(economics.ImportPrice is { } import && economics.VEff - import >= minMargin - 1e-9, $"{where} buys at {economics.ImportPrice} with a value of {economics.VEff}");
                 }
                 else
@@ -148,7 +148,7 @@ public sealed class EconomicsNeverWidensTests
 
                 if (sources is { Zones.IsEmpty: true, AllZones: false })
                 {
-                    Assert.True(economics.Class == EnergyClass.Pv, $"{where} is pv_only and rises on {economics.Class}");
+                    Assert.True(economics.Class == TestEnergy.Pv, $"{where} is pv_only and rises on {economics.Class}");
                 }
 
                 granted += watts;
@@ -184,7 +184,7 @@ public sealed class EconomicsNeverWidensTests
             var s = Build(seed).S;
             foreach (var decision in s.Decisions.Where(d => d.Action == DecisionAction.SwitchOn && d.Inputs.Dispatch?.Economics is not null))
             {
-                classes.Add(decision.Inputs.Dispatch!.Economics!.Class.ToString()!);
+                classes.Add(decision.Inputs.Dispatch!.Economics!.Class is { } energyClass ? EnergySourceText.Class(energyClass) : "");
             }
 
             foreach (var state in s.Dispatches.SelectMany(d => d.Devices).Where(d => d.Pending is { } p && p.ToString() is "SourceNotAllowed" or "ValueBelowCost" or "BalanceUnknown" or "BalanceProjectionLow" or "SurplusLow"))
@@ -193,8 +193,8 @@ public sealed class EconomicsNeverWidensTests
             }
         }
 
-        Assert.Contains("Pv", classes);
-        Assert.Contains("Zone", classes);
+        Assert.Contains("pv", classes);
+        Assert.Contains("zone", classes);
         Assert.Superset(new HashSet<string> { "SourceNotAllowed", "ValueBelowCost", "BalanceUnknown", "BalanceProjectionLow" }, pending);
     }
 }

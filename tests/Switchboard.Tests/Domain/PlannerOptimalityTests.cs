@@ -294,7 +294,7 @@ public sealed class PlannerOptimalityTests(ITestOutputHelper output)
                     Assert.True(kwh <= (limitW / 1000 * hours) + 1e-6, $"seed {seed}: {key} carries {kwh} kWh in slot {slot}");
                 }
 
-                var pv = names.Sum(n => plan.Device(n)!.Entries[slot] is { Class: PlanClasses.Pv } e ? e.EnergyKwh : 0);
+                var pv = names.Sum(n => plan.Device(n)!.Entries[slot] is { Class: EnergySource.Surplus } e ? e.EnergyKwh : 0);
                 Assert.True(pv <= plan.Slots[slot].SurplusKwh + 1e-6, $"seed {seed}: {pv} kWh on surplus in slot {slot}");
                 foreach (var device in devices)
                 {

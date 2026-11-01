@@ -86,7 +86,7 @@ public sealed class EconomicsSpaContractTests
                 SettlementModelId.HourlyNetting,
                 [
                     new DeviceEconomicsView(Heater, new EffectiveValue(0.35, ValueBasis.Static), 0.35, SourceSet.PvOnly, null),
-                    new DeviceEconomicsView(Car, new EffectiveValue(1.80, ValueBasis.Followed), 1.80, new SourceSet(true, false, ["offpeak"]), EnergyClass.Zone),
+                    new DeviceEconomicsView(Car, new EffectiveValue(1.80, ValueBasis.Followed), 1.80, SourceSet.PvAnd([new ZoneId("offpeak")]), TestEnergy.Zone),
                 ]),
         };
 
@@ -107,7 +107,7 @@ public sealed class EconomicsSpaContractTests
         Assert.Equal(Names<ValueBasis>(), Spa("VALUE_BASES"));
         Assert.Equal(Names<ValueFollows>(), Spa("VALUE_FOLLOWS"));
         Assert.Equal(Names<SettlementModelId>(), Spa("SETTLEMENT_MODELS"));
-        Assert.Equal([.. Names<EnergyClass>().Append("none").Order(StringComparer.Ordinal)], Spa("ENERGY_CLASSES"));
+        Assert.Equal([.. new[] { EnergySourceText.Pv, EnergySourceText.Zone, "none" }.Order(StringComparer.Ordinal)], Spa("ENERGY_CLASSES"));
         Assert.Equal(["against the controlled loads being off"], SpaContract.List(Contract, "SAVINGS_BASES"));
         Assert.Equal(EconomicsEndpoint.SavingsBasis, SpaContract.List(Contract, "SAVINGS_BASES").Single());
         // The three shapes of a price spec the endpoint names (EconomicsEndpoint.Kind).

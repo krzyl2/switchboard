@@ -89,7 +89,7 @@ public sealed class DecisionsEndpointTests
         };
         Decision Start(string id, DateTimeOffset at, string device, Phase phase, ReasonCode reason, EconomicsDecisionInputs? economics) =>
             Decision.ForDevice(id, at, DeviceName.Parse(device), phase, null, DecisionAction.SwitchOn, reason, OperatingMode.Shadow, Inputs(economics), DecisionOrigin.Dispatch, null, null, refusedBy: new RefusalReason(ReasonCode.ModeShadow));
-        var zone = Start("zone", Noon, "ev_charger", Phase.L2, ReasonCode.ZoneAllowed, new EconomicsDecisionInputs("offpeak", 0.60, null, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, EnergyClass.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting));
+        var zone = Start("zone", Noon, "ev_charger", Phase.L2, ReasonCode.ZoneAllowed, new EconomicsDecisionInputs("offpeak", 0.60, null, PriceBasis.Zone, 2.03, ValueBasis.Static, 2.03, TestEnergy.Zone, "pv_and_zone:offpeak", SettlementModelId.HourlyNetting));
         var refused = Start("none", Noon.AddSeconds(1), "heater_l1", Phase.L1, ReasonCode.SourceNotAllowed, new EconomicsDecisionInputs(null, null, null, null, 0.35, ValueBasis.Fallback, 0.35, null, null, SettlementModelId.NetBilling));
         var without = Start("without", Noon.AddSeconds(2), "heater_l2", Phase.L2, ReasonCode.HeadroomAvailable, null);
         factory.Services.GetRequiredService<IDecisionRecorder>().Record([zone, refused, without]);

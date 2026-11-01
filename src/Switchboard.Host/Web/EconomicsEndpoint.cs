@@ -232,7 +232,7 @@ internal static class EconomicsEndpoint
                     ApiText.Snake(value.Basis),
                     d.Sources?.ToText(),
                     d.SourcesDeclared?.ToText(),
-                    step is null ? null : ApiText.SnakeOrNull(step.Devices.FirstOrDefault(v => v.Device == d.Id)?.Class) ?? "none");
+                    step is null ? null : step.Devices.FirstOrDefault(v => v.Device == d.Id)?.Class is { } energyClass ? EnergySourceText.Class(energyClass) : "none");
             })];
 
     private static TariffNowDto Tariff(Tariff tariff, PriceSpec spec, DateTimeOffset now, PriceInputs? prices)

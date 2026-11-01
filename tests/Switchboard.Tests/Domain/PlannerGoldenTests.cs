@@ -38,7 +38,7 @@ public sealed class PlannerGoldenTests(Xunit.ITestOutputHelper output)
         {
             var entry = Entry(plan, Car, Local(2026, 10, 27, hour));
             Assert.Equal(PlanWant.Run, entry.Want);
-            Assert.Equal(PlanClasses.Pv, entry.Class);
+            Assert.Equal(TestEnergy.Pv, entry.Class);
             Assert.Equal(kwh, entry.EnergyKwh, DocTolerance);
             Assert.Equal(2990, entry.MaxPowerW, 6);
             Assert.NotNull(entry.Goal);
@@ -111,7 +111,7 @@ public sealed class PlannerGoldenTests(Xunit.ITestOutputHelper output)
         var entries = plan.Device(Car)!.Entries.Where(e => e.Want == PlanWant.Run).ToList();
         Assert.Equal([Local(2026, 10, 26, 21), Local(2026, 10, 26, 22), Local(2026, 10, 26, 23), Local(2026, 10, 27, 0)], entries.Select(e => e.Start).ToArray());
         Assert.Equal([2.99, 2.99, 2.99, 0.93], entries.Select(e => Math.Round(e.EnergyKwh, 2)).ToArray());
-        Assert.All(entries, e => Assert.Equal("zone:offpeak", e.Class));
+        Assert.All(entries, e => Assert.Equal(TestEnergy.ZoneOf("offpeak"), e.Class));
         Assert.Equal(5.94, plan.Cost.Planned, DocTolerance);
         Assert.Contains(PlanNote.PvForecastMissing, plan.Notes);
     }

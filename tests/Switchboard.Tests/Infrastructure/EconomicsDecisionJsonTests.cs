@@ -99,7 +99,7 @@ public sealed class EconomicsDecisionJsonTests
 
         var read = DecisionJson.TryParse(DecisionJson.Serialize(decision))!.Inputs.Dispatch!.Economics!;
 
-        Assert.Equal((null, 0.80, null, PriceBasis.Flat, EnergyClass.Pv), (read.Zone, read.ImportPrice, read.ExportPrice, read.PriceBasis, read.Class));
+        Assert.Equal((null, 0.80, null, PriceBasis.Flat, TestEnergy.Pv), (read.Zone, read.ImportPrice, read.ExportPrice, read.PriceBasis, read.Class));
     }
 
     [Theory]

@@ -179,7 +179,7 @@ public sealed record EconomicsDecisionInputs(
     double VEff,
     ValueBasis ValueBasis,
     double OrderKey,
-    EnergyClass? Class,
+    EnergySource? Class,
     string? Sources,
     SettlementModelId Settlement);
 
@@ -190,7 +190,7 @@ public sealed record EconomicsDecisionInputs(
 /// </summary>
 /// <param name="PlanId">The plan's content fingerprint.</param>
 /// <param name="Want">run, defer, done or urgent.</param>
-/// <param name="Class">pv or zone:&lt;id&gt;; null for a want that carries none.</param>
+/// <param name="Class">Surplus (text pv) or grid energy in a zone (text zone:&lt;id&gt;); null for a want that carries none.</param>
 /// <param name="EnergyKwh">The slot's budget for the device.</param>
 /// <param name="DeliveredKwh">What dispatch counted the device drawing in the slot since it began watching it (an estimate that can only fall short).</param>
 /// <param name="MaxPowerW">The slot's ceiling.</param>
@@ -201,7 +201,7 @@ public sealed record PlanDecisionInputs(
     DateTimeOffset SlotStart,
     DateTimeOffset SlotEnd,
     string Want,
-    string? Class,
+    EnergySource? Class,
     double EnergyKwh,
     double DeliveredKwh,
     double MaxPowerW,

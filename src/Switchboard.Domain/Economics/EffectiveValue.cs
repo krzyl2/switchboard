@@ -51,29 +51,21 @@ public readonly record struct EffectiveValue(double PerKwh, ValueBasis Basis)
     }
 }
 
-/// <summary>Which energy a kWh is: surplus (otherwise exported) or bought in a tariff zone.</summary>
-public enum EnergyClass
-{
-    Pv,
-    Zone,
-}
-
-/// <summary>What a kWh of one class costs a device at an instant.</summary>
-/// <param name="Class">Surplus or zone.</param>
-/// <param name="Zone">The zone id for the zone class; null for surplus.</param>
+/// <summary>What a kWh of one energy source costs a device at an instant.</summary>
+/// <param name="Source">Surplus, or grid energy in the zone it is bought in.</param>
 /// <param name="PerKwh">Currency per kWh.</param>
-public readonly record struct EnergyCost(EnergyClass Class, string? Zone, double PerKwh)
+public readonly record struct EnergyCost(EnergySource Source, double PerKwh)
 {
     /// <summary>Surplus costs the forgone export income; null (the test is off, stated in the API) when no export price exists.</summary>
     public static EnergyCost? Pv(ISettlementModel model, DateTimeOffset t, PriceBook prices)
     {
         ArgumentNullException.ThrowIfNull(model);
-        return model.ExportValue(t, prices) is { } price ? new EnergyCost(EnergyClass.Pv, null, price.PerKwh) : null;
+        return model.ExportValue(t, prices) is { } price ? new EnergyCost(EnergySource.Surplus.Instance, price.PerKwh) : null;
     }
 
     /// <summary>Energy bought in the active zone costs the import price; null when no import price exists.</summary>
     public static EnergyCost? ZoneEnergy(PriceBook prices) =>
-        prices.Import is { } price ? new EnergyCost(EnergyClass.Zone, price.Zone, price.PerKwh) : null;
+        prices.Import is { } price ? new EnergyCost(new EnergySource.Grid(ZoneId.Of(price.Zone)), price.PerKwh) : null;
 }
 
 public static class ValueTest

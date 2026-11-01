@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Planning;
 
@@ -529,7 +530,7 @@ public sealed class PlannerService : IPlanTrigger
             var scale = (next.End - next.Start) / (current.End - current.Start);
             var kept = current with { Start = next.Start, End = next.End, EnergyKwh = current.EnergyKwh * scale };
             var holding = Hold(device, next, kept);
-            if (PlanClasses.IsPv(kept.Class))
+            if (kept.Class is EnergySource.Surplus)
             {
                 heldSurplus += holding.Entries.First(e => e.Start == next.Start).EnergyKwh;
             }
@@ -617,7 +618,7 @@ public sealed class PlannerService : IPlanTrigger
             return true;
         }
 
-        var signature = string.Create(CultureInfo.InvariantCulture, $"{next.Want}|{next.Class}|{nextPower:0.###}");
+        var signature = string.Create(CultureInfo.InvariantCulture, $"{next.Want}|{(next.Class is { } nextClass ? EnergySourceText.Plan(nextClass) : null)}|{nextPower:0.###}");
         var count = _pending.TryGetValue(device, out var known) && known.Signature == signature ? known.Count + 1 : 1;
         if (count >= parameters.AdoptCycles)
         {

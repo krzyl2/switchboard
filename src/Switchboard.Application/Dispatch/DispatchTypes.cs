@@ -159,7 +159,7 @@ public sealed record BalanceView(double? BalanceWh, Watts? Free, Watts? Load, Ti
 public sealed record EconomicsView(string? Zone, PricePoint? Import, PricePoint? Export, SettlementModelId Settlement, ImmutableArray<DeviceEconomicsView> Devices);
 
 /// <param name="Class">The energy class that allows the device now; null when neither the surplus nor the active zone does.</param>
-public sealed record DeviceEconomicsView(DeviceName Device, EffectiveValue VEff, double OrderKey, SourceSet? Sources, EnergyClass? Class);
+public sealed record DeviceEconomicsView(DeviceName Device, EffectiveValue VEff, double OrderKey, SourceSet? Sources, EnergySource? Class);
 
 public enum SettlingStatus
 {

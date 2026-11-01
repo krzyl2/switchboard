@@ -52,9 +52,9 @@ public static class Planner
         request.Device.Value + "@" + (request.Deadline is { } deadline ? deadline.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture) : "horizon");
 
     /// <param name="CapW">The ceiling the entry carries for this energy when a goal spread it over its window (<see cref="GoalRequest.Spread"/>); null: the device's ceiling.</param>
-    private readonly record struct Alloc(int Slot, bool Pv, string? Zone, double Kwh, double Cost, bool Urgent, double? CapW = null);
+    private readonly record struct Alloc(int Slot, EnergySource Source, double Kwh, double Cost, bool Urgent, double? CapW = null);
 
-    private readonly record struct Cell(int Slot, bool Pv, string? Zone, double Cost, double AvailHours);
+    private readonly record struct Cell(int Slot, EnergySource Source, double Cost, double AvailHours);
 
     private sealed class Work(GoalRequest request, PlanDevice device)
     {
@@ -326,7 +326,7 @@ public static class Planner
             {
                 // Urgent: from now, earliest first, whatever the plan would rather wait for (the forecast may have failed).
                 var anyZone = w.Escalate || w.Missed || w.Infeasible;
-                var cells = Cells(w, anyZone, valueTest: false).OrderBy(c => c.Slot).ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => Key(c.Cost)).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
+                var cells = Cells(w, anyZone, valueTest: false).OrderBy(c => c.Slot).ThenBy(c => c.Source is EnergySource.Surplus ? 0 : 1).ThenBy(c => Key(c.Cost)).ThenBy(c => c.Source, EnergySource.Ordering).ToList();
                 Fill(_state, w, cells, w.Need, w.Allocs, urgent: true);
                 return;
             }
@@ -334,11 +334,11 @@ public static class Planner
             // A spread goal finishes as late as its window allows (the equal-cost tie goes to the later slot); every other goal keeps the earliest.
             var regularCells = Cells(w, anyZone: false, valueTest: !w.Hard);
             var regular = (w.Request.Spread ? regularCells.OrderBy(c => Key(c.Cost)).ThenByDescending(c => c.Slot) : regularCells.OrderBy(c => Key(c.Cost)).ThenBy(c => c.Slot))
-                .ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
+                .ThenBy(c => c.Source, EnergySource.Ordering).ToList();
             Fill(_state, w, regular, w.Need, w.Allocs, urgent: false);
             if (w.Hard && w.Escalate && !w.BeyondHorizon && w.Shortfall > Tolerance)
             {
-                var extended = Cells(w, anyZone: true, valueTest: false).OrderBy(c => Key(c.Cost)).ThenBy(c => c.Slot).ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
+                var extended = Cells(w, anyZone: true, valueTest: false).OrderBy(c => Key(c.Cost)).ThenBy(c => c.Slot).ThenBy(c => c.Source, EnergySource.Ordering).ToList();
                 var before = w.Placed;
                 Fill(_state, w, extended, w.Shortfall, w.Allocs, urgent: true);
                 w.Escalated = w.Placed > before + Tolerance;
@@ -365,7 +365,7 @@ public static class Planner
                 return;
             }
 
-            var grid = w.Allocs.Where(a => !a.Pv && !a.Urgent && a.CapW is null).ToList();
+            var grid = w.Allocs.Where(a => a.Source is not EnergySource.Surplus && !a.Urgent && a.CapW is null).ToList();
             if (grid.Count == 0)
             {
                 return;
@@ -376,7 +376,7 @@ public static class Planner
             var cells = new Dictionary<int, Cell>();
             foreach (var cell in Cells(w, anyZone: false, valueTest: !w.Hard))
             {
-                if (!cell.Pv && Key(cell.Cost) == level)
+                if (cell.Source is not EnergySource.Surplus && Key(cell.Cost) == level)
                 {
                     cells.TryAdd(cell.Slot, cell);
                 }
@@ -466,7 +466,7 @@ public static class Planner
         {
             foreach (var a in allocs)
             {
-                Commit(_state, w, new Cell(a.Slot, a.Pv, a.Zone, a.Cost, 0), a.Kwh, w.Allocs, a.Urgent, a.CapW);
+                Commit(_state, w, new Cell(a.Slot, a.Source, a.Cost, 0), a.Kwh, w.Allocs, a.Urgent, a.CapW);
             }
         }
 
@@ -485,18 +485,18 @@ public static class Planner
                 }
 
                 var slot = _slots[t];
-                if (sources.Pv && slot.SurplusKwh > Tolerance)
+                if (slot.SurplusKwh > Tolerance)
                 {
                     var cost = slot.Export?.PerKwh ?? 0;
                     if (!valueTest || slot.Export is null || WorthIt(w, t, cost))
                     {
-                        cells.Add(new Cell(t, true, null, cost, avail));
+                        cells.Add(new Cell(t, EnergySource.Surplus.Instance, cost, avail));
                     }
                 }
 
-                if (slot.Import is { } import && (anyZone || sources.AllZones || (slot.Zone is not null && sources.Zones.Contains(slot.Zone))) && (!valueTest || WorthIt(w, t, import.PerKwh)))
+                if (slot.Import is { } import && (anyZone || sources.AllZones || (ZoneId.Of(slot.Zone) is { } slotZone && sources.Zones.Contains(slotZone))) && (!valueTest || WorthIt(w, t, import.PerKwh)))
                 {
-                    cells.Add(new Cell(t, false, slot.Zone, import.PerKwh, avail));
+                    cells.Add(new Cell(t, new EnergySource.Grid(ZoneId.Of(slot.Zone)), import.PerKwh, avail));
                 }
             }
 
@@ -527,7 +527,7 @@ public static class Planner
                 capacity = Math.Min(capacity, state.Cap.TryGetValue(key.Key, out var left) ? left[t] / key.Share : 0);
             }
 
-            if (cell.Pv)
+            if (cell.Source is EnergySource.Surplus)
             {
                 capacity = Math.Min(capacity, state.Pv[t]);
             }
@@ -576,19 +576,19 @@ public static class Planner
                 }
             }
 
-            if (cell.Pv)
+            if (cell.Source is EnergySource.Surplus)
             {
                 state.Pv[t] -= kwh;
             }
 
-            var index = into.FindIndex(a => a.Slot == t && a.Pv == cell.Pv && a.Zone == cell.Zone && a.Urgent == urgent && a.CapW == capW);
+            var index = into.FindIndex(a => a.Slot == t && a.Source == cell.Source && a.Urgent == urgent && a.CapW == capW);
             if (index >= 0)
             {
                 into[index] = into[index] with { Kwh = into[index].Kwh + kwh };
             }
             else
             {
-                into.Add(new Alloc(t, cell.Pv, cell.Zone, kwh, cell.Cost, urgent, capW));
+                into.Add(new Alloc(t, cell.Source, kwh, cell.Cost, urgent, capW));
             }
         }
 
@@ -613,7 +613,7 @@ public static class Planner
                     }
                 }
 
-                if (a.Pv)
+                if (a.Source is EnergySource.Surplus)
                 {
                     _state.Pv[a.Slot] += a.Kwh;
                 }
@@ -782,7 +782,7 @@ public static class Planner
             foreach (var w in ordered)
             {
                 var sources = ownSources ? w.Device.Sources ?? SourceSet.Any : SourceSet.Any;
-                var cells = Cells(w, anyZone: false, valueTest: false, sources).OrderBy(c => c.Slot).ThenBy(c => c.Pv ? 0 : 1).ThenBy(c => Key(c.Cost)).ThenBy(c => c.Zone, StringComparer.Ordinal).ToList();
+                var cells = Cells(w, anyZone: false, valueTest: false, sources).OrderBy(c => c.Slot).ThenBy(c => c.Source is EnergySource.Surplus ? 0 : 1).ThenBy(c => Key(c.Cost)).ThenBy(c => c.Source, EnergySource.Ordering).ToList();
                 var into = new List<Alloc>();
                 Fill(state, w, cells, w.Need, into, urgent: false);
                 total += into.Sum(a => a.Kwh * a.Cost);
@@ -859,8 +859,8 @@ public static class Planner
 
                     // One class per entry: any grid energy in the slot makes it a zone entry (dispatch has to open that zone, whatever the surplus share), the dearest zone
                     // if there are several; only an entry that is wholly surplus is pv.
-                    var grid = inSlot.Where(x => !x.Alloc.Pv).OrderByDescending(x => Key(x.Alloc.Cost)).ThenBy(x => x.Alloc.Zone, StringComparer.Ordinal).Select(x => x.Alloc).ToList();
-                    var entryClass = grid.Count > 0 ? PlanClasses.Zone(grid[0].Zone) : PlanClasses.Pv;
+                    var grid = inSlot.Where(x => x.Alloc.Source is not EnergySource.Surplus).OrderByDescending(x => Key(x.Alloc.Cost)).ThenBy(x => x.Alloc.Source, EnergySource.Ordering).Select(x => x.Alloc).ToList();
+                    var entryClass = grid.Count > 0 ? grid[0].Source : EnergySource.Surplus.Instance;
                     var goal = inSlot.GroupBy(x => x.Work).OrderByDescending(g => g.Sum(x => x.Alloc.Kwh)).ThenBy(g => g.Key.Request.Revision).First().Key;
                     entries.Add(new PlanEntry(slot.Start, slot.End, urgent ? PlanWant.Urgent : PlanWant.Run, entryClass, energy, inSlot.All(x => x.Alloc.CapW is not null) ? Math.Min(ceilingW, inSlot.Max(x => x.Alloc.CapW!.Value)) : ceilingW, Ref(goal, device)));
                     continue;

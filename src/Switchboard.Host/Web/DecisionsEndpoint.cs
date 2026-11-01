@@ -8,6 +8,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Options;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Host.Web;
@@ -299,8 +300,8 @@ internal static class DecisionsEndpoint
         ApiText.Snake(dispatch.Override),
         dispatch.Reasserted,
         dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null,
-        dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, ApiText.SnakeOrNull(e.Class) ?? "none", e.Sources, ApiText.Snake(e.Settlement)) : null,
-        dispatch.Plan is { } p ? new DecisionPlanDto(PlanDecisionInputs.FreshStatus, p.PlanId, p.ComputedAt, p.SlotStart, p.SlotEnd, p.Want, p.Class, p.EnergyKwh, p.DeliveredKwh, p.MaxPowerW, p.Mode) : null);
+        dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, e.Class is { } energyClass ? EnergySourceText.Class(energyClass) : "none", e.Sources, ApiText.Snake(e.Settlement)) : null,
+        dispatch.Plan is { } p ? new DecisionPlanDto(PlanDecisionInputs.FreshStatus, p.PlanId, p.ComputedAt, p.SlotStart, p.SlotEnd, p.Want, p.Class is { } planClass ? EnergySourceText.Plan(planClass) : null, p.EnergyKwh, p.DeliveredKwh, p.MaxPowerW, p.Mode) : null);
 }
 
 /// <summary>How enum values and applied states are spelled in the API: snake_case, like api/signals.</summary>

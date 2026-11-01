@@ -11,7 +11,7 @@ namespace Switchboard.Application.Planning;
 /// </summary>
 /// <param name="PlanId">The plan's content fingerprint.</param>
 /// <param name="ComputedAt">When the plan was made.</param>
-/// <param name="Class">pv or zone:&lt;id&gt;; null for a want that carries none.</param>
+/// <param name="Class">Surplus (text pv) or grid energy in a zone (text zone:&lt;id&gt;); null for a want that carries none.</param>
 /// <param name="EnergyKwh">The slot's budget for the device.</param>
 /// <param name="MaxPowerW">The slot's ceiling; zero unless the want is run or urgent.</param>
 /// <param name="GoalAllowsZone">The entry's grid class is a zone its goal declares in <c>goal.sources</c> (true for a pv or class-less entry); the class <c>plan</c> opens only then.</param>
@@ -21,7 +21,7 @@ public sealed record PlanEntryView(
     DateTimeOffset SlotStart,
     DateTimeOffset SlotEnd,
     PlanWant Want,
-    string? Class,
+    EnergySource? Class,
     double EnergyKwh,
     double MaxPowerW,
     bool GoalAllowsZone);
@@ -106,9 +106,9 @@ public sealed class PlanView(PlanHolder holder, IPlanCurrency currency, ILogger<
             return null;
         }
 
-        var zone = PlanClasses.ZoneId(entry.Class);
+        var zone = (entry.Class as EnergySource.Grid)?.Zone;
         // The class plan opens only for a zone the goal itself declares in goal.sources; a goal that declares none leaves the device's own sources in charge.
-        var allowsZone = zone is null || (goal.Sources is not null && goal.Sources.AllowsZone(zone));
+        var allowsZone = zone is not { } entryZone || (goal.Sources is not null && goal.Sources.AllowsZone(entryZone));
         return new PlanEntryView(plan.Id, plan.ComputedAt, entry.Start, entry.End, entry.Want, entry.Class, entry.EnergyKwh, entry.MaxPowerW, allowsZone);
     }
 

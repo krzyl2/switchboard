@@ -44,7 +44,7 @@ public sealed class PlannerTests
 
         var runs = Runs(plan, DeviceA);
         Assert.All(runs, e => Assert.Equal(PlanWant.Urgent, e.Want));
-        Assert.All(runs, e => Assert.Equal("zone:z", e.Class));
+        Assert.All(runs, e => Assert.Equal(TestEnergy.ZoneOf("z"), e.Class));
         Assert.Equal(4, runs.Sum(e => e.EnergyKwh), 9);
         var planned = plan.Device(DeviceA)!.Goals.Single();
         Assert.Equal(GoalStatus.AtRisk, planned.Status);
@@ -134,7 +134,7 @@ public sealed class PlannerTests
         var goal = plan.Device(DeviceA)!.Goals.Single();
         Assert.Equal(1.5, goal.PlannedKwh, 9);
         Assert.Equal(2.5, goal.ShortfallKwh, 9);
-        Assert.All(Runs(plan, DeviceA), e => Assert.Equal(PlanClasses.Pv, e.Class));
+        Assert.All(Runs(plan, DeviceA), e => Assert.Equal(TestEnergy.Pv, e.Class));
         Assert.Equal(GoalStatus.OnTrack, goal.Status);
         Assert.Contains(PlanNote.GoalShortfall, plan.Notes);
     }
@@ -240,7 +240,7 @@ public sealed class PlannerTests
         var plan = Solve(input);
 
         var runs = Runs(plan, DeviceA);
-        Assert.DoesNotContain(runs, e => e.Class == PlanClasses.Pv);
+        Assert.DoesNotContain(runs, e => e.Class == TestEnergy.Pv);
         Assert.Equal(3.2, runs.Sum(e => e.EnergyKwh), 9);
         Assert.Equal([3.0, 0.2], runs.Select(e => Math.Round(e.EnergyKwh, 9)).ToArray());
     }
@@ -320,7 +320,7 @@ public sealed class PlannerTests
 
         var plan = Solve(input);
 
-        var pv = new[] { DeviceA, DeviceB }.SelectMany(d => plan.Device(d)!.Entries).Where(e => e.Class == PlanClasses.Pv).Sum(e => e.EnergyKwh);
+        var pv = new[] { DeviceA, DeviceB }.SelectMany(d => plan.Device(d)!.Entries).Where(e => e.Class == TestEnergy.Pv).Sum(e => e.EnergyKwh);
         Assert.True(pv <= 1.5 + 1e-9, $"{pv} kWh planned on 1.5 kWh of surplus");
         Assert.Equal(0.1 * 1.5 + 1.0 * 1.5, plan.Cost.Planned, 9);
     }
