@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -182,14 +183,21 @@ public sealed class GuardEndpointTests
         Assert.False(factory.Services.GetRequiredService<KillSwitchState>().Status.Engaged);
     }
 
-    [Fact]
-    public async Task A_chunked_body_the_server_cuts_off_at_the_global_limit_is_answered_413_and_changes_nothing()
+    [Theory]
+    [InlineData(1, StatusCodes.Status413PayloadTooLarge, false)]
+    [InlineData(-1, StatusCodes.Status200OK, true)]
+    public async Task A_chunked_body_is_cut_off_at_the_global_limit_and_answered_413_and_one_within_it_is_read(int pastLimit, int status, bool engaged)
     {
-        // Without a declared length only the server sees the body pass the limit, mid-read: that must
-        // read as a refused body, not as an unhandled exception from the endpoint.
+        // Without a declared length only the server sees the body pass the limit, mid-read, and only against the limit the request
+        // carries: unless the middleware sets the global one there, the server's own 30 MB default reads this padded body and it
+        // engages the kill switch. Cut off, it must read as a refused body, not as an unhandled exception from the endpoint.
         using var root = new TempWebRoot();
         using var factory = WithGuard(root.Path);
         _ = factory.Server;
+        var limit = factory.Services.GetRequiredService<IOptions<IngressOptions>>().Value.MaxRequestBodyBytes;
+        var json = """{"engaged":true}""";
+        var body = Encoding.UTF8.GetBytes(json + new string(' ', checked((int)limit - json.Length + pastLimit)));
+        var size = new BodySizeFeature();
 
         var context = await factory.Server.SendAsync(request =>
         {
@@ -197,11 +205,13 @@ public sealed class GuardEndpointTests
             request.Request.Path = "/api/guard/kill-switch";
             request.Connection.RemoteIpAddress = IPAddress.Parse(Supervisor);
             request.Request.ContentType = "application/json";
-            request.Request.Body = new CutOffBody();
+            request.Features.Set<IHttpMaxRequestBodySizeFeature>(size);
+            request.Request.Body = new ChunkedBody(body, size);
         }, TestContext.Current.CancellationToken);
 
-        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
-        Assert.False(factory.Services.GetRequiredService<KillSwitchState>().Status.Engaged);
+        Assert.Equal(limit, size.MaxRequestBodySize);
+        Assert.Equal(status, context.Response.StatusCode);
+        Assert.Equal(engaged, factory.Services.GetRequiredService<KillSwitchState>().Status.Engaged);
     }
 
     [Fact]
@@ -259,9 +269,19 @@ public sealed class GuardEndpointTests
             }
         });
 
-    /// <summary>A chunked body as Kestrel reads it once it passes the request's limit: the read throws 413.</summary>
-    private sealed class CutOffBody : Stream
+    /// <summary>The server's per-request body limit, at Kestrel's default until something sets it.</summary>
+    private sealed class BodySizeFeature : IHttpMaxRequestBodySizeFeature
     {
+        public bool IsReadOnly => false;
+
+        public long? MaxRequestBodySize { get; set; } = 30_000_000;
+    }
+
+    /// <summary>A body without a declared length, read as Kestrel reads one: a read that takes it past the request's limit throws 413.</summary>
+    private sealed class ChunkedBody(byte[] content, IHttpMaxRequestBodySizeFeature size) : Stream
+    {
+        private int _position;
+
         public override bool CanRead => true;
 
         public override bool CanSeek => false;
@@ -272,11 +292,34 @@ public sealed class GuardEndpointTests
 
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
 
-        public override int Read(byte[] buffer, int offset, int count) => throw TooLarge();
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromException<int>(TooLarge());
+        public override int Read(Span<byte> buffer)
+        {
+            var count = Math.Min(buffer.Length, content.Length - _position);
+            if (_position + count > size.MaxRequestBodySize)
+            {
+                throw new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge);
+            }
 
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromException<int>(TooLarge());
+            content.AsSpan(_position, count).CopyTo(buffer);
+            _position += count;
+            return count;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return ValueTask.FromResult(Read(buffer.Span));
+            }
+            catch (BadHttpRequestException ex)
+            {
+                return ValueTask.FromException<int>(ex);
+            }
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
         public override void Flush()
         {
@@ -287,7 +330,5 @@ public sealed class GuardEndpointTests
         public override void SetLength(long value) => throw new NotSupportedException();
 
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-
-        private static BadHttpRequestException TooLarge() => new("Request body too large.", StatusCodes.Status413PayloadTooLarge);
     }
 }

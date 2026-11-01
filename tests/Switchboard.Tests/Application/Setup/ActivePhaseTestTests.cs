@@ -85,6 +85,25 @@ public sealed class ActivePhaseTestTests
     }
 
     [Fact]
+    public void A_step_without_a_dispatch_status_refuses_the_test_instead_of_reading_no_lockout_and_no_override()
+    {
+        // Building the dispatch status may fail without stopping protection, and the step then carries none. The device's override,
+        // lockouts and settling are unknown then, not absent: read as none, the min_off below (or a force_off) no longer refuses, and
+        // the test switches the device on.
+        var run = new Run("synthetic-plant.json");
+        run.Harness.RunUntil(new DateTimeOffset(2026, 10, 22, 7, 46, 30, TimeSpan.Zero));
+        var heaterL2 = DeviceName.Parse("heater_l2");
+        Assert.Contains(run.Service.Check(heaterL2, 1).Refusals, r => r.Code == ActiveTestRefusalCode.LockoutMinOff);
+
+        run.Service.OnStepped(run.Harness.Steps[^1] with { DispatchStatus = null });
+        var (test, preconditions) = run.Service.Start(heaterL2, 1);
+
+        Assert.Null(test);
+        Assert.Contains(preconditions.Refusals, r => r.Code == ActiveTestRefusalCode.StateUnknown);
+        Assert.Null(run.Slot.Current);
+    }
+
+    [Fact]
     public void When_the_guard_acts_during_the_test_it_aborts_and_the_device_ends_off()
     {
         // Protection outranks the test: an overload on L1 while the heater is on for the test makes

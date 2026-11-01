@@ -567,6 +567,50 @@ describe('kill switch', () => {
     expect(within(card('Kill switch')).queryByRole('group')).toBeNull();
     expect(within(card('Kill switch')).queryByRole('button', { name: 'Release' })).toBeNull();
     expect(killPosts()).toEqual([]);
+
+    // Withdrawn, not hidden: when the state reads engaged again the confirmation must not come back
+    // on its own with focus on its Release button, where the next Enter or Space would release.
+    fail = false;
+    await advance(GUARD_REFRESH_INTERVAL_MS);
+
+    const kill = card('Kill switch');
+    expect(stateLabel(kill)).toEqual({ label: 'Kill switch engaged', tone: 'crit' });
+    expect(within(kill).queryByRole('group')).toBeNull();
+    expect(within(kill).queryByRole('button', { name: 'Release' })).toBeNull();
+    expect(document.activeElement?.textContent).not.toBe('Release');
+    expect(killPosts()).toEqual([]);
+  });
+
+  // A release that was in flight when the state became unreadable: the add-on applied it (2xx),
+  // and the card must not claim the kill switch is engaged while protection is in fact released.
+  it('never reports a release the add-on applied while the state was unknown as engaged', async () => {
+    let fail = false;
+    let answer: (response: Response) => void = () => undefined;
+    const released = copy(guardSample, (p) => {
+      p.at = '2026-10-24T10:00:01.000+00:00';
+      p.killSwitch = { engaged: false, changedAt: '2026-10-24T10:00:01.000+00:00', source: 'api', locked: false, switchesDevices: false };
+    });
+    serve({
+      guard: () => (fail ? Promise.reject(new TypeError('Failed to fetch')) : respond(copy(guardSample, engagedFrom('api')))),
+      post: () => new Promise<Response>((resolve) => (answer = resolve)),
+    });
+    await open();
+    fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release the kill switch' }));
+    await advance();
+    await act(async () => {
+      fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release' }));
+    });
+
+    fail = true;
+    await advance(GUARD_REFRESH_INTERVAL_MS);
+    expect(stateLabel(card('Kill switch'))).toEqual({ label: 'Kill switch state unknown', tone: 'warn' });
+
+    const reply = await respond(copy(released));
+    await act(async () => answer(reply));
+    await advance();
+
+    expect(killPosts()).toEqual(['{"engaged":false}']);
+    expect(card('Kill switch').textContent).not.toContain('Engaged: the add-on confirmed it.');
   });
 
   it('shows an engaged kill switch from Home Assistant as a banner above everything', async () => {

@@ -61,6 +61,31 @@ public sealed class MqttClientIdFileTests : IDisposable
     }
 
     [Fact]
+    public void A_file_that_cannot_be_read_is_left_in_place_and_its_id_is_used_again_once_it_reads()
+    {
+        // An unreadable file (a lock, a wrong owner or mode after a restore, an I/O error) may still hold the kept id: writing a new one over it
+        // would change the install's client id for good, and with it a broker ACL keyed on the old one. The id is new for this process only.
+        if (!OperatingSystem.IsWindows())
+        {
+            // A read-only denial the test can set and lift needs an ACL; as root (the container) a Unix file mode would not deny it.
+            Assert.Skip("Needs a Windows ACL to deny reading the file while it can still be replaced.");
+            return;
+        }
+
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, MqttClientIdFile.Name);
+        System.IO.File.WriteAllText(path, """{"schema_version":1,"install_id":"0123456789ab"}""");
+
+        DenyReading(path, true);
+        var meanwhile = File(_directory).LoadOrCreate();
+        DenyReading(path, false);
+
+        Assert.NotEqual("0123456789ab", meanwhile.Value);
+        Assert.Matches(@"\A[0-9a-f]{12}\z", meanwhile.Value);
+        Assert.Equal("0123456789ab", File(_directory).LoadOrCreate().Value);
+    }
+
+    [Fact]
     public void An_unwritable_data_folder_still_gives_an_id()
     {
         // The broker connection must not depend on /data: the id then lasts for this process only.
@@ -85,4 +110,26 @@ public sealed class MqttClientIdFileTests : IDisposable
     }
 
     private static MqttClientIdFile File(string directory) => new(directory, NullLogger<MqttClientIdFile>.Instance);
+
+    /// <summary>Denies (or allows again) reading the file's content to the current user; its attributes stay readable and the folder may still replace it.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void DenyReading(string path, bool deny)
+    {
+        var file = new FileInfo(path);
+        var security = file.GetAccessControl();
+        var rule = new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.ReadData,
+            System.Security.AccessControl.AccessControlType.Deny);
+        if (deny)
+        {
+            security.AddAccessRule(rule);
+        }
+        else
+        {
+            security.RemoveAccessRule(rule);
+        }
+
+        file.SetAccessControl(security);
+    }
 }

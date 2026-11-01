@@ -34,7 +34,7 @@ public sealed partial class MqttClientIdFile : PresentationFile<MqttInstallId>
 
     protected override string LostText => "a new MQTT client id is generated";
 
-    /// <summary>The id kept in the file, else a new one written there; a new one that cannot be written lasts for this process only.</summary>
+    /// <summary>The id kept in the file, else a new one written there; a new one that cannot be written, or a file that stays in place unread, gives an id for this process only.</summary>
     public MqttInstallId LoadOrCreate()
     {
         if (Load().State is { } kept)
@@ -43,6 +43,13 @@ public sealed partial class MqttClientIdFile : PresentationFile<MqttInstallId>
         }
 
         var created = new MqttInstallId(RandomNumberGenerator.GetHexString(IdLength, lowercase: true));
+        if (File.Exists(FilePath))
+        {
+            // Still in place: it could not be read (or not set aside), so it may hold the kept id; overwriting it would change the id for good.
+            _logger.LogWarning("{File} is in place but could not be used; it is left as it is and the MQTT client id is new for this process only", Name);
+            return created;
+        }
+
         try
         {
             Save(created);

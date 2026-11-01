@@ -33,7 +33,7 @@ public enum ActiveTestRefusalCode
     /// <summary>The stage is on: the test switches a device that is off, so its last command is always an off.</summary>
     DeviceOn,
 
-    /// <summary>The device's state is not known now.</summary>
+    /// <summary>The device's state is not known now, or its dispatch status (override, lockouts, settling) is not.</summary>
     StateUnknown,
 
     /// <summary>The stage's min_off lockout still runs; the refusal says how long.</summary>
@@ -502,6 +502,12 @@ public sealed class ActivePhaseTestService : IActiveTestTransitions
         }
 
         var dispatch = step.DispatchStatus?.Devices.FirstOrDefault(d => d.Id == device);
+        if (dispatch is null)
+        {
+            // No dispatch status for the device (building it failed in this step): its override, lockouts and settling are unknown, never "none".
+            refusals.Add(new ActiveTestRefusal(ActiveTestRefusalCode.StateUnknown));
+        }
+
         var elapsed = now > step.Evaluation.At ? now - step.Evaluation.At : TimeSpan.Zero;
         var minOff = dispatch is null ? TimeSpan.Zero : dispatch.MinOffRemaining > elapsed ? dispatch.MinOffRemaining - elapsed : TimeSpan.Zero;
         if (minOff > TimeSpan.Zero)

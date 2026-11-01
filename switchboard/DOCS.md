@@ -286,7 +286,8 @@ Each device can be forced on, forced off or left to dispatch (automatic): on the
 
 Choose **Limits** at the top of the web UI. It refreshes every two seconds and shows:
 
-- a banner while the kill switch is on or a safe state is active (which phases, why, since when); in shadow mode it says what *would* be switched off. The kill switch cannot be changed from this page yet;
+- a banner while the kill switch is on or a safe state is active (which phases, why, since when); in shadow mode it says what *would* be switched off;
+- the kill switch, always, also while the page cannot read the guard: engaging it is sent at once, releasing it asks first and is offered only while the page reads it engaged. With the option `mqtt_enabling_commands` off (the default) this page is the only place it can be released;
 - per phase: the current drawn against the reserve threshold, the breaker's rated current and the continuous limit; the tier it is in and that tier's reaction; the overload budget with the time until it is full again; the headroom to the reserve threshold (A and W) and to the continuous limit; whether load may be added;
 - the devices in shed order: what the guard holds each one to and why, the state each reports (a stale one counts as on, relieves nothing and is marked unsafe, with the signals that make it so), its value per kWh and the lockout time left;
 - dispatch: per phase the headroom it works with, the change in flight and the foreign load; per device, in start order, what Switchboard would have it at next to what Home Assistant reports, why, what it waits for (a deferral with the lockout time left, an open settling window, a device not responding), the manual override with a selector, and the last check of a change;

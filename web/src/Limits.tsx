@@ -693,6 +693,11 @@ export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: 
     if (confirming) releaseButton.current?.focus();
   }, [confirming]);
 
+  // A release confirmation answers one click on a known engaged state: once the state is unknown or released, it is withdrawn, never shown again unasked.
+  useEffect(() => {
+    if (!engaged) setAsking(false);
+  }, [engaged]);
+
   // Once the page reads a state again, that state speaks for itself.
   useEffect(() => {
     if (known) setOutcome((current) => (current === 'engaged' ? null : current));
@@ -707,7 +712,8 @@ export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: 
     try {
       const answer = await postKillSwitch(engage, controller.signal);
       if (answer !== null) onAnswer?.(answer);
-      if (!knownNow.current) setOutcome('engaged');
+      // The confirmation names the engage only: a release applied while the state is unknown shows at the next poll.
+      if (engage && !knownNow.current) setOutcome('engaged');
     } catch (error) {
       setOutcome(error instanceof KillSwitchError ? error.refusal : 'failed');
     } finally {

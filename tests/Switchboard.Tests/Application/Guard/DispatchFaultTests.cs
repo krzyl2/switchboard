@@ -4,6 +4,7 @@ using Switchboard.Application.Dispatch;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Planning;
+using Switchboard.Application.Signals;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Planning;
@@ -155,6 +156,75 @@ public sealed class DispatchFaultTests
         h.Runner.Step();
         Assert.Equal(2, h.Recorder.Decisions.Count(d => d.Reason == ReasonCode.DispatchFault));
         Assert.Equal(2, logs.Entries.Count(e => e.Level == LogLevel.Error));
+    }
+
+    [Fact]
+    public void A_dispatch_status_that_cannot_be_built_never_stops_protection_and_the_last_status_stays()
+    {
+        // Why: the dispatch status is built in the guard's step, after the gate applied protection. An error there used to leave the step, stop the loop and
+        // the add-on; it must cost the status only: the overload is still shed by a command that leaves, the page keeps the last status it had, the step
+        // says it has none (so no reader takes "none" for "no override, no lockout"), and the error is logged once per streak, not at every step.
+        var logs = new LogCapture();
+        var h = new GuardRunnerHarness(TestDevices.Document());
+        var inputs = new StatusBreakingInputs(h.Holder);
+        var port = new RecordingDeviceCommandPort();
+        var loop = ControlLoop.WithControl(inputs, new SignalClock(h.Time), OperatingMode.Active, "boot1", port, runnerLogger: logs.For<GuardRunner>());
+        loop.Control!.Set(true, ControlSwitchSource.Api);
+        GuardStep? last = null;
+        loop.Runner.Stepped += (_, step) => last = step;
+        h.PushReference();
+        loop.Runner.Step();
+        var kept = loop.DispatchStatus.Current;
+        Assert.Same(kept, last!.DispatchStatus);
+
+        inputs.Break = true;
+        for (var i = 0; i < 2; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(10));
+            h.PushReference(l1: 37.5);
+            loop.Runner.Step();
+        }
+
+        Assert.Equal(DeviceGuardState.Shed, loop.Status.Current.Devices.Single(d => d.Id == HeaterL1).GuardState);
+        Assert.Contains(port.Submitted, c => c.Device == HeaterL1 && !c.On);
+        Assert.Contains(loop.Recorder.Decisions, d => d.Device == HeaterL1 && d.Action == DecisionAction.SwitchOff && d.Origin == DecisionOrigin.Guard && d.Commanded);
+        Assert.Same(kept, loop.DispatchStatus.Current);
+        Assert.Null(last.DispatchStatus);
+        Assert.Equal(1, StatusErrors());
+
+        // The first status that builds again is published; a new failure is a new streak with its own error.
+        inputs.Break = false;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        h.PushReference(l1: 37.5);
+        loop.Runner.Step();
+        Assert.Equal(h.Now, loop.DispatchStatus.Current.At);
+        Assert.Same(loop.DispatchStatus.Current, last.DispatchStatus);
+        inputs.Break = true;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        h.PushReference(l1: 37.5);
+        loop.Runner.Step();
+        Assert.Equal(2, StatusErrors());
+
+        int StatusErrors() => logs.Entries.Count(e => e.Level == LogLevel.Error && e.Text.Contains("Building the dispatch status failed", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The harness's inputs, with a declared device the dispatch status cannot be built for (no stages) added to the dispatch setup while <see cref="Break"/>
+    /// is set. The guard reads only the protection inputs and the gate only the devices protection declares, so protection does not see it.
+    /// </summary>
+    private sealed class StatusBreakingInputs(IControlInputSource inner) : IControlInputSource
+    {
+        public bool Break { get; set; }
+
+        public ControlInputs Current => Break && inner.Current is { DispatchSetup: { } setup } current
+            ? current with { DispatchSetup = setup with { Devices = setup.Devices.Add(setup.Devices[0] with { Spec = setup.Devices[0].Spec with { Id = DeviceName.Parse("ghost"), Stages = [] } }) } }
+            : inner.Current;
+
+        public event EventHandler<ControlInputs>? Published
+        {
+            add => inner.Published += value;
+            remove => inner.Published -= value;
+        }
     }
 
     /// <summary>A plan view whose Observe throws while <see cref="Fail"/> is set: dispatch calls it once per evaluation with a valid configuration.</summary>
