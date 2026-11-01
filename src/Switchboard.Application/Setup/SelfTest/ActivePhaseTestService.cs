@@ -6,9 +6,7 @@ using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
 using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
-using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
-using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Setup.SelfTest;

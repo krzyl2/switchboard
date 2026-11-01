@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Modes;
-using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;

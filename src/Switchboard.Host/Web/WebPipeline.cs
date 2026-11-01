@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using Switchboard.Application;
 
 namespace Switchboard.Host.Web;

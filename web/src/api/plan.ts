@@ -32,7 +32,7 @@ export const PLAN_NOTES = [
   'solver_timeout',
   'plan_invalid',
 ] as const;
-/** Why the EV module wants a goal: its own closed assessment list (the reason codes stay at list version 7). */
+/** Why the EV module wants a goal: its own closed assessment list (the reason codes stay at list version 8). */
 export const EV_CAUSES = [
   'ev_trip_deadline',
   'ev_surplus',

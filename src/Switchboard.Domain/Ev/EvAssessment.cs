@@ -2,7 +2,7 @@ namespace Switchboard.Domain.Ev;
 
 /// <summary>
 /// The EV module's own closed assessment list (docs/EV.md section 3 point 5), like <c>PlanNote</c>: why the module wants what it wants. It is not a
-/// reason code; <c>ReasonCode</c> stays at list version 7 and dispatch decisions about the car keep their v7 codes. Every assessment state, including
+/// reason code; <c>ReasonCode</c> stays at list version 8 and dispatch decisions about the car keep the codes of that list. Every assessment state, including
 /// "nothing to do", carries exactly one primary code.
 /// </summary>
 public enum EvAssessmentCode

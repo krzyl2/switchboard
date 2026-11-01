@@ -4,7 +4,7 @@ import { bool, fail, field, instant, list, nullable, number, object, oneOf, text
 
 // Contract of GET api/ev (src/Switchboard.Host/Web/EvEndpoint.cs, docs/EV.md EV-01, EV-02, EV-07, EV-10): whether an ev: section is in force, the
 // car's inputs and how fresh each one is, the next trip the calendar names and the events it ignored, and what the module offers now and why
-// (its own closed list of assessment codes; ReasonCode stays at list version 7). Read-only, except the manual control of S6: POST api/ev/mode,
+// (its own closed list of assessment codes; ReasonCode stays at list version 8). Read-only, except the manual control of S6: POST api/ev/mode,
 // POST and DELETE api/ev/charge-now, which store the module's own state in ev.json and write no entity. A JSON body is required (a cross-site
 // form cannot send one without a CORS preflight, which the add-on never answers).
 //

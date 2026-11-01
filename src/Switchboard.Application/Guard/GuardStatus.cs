@@ -4,7 +4,6 @@ using Switchboard.Application.Modes;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
-using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
