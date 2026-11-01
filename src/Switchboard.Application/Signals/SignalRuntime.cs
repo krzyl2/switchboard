@@ -139,6 +139,9 @@ internal sealed class SignalRuntime(SignalDefinition definition)
         && string.Equals(Definition.Attribute, other.Attribute, StringComparison.Ordinal)
         && Definition.SeriesMeaning == other.SeriesMeaning;
 
+    /// <summary>The magnitude of the accepted value in its own unit (W, A or V); the signal must hold one.</summary>
+    public double Magnitude() => SignalNormalizer.Magnitude(Accepted!.Value) ?? 0;
+
     public void MarkAbsent(Presence presence)
     {
         Presence = presence;

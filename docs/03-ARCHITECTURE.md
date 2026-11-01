@@ -61,6 +61,8 @@ Responsibilities:
 5. Run the balance residual check and reject implausible samples.
 6. Expose an immutable snapshot per cycle — no consumer ever reads a signal mid-change.
 
+Inside, `SignalStore` is a facade (one reader, no lock) over parts that each own one thing: `SignalRegistry` (which signals exist, as an immutable `SignalMap` replaced whole on a reload), `SampleIntake` (a state into a runtime: normalization, late and repeated reports, refresh intervals), `BalanceChecker` (the residual check and its counters), `ProbeScheduler` (when to ask again and the next deadline), and `SnapshotBuilder` / `ProtectionBuilder` (one immutable snapshot). Freshness (`SignalFreshness`) and direction (`DirectionResolver`) are functions of a runtime and `now`.
+
 Derived signals (house load per phase, surplus, total controlled power) are computed here from primary measurements, never read from somebody else's template sensor. The predecessor's biggest data bug came from exactly that (see `07-PITFALLS.md`).
 
 ## Device model

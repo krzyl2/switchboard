@@ -60,7 +60,13 @@ public sealed partial class EvSignalArchitectureTests
     {
         // Why: ProtectionInputs and DispatchInputs are built in the signal store from named roles. The store names no EV role at all: it handles the EV signals as
         // ordinary signals (kind, freshness), and the EV view picks them by role out of the snapshot, so no builder of the two decision inputs can see them.
-        var store = File.ReadAllText(RepoPaths.Combine("src", "Switchboard.Application", "Signals", "SignalStore.cs"));
+        // The store is split into parts (the registry, intake, freshness, balance check and the builders of the snapshot); the rule covers every one of them.
+        var parts = new[]
+        {
+            "SignalStore.cs", "SignalMap.cs", "SignalRegistry.cs", "SampleIntake.cs", "BalanceChecker.cs", "GenerationShares.cs",
+            "ProbeScheduler.cs", "SignalFreshness.cs", "DirectionResolver.cs", "SnapshotBuilder.cs", "ProtectionBuilder.cs",
+        };
+        var store = string.Join('\n', parts.Select(f => File.ReadAllText(RepoPaths.Combine("src", "Switchboard.Application", "Signals", f))));
 
         Assert.DoesNotMatch(EvRole(), store);
     }
