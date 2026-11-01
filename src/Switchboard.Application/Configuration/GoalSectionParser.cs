@@ -454,12 +454,7 @@ internal static class GoalSectionParser
         var maxAgePath = ConfigRead.Join(path, "max_age");
         if (ConfigRead.Optional(mapping, "max_age") is { } maxAgeNode)
         {
-            maxAge = ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues);
-            if (maxAge > control?.Signals.MaxAgeLimit)
-            {
-                issues.Error(ConfigurationIssueCodes.OutOfRange, maxAgePath, maxAgeNode, "max_age may not exceed control.signals.max_age_limit: a frozen value counts as fresh for its whole max_age.");
-                return null;
-            }
+            maxAge = ConfigRead.WithinMaxAgeLimit(ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues), control, maxAgePath, maxAgeNode, issues, "max_age", "a frozen value");
         }
 
         return maxAge is null ? null : new GoalEntityInput(input, entity.Value, entityEntry.Value, entityPath, kind, unit, role, maxAge.Value, maxAgePath);

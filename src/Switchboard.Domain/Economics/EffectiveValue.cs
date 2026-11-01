@@ -29,6 +29,21 @@ public readonly record struct ValueSpec(double Static, ValueFollows Follows, dou
 {
     /// <summary>value_factor without a conversion: the identity, not a control parameter.</summary>
     public const double NeutralFactor = 1.0;
+
+    /// <summary>
+    /// The value per kWh given the prices there are: <see cref="Static"/> when nothing is followed or the followed price does not exist, else
+    /// <see cref="Factor"/> times that price. The one place the rule is written; the plan reads it per slot, dispatch per instant.
+    /// </summary>
+    public double PerKwhAt(double? importPerKwh, double? exportPerKwh)
+    {
+        if (Follows == ValueFollows.Static)
+        {
+            return Static;
+        }
+
+        var followed = Follows == ValueFollows.ImportPrice ? importPerKwh : exportPerKwh;
+        return followed is { } price ? Factor * price : Static;
+    }
 }
 
 /// <summary>v_eff of a device at an instant.</summary>
@@ -46,7 +61,7 @@ public readonly record struct EffectiveValue(double PerKwh, ValueBasis Basis)
 
         var followed = spec.Follows == ValueFollows.ImportPrice ? prices.Import : prices.Export;
         return followed is { } price
-            ? new EffectiveValue(spec.Factor * price.PerKwh, price.Basis == PriceBasis.Fallback ? ValueBasis.Fallback : ValueBasis.Followed)
+            ? new EffectiveValue(spec.PerKwhAt(prices.Import?.PerKwh, prices.Export?.PerKwh), price.Basis == PriceBasis.Fallback ? ValueBasis.Fallback : ValueBasis.Followed)
             : new EffectiveValue(spec.Static, ValueBasis.Fallback);
     }
 }
@@ -74,6 +89,9 @@ public static class ValueTest
     private const double Noise = 1e-9;
 
     /// <summary>A class is worth using while <c>v_eff - cost &gt;= min_margin</c>.</summary>
-    public static bool Worth(EffectiveValue value, EnergyCost cost, double minMargin) =>
-        value.PerKwh - cost.PerKwh >= minMargin - Noise;
+    public static bool Worth(EffectiveValue value, EnergyCost cost, double minMargin) => Worth(value.PerKwh, cost.PerKwh, minMargin);
+
+    /// <summary>The same test on bare numbers (the plan has them per slot, not as an <see cref="EffectiveValue"/>).</summary>
+    public static bool Worth(double valuePerKwh, double costPerKwh, double minMargin) =>
+        valuePerKwh - costPerKwh >= minMargin - Noise;
 }

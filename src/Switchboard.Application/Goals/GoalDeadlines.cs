@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Switchboard.Domain.Time;
 
 namespace Switchboard.Application.Goals;
 
@@ -58,18 +59,7 @@ public static partial class GoalDeadlines
         return null;
     }
 
-    private static DateTimeOffset ToInstant(DateTime local, TimeZoneInfo zone)
-    {
-        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-        if (zone.IsInvalidTime(local))
-        {
-            // The hour that does not exist: the first valid moment after the gap is one hour on.
-            local = local.AddHours(1);
-        }
-
-        var offset = zone.IsAmbiguousTime(local) ? zone.GetAmbiguousTimeOffsets(local).Max() : zone.GetUtcOffset(local);
-        return new DateTimeOffset(local, offset).ToUniversalTime();
-    }
+    private static DateTimeOffset ToInstant(DateTime local, TimeZoneInfo zone) => LocalTime.At(local, zone).ToUniversalTime();
 
     [GeneratedRegex("^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,7})?)?(Z|[+-]\\d{2}:?\\d{2})$", RegexOptions.CultureInvariant)]
     private static partial Regex WithOffset();

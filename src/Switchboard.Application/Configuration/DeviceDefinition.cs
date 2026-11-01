@@ -5,6 +5,7 @@ using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Hashing;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -97,19 +98,10 @@ public sealed record DeviceDefinition(
     {
         get
         {
-            const ulong offset = 14695981039346656037;
-            const ulong prime = 1099511628211;
-            var hash = offset;
-            void Add(string text)
-            {
-                foreach (var b in System.Text.Encoding.UTF8.GetBytes(text))
-                {
-                    hash = (hash ^ b) * prime;
-                }
+            var text = new System.Text.StringBuilder();
 
-                // A separator byte that no entity ID contains, so "ab"+"c" and "a"+"bc" differ.
-                hash = (hash ^ 0x0A) * prime;
-            }
+            // A separator byte that no entity ID contains, so "ab"+"c" and "a"+"bc" differ.
+            void Add(string part) => text.Append(part).Append('\n');
 
             foreach (var stage in Stages)
             {
@@ -123,7 +115,7 @@ public sealed record DeviceDefinition(
                 Add(options.StopOption.Value);
             }
 
-            return unchecked((long)hash);
+            return Fnv1a.Signed(text.ToString());
         }
     }
 

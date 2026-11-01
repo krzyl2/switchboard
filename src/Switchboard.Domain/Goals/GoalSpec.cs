@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Hashing;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Domain.Goals;
@@ -93,15 +94,7 @@ public sealed record GoalSpec(
             Add(Escalate ? "escalate" : "stay");
             Add(OnMet.ToString());
 
-            const ulong offset = 14695981039346656037;
-            const ulong prime = 1099511628211;
-            var hash = offset;
-            foreach (var b in Encoding.UTF8.GetBytes(text.ToString()))
-            {
-                hash = (hash ^ b) * prime;
-            }
-
-            return unchecked((long)hash);
+            return Fnv1a.Signed(text.ToString());
         }
     }
 }

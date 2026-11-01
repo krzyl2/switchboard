@@ -52,16 +52,12 @@ internal sealed class PlanContext
 
     public double EffectiveValue(PlanDevice device, int slot)
     {
-        if (Count == 0 || device.Value.Follows == ValueFollows.Static)
-        {
-            return device.Value.Static;
-        }
-
-        var price = device.Value.Follows == ValueFollows.ImportPrice ? Slots[slot].Import : Slots[slot].Export;
-        return price is { } p ? device.Value.Factor * p.PerKwh : device.Value.Static;
+        return Count == 0
+            ? device.Value.Static
+            : device.Value.PerKwhAt(Slots[slot].Import?.PerKwh, Slots[slot].Export?.PerKwh);
     }
 
-    public bool WorthIt(PlanDevice device, int slot, double cost) => EffectiveValue(device, slot) - cost >= Input.MinMargin - 1e-9;
+    public bool WorthIt(PlanDevice device, int slot, double cost) => ValueTest.Worth(EffectiveValue(device, slot), cost, Input.MinMargin);
 
     /// <summary>The most the device can draw at once under the static limits (watts).</summary>
     public double CeilingW(PlanDevice device) => Planner.CeilingW(device, Input.CapacityW);

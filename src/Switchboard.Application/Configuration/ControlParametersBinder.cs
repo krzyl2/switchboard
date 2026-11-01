@@ -41,14 +41,6 @@ internal static class ControlParametersBinder
     private static readonly TimeSpan MinConfirmTimeout = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxConfirmTimeout = TimeSpan.FromMinutes(10);
 
-    private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics =
-        new Dictionary<string, BreakerCharacteristic>
-        {
-            ["B"] = BreakerCharacteristic.B,
-            ["C"] = BreakerCharacteristic.C,
-            ["unknown"] = BreakerCharacteristic.Unknown,
-        }.ToImmutableDictionary(StringComparer.Ordinal);
-
     private static readonly ImmutableDictionary<string, TierReaction> Reactions =
         new Dictionary<string, TierReaction>
         {
@@ -537,7 +529,7 @@ internal static class ControlParametersBinder
         Section tiersSection,
         ConfigIssues issues)
     {
-        foreach (var (key, characteristic) in Characteristics)
+        foreach (var (key, characteristic) in ConfigSpelling.Characteristics)
         {
             if (!continuous.TryGetValue(characteristic, out var multiple) || !tiers.TryGetValue(characteristic, out var table))
             {
@@ -614,9 +606,9 @@ internal static class ControlParametersBinder
 
     private static ImmutableDictionary<BreakerCharacteristic, double> BindContinuousMultiples(Section section)
     {
-        section.CheckKeys([.. Characteristics.Keys]);
+        section.CheckKeys([.. ConfigSpelling.Characteristics.Keys]);
         var builder = ImmutableDictionary.CreateBuilder<BreakerCharacteristic, double>();
-        foreach (var (key, characteristic) in Characteristics)
+        foreach (var (key, characteristic) in ConfigSpelling.Characteristics)
         {
             if (section.Number(key, Range.Above(0)) is { } multiple)
             {
@@ -629,9 +621,9 @@ internal static class ControlParametersBinder
 
     private static ImmutableDictionary<BreakerCharacteristic, TierTable> BindTiers(Section section, ConfigIssues issues)
     {
-        section.CheckKeys([.. Characteristics.Keys]);
+        section.CheckKeys([.. ConfigSpelling.Characteristics.Keys]);
         var builder = ImmutableDictionary.CreateBuilder<BreakerCharacteristic, TierTable>();
-        foreach (var (key, characteristic) in Characteristics)
+        foreach (var (key, characteristic) in ConfigSpelling.Characteristics)
         {
             var path = ConfigRead.Join(section.Path, key);
             if (section.Node(key) is not { } node)
@@ -809,7 +801,7 @@ internal static class ControlParametersBinder
             return days.ToImmutable();
         }
 
-        public T? Choice<T>(string key, ImmutableDictionary<string, T> choices)
+        public T? Choice<T>(string key, IReadOnlyDictionary<string, T> choices)
             where T : struct =>
             Node(key) is { } node ? ConfigRead.Choice(node, ConfigRead.Join(Path, key), _issues, choices) : null;
     }

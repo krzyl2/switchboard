@@ -5,6 +5,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Hashing;
 
 namespace Switchboard.Domain.Planning;
 
@@ -188,15 +189,7 @@ public sealed record PlanSnapshot
     {
         var text = new StringBuilder();
         plan.CanonicalCore(text);
-        const ulong offset = 14695981039346656037;
-        const ulong prime = 1099511628211;
-        var hash = offset;
-        foreach (var b in Encoding.UTF8.GetBytes(text.ToString()))
-        {
-            hash = (hash ^ b) * prime;
-        }
-
-        return hash.ToString("x16", CultureInfo.InvariantCulture);
+        return Fnv1a.Hash(text.ToString()).ToString("x16", CultureInfo.InvariantCulture);
     }
 
     private static string N(double value) => value.ToString("R", CultureInfo.InvariantCulture);

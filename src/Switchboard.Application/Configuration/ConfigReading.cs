@@ -234,6 +234,34 @@ internal static partial class ConfigRead
         return value;
     }
 
+    /// <summary>
+    /// The one max_age rule: an age above <c>control.signals.max_age_limit</c> is refused at <paramref name="path"/> and read as missing (null), because a frozen
+    /// sensor counts as fresh for its whole max_age. No control section, or no age, is no limit to hold it to. <paramref name="frozen"/> names what would stay
+    /// fresh ("a frozen draw"); <paramref name="statesLimit"/> puts the limit itself in the message.
+    /// </summary>
+    public static TimeSpan? WithinMaxAgeLimit(
+        TimeSpan? maxAge,
+        ControlParameters? control,
+        string path,
+        ConfigNode? node,
+        ConfigIssues issues,
+        string key,
+        string? frozen = null,
+        bool statesLimit = false)
+    {
+        if (!(maxAge > control?.Signals.MaxAgeLimit))
+        {
+            return maxAge;
+        }
+
+        var tail = frozen is null ? "." : $": {frozen} counts as fresh for its whole max_age.";
+        var message = statesLimit
+            ? string.Create(CultureInfo.InvariantCulture, $"{key} may be at most {control!.Signals.MaxAgeLimit.TotalSeconds:0.###} s (control.signals.max_age_limit){tail}")
+            : $"{key} may not exceed control.signals.max_age_limit{tail}";
+        issues.Error(ConfigurationIssueCodes.OutOfRange, path, node, message);
+        return null;
+    }
+
     public static TimeSpan? NonNegativeDuration(ConfigNode node, string path, ConfigIssues issues) =>
         TryDuration(node, path, issues, allowUnlimited: false, out var duration) ? duration : null;
 

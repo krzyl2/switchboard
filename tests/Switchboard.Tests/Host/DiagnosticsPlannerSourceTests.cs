@@ -128,4 +128,14 @@ public sealed class DiagnosticsPlannerSourceTests
         Assert.NotEqual(DiagnosticsPlannerSource.Identity(a), DiagnosticsPlannerSource.Identity(b));
         Assert.Equal(DiagnosticsPlannerSource.Identity(a), DiagnosticsPlannerSource.Identity(c));
     }
+
+    [Fact]
+    public void A_spec_identity_is_the_fnv_of_its_canonical_text()
+    {
+        // Why: the identity is stored in plan entries; a hash that moves makes every stored entry foreign after an upgrade.
+        var heater = Setup(Config(TestDevices.Reference)).Devices.First(d => d.Id == DeviceName.Parse("heater_l1"));
+        var charger = Setup(Config(TestDevices.Reference)).Devices.First(d => d.Id == DeviceName.Parse("ev_charger"));
+
+        Assert.Equal((-4625077498328915003L, 3057058949459861749L), (DiagnosticsPlannerSource.Identity(heater), DiagnosticsPlannerSource.Identity(charger)));
+    }
 }

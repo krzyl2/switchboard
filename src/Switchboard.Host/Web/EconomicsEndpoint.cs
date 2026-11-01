@@ -8,6 +8,7 @@ using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
+using Switchboard.Domain.Time;
 
 namespace Switchboard.Host.Web;
 
@@ -200,22 +201,13 @@ internal static class EconomicsEndpoint
         [.. devices.Select(d => new SavingsDeviceDto(d.Device.Value, d.Energy.Value, d.ValueGained, d.ExtraCost, d.Savings))];
 
     /// <summary>The local day of <paramref name="now"/> as UTC instants: 23, 24 or 25 hours long on the days the zone changes.</summary>
-    private static (DateTimeOffset From, DateTimeOffset To) LocalDay(DateTimeOffset now, TimeZoneInfo zone)
+    internal static (DateTimeOffset From, DateTimeOffset To) LocalDay(DateTimeOffset now, TimeZoneInfo zone)
     {
         var date = TimeZoneInfo.ConvertTime(now, zone).Date;
         return (Midnight(date, zone), Midnight(date.AddDays(1), zone));
     }
 
-    private static DateTimeOffset Midnight(DateTime date, TimeZoneInfo zone)
-    {
-        var local = DateTime.SpecifyKind(date, DateTimeKind.Unspecified);
-        if (zone.IsInvalidTime(local))
-        {
-            local = local.AddHours(1);
-        }
-
-        return new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
-    }
+    private static DateTimeOffset Midnight(DateTime date, TimeZoneInfo zone) => LocalTime.At(date, zone).ToUniversalTime();
 
     private static IReadOnlyList<EconomicsDeviceDto> Devices(SwitchboardConfiguration? configuration, PriceBook prices, EconomicsView? step) =>
         configuration is null

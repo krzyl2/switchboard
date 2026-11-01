@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using Switchboard.Domain.Time;
 
 namespace Switchboard.Domain.Signals;
 
@@ -102,19 +103,7 @@ public static class IsoInstant
             return false;
         }
 
-        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-        if (localZone.IsInvalidTime(local))
-        {
-            local = local.AddHours(1);
-            if (localZone.IsInvalidTime(local))
-            {
-                return false;
-            }
-        }
-
-        var offset = localZone.IsAmbiguousTime(local) ? localZone.GetAmbiguousTimeOffsets(local).Max() : localZone.GetUtcOffset(local);
-        instant = new DateTimeOffset(local, offset);
-        return true;
+        return LocalTime.TryAt(local, localZone, out instant);
     }
 
     private static bool HasOffset(string text)

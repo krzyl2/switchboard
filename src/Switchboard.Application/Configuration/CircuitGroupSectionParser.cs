@@ -33,20 +33,6 @@ internal static class CircuitGroupSectionParser
 
     private static readonly string[] GroupKeys = ["id", "breaker_rating_a", "characteristic", "phases", "reserve_w", "current", "current_max_age", "current_unit"];
 
-    private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics = new Dictionary<string, BreakerCharacteristic>
-    {
-        ["B"] = BreakerCharacteristic.B,
-        ["C"] = BreakerCharacteristic.C,
-        ["unknown"] = BreakerCharacteristic.Unknown,
-    }.ToImmutableDictionary(StringComparer.Ordinal);
-
-    private static readonly ImmutableDictionary<string, Phase> PhaseNames = new Dictionary<string, Phase>
-    {
-        ["L1"] = Phase.L1,
-        ["L2"] = Phase.L2,
-        ["L3"] = Phase.L3,
-    }.ToImmutableDictionary(StringComparer.Ordinal);
-
     /// <summary>The sub-meter signal of a group phase.</summary>
     public static SignalName CurrentSignalName(GroupName group, Phase phase) =>
         SignalName.Parse($"{SignalPrefix}{group.Value}_current_{phase.ToString().ToLowerInvariant()}");
@@ -167,7 +153,7 @@ internal static class CircuitGroupSectionParser
         }
 
         var characteristic = ConfigRead.Required(mapping, "characteristic", path, issues) is { } characteristicNode
-            ? ConfigRead.Choice(characteristicNode, ConfigRead.Join(path, "characteristic"), issues, Characteristics)
+            ? ConfigRead.Choice(characteristicNode, ConfigRead.Join(path, "characteristic"), issues, ConfigSpelling.Characteristics)
             : null;
         var phases = ReadPhases(mapping, path, connection, issues);
         var reserve = phases is null || rating is null || connection is null || control is null
@@ -201,7 +187,7 @@ internal static class CircuitGroupSectionParser
         var ok = true;
         foreach (var item in sequence.Items)
         {
-            if (ConfigRead.Choice(item, phasesPath, issues, PhaseNames) is not { } phase)
+            if (ConfigRead.Choice(item, phasesPath, issues, ConfigSpelling.Phases) is not { } phase)
             {
                 ok = false;
                 continue;
@@ -233,10 +219,10 @@ internal static class CircuitGroupSectionParser
         var errorsBefore = issues.Errors.Count;
         if (ConfigRead.Optional(mapping, "reserve_w") is { } node && ConfigRead.Mapping(node, reservePath, issues) is { } reserve)
         {
-            ConfigRead.CheckKeys(reserve, reservePath, PhaseNames.Keys.ToArray(), issues);
+            ConfigRead.CheckKeys(reserve, reservePath, ConfigSpelling.Phases.Keys.ToArray(), issues);
             foreach (var entry in reserve.Entries)
             {
-                if (!PhaseNames.TryGetValue(entry.Key, out var phase))
+                if (!ConfigSpelling.Phases.TryGetValue(entry.Key, out var phase))
                 {
                     continue;
                 }
@@ -300,12 +286,8 @@ internal static class CircuitGroupSectionParser
         }
         else
         {
-            maxAge = ConfigRead.PositiveDuration(maxAgeNode, ConfigRead.Join(path, "current_max_age"), issues);
-            if (maxAge > control?.Signals.MaxAgeLimit)
-            {
-                issues.Error(ConfigurationIssueCodes.OutOfRange, ConfigRead.Join(path, "current_max_age"), maxAgeNode, "current_max_age may not exceed control.signals.max_age_limit.");
-                maxAge = null;
-            }
+            var maxAgePath = ConfigRead.Join(path, "current_max_age");
+            maxAge = ConfigRead.WithinMaxAgeLimit(ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues), control, maxAgePath, maxAgeNode, issues, "current_max_age");
         }
 
         if (unitNode is not null && ConfigRead.String(unitNode, ConfigRead.Join(path, "current_unit"), issues) is { } unit && !SignalUnits.AllowedFor(SignalKind.Current).Contains(unit))
@@ -323,7 +305,7 @@ internal static class CircuitGroupSectionParser
         foreach (var entry in perPhase.Entries)
         {
             var entryPath = ConfigRead.Join(currentPath, entry.Key);
-            if (!PhaseNames.TryGetValue(entry.Key, out var phase) || phases is { } declared && !declared.Contains(phase))
+            if (!ConfigSpelling.Phases.TryGetValue(entry.Key, out var phase) || phases is { } declared && !declared.Contains(phase))
             {
                 issues.ErrorAtKey(ConfigurationIssueCodes.PhaseNotInTopology, entryPath, entry, $"'{entry.Key}' is not a phase of this group.");
                 ok = false;

@@ -9,6 +9,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Forecast;
 using Switchboard.Domain.Guard;
+using Switchboard.Domain.Hashing;
 using Switchboard.Domain.Planning;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -184,20 +185,7 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
             text.Append(range.Min.Value.ToString("R", CultureInfo.InvariantCulture)).Append('/').Append(range.Max.Value.ToString("R", CultureInfo.InvariantCulture));
         }
 
-        return Fnv(text.ToString());
-    }
-
-    private static long Fnv(string text)
-    {
-        const ulong offset = 14695981039346656037;
-        const ulong prime = 1099511628211;
-        var hash = offset;
-        foreach (var b in Encoding.UTF8.GetBytes(text))
-        {
-            hash = (hash ^ b) * prime;
-        }
-
-        return unchecked((long)hash);
+        return Fnv1a.Signed(text.ToString());
     }
 
     private static string Digest(ForecastInputs? forecast)
@@ -223,7 +211,7 @@ internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnost
             text.Append(sample.EnergyKwh?.ToString("R", CultureInfo.InvariantCulture)).Append('@').Append(sample.At?.UtcTicks.ToString(CultureInfo.InvariantCulture)).Append(';');
         }
 
-        return Fnv(text.ToString()).ToString("x", CultureInfo.InvariantCulture);
+        return Fnv1a.Signed(text.ToString()).ToString("x", CultureInfo.InvariantCulture);
     }
 
     private static string DeviceFingerprint(ImmutableArray<DeviceStateSample> states) =>

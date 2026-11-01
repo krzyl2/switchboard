@@ -1,6 +1,6 @@
 using System.Globalization;
-using System.Text;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Hashing;
 
 namespace Switchboard.Domain.Goals;
 
@@ -40,14 +40,6 @@ public sealed record ManualGoal(GoalKind Kind, double Target, DateTimeOffset Dea
         var text = string.Create(
             CultureInfo.InvariantCulture,
             $"manual\n{device.Value}\n{Kind}\n{Target:R}\n{Deadline.UtcTicks}\n{(Hard ? "hard" : "soft")}\n");
-        const ulong offset = 14695981039346656037;
-        const ulong prime = 1099511628211;
-        var hash = offset;
-        foreach (var b in Encoding.UTF8.GetBytes(text))
-        {
-            hash = (hash ^ b) * prime;
-        }
-
-        return unchecked((long)hash);
+        return Fnv1a.Signed(text);
     }
 }

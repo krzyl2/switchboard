@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -34,15 +35,10 @@ public static class SwitchboardDocumentParser
     private static readonly Regex AttributeName = new("^[A-Za-z_][A-Za-z0-9_]{0,63}\\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly string[] SeriesKeys = ["shape", "value", "start_key", "end_key", "value_key"];
 
-    private static readonly ImmutableDictionary<string, Topology> Topologies = Choices(
+    private static readonly FrozenDictionary<string, Topology> Topologies = Choices(
         ("three_phase", Topology.ThreePhase), ("three_phase_summed", Topology.ThreePhaseSummed), ("single_phase", Topology.SinglePhase));
 
-    private static readonly ImmutableDictionary<string, BreakerCharacteristic> Characteristics = Choices(
-        ("B", BreakerCharacteristic.B), ("C", BreakerCharacteristic.C), ("unknown", BreakerCharacteristic.Unknown));
-
-    private static readonly ImmutableDictionary<string, Phase> Phases = Choices(("L1", Phase.L1), ("L2", Phase.L2), ("L3", Phase.L3));
-
-    private static readonly ImmutableDictionary<string, SignalKind> Kinds = Choices(
+    private static readonly FrozenDictionary<string, SignalKind> Kinds = Choices(
         ("current", SignalKind.Current),
         ("power", SignalKind.Power),
         ("voltage", SignalKind.Voltage),
@@ -54,18 +50,18 @@ public static class SwitchboardDocumentParser
         ("energy_forecast", SignalKind.EnergyForecast),
         ("timestamp", SignalKind.Timestamp));
 
-    private static readonly ImmutableDictionary<string, SeriesShape> SeriesShapes = Choices(
+    private static readonly FrozenDictionary<string, SeriesShape> SeriesShapes = Choices(
         ("auto", SeriesShape.Auto), ("list", SeriesShape.List), ("dict", SeriesShape.Dict));
 
-    private static readonly ImmutableDictionary<string, SeriesValueKind> SeriesValues = Choices(
+    private static readonly FrozenDictionary<string, SeriesValueKind> SeriesValues = Choices(
         ("power_w", SeriesValueKind.PowerW), ("energy_wh_period", SeriesValueKind.EnergyWhPeriod));
 
-    private static readonly ImmutableDictionary<string, SignConvention> Signs = Choices(
+    private static readonly FrozenDictionary<string, SignConvention> Signs = Choices(
         ("positive_import", SignConvention.PositiveImport),
         ("positive_export", SignConvention.PositiveExport),
         ("unsigned", SignConvention.Unsigned));
 
-    private static readonly ImmutableDictionary<string, SignalRole> Roles = Choices(
+    private static readonly FrozenDictionary<string, SignalRole> Roles = Choices(
         ("phase_current", SignalRole.PhaseCurrent),
         ("phase_power", SignalRole.PhasePower),
         ("phase_voltage", SignalRole.PhaseVoltage),
@@ -223,7 +219,7 @@ public static class SwitchboardDocumentParser
         ConfigRead.CheckKeys(mapping, path, ConnectionKeys, issues);
         var topology = Read(mapping, "topology", path, issues, (n, p) => ConfigRead.Choice(n, p, issues, Topologies));
         var rating = Read(mapping, "breaker_rating_a", path, issues, (n, p) => ConfigRead.Number(n, p, issues, BreakerRatingRange));
-        var characteristic = Read(mapping, "characteristic", path, issues, (n, p) => ConfigRead.Choice(n, p, issues, Characteristics));
+        var characteristic = Read(mapping, "characteristic", path, issues, (n, p) => ConfigRead.Choice(n, p, issues, ConfigSpelling.Characteristics));
         var voltage = Read(mapping, "voltage_v", path, issues, (n, p) => ConfigRead.Number(n, p, issues, VoltageRange));
         if (topology is not { } t || rating is not { } r || characteristic is not { } c || voltage is not { } v)
         {
@@ -244,10 +240,10 @@ public static class SwitchboardDocumentParser
 
         if (ConfigRead.Optional(connection, "reserve_w") is { } node && ConfigRead.Mapping(node, path, issues) is { } mapping)
         {
-            ConfigRead.CheckKeys(mapping, path, Phases.Keys.ToArray(), issues);
+            ConfigRead.CheckKeys(mapping, path, ConfigSpelling.Phases.Keys.ToArray(), issues);
             foreach (var entry in mapping.Entries)
             {
-                if (!Phases.TryGetValue(entry.Key, out var phase))
+                if (!ConfigSpelling.Phases.TryGetValue(entry.Key, out var phase))
                 {
                     continue;
                 }
@@ -387,18 +383,9 @@ public static class SwitchboardDocumentParser
         }
 
         var maxAgeNode = ConfigRead.Required(mapping, "max_age", path, issues);
-        var maxAge = maxAgeNode is null ? null : ConfigRead.PositiveDuration(maxAgeNode, ConfigRead.Join(path, "max_age"), issues);
-        if (maxAge > control?.Signals.MaxAgeLimit)
-        {
-            issues.Error(
-                ConfigurationIssueCodes.OutOfRange,
-                ConfigRead.Join(path, "max_age"),
-                maxAgeNode,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"max_age may be at most {control!.Signals.MaxAgeLimit.TotalSeconds:0.###} s (control.signals.max_age_limit): a frozen sensor counts as fresh for its whole max_age."));
-            maxAge = null;
-        }
+        var maxAgePath = ConfigRead.Join(path, "max_age");
+        var maxAge = ConfigRead.WithinMaxAgeLimit(
+            maxAgeNode is null ? null : ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues), control, maxAgePath, maxAgeNode, issues, "max_age", "a frozen sensor", statesLimit: true);
 
         double? sigma = null;
         if (ConfigRead.Optional(mapping, "sigma") is { } sigmaNode)
@@ -764,7 +751,7 @@ public static class SwitchboardDocumentParser
             return null;
         }
 
-        if (ConfigRead.Choice(node, phasePath, issues, Phases) is not { } phase)
+        if (ConfigRead.Choice(node, phasePath, issues, ConfigSpelling.Phases) is not { } phase)
         {
             return null;
         }
@@ -953,8 +940,7 @@ public static class SwitchboardDocumentParser
         where T : struct =>
         ConfigRead.Required(mapping, key, path, issues) is { } node ? read(node, ConfigRead.Join(path, key)) : null;
 
-    private static ImmutableDictionary<string, T> Choices<T>(params (string Key, T Value)[] choices) =>
-        choices.ToImmutableDictionary(c => c.Key, c => c.Value, StringComparer.Ordinal);
+    private static FrozenDictionary<string, T> Choices<T>(params (string Key, T Value)[] choices) => ConfigSpelling.Of(choices);
 
     private static string KindName(SignalKind kind) => Kinds.First(k => k.Value == kind).Key;
 

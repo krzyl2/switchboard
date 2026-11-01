@@ -4,6 +4,8 @@ using System.Text;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Hashing;
+using Switchboard.Domain.Time;
 
 namespace Switchboard.Domain.Ev;
 
@@ -309,15 +311,7 @@ public static class EvComposer
         Add(c.Margin.ToString("c", CultureInfo.InvariantCulture));
         Add(c.Spread ? "spread" : "flat");
 
-        const ulong offset = 14695981039346656037;
-        const ulong prime = 1099511628211;
-        var hash = offset;
-        foreach (var b in Encoding.UTF8.GetBytes(text.ToString()))
-        {
-            hash = (hash ^ b) * prime;
-        }
-
-        return unchecked((long)hash);
+        return Fnv1a.Signed(text.ToString());
     }
 
     private static bool WeeklyFullWanted(EvComposerInput input)
@@ -370,14 +364,6 @@ public static class EvComposer
     public static DateTimeOffset NextLocalMidnight(DateTimeOffset now, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(zone);
-        var local = TimeZoneInfo.ConvertTime(now, zone);
-        var naive = DateTime.SpecifyKind(local.Date.AddDays(1), DateTimeKind.Unspecified);
-        if (zone.IsInvalidTime(naive))
-        {
-            naive = naive.AddHours(1);
-        }
-
-        var offset = zone.IsAmbiguousTime(naive) ? zone.GetAmbiguousTimeOffsets(naive).Max() : zone.GetUtcOffset(naive);
-        return new DateTimeOffset(naive, offset);
+        return LocalTime.At(TimeZoneInfo.ConvertTime(now, zone).Date.AddDays(1), zone);
     }
 }

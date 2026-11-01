@@ -58,20 +58,7 @@ internal static class DeviceSectionParser
         ["export_price"] = ValueFollows.ExportPrice,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
-    private static readonly ImmutableDictionary<string, StateFreshness> StateReports = new Dictionary<string, StateFreshness>
-    {
-        ["age"] = StateFreshness.Age,
-        ["on_change"] = StateFreshness.OnChange,
-    }.ToImmutableDictionary(StringComparer.Ordinal);
-
     private static readonly ImmutableArray<string> SelectActuatorDomains = ["select", "input_select"];
-
-    private static readonly ImmutableDictionary<string, Phase> PhaseNames = new Dictionary<string, Phase>
-    {
-        ["L1"] = Phase.L1,
-        ["L2"] = Phase.L2,
-        ["L3"] = Phase.L3,
-    }.ToImmutableDictionary(StringComparer.Ordinal);
 
     /// <param name="signalEntities">Entities already mapped under <c>signals:</c> and by circuit groups; a device entity may not be one of them.</param>
     /// <param name="groups">The valid circuit groups, for membership and phase checks.</param>
@@ -557,7 +544,7 @@ internal static class DeviceSectionParser
 
     private static StateFreshness? ReadStateReports(ConfigMapping mapping, string path, ConfigIssues issues) =>
         ConfigRead.Optional(mapping, "state_reports") is { } node
-            ? ConfigRead.Choice(node, ConfigRead.Join(path, "state_reports"), issues, StateReports)
+            ? ConfigRead.Choice(node, ConfigRead.Join(path, "state_reports"), issues, ConfigSpelling.StateReports)
             : StateFreshness.Age;
 
     private static TimeSpan? ReadStateMaxAge(ConfigMapping mapping, string path, ControlParameters? control, StateFreshness? reports, ConfigIssues issues)
@@ -575,20 +562,7 @@ internal static class DeviceSectionParser
             return null;
         }
 
-        var maxAge = ConfigRead.PositiveDuration(node, keyPath, issues);
-        if (maxAge > control?.Signals.MaxAgeLimit)
-        {
-            issues.Error(
-                ConfigurationIssueCodes.OutOfRange,
-                keyPath,
-                node,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"state_max_age may be at most {control!.Signals.MaxAgeLimit.TotalSeconds:0.###} s (control.signals.max_age_limit): a frozen state counts as fresh for its whole max_age."));
-            return null;
-        }
-
-        return maxAge;
+        return ConfigRead.WithinMaxAgeLimit(ConfigRead.PositiveDuration(node, keyPath, issues), control, keyPath, node, issues, "state_max_age", "a frozen state", statesLimit: true);
     }
 
     private static IEnumerable<StageDraft> ReadStages(ConfigMapping mapping, string path, Context context)
@@ -694,7 +668,7 @@ internal static class DeviceSectionParser
             return [Phase.L1, Phase.L2, Phase.L3];
         }
 
-        if (!PhaseNames.TryGetValue(text, out var phase))
+        if (!ConfigSpelling.Phases.TryGetValue(text, out var phase))
         {
             issues.Error(ConfigurationIssueCodes.InvalidValue, phasePath, node, $"'{text}' is not one of: L1, L2, L3, {ThreePhase}.");
             return null;
@@ -898,12 +872,8 @@ internal static class DeviceSectionParser
         TimeSpan? maxAge = context.Control?.Devices.DrawMaxAge;
         if (ConfigRead.Optional(draw, "max_age") is { } maxAgeNode)
         {
-            maxAge = ConfigRead.PositiveDuration(maxAgeNode, ConfigRead.Join(drawPath, "max_age"), issues);
-            if (maxAge > context.Control?.Signals.MaxAgeLimit)
-            {
-                issues.Error(ConfigurationIssueCodes.OutOfRange, ConfigRead.Join(drawPath, "max_age"), maxAgeNode, "max_age may not exceed control.signals.max_age_limit: a frozen draw counts as fresh for its whole max_age.");
-                maxAge = null;
-            }
+            var maxAgePath = ConfigRead.Join(drawPath, "max_age");
+            maxAge = ConfigRead.WithinMaxAgeLimit(ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues), context.Control, maxAgePath, maxAgeNode, issues, "max_age", "a frozen draw");
         }
 
         return current is null || power is null || currentUnit is null || powerUnit is null || maxAge is null
@@ -942,7 +912,7 @@ internal static class DeviceSectionParser
         foreach (var entry in perPhase.Entries)
         {
             var entryPath = ConfigRead.Join(keyPath, entry.Key);
-            if (!PhaseNames.TryGetValue(entry.Key, out var phase) || !phases.Contains(phase))
+            if (!ConfigSpelling.Phases.TryGetValue(entry.Key, out var phase) || !phases.Contains(phase))
             {
                 issues.ErrorAtKey(ConfigurationIssueCodes.PhaseNotInTopology, entryPath, entry, $"'{entry.Key}' is not a phase of this device ({string.Join(", ", phases)}).");
                 ok = false;

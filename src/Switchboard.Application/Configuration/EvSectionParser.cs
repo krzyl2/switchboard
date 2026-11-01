@@ -41,8 +41,6 @@ internal static partial class EvSectionParser
 
     private static readonly ImmutableArray<string> CalendarDomains = ["calendar"];
 
-    private static readonly IReadOnlyDictionary<string, StateFreshness> Reports = new Dictionary<string, StateFreshness>(StringComparer.Ordinal) { ["age"] = StateFreshness.Age, ["on_change"] = StateFreshness.OnChange };
-
     /// <summary>The logical name of the SoC signal of a device's EV section; the reserved <c>device_</c> prefix keeps it clear of user signal names.</summary>
     public static SignalName SocSignal(DeviceName device) => SignalName.Parse($"{DeviceSectionParser.SignalPrefix}{device.Value}_ev_soc");
 
@@ -295,13 +293,7 @@ internal static partial class EvSectionParser
             return (fallback, maxAgePath);
         }
 
-        var maxAge = ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues);
-        if (maxAge > control?.Signals.MaxAgeLimit)
-        {
-            issues.Error(ConfigurationIssueCodes.OutOfRange, maxAgePath, maxAgeNode, "max_age may not exceed control.signals.max_age_limit: a frozen value counts as fresh for its whole max_age.");
-            return (null, maxAgePath);
-        }
-
+        var maxAge = ConfigRead.WithinMaxAgeLimit(ConfigRead.PositiveDuration(maxAgeNode, maxAgePath, issues), control, maxAgePath, maxAgeNode, issues, "max_age", "a frozen value");
         return (maxAge, maxAgePath);
     }
 
@@ -396,7 +388,7 @@ internal static partial class EvSectionParser
         var states = ReadStates(read, issues);
         var reports = StateFreshness.OnChange;
         var reportsPath = ConfigRead.Join(read.Path, "state_reports");
-        if (ConfigRead.Optional(read.Block, "state_reports") is { } reportsNode && ConfigRead.Choice(reportsNode, reportsPath, issues, Reports) is { } declared)
+        if (ConfigRead.Optional(read.Block, "state_reports") is { } reportsNode && ConfigRead.Choice(reportsNode, reportsPath, issues, ConfigSpelling.StateReports) is { } declared)
         {
             reports = declared;
         }
