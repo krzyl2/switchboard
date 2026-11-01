@@ -211,7 +211,7 @@ A manual hard SoC goal for the EV device in the existing manual goal store (`Man
 
 ### MQTT (only while a valid configuration holds an `ev:` section)
 
-`select.switchboard_ev_mode` (auto, pv_only, full_charge), `number.switchboard_ev_charge_now_target` (1 to 100 %, box, default `control.ev.charge_now.target`, kept in memory) and `button.switchboard_ev_charge_now` (payload `PRESS`; starts a charge-now with the number's value and the configured duration). Command topics `switchboard/ev_mode/set`, `…/ev_charge_now_target/set`, `…/ev_charge_now/set` are subscribed only with an `ev:` section (`MqttTopicGuard`), never from a retained message; the add-on never publishes to them. Without `ev:` the entities are retracted; without a valid configuration nothing is retracted.
+`select.switchboard_ev_mode` (auto, pv_only, full_charge), `number.switchboard_ev_charge_now_target` (1 to 100 %, box, default `control.ev.charge_now.target`, kept in memory) and `button.switchboard_ev_charge_now` (payload `PRESS`; starts a charge-now with the number's value and the configured duration). Command topics `switchboard/ev_mode/set`, `…/ev_charge_now_target/set`, `…/ev_charge_now/set` are subscribed only with an `ev:` section (`MqttTopicGuard`), never from a retained message; the add-on never publishes to them. Without `ev:` the entities are retracted; without a valid configuration nothing is retracted. Unless the add-on option `mqtt_enabling_commands` is on, only the mode `pv_only` and the target are taken from MQTT: `auto` and `full_charge` can charge from the grid and the button starts a grid charge at once, so they are refused (logged, the select set back to the mode in force); the panel and the API are unaffected.
 
 ### Notes
 

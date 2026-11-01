@@ -42,7 +42,7 @@ public sealed class MqttLinkTests : IAsyncDisposable
         Assert.Equal(Availability, settings.WillTopic);
         Assert.Equal("offline", settings.WillPayload);
         Assert.True(settings.WillRetain);
-        Assert.Equal("switchboard", settings.ClientId);
+        Assert.Equal(TestOptions.MqttClientId(), settings.ClientId);
     }
 
     [Fact]
@@ -208,6 +208,26 @@ public sealed class MqttLinkTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_reconnect_comes_back_as_the_same_client_and_the_id_is_resolved_once()
+    {
+        // A broker keeps a client's session by its id: a reconnect under a new id would leave the old session (and its Last Will) behind, and resolving it again
+        // would touch the data folder on every reconnect.
+        var resolved = 0;
+        var link = CreateLink(_credentials, () => $"switchboard-{++resolved:000000000000}");
+        _homeAssistant.Set(ConnectionState.Connected);
+        _run = link.RunAsync(_stop.Token);
+        await _transport.UntilAsync(o => o.Kind == "subscribe");
+
+        await _transport.DropAsync();
+        await _time.WaitForTimerAsync(TestOptions.ReconnectMin);
+        _time.Advance(TestOptions.ReconnectMin);
+        await _transport.UntilAsync(o => o.Kind == "subscribe");
+
+        Assert.Equal(["switchboard-000000000001", "switchboard-000000000001"], _transport.Connects.Select(c => c.ClientId));
+        Assert.Equal(1, resolved);
+    }
+
+    [Fact]
     public async Task A_session_refused_after_connect_is_left_and_retried_with_growing_delay()
     {
         // The broker accepts CONNECT but refuses discovery (an ACL without homeassistant/#). The client
@@ -271,12 +291,13 @@ public sealed class MqttLinkTests : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private MqttLink CreateLink(IMqttCredentialSource credentials) => new(
+    private MqttLink CreateLink(IMqttCredentialSource credentials, Func<string>? clientId = null) => new(
         _transport,
         credentials,
         _mqttState,
         new HealthEvaluator(_homeAssistant, _mqttState),
         MsOptions.Create(TestOptions.Mqtt()),
+        clientId ?? TestOptions.MqttClientId,
         MsOptions.Create(TestOptions.Heartbeat()),
         new AppVersion("0.1.0"),
         [],

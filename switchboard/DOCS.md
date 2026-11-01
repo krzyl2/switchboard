@@ -43,6 +43,7 @@ Home Assistant now calls add-ons *apps*; Switchboard is one.
 |---|---|---|---|
 | `mode` | `shadow`, `active` | `shadow` | `shadow` computes and logs decisions without switching anything. `active` allows commands, which still need the **Control allowed** switch on, a valid configuration and a confirmed state (see [Control](#control-active-mode)); until all of them hold it runs in shadow mode, and `GET api/mode` and `sensor.switchboard_mode` say which condition is missing. |
 | `log_level` | `debug`, `info`, `warning` | `info` | How much detail goes into the add-on log. |
+| `mqtt_enabling_commands` | `false`, `true` | `false` | Whether MQTT may send commands that lift protection or can raise the load. Off, MQTT (the Switchboard entities in Home Assistant and any other client of the broker) only makes things safer: kill switch on, **Control allowed** off, an override `force_off`, the EV mode `pv_only` and the EV charge-now target. Allowing control, releasing the kill switch, `force_on`, `auto`, the EV modes `auto` and `full_charge` and **EV charge now** are refused with a line in the log, and the entity is set back to what is in force; do them in the panel. On, any client of the broker can send them all. |
 
 ### Shadow mode is the default
 
@@ -67,7 +68,7 @@ Software that switches 5 kW loads must prove itself before it acts. A fresh inst
 Switchboard sends a command only while **all** of these hold, and says which one is missing when one does not (`GET api/mode`, the Limits page, the attributes of `switch.switchboard_control_allowed`):
 
 1. the add-on option `mode` is `active`,
-2. the **Control allowed** switch is on: in the panel, or `switch.switchboard_control_allowed` in Home Assistant. It is off after install and after the update to 0.7.0, kept in `/data/state.json`, and every change is a decision in the log with who made it,
+2. the **Control allowed** switch is on: in the panel, or `switch.switchboard_control_allowed` in Home Assistant (which turns it off; turning it on there needs the option `mqtt_enabling_commands`). It is off after install and after the update to 0.7.0, kept in `/data/state.json`, and every change is a decision in the log with who made it,
 3. the configuration is valid,
 4. the state is confirmed: if `/data/state.json` was corrupt or unreadable at start, control stays off and the kill switch on until you confirm the state in the panel (confirming does not allow control: that is its own step).
 
@@ -279,7 +280,7 @@ Dispatch keeps, per device, what it **intends** next to what Home Assistant **re
 
 ### Manual override
 
-Each device can be forced on, forced off or left to dispatch (automatic): on the **Limits** page, or with `select.switchboard_device_<id>_override` in Home Assistant. An override outranks dispatch (its order, headroom and hysteresis), never protection: a forced device is still held off by stale data, a safe state or the kill switch, still shed by the guard when a phase needs it, and a forced increase still waits for the guard to allow increases and for the breaker to have room. Overrides are kept across restarts; in shadow mode they, too, only change what is recorded.
+Each device can be forced on, forced off or left to dispatch (automatic): on the **Limits** page, or with `select.switchboard_device_<id>_override` in Home Assistant (there only `force_off`, unless the option `mqtt_enabling_commands` is on). An override outranks dispatch (its order, headroom and hysteresis), never protection: a forced device is still held off by stale data, a safe state or the kill switch, still shed by the guard when a phase needs it, and a forced increase still waits for the guard to allow increases and for the breaker to have room. Overrides are kept across restarts; in shadow mode they, too, only change what is recorded.
 
 ### The Limits page
 
@@ -296,7 +297,7 @@ If the page cannot reach the app it says **Limits unavailable** and hides every 
 
 ### Kill switch
 
-`switch.switchboard_kill_switch` holds every controlled device off while it is on, within one evaluation, whatever else is going on, manual overrides included; it survives a restart. With control in force it switches every device off (each command once); otherwise it only records what it would hold off, and its `switches_devices` attribute says which. It is a control switch for Switchboard, not an emergency stop and not a protective device.
+`switch.switchboard_kill_switch` holds every controlled device off while it is on, within one evaluation, whatever else is going on, manual overrides included; it survives a restart. With control in force it switches every device off (each command once); otherwise it only records what it would hold off, and its `switches_devices` attribute says which. It is a control switch for Switchboard, not an emergency stop and not a protective device. In Home Assistant it can always be turned on; turning it off there needs the option `mqtt_enabling_commands`, otherwise release it in the panel.
 
 ### Decision log and runtime state
 
@@ -385,7 +386,8 @@ actions:
 
 - No network port is exposed. The panel is reached only through Home Assistant ingress, behind Home Assistant's own login.
 - Outbound connections go only to Home Assistant (through the Supervisor), to the MQTT broker and to the Supervisor API. There is no telemetry and no cloud service.
-- Switchboard publishes MQTT messages only under its own `switchboard/` topics and its own discovery topics under `homeassistant/`. It subscribes only to Home Assistant's `homeassistant/status`, its own kill switch command `switchboard/kill_switch/set` and, for each device declared in a valid `switchboard.yaml`, that device's override command `switchboard/device_<id>_override/set`. A retained message on a command topic is ignored.
+- Switchboard publishes MQTT messages only under its own `switchboard/` topics and its own discovery topics under `homeassistant/`. It subscribes only to Home Assistant's `homeassistant/status`, its own kill switch and control switch commands `switchboard/kill_switch/set` and `switchboard/control_allowed/set`, for each device declared in a valid `switchboard.yaml` that device's override command `switchboard/device_<id>_override/set` and, with an `ev:` section, the three EV commands. A retained message on a command topic is ignored. Any client of the broker can publish on these topics, so unless the option `mqtt_enabling_commands` is on only the commands that make things safer are taken (see [Options](#options)).
+- It connects to the broker as `switchboard-<12 hexadecimal digits>`, generated once per install and kept in `/data/mqtt-client.json`, so a restart reconnects as the same client and a second install on the same broker does not take over its session.
 - It never reads the Home Assistant Recorder database.
 
 ## Standalone Docker
@@ -404,6 +406,7 @@ Without a Supervisor, settings come from environment variables:
 | `SWITCHBOARD_MQTT_PASSWORD` | no | Broker password. |
 | `SWITCHBOARD_MODE` | no | `shadow` (default) or `active`. |
 | `SWITCHBOARD_LOG_LEVEL` | no | `debug`, `info` (default) or `warning`. |
+| `SWITCHBOARD_MQTT_ENABLING_COMMANDS` | no | `true` lets MQTT allow control, release the kill switch and send the other enabling commands (the option `mqtt_enabling_commands`); anything else, or unset, keeps MQTT to the safe direction. |
 | `SWITCHBOARD_CONFIG_PATH` | no | Where `switchboard.yaml` is read from; default `/config/switchboard.yaml`. |
 | `SWITCHBOARD_DATA_PATH` | no | Where `state.json` and the decision log are written; default `/data`. |
 

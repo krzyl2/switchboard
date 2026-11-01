@@ -34,6 +34,9 @@ public sealed class RuntimeEnvironment
 
     public string? LogLevelOverride { get; init; }
 
+    /// <summary>Null when the variable is absent; an empty string still counts as set.</summary>
+    public string? MqttEnablingCommandsOverride { get; init; }
+
     public string OptionsPath { get; init; } = DefaultOptionsPath;
 
     public string ConfigPath { get; init; } = DefaultConfigPath;
@@ -77,6 +80,7 @@ public sealed class RuntimeEnvironment
             MqttPassword = lookup(EnvironmentVariableNames.MqttPassword),
             ModeOverride = lookup(EnvironmentVariableNames.Mode),
             LogLevelOverride = lookup(EnvironmentVariableNames.LogLevel),
+            MqttEnablingCommandsOverride = lookup(EnvironmentVariableNames.MqttEnablingCommands),
             OptionsPath = string.IsNullOrWhiteSpace(optionsPath) ? DefaultOptionsPath : optionsPath,
             ConfigPath = string.IsNullOrWhiteSpace(configPath) ? DefaultConfigPath : configPath,
             DataPath = string.IsNullOrWhiteSpace(dataPath) ? DefaultDataPath : dataPath,

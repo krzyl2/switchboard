@@ -15,7 +15,8 @@ namespace Switchboard.Tests.Infrastructure;
 /// The EV module's manual controls as MQTT entities (EV-09) through the real link and the real topic guard. Why it matters: a select, a number and a button on
 /// Home Assistant's dashboard are a way into the add-on, so they exist and are listened to only while an <c>ev:</c> section is in force, a command is exactly one of
 /// the select's options, a number in (0, 100] or the button's PRESS, a retained message never acts on its own, and the add-on can never publish to a command topic
-/// of its own (it would command itself).
+/// of its own (it would command itself). Without the add-on option <c>mqtt_enabling_commands</c> MQTT may only choose PV only and set the number: any client of
+/// the broker can publish there, and auto, full charge and the button can buy grid power.
 /// </summary>
 public sealed class EvEntitiesTests : IAsyncDisposable
 {
@@ -94,7 +95,7 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     [Fact]
     public async Task A_mode_command_is_exactly_one_of_the_options()
     {
-        await StartAsync();
+        await StartAsync(enablingCommands: true);
 
         foreach (var payload in new[] { "off", "AUTO", "pv-only", "", "auto\n", "force_on" })
         {
@@ -112,7 +113,7 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     [Fact]
     public async Task The_button_starts_a_charge_now_with_the_number_that_was_set_and_nothing_else_presses_it()
     {
-        await StartAsync();
+        await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(TargetTopic, "75");
         await _transport.UntilAsync(o => o.Topic == "switchboard/ev_charge_now_target/state" && o.Payload == "75");
@@ -134,7 +135,7 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     [InlineData("")]
     public async Task A_target_outside_zero_to_one_hundred_is_ignored_and_the_default_stays(string payload)
     {
-        await StartAsync();
+        await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(TargetTopic, payload);
         await _transport.DeliverAsync(ButtonTopic, "PRESS");
@@ -143,10 +144,46 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Without_the_option_MQTT_can_only_choose_pv_only_and_set_the_target()
+    {
+        // auto and full_charge can charge from the grid and the button starts a grid charge at once: by default no broker client may do either. PV only
+        // lowers what the module plans and the number changes nothing by itself, so both stay open.
+        _control.Manual = _control.Manual with { Mode = EvMode.PvOnly };
+        await StartAsync();
+
+        await _transport.DeliverAsync(ModeTopic, "full_charge");
+
+        // The select is set back to the mode in force.
+        await _transport.UntilAsync(o => o.Topic == "switchboard/ev_mode/state" && o.Payload == "pv_only");
+        await _transport.DeliverAsync(ModeTopic, "auto");
+        await _transport.DeliverAsync(TargetTopic, "75");
+        await _transport.UntilAsync(o => o.Topic == "switchboard/ev_charge_now_target/state" && o.Payload == "75");
+        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+        Assert.Empty(_control.Calls);
+
+        await _transport.DeliverAsync(ModeTopic, "pv_only");
+
+        Assert.Equal(["mode PvOnly"], _control.Calls);
+    }
+
+    [Fact]
+    public async Task With_the_option_MQTT_can_choose_every_mode_and_press_the_button()
+    {
+        await StartAsync(enablingCommands: true);
+
+        await _transport.DeliverAsync(ModeTopic, "pv_only");
+        await _transport.DeliverAsync(ModeTopic, "auto");
+        await _transport.DeliverAsync(ModeTopic, "full_charge");
+        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+
+        Assert.Equal(["mode PvOnly", "mode Auto", "mode FullCharge", "start 90"], _control.Calls);
+    }
+
+    [Fact]
     public async Task A_retained_command_never_acts()
     {
-        // Why: a command left in the broker (by anyone) must not change the car's mode or start a charge at the next connect.
-        await StartAsync();
+        // Why: a command left in the broker (by anyone) must not change the car's mode or start a charge at the next connect, even with the option on.
+        await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(ModeTopic, "pv_only", retained: true);
         await _transport.DeliverAsync(ButtonTopic, "PRESS", retained: true);
@@ -204,15 +241,16 @@ public sealed class EvEntitiesTests : IAsyncDisposable
         Assert.True(with.IsAllowed("switchboard/ev_mode/state"));
     }
 
-    private async Task<List<MqttOperation>> StartAsync(MemoryLedger? ledger = null)
+    private async Task<List<MqttOperation>> StartAsync(MemoryLedger? ledger = null, bool enablingCommands = false)
     {
-        var entities = new EvEntities(_control, MsOptions.Create(TestOptions.Mqtt()), new AppVersion("0.11.9"), NullLogger<EvEntities>.Instance);
+        var entities = new EvEntities(_control, MsOptions.Create(TestOptions.Mqtt()), new AppVersion("0.11.9"), NullLogger<EvEntities>.Instance, enablingCommands);
         var link = new MqttLink(
             _transport,
             new FakeCredentialSource(),
             _mqttState,
             new HealthEvaluator(_homeAssistant, _mqttState),
             MsOptions.Create(TestOptions.Mqtt()),
+            TestOptions.MqttClientId,
             MsOptions.Create(TestOptions.Heartbeat()),
             new AppVersion("0.11.9"),
             [entities],

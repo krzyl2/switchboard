@@ -20,7 +20,9 @@ map:
 options:
   mode: "shadow"
   log_level: "info"
+  mqtt_enabling_commands: false
 
 schema:
   mode: list(shadow|active)
   log_level: list(debug|info|warning)
+  mqtt_enabling_commands: bool

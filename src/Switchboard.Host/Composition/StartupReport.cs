@@ -36,6 +36,13 @@ internal static class StartupReport
             logger.LogWarning("Mode option is 'active': declared devices are commanded only while 'Control allowed' is on and the configuration is valid (the guard logs the effective mode at its first step).");
         }
 
+        if (options.MqttEnablingCommands)
+        {
+            logger.LogWarning(
+                "Option {Option} is on: any client of the MQTT broker can allow control, release the kill switch, force a device on and start EV charging.",
+                AddonOptionsResolver.MqttEnablingCommandsKey);
+        }
+
         if (source.IsReplay)
         {
             logger.LogWarning(

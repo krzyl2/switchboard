@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application;
 using Switchboard.Application.Dispatch;
+using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.State;
 using Switchboard.Domain.Decisions;
@@ -21,7 +22,9 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// <c>commanded</c>: whether commands leave now) and its manual override (<c>select.switchboard_device_&lt;id&gt;_override</c>:
 /// auto, force_on, force_off; SAFE-04). An override command must be exactly one of the options on
 /// the device's own command topic, and only a device of the current valid configuration is
-/// addressed (SAFE-05); protection outranks it either way.
+/// addressed (SAFE-05); protection outranks it either way. Unless the add-on option <c>mqtt_enabling_commands</c> is on, MQTT may
+/// only force a device off: <c>force_on</c> raises load and <c>auto</c> can lift a <c>force_off</c>, so either is refused, logged, and
+/// the select is set back to the override in force.
 /// <para>
 /// While no valid configuration is known in this process, the entities announced earlier (the
 /// ledger in state.json) are kept with unknown state, nothing is retracted and no override command
@@ -43,8 +46,10 @@ public sealed partial class DispatchEntities : IMqttEntitySource
     private readonly MqttOptions _mqtt;
     private readonly AppVersion _version;
     private readonly ILogger<DispatchEntities> _logger;
+    private readonly bool _enablingCommands;
 
     /// <param name="declaredDevices">The devices of the current valid configuration; null while there is none (the topic guard reads the same).</param>
+    /// <param name="enablingCommands">The add-on option <c>mqtt_enabling_commands</c>: whether <c>force_on</c> and <c>auto</c> are taken from MQTT.</param>
     public DispatchEntities(
         IDispatchStatusSource status,
         IDeviceOverrideControl overrides,
@@ -52,7 +57,8 @@ public sealed partial class DispatchEntities : IMqttEntitySource
         Func<IReadOnlyCollection<DeviceName>?> declaredDevices,
         IOptions<MqttOptions> mqtt,
         AppVersion version,
-        ILogger<DispatchEntities> logger)
+        ILogger<DispatchEntities> logger,
+        bool enablingCommands = false)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(mqtt);
@@ -63,6 +69,7 @@ public sealed partial class DispatchEntities : IMqttEntitySource
         _mqtt = mqtt.Value;
         _version = version;
         _logger = logger;
+        _enablingCommands = enablingCommands;
         _status.Published += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -106,6 +113,14 @@ public sealed partial class DispatchEntities : IMqttEntitySource
         if (mode is null)
         {
             _logger.LogWarning("Ignored an override command for {Device} that is not one of {Options}", device, string.Join(", ", OverrideOptions));
+            return;
+        }
+
+        if (mode != OverrideMode.ForceOff && !_enablingCommands)
+        {
+            // Nothing changes; Home Assistant's select is set back to the override in force.
+            _logger.LogWarning("Ignored the override {Mode} for {Device} from MQTT: the add-on option {Option} is off, so MQTT can only force a device off", payload, device, AddonOptionsResolver.MqttEnablingCommandsKey);
+            Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
 

@@ -206,13 +206,36 @@ public sealed class GuardEntitiesTests
     [Fact]
     public void Kill_switch_commands_are_exactly_ON_and_OFF()
     {
-        var entities = Entities();
+        var entities = Entities(enablingCommands: true);
 
         entities.HandleCommand("switchboard/kill_switch/set", "on");
         Assert.False(_killSwitch.Status.Engaged);
         entities.HandleCommand("switchboard/kill_switch/set", "ON");
         Assert.Equal((true, KillSwitchSource.Mqtt), (_killSwitch.Status.Engaged, _killSwitch.Status.Source!.Value));
         entities.HandleCommand("switchboard/kill_switch/set", "OFF");
+        Assert.False(_killSwitch.Status.Engaged);
+    }
+
+    [Fact]
+    public void Without_the_option_MQTT_engages_the_kill_switch_but_never_releases_it()
+    {
+        // Any client of the broker can publish on the command topic (Zigbee2MQTT, a Tasmota plug): by default it may only make things safer. A refused
+        // release changes nothing and asks the link to send Home Assistant the switch as it is, so HA's toggle snaps back to ON.
+        var entities = Entities();
+        var republished = 0;
+        entities.Changed += (_, _) => republished++;
+
+        entities.HandleCommand("switchboard/kill_switch/set", "ON");
+        Assert.Equal((true, KillSwitchSource.Mqtt), (_killSwitch.Status.Engaged, _killSwitch.Status.Source!.Value));
+        Assert.Equal(0, republished);
+
+        entities.HandleCommand("switchboard/kill_switch/set", "OFF");
+
+        Assert.Equal((true, KillSwitchSource.Mqtt), (_killSwitch.Status.Engaged, _killSwitch.Status.Source!.Value));
+        Assert.Equal(1, republished);
+
+        // The user's own release (the panel, the API) is not MQTT and still works.
+        _killSwitch.Set(false, KillSwitchSource.Api);
         Assert.False(_killSwitch.Status.Engaged);
     }
 
@@ -242,7 +265,7 @@ public sealed class GuardEntitiesTests
             value_per_kwh: 0.35
         """;
 
-    private GuardEntities Entities() => new(
+    private GuardEntities Entities(bool enablingCommands = false) => new(
         _holder,
         _decisions,
         _killSwitch,
@@ -250,7 +273,8 @@ public sealed class GuardEntitiesTests
         () => _voltage,
         MsOptions.Create(TestOptions.Mqtt()),
         new AppVersion("0.3.0"),
-        NullLogger<GuardEntities>.Instance);
+        NullLogger<GuardEntities>.Instance,
+        enablingCommands: enablingCommands);
 
     private void Publish(GuardEvaluation evaluation) => _holder.Publish(evaluation.Status);
 

@@ -21,7 +21,8 @@ namespace Switchboard.Tests.Infrastructure;
 /// its override select, under the frozen identity scheme. The select is the second way into the
 /// add-on after the kill switch, so its command topic is listened to only for a device of the
 /// current valid configuration, exactly, never through a wildcard, and never from a retained
-/// message; the dispatch state always says that nothing was commanded.
+/// message; the dispatch state always says that nothing was commanded. Without the add-on option <c>mqtt_enabling_commands</c> the select
+/// only forces a device off: any client of the broker can publish there, and <c>force_on</c> or <c>auto</c> can raise the load.
 /// </summary>
 public sealed class DispatchEntitiesTests : IAsyncDisposable
 {
@@ -100,7 +101,7 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
     [Fact]
     public void Override_commands_are_exactly_the_options_and_only_for_declared_devices()
     {
-        var entities = Entities();
+        var entities = Entities(enablingCommands: true);
 
         entities.HandleCommand("switchboard/device_heater_l1_override/set", "FORCE_ON");
         entities.HandleCommand("switchboard/device_heater_l1_override/set", "on");
@@ -111,9 +112,32 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
         entities.HandleCommand("switchboard/device_heater_l1_override/set", "force_off");
         entities.HandleCommand("switchboard/device_heater_l1_override/set", "auto");
 
+        entities.HandleCommand("switchboard/device_heater_l1_override/set", "force_on");
+
         Assert.Equal(
-            [(DeviceName.Parse("heater_l1"), OverrideMode.ForceOff, OverrideSource.Mqtt), (DeviceName.Parse("heater_l1"), OverrideMode.Auto, OverrideSource.Mqtt)],
+            [(DeviceName.Parse("heater_l1"), OverrideMode.ForceOff, OverrideSource.Mqtt), (DeviceName.Parse("heater_l1"), OverrideMode.Auto, OverrideSource.Mqtt), (DeviceName.Parse("heater_l1"), OverrideMode.ForceOn, OverrideSource.Mqtt)],
             _overrides.Calls);
+    }
+
+    [Fact]
+    public void Without_the_option_MQTT_can_only_force_a_device_off()
+    {
+        // force_on raises the load and auto lifts a force_off the user set (dispatch may then start the device): neither may come from an arbitrary broker
+        // client by default. Each refusal changes nothing and asks the link to send the select as it is, so Home Assistant's select snaps back.
+        var entities = Entities();
+        var republished = 0;
+        entities.Changed += (_, _) => republished++;
+
+        entities.HandleCommand("switchboard/device_heater_l1_override/set", "force_on");
+        entities.HandleCommand("switchboard/device_heater_l1_override/set", "auto");
+        Assert.Empty(_overrides.Calls);
+        Assert.Equal(2, republished);
+
+        entities.HandleCommand("switchboard/device_heater_l1_override/set", "force_off");
+        entities.HandleCommand("switchboard/device_heater_l1_override/set", "auto");
+
+        Assert.Equal([(DeviceName.Parse("heater_l1"), OverrideMode.ForceOff, OverrideSource.Mqtt)], _overrides.Calls);
+        Assert.Equal(3, republished);
     }
 
     [Fact]
@@ -183,7 +207,7 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
     public async Task Override_command_reaches_the_overrides_but_a_retained_one_never_does()
     {
         Publish();
-        await StartAsync();
+        await StartAsync(enablingCommands: true);
 
         await _transport!.DeliverAsync("switchboard/device_heater_l1_override/set", "force_on", retained: true);
         Assert.Empty(_overrides.Calls);
@@ -193,6 +217,20 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
 
         // Home Assistant waits for the select's state after a command.
         await _transport.UntilAsync(o => o.Topic == "switchboard/device_heater_l1_override/state" && o.Payload == "force_on");
+    }
+
+    [Fact]
+    public async Task A_refused_force_on_is_answered_with_the_override_in_force()
+    {
+        // The select is not optimistic: after a refused force_on the link publishes the override that holds, so Home Assistant does not show a forced device.
+        Publish();
+        await StartAsync();
+        _overrides.Set(DeviceName.Parse("heater_l1"), OverrideMode.ForceOff, OverrideSource.Api);
+
+        await _transport!.DeliverAsync("switchboard/device_heater_l1_override/set", "force_on");
+
+        await _transport.UntilAsync(o => o.Topic == "switchboard/device_heater_l1_override/state" && o.Payload == "force_off");
+        Assert.Equal(OverrideMode.ForceOff, _overrides.Current.For(DeviceName.Parse("heater_l1")).Mode);
     }
 
     public async ValueTask DisposeAsync()
@@ -206,14 +244,15 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private DispatchEntities Entities() => new(
+    private DispatchEntities Entities(bool enablingCommands = false) => new(
         _status,
         _overrides,
         _ledger,
         () => _declared,
         MsOptions.Create(TestOptions.Mqtt()),
         new AppVersion("0.4.0"),
-        NullLogger<DispatchEntities>.Instance);
+        NullLogger<DispatchEntities>.Instance,
+        enablingCommands);
 
     private void Publish()
     {
@@ -233,7 +272,7 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
             _scenario.Now));
     }
 
-    private async Task<List<MqttOperation>> StartAsync()
+    private async Task<List<MqttOperation>> StartAsync(bool enablingCommands = false)
     {
         _transport = new FakeMqttTransport(new MqttTopicGuard("homeassistant", "switchboard", () => _declared));
         var link = new MqttLink(
@@ -242,9 +281,10 @@ public sealed class DispatchEntitiesTests : IAsyncDisposable
             _mqttState,
             new HealthEvaluator(new HomeAssistantConnectionState(), _mqttState),
             MsOptions.Create(TestOptions.Mqtt()),
+            TestOptions.MqttClientId,
             MsOptions.Create(TestOptions.Heartbeat()),
             new AppVersion("0.4.0"),
-            [Entities()],
+            [Entities(enablingCommands)],
             _ledger,
             _time,
             NullLogger<MqttLink>.Instance);

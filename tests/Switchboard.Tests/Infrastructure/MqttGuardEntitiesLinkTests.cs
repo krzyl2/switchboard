@@ -77,6 +77,35 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_release_from_MQTT_without_the_option_is_answered_with_the_kill_switch_still_on()
+    {
+        // Home Assistant's switch is not optimistic: it shows what Switchboard publishes. After a refused release the link sends ON again, so the toggle
+        // snaps back instead of showing a release that never happened.
+        _killSwitch.Set(true, KillSwitchSource.Api);
+        _scenario.KillSwitch = _killSwitch.Status;
+        _holder.Publish(_scenario.Evaluate(GuardTrigger.KillSwitch).Status);
+        await StartAsync();
+
+        await _transport.DeliverAsync(KillSwitchCommand, "OFF");
+
+        await _transport.UntilAsync(o => o.Topic == "switchboard/kill_switch/state" && o.Payload == "ON");
+        Assert.Equal((true, KillSwitchSource.Api), (_killSwitch.Status.Engaged, _killSwitch.Status.Source!.Value));
+    }
+
+    [Fact]
+    public async Task With_the_option_a_release_from_MQTT_reaches_the_kill_switch()
+    {
+        _killSwitch.Set(true, KillSwitchSource.Api);
+        _scenario.KillSwitch = _killSwitch.Status;
+        _holder.Publish(_scenario.Evaluate(GuardTrigger.KillSwitch).Status);
+        await StartAsync(enablingCommands: true);
+
+        await _transport.DeliverAsync(KillSwitchCommand, "OFF");
+
+        Assert.Equal((false, KillSwitchSource.Mqtt), (_killSwitch.Status.Engaged, _killSwitch.Status.Source!.Value));
+    }
+
+    [Fact]
     public async Task Retained_command_is_ignored()
     {
         // A retained ON left in the broker would otherwise engage the kill switch at every connect.
@@ -178,7 +207,7 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private async Task<List<MqttOperation>> StartAsync()
+    private async Task<List<MqttOperation>> StartAsync(bool enablingCommands = false)
     {
         var entities = new GuardEntities(
             _holder,
@@ -188,13 +217,15 @@ public sealed class MqttGuardEntitiesLinkTests : IAsyncDisposable
             () => new Switchboard.Domain.Units.Volts(230),
             MsOptions.Create(TestOptions.Mqtt()),
             new AppVersion("0.3.0"),
-            NullLogger<GuardEntities>.Instance);
+            NullLogger<GuardEntities>.Instance,
+            enablingCommands: enablingCommands);
         _link = new MqttLink(
             _transport,
             new FakeCredentialSource(),
             _mqttState,
             new HealthEvaluator(_homeAssistant, _mqttState),
             MsOptions.Create(TestOptions.Mqtt()),
+            TestOptions.MqttClientId,
             MsOptions.Create(TestOptions.Heartbeat()),
             new AppVersion("0.3.0"),
             [entities],

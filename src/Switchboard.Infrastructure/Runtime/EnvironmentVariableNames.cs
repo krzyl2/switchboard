@@ -14,6 +14,9 @@ public static class EnvironmentVariableNames
     public const string MqttPassword = "SWITCHBOARD_MQTT_PASSWORD";
     public const string Mode = "SWITCHBOARD_MODE";
     public const string LogLevel = "SWITCHBOARD_LOG_LEVEL";
+
+    /// <summary>The standalone form of the add-on option <c>mqtt_enabling_commands</c>: only exactly <c>true</c> lets MQTT allow control or release the kill switch.</summary>
+    public const string MqttEnablingCommands = "SWITCHBOARD_MQTT_ENABLING_COMMANDS";
     public const string OptionsPath = "SWITCHBOARD_OPTIONS_PATH";
     public const string DevTrustAllRequests = "SWITCHBOARD_DEV_TRUST_ALL_REQUESTS";
 

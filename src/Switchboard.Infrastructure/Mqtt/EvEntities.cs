@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Switchboard.Application;
 using Switchboard.Application.Ev;
+using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
@@ -18,6 +19,9 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// ignored. They change only the add-on's own state through <see cref="IEvControl"/> (the same door as the web API): "Off" is not offered, it is the device's own
 /// override select. While no valid configuration is known the entities announced earlier are kept (nothing is retracted), and without an <c>ev:</c> section they
 /// are retracted like any entity no longer declared.
+/// Unless the add-on option <c>mqtt_enabling_commands</c> is on, MQTT may only set the mode to <c>pv_only</c> and set the number: <c>auto</c> and
+/// <c>full_charge</c> can charge from the grid and the button starts a grid charge at once, so each is refused, logged, and the select is set back to the
+/// mode in force.
 /// </summary>
 public sealed class EvEntities : IMqttEntitySource
 {
@@ -36,9 +40,11 @@ public sealed class EvEntities : IMqttEntitySource
     private readonly MqttOptions _mqtt;
     private readonly AppVersion _version;
     private readonly ILogger<EvEntities> _logger;
+    private readonly bool _enablingCommands;
     private double? _target;
 
-    public EvEntities(IEvControl control, IOptions<MqttOptions> mqtt, AppVersion version, ILogger<EvEntities> logger)
+    /// <param name="enablingCommands">The add-on option <c>mqtt_enabling_commands</c>: whether a mode other than <c>pv_only</c> and the button are taken from MQTT.</param>
+    public EvEntities(IEvControl control, IOptions<MqttOptions> mqtt, AppVersion version, ILogger<EvEntities> logger, bool enablingCommands = false)
     {
         ArgumentNullException.ThrowIfNull(control);
         ArgumentNullException.ThrowIfNull(mqtt);
@@ -46,6 +52,7 @@ public sealed class EvEntities : IMqttEntitySource
         _mqtt = mqtt.Value;
         _version = version;
         _logger = logger;
+        _enablingCommands = enablingCommands;
         _control.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -129,6 +136,12 @@ public sealed class EvEntities : IMqttEntitySource
                 return;
             }
 
+            if (mode != EvMode.PvOnly && !_enablingCommands)
+            {
+                RefuseEnabling($"the EV mode {payload}");
+                return;
+            }
+
             _control.SetMode(mode);
         }
         else if (string.Equals(topic, topics[1], StringComparison.Ordinal))
@@ -150,12 +163,25 @@ public sealed class EvEntities : IMqttEntitySource
                 return;
             }
 
+            if (!_enablingCommands)
+            {
+                RefuseEnabling("EV charge now");
+                return;
+            }
+
             var result = _control.StartChargeNow(Target(), null);
             if (result is not (EvControlResult.Done or EvControlResult.Unchanged))
             {
                 _logger.LogWarning("EV charge now was refused: {Result}", result);
             }
         }
+    }
+
+    // Nothing changes; the link publishes the states again, so Home Assistant's select shows the mode in force.
+    private void RefuseEnabling(string command)
+    {
+        _logger.LogWarning("Ignored {Command} from MQTT: the add-on option {Option} is off, so of the EV controls MQTT can only set the mode to pv_only and the charge-now target", command, AddonOptionsResolver.MqttEnablingCommandsKey);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     // What the number shows and the button uses: the last value set, else the configured default.

@@ -15,7 +15,11 @@ public sealed class MqttOptions
     /// <summary>Root of every non-discovery topic we publish; the topic guard refuses anything outside it.</summary>
     public required string BaseTopic { get; init; }
 
-    public required string ClientId { get; init; }
+    /// <summary>
+    /// The start of the broker client id; the link appends a suffix generated once per install (kept in the data folder), so two installs on one
+    /// broker never take over each other's session and a reconnect or a restart comes back as the same client.
+    /// </summary>
+    public required string ClientIdPrefix { get; init; }
 
     public required TimeSpan ReconnectMinDelay { get; init; }
 
@@ -50,9 +54,9 @@ public sealed class MqttOptionsValidator(IOptions<HeartbeatOptions> heartbeat) :
         RequireTopicLevel(failures, $"{section}:DiscoveryPrefix", options.DiscoveryPrefix);
         RequireTopicLevel(failures, $"{section}:BaseTopic", options.BaseTopic);
 
-        if (string.IsNullOrWhiteSpace(options.ClientId))
+        if (string.IsNullOrWhiteSpace(options.ClientIdPrefix))
         {
-            failures.Add($"{section}:ClientId must not be empty.");
+            failures.Add($"{section}:ClientIdPrefix must not be empty.");
         }
 
         OptionsValidation.RequireDelayRange(failures, section, options.ReconnectMinDelay, options.ReconnectMaxDelay);

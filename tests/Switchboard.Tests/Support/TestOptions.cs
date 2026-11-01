@@ -38,12 +38,15 @@ internal static class TestOptions
         SupervisorServiceUrl = "http://supervisor/services/mqtt",
         DiscoveryPrefix = "homeassistant",
         BaseTopic = "switchboard",
-        ClientId = "switchboard",
+        ClientIdPrefix = "switchboard",
         ReconnectMinDelay = ReconnectMin,
         ReconnectMaxDelay = ReconnectMax,
         KeepAlivePeriod = MqttKeepAlive,
         ShutdownTimeout = MqttShutdownTimeout,
     };
+
+    /// <summary>The client id a hand-built link connects with: the prefix and an install id as the host composes them.</summary>
+    public static string MqttClientId() => "switchboard-0123456789ab";
 
     public static HeartbeatOptions Heartbeat() => new()
     {

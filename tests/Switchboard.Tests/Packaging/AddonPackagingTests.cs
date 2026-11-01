@@ -68,6 +68,15 @@ public sealed class AddonPackagingTests
     }
 
     [Fact]
+    public void Mqtt_takes_only_the_safe_direction_by_default()
+    {
+        // Any client of the broker can publish on the add-on's command topics: a fresh install lets MQTT engage the kill switch and turn control off, never
+        // the reverse. A boolean in the schema, so the Supervisor writes a JSON true or false, the only values the add-on reads.
+        Assert.Equal("false", Scalar(Map(Config.Value, "options"), "mqtt_enabling_commands"));
+        Assert.Equal("bool", Scalar(Map(Config.Value, "schema"), "mqtt_enabling_commands"));
+    }
+
+    [Fact]
     public void Both_target_architectures_are_declared()
     {
         var arch = Sequence(Config.Value, "arch");

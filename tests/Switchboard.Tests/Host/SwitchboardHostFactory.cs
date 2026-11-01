@@ -48,6 +48,7 @@ internal sealed class SwitchboardHostFactory : WebApplicationFactory<Program>
             ["SUPERVISOR_TOKEN"] = null,
             ["SWITCHBOARD_DEV_TRUST_ALL_REQUESTS"] = null,
             ["SWITCHBOARD_MODE"] = null,
+            ["SWITCHBOARD_MQTT_ENABLING_COMMANDS"] = null,
         };
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {

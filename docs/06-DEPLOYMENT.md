@@ -52,22 +52,24 @@ map:
 options:
   mode: "shadow"
   log_level: "info"
+  mqtt_enabling_commands: false
 
 schema:
   mode: list(shadow|active)
   log_level: list(debug|info|warning)
+  mqtt_enabling_commands: bool
 ```
 
 Deliberately minimal. Everything else — meter mapping, phases, devices — is configured in the ingress UI and persisted under `/data`, because an options form cannot express per-device structures or run a phase-assignment test. Argus took the same path when it moved from YAML options to the ingress config UI; start there instead of repeating the migration.
 
-`mode` stays in the manifest options so a user can force shadow mode without opening the UI.
+`mode` stays in the manifest options so a user can force shadow mode without opening the UI. `mqtt_enabling_commands` is there for the same reason the other way round: neither MQTT, the panel nor the wizard can turn it on, so a client of the broker can never widen what it may command.
 
 Keys left at their Supervisor defaults are omitted (`startup: application`, `boot: auto`, `ingress_port: 8099`); if the process ever listens elsewhere, `ingress_port` must come back. Liveness is a Docker `HEALTHCHECK` in the image (HTTP `GET /api/status` from loopback), not a `watchdog:` key: a `tcp://` watchdog still connects to a hung process. The probe answers 200 regardless of HA/MQTT connectivity, so an HA outage never restart-loops the add-on.
 
 ## Authentication
 
 - **Home Assistant**: `SUPERVISOR_TOKEN` from the environment, with `homeassistant_api: true`. WebSocket through the Supervisor proxy; no user-supplied token anywhere.
-- **MQTT**: Supervisor service discovery (`services: mqtt:need`). Manual broker settings only as a fallback for the standalone path.
+- **MQTT**: Supervisor service discovery (`services: mqtt:need`). Manual broker settings only as a fallback for the standalone path. Client id `switchboard-<install id>`, the install id generated once into `/data/mqtt-client.json`.
 - **Ingress**: authentication is Home Assistant's. The add-on exposes no other port. There is no outbound connection other than to HA and the broker.
 
 ## Persistence

@@ -9,3 +9,14 @@ configuration:
   log_level:
     name: Poziom logowania
     description: Szczegółowość wpisów w logu Switchboard.
+  mqtt_enabling_commands:
+    name: Polecenia włączające przez MQTT
+    description: >-
+      Wyłączone (domyślnie): przez MQTT, czyli z encji Switchboard w Home
+      Assistant i od każdego innego klienta brokera, Switchboard przyjmuje
+      tylko polecenia, które zwiększają bezpieczeństwo: włączenie kill
+      switcha, wyłączenie „Sterowanie dozwolone”, nadpisanie urządzenia
+      force_off i tryb EV pv_only. Zezwolenie na sterowanie, zwolnienie kill
+      switcha, force_on, auto, pozostałe tryby EV i „ładuj teraz” są
+      odrzucane, a encja wraca do stanu faktycznego; do nich służy panel
+      Switchboard. Włączone: każdy klient brokera może wysłać je wszystkie.

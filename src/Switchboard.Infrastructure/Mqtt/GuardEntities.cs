@@ -25,6 +25,9 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// time and the guard state; the effective mode, the last decision (its reason code, or the action
 /// for a decision that ends a condition), the kill switch and the control switch ("control
 /// allowed", MODE-02); per declared device its state.
+/// Over MQTT the two switches move only the safe way (kill switch on, control off) unless the add-on option
+/// <c>mqtt_enabling_commands</c> is on: any client of the broker can publish on their command topics, so a release or an
+/// "allow control" from MQTT is refused, logged, and Home Assistant's switch is set back to what is in force.
 /// Headroom is computed from the measured current, never from the "as if applied" estimate: in
 /// shadow mode nothing is applied, and an automation must not act on a hypothetical number. Watts are derived at this presentation edge from the configured voltage only.
 /// <para>
@@ -66,6 +69,7 @@ public sealed partial class GuardEntities : IMqttEntitySource
     private readonly IDecisionRecorder _decisions;
     private readonly IKillSwitchControl _killSwitch;
     private readonly IControlSwitch? _control;
+    private readonly bool _enablingCommands;
     private readonly IDiscoveryLedger _ledger;
     private readonly Func<Volts?> _voltage;
     private readonly MqttOptions _mqtt;
@@ -73,6 +77,7 @@ public sealed partial class GuardEntities : IMqttEntitySource
     private readonly ILogger<GuardEntities> _logger;
 
     /// <param name="voltage">The configured nominal voltage (connection.voltage_v), for the headroom in W; null without a valid configuration.</param>
+    /// <param name="enablingCommands">The add-on option <c>mqtt_enabling_commands</c>: whether a kill switch release and "allow control" are taken from MQTT.</param>
     public GuardEntities(
         IGuardStatusSource status,
         IDecisionRecorder decisions,
@@ -82,7 +87,8 @@ public sealed partial class GuardEntities : IMqttEntitySource
         IOptions<MqttOptions> mqtt,
         AppVersion version,
         ILogger<GuardEntities> logger,
-        IControlSwitch? control = null)
+        IControlSwitch? control = null,
+        bool enablingCommands = false)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(mqtt);
@@ -95,6 +101,7 @@ public sealed partial class GuardEntities : IMqttEntitySource
         _version = version;
         _logger = logger;
         _control = control;
+        _enablingCommands = enablingCommands;
         CommandTopics = control is null
             ? [CommandTopic(_mqtt.BaseTopic, KillSwitchObjectId)]
             : [CommandTopic(_mqtt.BaseTopic, KillSwitchObjectId), CommandTopic(_mqtt.BaseTopic, ControlAllowedObjectId)];
@@ -152,6 +159,9 @@ public sealed partial class GuardEntities : IMqttEntitySource
                 case PayloadOn:
                     _killSwitch.Set(true, KillSwitchSource.Mqtt);
                     break;
+                case PayloadOff when !_enablingCommands:
+                    RefuseEnabling("a kill switch release");
+                    break;
                 case PayloadOff when _killSwitch.Set(false, KillSwitchSource.Mqtt) == KillSwitchSetResult.RefusedLocked:
                     // Held until the state after a corrupt state.json is confirmed in the UI: Home
                     // Assistant's switch is set back to what is in force.
@@ -175,6 +185,9 @@ public sealed partial class GuardEntities : IMqttEntitySource
 
         switch (payload)
         {
+            case PayloadOn when !_enablingCommands:
+                RefuseEnabling("control allowed");
+                break;
             case PayloadOn when _control.Set(true, ControlSwitchSource.Mqtt) == ControlSetResult.RefusedLocked:
                 _logger.LogWarning("Ignored control allowed from Home Assistant: the state after a corrupt state.json must be confirmed in the Switchboard UI first");
                 Changed?.Invoke(this, EventArgs.Empty);
@@ -189,6 +202,13 @@ public sealed partial class GuardEntities : IMqttEntitySource
                 Changed?.Invoke(this, EventArgs.Empty);
                 break;
         }
+    }
+
+    // Nothing changes; Home Assistant's switch is set back to what is in force.
+    private void RefuseEnabling(string command)
+    {
+        _logger.LogWarning("Ignored {Command} from MQTT: the add-on option {Option} is off, so MQTT can only engage the kill switch and turn control off", command, AddonOptionsResolver.MqttEnablingCommandsKey);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private MqttEntity Mode(GuardStatus status) => new(

@@ -8,3 +8,13 @@ configuration:
   log_level:
     name: Log level
     description: How much detail to write to the Switchboard log.
+  mqtt_enabling_commands:
+    name: Allow enabling commands over MQTT
+    description: >-
+      Off (default): over MQTT, which includes the Switchboard entities in Home
+      Assistant and any other client of the broker, Switchboard only accepts
+      commands that make things safer: kill switch on, Control allowed off, a
+      device override force_off and the EV mode pv_only. Allowing control,
+      releasing the kill switch, force_on, auto, the other EV modes and EV
+      charge now are refused and the entity is set back; use the Switchboard
+      panel for them. On: any client of the broker can send them all.

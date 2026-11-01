@@ -105,4 +105,54 @@ public sealed class AddonOptionsResolverTests
     {
         Assert.Empty(AddonOptionsResolver.Resolve("""{"mode":"shadow","log_level":"info"}""", null, null).Warnings);
     }
+
+    [Theory]
+    [InlineData("""{"mqtt_enabling_commands":true}""", true)]
+    [InlineData("""{"mqtt_enabling_commands":false}""", false)]
+    [InlineData("""{"mode":"active"}""", false)]
+    [InlineData("""{"mqtt_enabling_commands":"true"}""", false)]
+    [InlineData("""{"mqtt_enabling_commands":1}""", false)]
+    [InlineData("""{"mqtt_enabling_commands":null}""", false)]
+    [InlineData("""{"mqtt_enabling_commands":true""", false)]
+    [InlineData("""[{"mqtt_enabling_commands":true}]""", false)]
+    public void Only_a_json_true_lets_mqtt_allow_control_or_release_the_kill_switch(string json, bool expected)
+    {
+        // Any client of the broker can publish on the add-on's command topics: a doubtful value must leave MQTT able only to make things safer.
+        Assert.Equal(expected, AddonOptionsResolver.Resolve(json, null, null).MqttEnablingCommands);
+    }
+
+    [Fact]
+    public void A_missing_options_file_keeps_mqtt_to_the_safe_direction()
+    {
+        Assert.False(AddonOptionsResolver.Resolve(null, null, null).MqttEnablingCommands);
+    }
+
+    [Theory]
+    [InlineData("""{"mqtt_enabling_commands":true}""", "false", false)]
+    [InlineData("""{"mqtt_enabling_commands":false}""", "true", true)]
+    [InlineData(null, "true", true)]
+    [InlineData("""{"mqtt_enabling_commands":true}""", "", false)]
+    [InlineData(null, "True", false)]
+    [InlineData(null, "1", false)]
+    public void The_environment_override_wins_and_only_exactly_true_enables(string? json, string environment, bool expected)
+    {
+        Assert.Equal(expected, AddonOptionsResolver.Resolve(json, null, null, environment).MqttEnablingCommands);
+    }
+
+    [Theory]
+    [InlineData("""{"mqtt_enabling_commands":"yes"}""", null)]
+    [InlineData(null, "True")]
+    public void An_unrecognised_mqtt_enabling_value_is_reported(string? json, string? environment)
+    {
+        var resolved = AddonOptionsResolver.Resolve(json, null, null, environment);
+
+        Assert.Contains(resolved.Warnings, w => w.Contains("mqtt_enabling_commands", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_plain_boolean_produces_no_warning()
+    {
+        Assert.Empty(AddonOptionsResolver.Resolve("""{"mode":"shadow","log_level":"info","mqtt_enabling_commands":false}""", null, null).Warnings);
+        Assert.Empty(AddonOptionsResolver.Resolve("""{"mode":"shadow","log_level":"info","mqtt_enabling_commands":true}""", null, null).Warnings);
+    }
 }

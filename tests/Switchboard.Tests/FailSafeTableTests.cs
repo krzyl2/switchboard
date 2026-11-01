@@ -243,6 +243,7 @@ public sealed class FailSafeTableTests
                 broker.Mqtt,
                 broker.Health,
                 MsOptions.Create(TestOptions.Mqtt()),
+                TestOptions.MqttClientId,
                 MsOptions.Create(TestOptions.Heartbeat()),
                 new AppVersion("0.3.0"),
                 [entities],

@@ -33,7 +33,7 @@ public sealed class OptionsValidationTests
         Assert.Equal(TimeSpan.FromSeconds(30), heartbeat.ExpireAfter);
         Assert.Equal("homeassistant", mqtt.DiscoveryPrefix);
         Assert.Equal("switchboard", mqtt.BaseTopic);
-        Assert.Equal("switchboard", mqtt.ClientId);
+        Assert.Equal("switchboard", mqtt.ClientIdPrefix);
         Assert.Equal("http://supervisor/services/mqtt", mqtt.SupervisorServiceUrl);
         Assert.Equal(TimeSpan.FromSeconds(15), mqtt.KeepAlivePeriod);
         // 2 s since Stage C (3 s since Stage 2): the guard's stop, the last commands' wait and the

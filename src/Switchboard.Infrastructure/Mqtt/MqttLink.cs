@@ -32,6 +32,7 @@ public sealed class MqttLink : IHealthPublisher
     private readonly MqttConnectionState _state;
     private readonly IHealthStatus _health;
     private readonly MqttOptions _mqtt;
+    private readonly Func<string> _resolveClientId;
     private readonly HeartbeatOptions _heartbeat;
     private readonly AppVersion _version;
     private readonly IReadOnlyList<IMqttEntitySource> _sources;
@@ -55,12 +56,17 @@ public sealed class MqttLink : IHealthPublisher
     private int _entitiesDirty;
     private bool _shuttingDown;
 
+    // Resolved at the first connect and kept: every reconnect of this process comes back as the same client.
+    private string? _clientId;
+
+    /// <param name="clientId">The broker client id of this install; asked once, at the first connect (it may read or write the data folder).</param>
     public MqttLink(
         IMqttTransport transport,
         IMqttCredentialSource credentials,
         MqttConnectionState state,
         IHealthStatus health,
         IOptions<MqttOptions> mqtt,
+        Func<string> clientId,
         IOptions<HeartbeatOptions> heartbeat,
         AppVersion version,
         IEnumerable<IMqttEntitySource> entitySources,
@@ -73,6 +79,7 @@ public sealed class MqttLink : IHealthPublisher
         _state = state;
         _health = health;
         _mqtt = mqtt.Value;
+        _resolveClientId = clientId;
         _heartbeat = heartbeat.Value;
         _version = version;
         _sources = [.. entitySources];
@@ -228,7 +235,7 @@ public sealed class MqttLink : IHealthPublisher
         var settings = new MqttConnectSettings
         {
             Credentials = credentials,
-            ClientId = _mqtt.ClientId,
+            ClientId = _clientId ??= _resolveClientId(),
             WillTopic = _availabilityTopic,
             WillPayload = MqttIdentity.AvailabilityOffline,
             WillRetain = true,

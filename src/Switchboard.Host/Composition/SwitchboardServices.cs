@@ -53,7 +53,8 @@ public static class SwitchboardServices
             return AddonOptionsResolver.Resolve(
                 AddonOptionsFile.TryRead(environment.OptionsPath),
                 environment.ModeOverride,
-                environment.LogLevelOverride);
+                environment.LogLevelOverride,
+                environment.MqttEnablingCommandsOverride);
         });
         services.AddSingleton(AppVersion.FromInformationalVersion(
             typeof(SwitchboardServices).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion));
@@ -83,7 +84,12 @@ public static class SwitchboardServices
             return new MqttTopicGuard(mqtt.DiscoveryPrefix, mqtt.BaseTopic, DeclaredDevices(sp), EvControlsEnabled(sp));
         });
         services.AddSingleton<IMqttTransport, MqttNetTransport>();
-        services.AddSingleton<MqttLink>();
+        // The client id is unique per install: the configured prefix and an id generated once into the data folder, read at the first connect.
+        services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MqttLink>(sp, (Func<string>)(() =>
+        {
+            var file = new MqttClientIdFile(sp.GetRequiredService<RuntimeEnvironment>().DataPath, sp.GetRequiredService<ILogger<MqttClientIdFile>>());
+            return $"{sp.GetRequiredService<IOptions<MqttOptions>>().Value.ClientIdPrefix}-{file.LoadOrCreate().Value}";
+        })));
         services.AddSingleton<IHealthPublisher>(sp => sp.GetRequiredService<MqttLink>());
         services.AddSingleton<HeartbeatLoop>();
 
@@ -270,7 +276,8 @@ public static class SwitchboardServices
                 sp.GetRequiredService<IOptions<MqttOptions>>(),
                 sp.GetRequiredService<AppVersion>(),
                 sp.GetRequiredService<ILogger<GuardEntities>>(),
-                sp.GetRequiredService<IControlSwitch>());
+                sp.GetRequiredService<IControlSwitch>(),
+                sp.GetRequiredService<ResolvedAddonOptions>().MqttEnablingCommands);
         });
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<GuardEntities>());
         services.AddSingleton(sp => new DispatchEntities(
@@ -280,7 +287,8 @@ public static class SwitchboardServices
             DeclaredDevices(sp),
             sp.GetRequiredService<IOptions<MqttOptions>>(),
             sp.GetRequiredService<AppVersion>(),
-            sp.GetRequiredService<ILogger<DispatchEntities>>()));
+            sp.GetRequiredService<ILogger<DispatchEntities>>(),
+            sp.GetRequiredService<ResolvedAddonOptions>().MqttEnablingCommands));
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<DispatchEntities>());
 
         // The EV module's manual controls (EV-09): announced and listened to only while the valid configuration holds an ev: section.
@@ -288,7 +296,8 @@ public static class SwitchboardServices
             sp.GetRequiredService<IEvControl>(),
             sp.GetRequiredService<IOptions<MqttOptions>>(),
             sp.GetRequiredService<AppVersion>(),
-            sp.GetRequiredService<ILogger<EvEntities>>()));
+            sp.GetRequiredService<ILogger<EvEntities>>(),
+            sp.GetRequiredService<ResolvedAddonOptions>().MqttEnablingCommands));
         services.AddSingleton<IMqttEntitySource>(sp => sp.GetRequiredService<EvEntities>());
         return services;
     }

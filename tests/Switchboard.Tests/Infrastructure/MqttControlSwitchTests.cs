@@ -15,7 +15,8 @@ namespace Switchboard.Tests.Infrastructure;
 /// MODE-02 from Home Assistant: the control switch is an MQTT switch under the frozen identity,
 /// commanded with exactly ON and OFF. A refused ON (the state after an untrusted state.json is not
 /// confirmed) puts Home Assistant's switch back to what is in force instead of leaving it showing
-/// a control that is not allowed. The kill switch says whether it switches anything now.
+/// a control that is not allowed. The kill switch says whether it switches anything now. Allowing control from MQTT needs the add-on option
+/// <c>mqtt_enabling_commands</c>: any client of the broker can publish on the command topic, so by default MQTT may only turn control off.
 /// </summary>
 public sealed class MqttControlSwitchTests
 {
@@ -41,7 +42,7 @@ public sealed class MqttControlSwitchTests
     [Fact]
     public void Commands_are_exactly_ON_and_OFF_and_are_recorded_as_coming_from_home_assistant()
     {
-        var (loop, entities) = Build(OperatingMode.Active);
+        var (loop, entities) = Build(OperatingMode.Active, enablingCommands: true);
 
         entities.HandleCommand("switchboard/control_allowed/set", "on");
         Assert.False(loop.Control!.Status.Allowed);
@@ -56,7 +57,7 @@ public sealed class MqttControlSwitchTests
     [Fact]
     public void A_refused_ON_sets_home_assistants_switch_back()
     {
-        var (loop, entities) = Build(OperatingMode.Active);
+        var (loop, entities) = Build(OperatingMode.Active, enablingCommands: true);
         loop.Control!.Lock(ControlLockReason.StateFileCorrupt);
         loop.Runner.Step();
         var republished = 0;
@@ -75,6 +76,30 @@ public sealed class MqttControlSwitchTests
     }
 
     [Fact]
+    public void Without_the_option_MQTT_turns_control_off_but_never_on()
+    {
+        // The enabling direction is the one a stray or hostile broker client must not reach: control stays off, nothing is recorded as an MQTT change, and
+        // Home Assistant's switch is sent back OFF. Turning control off stays open to MQTT, so an automation can still stop everything.
+        var (loop, entities) = Build(OperatingMode.Active);
+        loop.Runner.Step();
+        var republished = 0;
+        entities.Changed += (_, _) => republished++;
+
+        entities.HandleCommand("switchboard/control_allowed/set", "ON");
+
+        Assert.False(loop.Control!.Status.Allowed);
+        Assert.NotEqual(ControlSwitchSource.Mqtt, loop.Control.Status.Source);
+        Assert.Equal(1, republished);
+        Assert.Equal("OFF", entities.Current().Entities.Single(e => e.ObjectId == GuardEntities.ControlAllowedObjectId).State);
+
+        loop.Control.Set(true, ControlSwitchSource.Api);
+        entities.HandleCommand("switchboard/control_allowed/set", "OFF");
+
+        Assert.Equal((false, ControlSwitchSource.Mqtt), (loop.Control.Status.Allowed, loop.Control.Status.Source));
+        Assert.Equal(1, republished);
+    }
+
+    [Fact]
     public void The_kill_switch_says_whether_it_switches_anything_now()
     {
         var (loop, entities) = Build(OperatingMode.Active);
@@ -89,7 +114,7 @@ public sealed class MqttControlSwitchTests
         return json.RootElement.Clone();
     }
 
-    private static (ControlLoop Loop, GuardEntities Entities) Build(OperatingMode ceiling)
+    private static (ControlLoop Loop, GuardEntities Entities) Build(OperatingMode ceiling, bool enablingCommands = false)
     {
         var time = new SteppableTime(GuardScenario.Start);
         var store = new SignalStore(new SignalStoreSettings(TimeSpan.FromSeconds(5)));
@@ -105,7 +130,8 @@ public sealed class MqttControlSwitchTests
             MsOptions.Create(TestOptions.Mqtt()),
             new AppVersion("0.7.0"),
             NullLogger<GuardEntities>.Instance,
-            loop.Control);
+            loop.Control,
+            enablingCommands);
         return (loop, entities);
     }
 }
