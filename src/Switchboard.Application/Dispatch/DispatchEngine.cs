@@ -279,7 +279,7 @@ public sealed partial class DispatchEngine
             var basis = DeviceLevels.Cap(spec, ledger?.Target ?? reported ?? DeviceLevels.Off(spec), limits);
             var basisIndex = IndexAtOrBelow(spec, levels, basis);
             var capIndex = IndexAtOrBelow(spec, levels, DeviceLevels.Cap(spec, DeviceLevels.Max(spec), limits));
-            var constraints = Constraints(spec, protection);
+            var constraints = protection.ConstraintsOf(spec);
             var mode = input.Overrides.For(spec.Id).Mode;
             var state = _devices[spec.Id];
             if (mode == OverrideMode.Auto && spec.Start == StartPolicy.RestoreOnly)
@@ -622,20 +622,8 @@ public sealed partial class DispatchEngine
         };
     }
 
-    /// <summary>The main phases a device draws on and, as a group member, its group's phases.</summary>
-    private static ImmutableArray<ConstraintKey> Constraints(DeviceSpec spec, ProtectionSetup protection)
-    {
-        var keys = spec.Phases.Select(ConstraintKey.Main).ToList();
-        if (spec.CircuitGroup is { } group && protection.Group(group) is { } declared)
-        {
-            keys.AddRange(spec.Phases.Where(declared.Phases.Contains).Select(p => new ConstraintKey(group, p)));
-        }
-
-        return [.. keys];
-    }
-
     private static bool SharesConstraint(DeviceSpec a, DeviceSpec b, ProtectionSetup protection) =>
-        Constraints(a, protection).Intersect(Constraints(b, protection)).Any();
+        protection.ConstraintsOf(a).Intersect(protection.ConstraintsOf(b)).Any();
 
     private static bool PowerDrawsFresh(DispatchDevice device, DispatchInputs inputs) =>
         device.PowerDrawPhases.IsDefault || device.PowerDrawPhases.All(p =>
@@ -656,7 +644,7 @@ public sealed partial class DispatchEngine
         var locked = 0;
         foreach (var stage in spec.Stages)
         {
-            if (!basis.Relays.IsDefault && stage.Index - 1 < basis.Relays.Length && basis.Relays[stage.Index - 1] && lockouts.MinOnRemaining(spec.Id, stage.Index, now, LockoutTimeline.Target) > TimeSpan.Zero)
+            if (DeviceLevels.StageOn(spec, basis, stage.Index) && lockouts.MinOnRemaining(spec.Id, stage.Index, now, LockoutTimeline.Target) > TimeSpan.Zero)
             {
                 locked = Math.Max(locked, stage.Index);
             }

@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
 
@@ -37,4 +38,21 @@ public sealed record ProtectionSetup(
     public DeviceSpec? Device(DeviceName name) => Devices.FirstOrDefault(d => d.Id == name);
 
     public CircuitGroupSpec? Group(GroupName name) => Groups.FirstOrDefault(g => g.Id == name);
+
+    /// <summary>
+    /// Every constraint a device draws on, the one answer guard, gate and dispatch share: the main
+    /// phase of each phase any of its stages uses (whichever stages are on), then, as a member of a
+    /// declared circuit group, the group phase of each of those phases the group covers.
+    /// </summary>
+    public ImmutableArray<ConstraintKey> ConstraintsOf(DeviceSpec device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        var keys = device.Phases.Select(ConstraintKey.Main).ToList();
+        if (device.CircuitGroup is { } group && Group(group) is { } declared)
+        {
+            keys.AddRange(device.Phases.Where(declared.Phases.Contains).Select(p => new ConstraintKey(group, p)));
+        }
+
+        return [.. keys];
+    }
 }

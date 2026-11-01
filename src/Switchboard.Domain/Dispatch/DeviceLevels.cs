@@ -148,13 +148,26 @@ public static class DeviceLevels
         var total = Amperes.Zero;
         foreach (var stage in spec.Stages)
         {
-            if (stage.Phases.Contains(phase) && !level.Relays.IsDefault && stage.Index - 1 < level.Relays.Length && level.Relays[stage.Index - 1])
+            if (stage.Phases.Contains(phase) && StageOn(spec, level, stage.Index))
             {
                 total += stage.RatedCurrent;
             }
         }
 
         return total;
+    }
+
+    /// <summary>
+    /// A stage is on at a level: a relay stage when its flag is set (a level without that flag has
+    /// it off); a setpoint device's one stage when it is enabled above zero.
+    /// </summary>
+    public static bool StageOn(DeviceSpec spec, DeviceLevel level, int stage)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(level);
+        return spec.IsSetpoint
+            ? level.Enabled && level.Setpoint is { Value: > 0 }
+            : !level.Relays.IsDefault && stage - 1 < level.Relays.Length && level.Relays[stage - 1];
     }
 
     /// <summary>The sum of a level's ceilings over the device's phases: how increases and decreases are told apart.</summary>

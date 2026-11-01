@@ -405,7 +405,7 @@ public sealed class GuardEngine
             ReasonCode? reason = null;
             ConstraintKey? key = null;
             SafeStateCause? holdCause = null;
-            var invalidKey = context.KeysOf(device).Cast<ConstraintKey?>().FirstOrDefault(k => !_phases[k!.Value].Valid);
+            var invalidKey = context.Setup.ConstraintsOf(device).Cast<ConstraintKey?>().FirstOrDefault(k => !_phases[k!.Value].Valid);
             if (_killSwitch)
             {
                 reason = ReasonCode.KillSwitch;
@@ -612,7 +612,7 @@ public sealed class GuardEngine
     {
         var held = intents
             .Where(i => setup.Device(i.Device) is not null)
-            .SelectMany(i => KeysOf(setup, setup.Device(i.Device)!))
+            .SelectMany(i => setup.ConstraintsOf(setup.Device(i.Device)!))
             .ToHashSet();
         foreach (var key in Keys(setup))
         {
@@ -640,7 +640,7 @@ public sealed class GuardEngine
         foreach (var key in _limits.Keys.OrderBy(k => k.Device).ThenBy(k => k.Stage).ToList())
         {
             var device = context.Setup.Device(key.Device)!;
-            if (KeysOf(context.Setup, device).All(k => _phases[k].Valid && _phases[k].ReleaseStreak >= up) && context.StateFresh(device))
+            if (context.Setup.ConstraintsOf(device).All(k => _phases[k].Valid && _phases[k].ReleaseStreak >= up) && context.StateFresh(device))
             {
                 var group = _limits[key].Group;
                 _limits.Remove(key);
@@ -690,23 +690,6 @@ public sealed class GuardEngine
     }
 
     private static int? StageOf(DeviceSpec device, int stage) => device.Stages.Length > 1 ? stage : null;
-
-    /// <summary>Every constraint a device draws on: its main phases and, as a group member, its group's phases.</summary>
-    private static IEnumerable<ConstraintKey> KeysOf(ProtectionSetup setup, DeviceSpec device)
-    {
-        foreach (var phase in device.Phases)
-        {
-            yield return ConstraintKey.Main(phase);
-        }
-
-        if (device.CircuitGroup is { } group && setup.Group(group) is { } spec)
-        {
-            foreach (var phase in device.Phases.Where(spec.Phases.Contains))
-            {
-                yield return new ConstraintKey(group, phase);
-            }
-        }
-    }
 
     private GuardEvaluation Finish(GuardInput input, DateTimeOffset now, List<GuardIntent> intents, List<GuardEvent> events, Context? context, long cycleIndex, bool atBoundary, bool configurationValid)
     {
@@ -837,8 +820,6 @@ public sealed class GuardEngine
         public bool StateFresh(DeviceSpec device) =>
             device.Stages.All(s => Sample(device.Id, s.Index) is { Fresh: true })
             && (!device.HasStopActuator || Sample(device.Id, DeviceStateSample.StopStage) is { Fresh: true });
-
-        public IEnumerable<ConstraintKey> KeysOf(DeviceSpec device) => GuardEngine.KeysOf(Setup, device);
 
         public Amperes ReserveThreshold(ConstraintKey key) =>
             key.Group is { } group ? Setup.Group(group)!.ReserveThreshold(key.Phase) : Setup.ReserveThreshold(key.Phase);
@@ -1095,7 +1076,7 @@ public sealed class GuardEngine
         {
             var unsafePhases = device.Phases.Where(p => !_engine._phases[ConstraintKey.Main(p)].Valid).ToImmutableArray();
             var unsafeStages = device.Stages.Where(s => Sample(device.Id, s.Index) is not { Fresh: true }).Select(s => s.Index).ToImmutableArray();
-            var groupUnsafe = KeysOf(device).Any(k => k.Group is not null && !_engine._phases[k].Valid);
+            var groupUnsafe = Setup.ConstraintsOf(device).Any(k => k.Group is not null && !_engine._phases[k].Valid);
             var limits = device.Stages
                 .Select(s => _engine._limits.TryGetValue(new StageKey(device.Id, s.Index), out var l) ? l : null)
                 .ToList();
@@ -1174,7 +1155,7 @@ public sealed class GuardEngine
                 var contribution = device.Phases.ToImmutableDictionary(p => p, p => LoadModel.Contribution(device, p, view.Reported, Draw(device.Id, p)));
                 var estimate = ImmutableDictionary.CreateBuilder<ConstraintKey, Amperes>();
                 var inFlight = ImmutableDictionary.CreateBuilder<ConstraintKey, Amperes>();
-                foreach (var key in KeysOf(device))
+                foreach (var key in Setup.ConstraintsOf(device))
                 {
                     var groupTerm = Estimated(key);
                     var delta = Delta(view, key.Phase, groupTerm);

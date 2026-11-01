@@ -201,7 +201,7 @@ public sealed class EffectorGate
         }
 
         if (wasCommanding && !commanding && _selfTest?.Current is { } test && _targets.TryGet(test.Device, out var tested)
-            && tested is { Origin: DecisionOrigin.SelfTest, Spec: { } spec } && tested.Target is { } target && StageOn(spec, target, test.Stage))
+            && tested is { Origin: DecisionOrigin.SelfTest, Spec: { } spec } && tested.Target is { } target && DeviceLevels.StageOn(spec, target, test.Stage))
         {
             // Control was switched off while the test's own switch-on still holds its device on
             // (running, or aborted with its off waiting for min_on): the test's off is the last
@@ -888,7 +888,8 @@ public sealed class EffectorGate
             return;
         }
 
-        if (test.On && !Constraints(context, device).All(k => context.Evaluation.Envelope.For(k) is { IncreasesAllowed: true }))
+        // Devices resolve only under a setup; without one the constraints are unknown and on has no permission.
+        if (test.On && (context.Evaluation.Setup is not { } setup || !setup.ConstraintsOf(device).All(k => context.Evaluation.Envelope.For(k) is { IncreasesAllowed: true })))
         {
             return;
         }
@@ -896,22 +897,6 @@ public sealed class EffectorGate
         var inputs = DispatchInputs(context, device, state);
         var change = test.On ? DispatchChange.Increase : DispatchChange.Decrease;
         Want(context, device, state, new DispatchWish(device.Id, level, ReasonCode.ManualOverride, DecisionOrigin.SelfTest, change, null, true, inputs), ImmutableDictionary<int, StageLimit>.Empty, current);
-    }
-
-    private static IEnumerable<ConstraintKey> Constraints(StepContext context, DeviceSpec device)
-    {
-        foreach (var phase in device.Phases)
-        {
-            yield return ConstraintKey.Main(phase);
-        }
-
-        if (device.CircuitGroup is { } group && context.Evaluation.Setup?.Group(group) is { } spec)
-        {
-            foreach (var phase in device.Phases.Where(spec.Phases.Contains))
-            {
-                yield return new ConstraintKey(group, phase);
-            }
-        }
     }
 
     /// <summary>The reason of the guard's current hold on a device (its status), for a re-asserted hold.</summary>
@@ -926,7 +911,7 @@ public sealed class EffectorGate
             return ReasonCode.ManualOverride;
         }
 
-        var stopped = device.Stages.Where(s => from is null || (StageOn(device, from, s.Index) && !StageOn(device, held, s.Index)));
+        var stopped = device.Stages.Where(s => from is null || (DeviceLevels.StageOn(device, from, s.Index) && !DeviceLevels.StageOn(device, held, s.Index)));
         return stopped.Any(s => _lockouts.MinOnRemaining(device.Id, s.Index, context.Now) > TimeSpan.Zero || _lockouts.MinOnRemaining(device.Id, s.Index, context.Now, LockoutTimeline.Target) > TimeSpan.Zero)
             ? ReasonCode.LockoutMinOn
             : null;
@@ -1024,8 +1009,8 @@ public sealed class EffectorGate
         {
             foreach (var stage in device.Stages)
             {
-                var was = StageOn(device, previous, stage.Index);
-                var now = StageOn(device, reported, stage.Index);
+                var was = DeviceLevels.StageOn(device, previous, stage.Index);
+                var now = DeviceLevels.StageOn(device, reported, stage.Index);
                 if (was != now)
                 {
                     _lockouts.Switched(device.Id, stage.Index, now, context.Now);
@@ -1066,8 +1051,8 @@ public sealed class EffectorGate
                 && (setpointMoved || enabledMoved);
         }
 
-        var changed = device.Stages.Where(s => StageOn(device, previous, s.Index) != StageOn(device, reported, s.Index)).ToList();
-        return changed.Count > 0 && changed.All(s => StageOn(device, reported, s.Index) == StageOn(device, target, s.Index));
+        var changed = device.Stages.Where(s => DeviceLevels.StageOn(device, previous, s.Index) != DeviceLevels.StageOn(device, reported, s.Index)).ToList();
+        return changed.Count > 0 && changed.All(s => DeviceLevels.StageOn(device, reported, s.Index) == DeviceLevels.StageOn(device, target, s.Index));
     }
 
     private static bool SameSetpoint(Amperes? a, Amperes? b, DeviceSpec device) =>
@@ -1285,8 +1270,8 @@ public sealed class EffectorGate
 
         foreach (var stage in device.Stages)
         {
-            var was = StageOn(device, from, stage.Index);
-            var will = StageOn(device, level, stage.Index);
+            var was = DeviceLevels.StageOn(device, from, stage.Index);
+            var will = DeviceLevels.StageOn(device, level, stage.Index);
             if (was && !will && _lockouts.MinOnRemaining(device.Id, stage.Index, context.Now, LockoutTimeline.Target) is { } on && on > TimeSpan.Zero)
             {
                 Defer(context, device, state, wish, level, ReasonCode.LockoutMinOn, context.Now + on);
@@ -1414,9 +1399,9 @@ public sealed class EffectorGate
         state.Window = OpenWindow(context, device, WindowKind.Command, from, level, commanding, probe);
         foreach (var stage in device.Stages)
         {
-            if (StageOn(device, from, stage.Index) != StageOn(device, level, stage.Index) || current is null)
+            if (DeviceLevels.StageOn(device, from, stage.Index) != DeviceLevels.StageOn(device, level, stage.Index) || current is null)
             {
-                _lockouts.Commanded(device.Id, stage.Index, StageOn(device, level, stage.Index), context.Now);
+                _lockouts.Commanded(device.Id, stage.Index, DeviceLevels.StageOn(device, level, stage.Index), context.Now);
             }
         }
 
@@ -1566,8 +1551,8 @@ public sealed class EffectorGate
 
         foreach (var stage in device.Stages)
         {
-            var on = StageOn(device, to, stage.Index);
-            if (StageOn(device, from, stage.Index) != on || from.Relays.IsDefault)
+            var on = DeviceLevels.StageOn(device, to, stage.Index);
+            if (DeviceLevels.StageOn(device, from, stage.Index) != on || from.Relays.IsDefault)
             {
                 Send(DeviceCommandKind.Relay, stage.Index, on, null, !on);
             }
@@ -1693,9 +1678,9 @@ public sealed class EffectorGate
             var back = info.From ?? DeviceLevels.Off(device);
             foreach (var stage in device.Stages)
             {
-                if (state.Target is { } target && StageOn(device, target, stage.Index) != StageOn(device, back, stage.Index))
+                if (state.Target is { } target && DeviceLevels.StageOn(device, target, stage.Index) != DeviceLevels.StageOn(device, back, stage.Index))
                 {
-                    _lockouts.Commanded(device.Id, stage.Index, StageOn(device, back, stage.Index), now);
+                    _lockouts.Commanded(device.Id, stage.Index, DeviceLevels.StageOn(device, back, stage.Index), now);
                 }
             }
 
@@ -1761,11 +1746,6 @@ public sealed class EffectorGate
     private static DevicePowerSample? PowerSample(StepContext context, DeviceName device, Phase phase) =>
         context.Inputs?.Dispatch.DevicePowers is { IsDefault: false } powers ? powers.FirstOrDefault(d => d.Device == device && d.Phase == phase) : null;
 
-    private static bool StageOn(DeviceSpec device, DeviceLevel level, int stage) =>
-        device.IsSetpoint
-            ? level.Enabled && level.Setpoint is { Value: > 0 }
-            : !level.Relays.IsDefault && stage - 1 < level.Relays.Length && level.Relays[stage - 1];
-
     /// <summary>A relay device's level with one stage switched on or off.</summary>
     private static DeviceLevel WithStage(DeviceSpec device, DeviceLevel level, int stage, bool on)
     {
@@ -1781,11 +1761,11 @@ public sealed class EffectorGate
             return from.Enabled != to.Enabled ? (to.Enabled ? DecisionAction.SwitchOn : DecisionAction.SwitchOff) : DecisionAction.SetSetpoint;
         }
 
-        return device.Stages.Any(s => !StageOn(device, from, s.Index) && StageOn(device, to, s.Index)) ? DecisionAction.SwitchOn : DecisionAction.SwitchOff;
+        return device.Stages.Any(s => !DeviceLevels.StageOn(device, from, s.Index) && DeviceLevels.StageOn(device, to, s.Index)) ? DecisionAction.SwitchOn : DecisionAction.SwitchOff;
     }
 
     private static int? ChangedStage(DeviceSpec device, DeviceLevel from, DeviceLevel to) =>
-        device.Stages.Length > 1 ? device.Stages.FirstOrDefault(s => StageOn(device, from, s.Index) != StageOn(device, to, s.Index))?.Index : null;
+        device.Stages.Length > 1 ? device.Stages.FirstOrDefault(s => DeviceLevels.StageOn(device, from, s.Index) != DeviceLevels.StageOn(device, to, s.Index))?.Index : null;
 
     private TimeSpan MaxRemaining(DeviceSpec device, DateTimeOffset now, bool on) =>
         device.Stages.Select(s => on ? _lockouts.MinOnRemaining(device.Id, s.Index, now, LockoutTimeline.Target) : _lockouts.MinOffRemaining(device.Id, s.Index, now, LockoutTimeline.Target)).Max();
