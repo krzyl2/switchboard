@@ -7,6 +7,7 @@ using Switchboard.Application.Setup.SelfTest;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Signals;
+using Switchboard.Infrastructure.Runtime;
 
 namespace Switchboard.Infrastructure.Persistence;
 
@@ -27,8 +28,8 @@ public sealed class PhaseEvidenceFile : PresentationFile<PhaseEvidenceState>, IP
 
     private readonly int _perEntity;
 
-    public PhaseEvidenceFile(string dataDirectory, SetupOptions options, ILogger<PhaseEvidenceFile> logger)
-        : base(dataDirectory, Name, options?.EvidenceMaxFileBytes ?? throw new ArgumentNullException(nameof(options)), logger)
+    public PhaseEvidenceFile(DataDirectory dataDirectory, SetupOptions options, ILogger<PhaseEvidenceFile> logger)
+        : base(dataDirectory.Path, Name, options?.EvidenceMaxFileBytes ?? throw new ArgumentNullException(nameof(options)), logger)
     {
         _perEntity = options.EvidencePerDevice;
     }

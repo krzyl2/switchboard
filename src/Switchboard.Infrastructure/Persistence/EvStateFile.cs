@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Switchboard.Domain.Ev;
+using Switchboard.Infrastructure.Runtime;
 using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
@@ -16,8 +17,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// <c>ev.json.schema&lt;N&gt;</c> (never over an existing copy) so a rollback does not destroy what the newer version learned. Written atomically; the
 /// writer produces only what the reader accepts (values it would refuse are dropped or clamped first), so the module never sets aside its own file.
 /// </summary>
-public class EvStateFile(string dataDirectory, ILogger<EvStateFile> logger)
-    : PresentationFile<EvState>(dataDirectory, Name, MaxFileBytes, logger)
+public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logger)
+    : PresentationFile<EvState>(dataDirectory.Path, Name, MaxFileBytes, logger)
 {
     public const string Name = "ev.json";
     public const int SchemaVersion = 1;

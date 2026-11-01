@@ -9,6 +9,7 @@ using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using Switchboard.Infrastructure.Runtime;
 using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
@@ -41,8 +42,8 @@ public class ExcursionFile : PresentationFile<ExcursionState>
 
     private readonly StatisticsOptions _options;
 
-    public ExcursionFile(string dataDirectory, StatisticsOptions options, ILogger<ExcursionFile> logger)
-        : base(dataDirectory, Name, (options ?? throw new ArgumentNullException(nameof(options))).MaxFileBytes, logger)
+    public ExcursionFile(DataDirectory dataDirectory, StatisticsOptions options, ILogger<ExcursionFile> logger)
+        : base(dataDirectory.Path, Name, (options ?? throw new ArgumentNullException(nameof(options))).MaxFileBytes, logger)
     {
         _options = options;
     }

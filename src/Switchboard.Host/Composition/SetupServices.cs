@@ -66,15 +66,12 @@ public static class SetupServices
     public static IServiceCollection AddSetup(this IServiceCollection services)
     {
         services.AddSingleton(_ => EmbeddedSetupDefaults.Load());
-        services.AddSingleton<ISetupRuntimeView>(sp => new DiagnosticsRuntimeView(sp.GetRequiredService<ISignalDiagnosticsSource>(), sp.GetRequiredService<IDispatchStatusSource>()));
+        services.AddSingleton<ISetupRuntimeView, DiagnosticsRuntimeView>();
         services.AddSingleton(_ => new ShippedControl(
             SwitchboardDocumentParser.BindControl(null, EmbeddedControlDefaults.Load())
             ?? throw new InvalidOperationException("The embedded control defaults do not bind.")));
         services.AddSingleton(sp => new PhaseEvidenceStore(sp.GetRequiredService<IOptions<SetupOptions>>().Value.EvidencePerDevice));
-        services.AddSingleton<IPhaseEvidenceFile>(sp => new PhaseEvidenceFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<IOptions<SetupOptions>>().Value,
-            sp.GetRequiredService<ILogger<PhaseEvidenceFile>>()));
+        services.AddSingleton<IPhaseEvidenceFile, PhaseEvidenceFile>();
         services.AddSingleton<PhaseEvidencePersistence>();
         services.AddSingleton<ActivePhaseTestService>();
         services.AddSingleton<ConfigurationWarningsHolder>();

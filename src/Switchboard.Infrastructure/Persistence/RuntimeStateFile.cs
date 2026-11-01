@@ -15,6 +15,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
+using Switchboard.Infrastructure.Runtime;
 using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
@@ -67,11 +68,11 @@ public sealed class RuntimeStateFile : IRuntimeStateStore
     private readonly int _maxBytes;
     private readonly ILogger<RuntimeStateFile> _logger;
 
-    public RuntimeStateFile(string dataDirectory, PersistenceOptions options, ILogger<RuntimeStateFile> logger)
+    public RuntimeStateFile(DataDirectory dataDirectory, PersistenceOptions options, ILogger<RuntimeStateFile> logger)
     {
-        ArgumentException.ThrowIfNullOrEmpty(dataDirectory);
+        ArgumentException.ThrowIfNullOrEmpty(dataDirectory.Path);
         ArgumentNullException.ThrowIfNull(options);
-        _directory = dataDirectory;
+        _directory = dataDirectory.Path;
         _maxBytes = options.StateMaxFileBytes;
         _logger = logger;
     }

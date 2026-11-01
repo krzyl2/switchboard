@@ -117,7 +117,33 @@ public sealed class CompositionTests
         Assert.Same(provider.GetRequiredService<Switchboard.Host.Composition.DiagnosticsPlannerSource>(), provider.GetRequiredService<Switchboard.Application.Planning.IPlannerSource>());
     }
 
-    private static ServiceProvider Build()
+    [Fact]
+    public async Task Every_singleton_and_hosted_service_resolves_in_the_add_on_configuration()
+    {
+        // Why: most registrations are plain types the container builds from their constructors, so a parameter it cannot supply (or supplies
+        // ambiguously) would otherwise surface only when that service is first used at run time, not when the add-on starts.
+        await using var provider = Build(out var services, new KeyValuePair<string, string?>("SUPERVISOR_TOKEN", "test-token"));
+
+        // ReplayData refuses outside replay mode by design, and the replay source is built from it.
+        var resolved = 0;
+        foreach (var descriptor in services.Where(d => d.Lifetime == ServiceLifetime.Singleton && !d.ServiceType.ContainsGenericParameters && d.ServiceType != typeof(Switchboard.Infrastructure.Replay.ReplayData) && d.ServiceType != typeof(Switchboard.Infrastructure.Replay.ReplaySignalSource)))
+        {
+            var all = provider.GetRequiredService(typeof(IEnumerable<>).MakeGenericType(descriptor.ServiceType));
+            Assert.NotEmpty((System.Collections.IEnumerable)all);
+            resolved++;
+        }
+
+        Assert.True(resolved > 100, $"only {resolved} singleton registrations were resolved");
+        Assert.True(provider.GetRequiredService<Switchboard.Infrastructure.Runtime.RuntimeEnvironment>().IsAddon);
+        Assert.Equal(15, provider.GetServices<IHostedService>().Count());
+        Assert.Equal(
+            provider.GetRequiredService<Switchboard.Infrastructure.Runtime.RuntimeEnvironment>().DataPath,
+            provider.GetRequiredService<Switchboard.Infrastructure.Runtime.DataDirectory>().Path);
+    }
+
+    private static ServiceProvider Build() => Build(out _);
+
+    private static ServiceProvider Build(out IServiceCollection services, params KeyValuePair<string, string?>[] extra)
     {
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(RepoPaths.Combine("src", "Switchboard.Host", "appsettings.json"), optional: false)
@@ -125,9 +151,10 @@ public sealed class CompositionTests
                 new("SWITCHBOARD_OPTIONS_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-options.json")),
                 new("SWITCHBOARD_CONFIG_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-config.yaml")),
                 new("SWITCHBOARD_DATA_PATH", Path.Combine(Path.GetTempPath(), "switchboard-no-data")),
+                .. extra,
             ])
             .Build();
-        var services = new ServiceCollection();
+        services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
         services.AddLogging(logging => logging.ClearProviders());
         // Provided by the host itself in production (GuardService stops the add-on through it).

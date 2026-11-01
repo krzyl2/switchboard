@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Switchboard.Application.Balance;
 using Switchboard.Domain.Balance;
+using Switchboard.Infrastructure.Runtime;
 
 namespace Switchboard.Infrastructure.Persistence;
 
@@ -12,8 +13,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// finite non-negative numbers); a corrupt file is set aside as <c>balance-baseline.json.corrupt</c>
 /// and the balance starts unknown. Written atomically.
 /// </summary>
-public sealed class BalanceBaselineFile(string dataDirectory, ILogger<BalanceBaselineFile> logger)
-    : PresentationFile<HourBaseline>(dataDirectory, Name, MaxFileBytes, logger), IBalanceBaselineFile
+public sealed class BalanceBaselineFile(DataDirectory dataDirectory, ILogger<BalanceBaselineFile> logger)
+    : PresentationFile<HourBaseline>(dataDirectory.Path, Name, MaxFileBytes, logger), IBalanceBaselineFile
 {
     public const string Name = "balance-baseline.json";
     private const int SchemaVersion = 1;

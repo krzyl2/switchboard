@@ -58,6 +58,7 @@ public static class SwitchboardServices
                 environment.LogLevelOverride,
                 environment.MqttEnablingCommandsOverride);
         });
+        services.AddSingleton(sp => new DataDirectory(sp.GetRequiredService<RuntimeEnvironment>().DataPath));
         services.AddSingleton(AppVersion.FromInformationalVersion(
             typeof(SwitchboardServices).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion));
 
@@ -178,7 +179,7 @@ public static class SwitchboardServices
         services.AddSingleton<IActuatorDirectory>(sp => sp.GetRequiredService<ActuatorDirectoryHolder>());
         services.AddSingleton<HomeAssistantCallServiceChannel>();
         services.AddSingleton(sp => DevPlant(sp));
-        services.AddSingleton<IOwnEntityCheck>(sp => new OwnMqttEntities(sp.GetRequiredService<IDiscoveryLedger>()));
+        services.AddSingleton<IOwnEntityCheck, OwnMqttEntities>();
         services.AddSingleton<ICallServiceChannel>(sp =>
         {
             // Resolved first, whatever the source: a development plant set as an add-on stops the start.
@@ -187,16 +188,7 @@ public static class SwitchboardServices
                 ? new DevCommandSink(sp.GetRequiredService<SignalClock>(), plant)
                 : sp.GetRequiredService<HomeAssistantCallServiceChannel>();
         });
-        services.AddSingleton(sp => new HomeAssistantDeviceCommandPort(
-            sp.GetRequiredService<ICallServiceChannel>(),
-            sp.GetRequiredService<IActuatorDirectory>(),
-            sp.GetRequiredService<IModeSource>(),
-            sp.GetRequiredService<GuardInbox>(),
-            sp.GetRequiredService<IOptions<HomeAssistantOptions>>(),
-            sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<HomeAssistantDeviceCommandPort>>(),
-            sp.GetRequiredService<ControlSwitchState>(),
-            sp.GetRequiredService<IOwnEntityCheck>()));
+        services.AddSingleton<HomeAssistantDeviceCommandPort>();
         services.AddSingleton<ICommandPathStatus>(sp => sp.GetRequiredService<HomeAssistantDeviceCommandPort>());
         services.AddSingleton(sp => new EffectorSettings(sp.GetRequiredService<IOptions<GuardOptions>>().Value.DeviceHistoryLength));
         services.AddSingleton(sp => new EffectorGate(
@@ -217,10 +209,7 @@ public static class SwitchboardServices
         services.AddSingleton<IControlSwitch>(sp => sp.GetRequiredService<ControlSwitchState>());
         services.AddSingleton<IControlSwitchView>(sp => sp.GetRequiredService<ControlSwitchState>());
 
-        services.AddSingleton<IRuntimeStateStore>(sp => new RuntimeStateFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<IOptions<PersistenceOptions>>().Value,
-            sp.GetRequiredService<ILogger<RuntimeStateFile>>()));
+        services.AddSingleton<IRuntimeStateStore, RuntimeStateFile>();
         services.AddSingleton(sp => sp.GetRequiredService<IRuntimeStateStore>().Load());
         services.AddSingleton(sp => new RuntimeStateCoordinator(
             sp.GetRequiredService<IRuntimeStateStore>(),
@@ -314,18 +303,10 @@ public static class SwitchboardServices
     {
         services.AddSingleton<PresentationHub>();
         services.AddSingleton<IPresentationSource>(sp => sp.GetRequiredService<PresentationHub>());
-        services.AddSingleton<IPresentationStore<StatisticsState>>(sp => new StatisticsFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
-            sp.GetRequiredService<ILogger<StatisticsFile>>()));
-        services.AddSingleton<IPresentationStore<ExcursionState>>(sp => new ExcursionFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<IOptions<StatisticsOptions>>().Value,
-            sp.GetRequiredService<ILogger<ExcursionFile>>()));
+        services.AddSingleton<IPresentationStore<StatisticsState>, StatisticsFile>();
+        services.AddSingleton<IPresentationStore<ExcursionState>, ExcursionFile>();
         // The planner's load profile: its own file, touched only while a planner: section exists (the feed is a no-op without one).
-        services.AddSingleton<IPresentationStore<LoadProfile>>(sp => new LoadProfileFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<ILogger<LoadProfileFile>>()));
+        services.AddSingleton<IPresentationStore<LoadProfile>, LoadProfileFile>();
         services.AddSingleton(sp =>
         {
             var diagnostics = sp.GetRequiredService<ISignalDiagnosticsSource>();
@@ -374,9 +355,7 @@ public static class SwitchboardServices
 
         // The EV module (EV-06): its own file, its own loop and an immutable snapshot; the guard's step only reads the snapshot through the goal source. The
         // module has no path to the effector, the command port, the overrides or the guard. Without an ev: section it offers nothing.
-        services.AddSingleton<IPresentationStore<EvState>>(sp => new EvStateFile(
-            sp.GetRequiredService<RuntimeEnvironment>().DataPath,
-            sp.GetRequiredService<ILogger<EvStateFile>>()));
+        services.AddSingleton<IPresentationStore<EvState>, EvStateFile>();
         services.AddSingleton(sp =>
         {
             var manual = sp.GetRequiredService<ManualGoalStore>();
@@ -440,7 +419,7 @@ public static class SwitchboardServices
             sp.GetRequiredService<SignalSourceSelection>().IsReplay
                 ? TimeSpan.Zero
                 : sp.GetRequiredService<IOptions<HomeAssistantOptions>>().Value.StateReadTimeout));
-        services.AddSingleton(sp => new SignalStore(sp.GetRequiredService<SignalStoreSettings>()));
+        services.AddSingleton<SignalStore>();
         services.AddSingleton(sp =>
         {
             // Until the runner publishes its first cycle: nothing configured, nothing valid.
@@ -453,7 +432,7 @@ public static class SwitchboardServices
         services.AddSingleton<IControlInputSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<ISignalDiagnosticsSource>(sp => sp.GetRequiredService<SignalSnapshotHolder>());
         services.AddSingleton<SignalStoreRunner>();
-        services.AddSingleton<IBalanceBaselineFile>(sp => new BalanceBaselineFile(sp.GetRequiredService<RuntimeEnvironment>().DataPath, sp.GetRequiredService<ILogger<BalanceBaselineFile>>()));
+        services.AddSingleton<IBalanceBaselineFile, BalanceBaselineFile>();
         services.AddSingleton<HourlyBalanceMonitor>();
         services.AddSingleton<IBalanceSource>(sp => sp.GetRequiredService<HourlyBalanceMonitor>());
 
@@ -525,6 +504,8 @@ public static class SwitchboardServices
             .BindConfiguration(section, binder => binder.ErrorOnUnknownConfiguration = true)
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<TOptions>, TValidator>();
+        // The value itself, for the classes that take it as a parameter (read, so validated, when first resolved).
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<TOptions>>().Value);
     }
 
     private static LogLevel ToLogLevel(AddonLogLevel level) => level switch

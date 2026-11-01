@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Switchboard.Domain.Planning;
+using Switchboard.Infrastructure.Runtime;
 using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
@@ -13,8 +14,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// file above <see cref="MaxFileBytes"/> sets it aside as <c>load-profile.json.corrupt</c> and the forecast starts from the fallback (and is seeded again
 /// from the retained statistics). Written atomically. The size is fixed by the 168 bins, so there is nothing to trim.
 /// </summary>
-public class LoadProfileFile(string dataDirectory, ILogger<LoadProfileFile> logger)
-    : PresentationFile<LoadProfile>(dataDirectory, Name, MaxFileBytes, logger)
+public class LoadProfileFile(DataDirectory dataDirectory, ILogger<LoadProfileFile> logger)
+    : PresentationFile<LoadProfile>(dataDirectory.Path, Name, MaxFileBytes, logger)
 {
     public const string Name = "load-profile.json";
     public const int SchemaVersion = 1;

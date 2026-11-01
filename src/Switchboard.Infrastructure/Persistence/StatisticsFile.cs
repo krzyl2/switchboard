@@ -7,6 +7,7 @@ using Switchboard.Application.Options;
 using Switchboard.Application.Presentation;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Units;
+using Switchboard.Infrastructure.Runtime;
 using static Switchboard.Infrastructure.Persistence.PresentationJson;
 
 namespace Switchboard.Infrastructure.Persistence;
@@ -66,8 +67,8 @@ public class StatisticsFile : PresentationFile<StatisticsState>
 
     private readonly StatisticsOptions _options;
 
-    public StatisticsFile(string dataDirectory, StatisticsOptions options, ILogger<StatisticsFile> logger)
-        : base(dataDirectory, Name, (options ?? throw new ArgumentNullException(nameof(options))).MaxFileBytes, logger)
+    public StatisticsFile(DataDirectory dataDirectory, StatisticsOptions options, ILogger<StatisticsFile> logger)
+        : base(dataDirectory.Path, Name, (options ?? throw new ArgumentNullException(nameof(options))).MaxFileBytes, logger)
     {
         _options = options;
     }
