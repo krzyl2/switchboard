@@ -112,6 +112,18 @@ public sealed class EffectorGate
     }
 
     /// <summary>
+    /// Dispatch entered its fault (dispatch_fault, recorded once per fault): it failed with an error, so the step applies the guard with no dispatch.
+    /// Nothing is started, raised or lowered by dispatch until it evaluates again; protection holds, sheds and stops as always.
+    /// </summary>
+    public Decision DispatchFaultDecision(ModeStatus mode, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+        return new Decision(
+            _ids.Next(), now, DecisionScope.System, null, null, null, DecisionAction.StopIncreases, ReasonCode.DispatchFault, null,
+            Recorded(mode), false, null, DecisionInputs.None, DecisionOrigin.Dispatch);
+    }
+
+    /// <summary>
     /// The restore baselines and the devices dispatch started under start: headroom, as state.json
     /// held them at the last stop; applied before the first step. A baseline stands only while the
     /// device's first fresh report still shows the level it was shed to (otherwise the user acted
@@ -736,8 +748,8 @@ public sealed class EffectorGate
             // confirmation, DISP-08 and min_off (DISP-03), in shadow mode exactly as in active mode,
             // where the reported state is the held level. Dropping the target instead would compare
             // dispatch's wish with a reported state it was not computed against. Only protection
-            // running alone (no dispatch in the step: the Stage 2 view, tests) drops it, so the
-            // target follows the reported state again.
+            // running alone (no dispatch in the step: dispatch in its fault, the shutdown step, the
+            // Stage 2 view, tests) drops it, so the target follows the reported state again.
             if (context.Dispatch?.Wish(device.Id) is not null)
             {
                 state.Origin = DecisionOrigin.Dispatch;

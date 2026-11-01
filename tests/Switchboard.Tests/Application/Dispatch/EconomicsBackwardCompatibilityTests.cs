@@ -42,9 +42,9 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
     {
         foreach (var decision in decisions)
         {
-            // The digests are of what dispatch decided, not of the list version the log line is stamped with: version 7 (the planner codes) changed that one
+            // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes) and 8 (dispatch_fault) changed that one
             // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows.
-            text.Append(DecisionJson.Serialize(decision).Replace("\"codes\":7", "\"codes\":6", StringComparison.Ordinal)).Append('\n');
+            text.Append(DecisionJson.Serialize(decision).Replace("\"codes\":8", "\"codes\":6", StringComparison.Ordinal)).Append('\n');
         }
 
         if (dispatch is null)

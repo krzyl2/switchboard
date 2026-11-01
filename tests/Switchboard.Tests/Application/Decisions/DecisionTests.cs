@@ -25,10 +25,10 @@ public sealed class DecisionTests
     }
 
     [Fact]
-    public void Reason_codes_are_exactly_list_version_7()
+    public void Reason_codes_are_exactly_list_version_8()
     {
-        // 04 §6, version 7 (2026-10-27): the UI renders a sentence per code, so the list is closed.
-        // Versions 3 to 7 only appended, so a log line of an older version keeps its meaning.
+        // 04 §6, version 8 (2026-11-01): the UI renders a sentence per code, so the list is closed.
+        // Versions 3 to 8 only appended, so a log line of an older version keeps its meaning.
         string[] specification =
         [
             "guard_tier_exceeded", "guard_budget_low", "guard_stale_signal",
@@ -44,9 +44,11 @@ public sealed class DecisionTests
             "surplus_available", "surplus_low",
             "plan_deferred", "goal_deadline_urgent", "plan_discharge",
             "soc_floor", "soc_ceiling",
+            "dispatch_fault",
         ];
 
-        Assert.Equal(7, ReasonCodes.ListVersion);
+        Assert.Equal(8, ReasonCodes.ListVersion);
+        Assert.Equal(7, ReasonCodes.PlannerListVersion);
         Assert.Equal(6, ReasonCodes.EconomicsListVersion);
         Assert.Equal((5, 4, 3, 2), (ReasonCodes.PreviousListVersion, ReasonCodes.EarlierListVersion, ReasonCodes.OlderListVersion, ReasonCodes.OldestListVersion));
         Assert.Equal(specification, ReasonCodes.All.Select(ReasonCodes.Name));
@@ -81,12 +83,20 @@ public sealed class DecisionTests
                 version => Assert.False(ReasonCodes.InVersion(code, version)));
         }
 
+        // Version 8 appended dispatch_fault: no older version has it, and version 7 still has every planner code.
+        Assert.True(ReasonCodes.InVersion(ReasonCode.DispatchFault, ReasonCodes.ListVersion));
+        Assert.All(
+            new[] { ReasonCodes.PlannerListVersion, ReasonCodes.EconomicsListVersion, ReasonCodes.PreviousListVersion, ReasonCodes.EarlierListVersion, ReasonCodes.OlderListVersion, ReasonCodes.OldestListVersion },
+            version => Assert.False(ReasonCodes.InVersion(ReasonCode.DispatchFault, version)));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.SocCeiling, ReasonCodes.PlannerListVersion));
+        Assert.True(ReasonCodes.InVersion(ReasonCode.SurplusLow, ReasonCodes.PlannerListVersion));
+
         Assert.True(ReasonCodes.InVersion(ReasonCode.SurplusLow, ReasonCodes.EconomicsListVersion));
         Assert.False(ReasonCodes.InVersion(ReasonCode.SurplusLow, ReasonCodes.PreviousListVersion));
         Assert.True(ReasonCodes.InVersion(ReasonCode.PlanSlotTarget, ReasonCodes.OldestListVersion));
         Assert.True(ReasonCodes.InVersion(ReasonCode.GoalMet, ReasonCodes.OldestListVersion));
         Assert.True(ReasonCodes.InVersion(ReasonCode.CommandNotSent, ReasonCodes.PreviousListVersion));
-        Assert.False(ReasonCodes.InVersion(ReasonCode.CommandNotSent, 8));
+        Assert.False(ReasonCodes.InVersion(ReasonCode.CommandNotSent, 9));
         Assert.False(ReasonCodes.InVersion((ReasonCode)(int.MaxValue), ReasonCodes.ListVersion));
         Assert.False(ReasonCodes.InVersion(ReasonCode.BalanceUnknown, ReasonCodes.OldestListVersion));
         Assert.True(ReasonCodes.InVersion(ReasonCode.BalanceSurplus, ReasonCodes.ListVersion));

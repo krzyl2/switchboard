@@ -42,16 +42,16 @@ public sealed class EvAssessmentEndpointTests
     }
 
     [Fact]
-    public void Every_assessment_code_has_its_own_wire_text_and_the_decision_reason_list_stays_at_version_7()
+    public void Every_assessment_code_has_its_own_wire_text_and_none_is_a_decision_reason()
     {
-        // Why: EV.md 3.5. A v8 reason list would change the list number of every decision line and make v7 lines with a plan block unreadable; the module's states
-        // are a list of their own, one text each.
+        // Why: EV.md 3.5. The module adds no reason code (list version 8 added only dispatch_fault, which is not the module's); the module's states are a list of
+        // their own, one text each.
         var texts = EvAssessmentCodes.All.Select(EvAssessmentCodes.Text).ToList();
 
         Assert.Equal(14, texts.Count);
         Assert.Equal(texts.Count, texts.Distinct().Count());
         Assert.All(texts, t => Assert.Matches("^ev_[a-z_]+$", t));
-        Assert.Equal(7, ReasonCodes.ListVersion);
+        Assert.DoesNotContain(ReasonCodes.All.Select(ReasonCodes.Name), name => name.StartsWith("ev_", StringComparison.Ordinal));
     }
 
     [Fact]

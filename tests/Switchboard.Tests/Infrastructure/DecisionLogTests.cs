@@ -36,7 +36,7 @@ public sealed class DecisionLogTests : IDisposable
         var lines = File.ReadAllLines(Path.Combine(_data.Decisions, "2026-10-24.jsonl"));
         var line = Assert.Single(lines);
         Assert.Contains("\"reason\":\"guard_tier_exceeded\"", line, StringComparison.Ordinal);
-        Assert.Contains("\"codes\":7", line, StringComparison.Ordinal);
+        Assert.Contains("\"codes\":8", line, StringComparison.Ordinal);
         Assert.Contains("\"refused_by\":\"mode_shadow\"", line, StringComparison.Ordinal);
         Assert.Contains("\"commanded\":false", line, StringComparison.Ordinal);
 
@@ -286,33 +286,33 @@ public sealed class DecisionLogTests : IDisposable
         Assert.Null(DecisionJson.TryParse(DecisionJson.Gap(3, Noon, Noon)));
         Assert.Null(DecisionJson.TryParse("""{"v":1,"codes":2,"id":"x","at":"2026-10-24T12:00:00.0000000Z","scope":"device","device":null,"stage":null,"phase":null,"action":"switch_off","reason":"guard_tier_exceeded","overridden":null,"mode":"shadow","commanded":false,"refused_by":null,"inputs":{}}"""));
         Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("guard_tier_exceeded", "made_up_code", StringComparison.Ordinal)));
-        Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("\"codes\":7", "\"codes\":1", StringComparison.Ordinal)));
+        Assert.Null(DecisionJson.TryParse(DecisionJson.Serialize(TestDecisions.Shed(Noon)).Replace("\"codes\":8", "\"codes\":1", StringComparison.Ordinal)));
         Assert.Null(DecisionJson.TryParse("[]"));
     }
 
     [Fact]
     public void Lines_written_with_older_reason_list_versions_still_read_after_the_upgrade()
     {
-        // 0.6.x wrote codes 2, 0.7.x/0.8.x codes 3, 0.9.x codes 4, the command path codes 5 and 2.0 codes 6; the Log
+        // 0.6.x wrote codes 2, 0.7.x/0.8.x codes 3, 0.9.x codes 4, the command path codes 5, 2.0 codes 6 and the planner codes 7; the Log
         // page, the API after a restart and the 30-day history must keep showing them (each version only
         // appended codes). A line naming a code of a later version is no decision of its own version and is skipped.
         var current = DecisionJson.Serialize(TestDecisions.Shed(Noon));
-        foreach (var version in new[] { 2, 3, 4, 5, 6 })
+        foreach (var version in new[] { 2, 3, 4, 5, 6, 7 })
         {
-            var line = current.Replace("\"codes\":7", $"\"codes\":{version}", StringComparison.Ordinal);
+            var line = current.Replace("\"codes\":8", $"\"codes\":{version}", StringComparison.Ordinal);
             Assert.Equal(ReasonCode.GuardTierExceeded, DecisionJson.TryParse(line)!.Reason);
         }
 
         var foreign = current.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"foreign_load\"", StringComparison.Ordinal);
         Assert.NotEqual(current, foreign);
-        Assert.Null(DecisionJson.TryParse(foreign.Replace("\"codes\":7", "\"codes\":2", StringComparison.Ordinal)));
-        Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign.Replace("\"codes\":7", "\"codes\":3", StringComparison.Ordinal))!.Reason);
+        Assert.Null(DecisionJson.TryParse(foreign.Replace("\"codes\":8", "\"codes\":2", StringComparison.Ordinal)));
+        Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign.Replace("\"codes\":8", "\"codes\":3", StringComparison.Ordinal))!.Reason);
         Assert.Equal(ReasonCode.ForeignLoad, DecisionJson.TryParse(foreign)!.Reason);
 
         var balance = current.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"balance_projection_low\"", StringComparison.Ordinal);
-        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":7", "\"codes\":3", StringComparison.Ordinal)));
-        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":7", "\"codes\":2", StringComparison.Ordinal)));
-        Assert.Equal(ReasonCode.BalanceProjectionLow, DecisionJson.TryParse(balance.Replace("\"codes\":7", "\"codes\":4", StringComparison.Ordinal))!.Reason);
+        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":8", "\"codes\":3", StringComparison.Ordinal)));
+        Assert.Null(DecisionJson.TryParse(balance.Replace("\"codes\":8", "\"codes\":2", StringComparison.Ordinal)));
+        Assert.Equal(ReasonCode.BalanceProjectionLow, DecisionJson.TryParse(balance.Replace("\"codes\":8", "\"codes\":4", StringComparison.Ordinal))!.Reason);
         Assert.Equal(ReasonCode.BalanceProjectionLow, DecisionJson.TryParse(balance)!.Reason);
 
         // Version 5 (mode_active, command_failed, command_not_sent) is no decision of version 4 or earlier.
@@ -320,10 +320,10 @@ public sealed class DecisionLogTests : IDisposable
         {
             var command = current.Replace("\"reason\":\"guard_tier_exceeded\"", $"\"reason\":\"{code}\"", StringComparison.Ordinal);
             Assert.NotEqual(current, command);
-            Assert.Null(DecisionJson.TryParse(command.Replace("\"codes\":7", "\"codes\":4", StringComparison.Ordinal)));
-            Assert.Null(DecisionJson.TryParse(command.Replace("\"codes\":7", "\"codes\":2", StringComparison.Ordinal)));
+            Assert.Null(DecisionJson.TryParse(command.Replace("\"codes\":8", "\"codes\":4", StringComparison.Ordinal)));
+            Assert.Null(DecisionJson.TryParse(command.Replace("\"codes\":8", "\"codes\":2", StringComparison.Ordinal)));
             Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(command)!.Reason));
-            Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(command.Replace("\"codes\":7", "\"codes\":5", StringComparison.Ordinal))!.Reason));
+            Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(command.Replace("\"codes\":8", "\"codes\":5", StringComparison.Ordinal))!.Reason));
         }
 
         // Version 6 (the economic codes) is no decision of version 5 or any earlier one: a line that names one of
@@ -334,11 +334,11 @@ public sealed class DecisionLogTests : IDisposable
             Assert.NotEqual(current, economic);
             foreach (var older in new[] { 5, 4, 3, 2 })
             {
-                Assert.Null(DecisionJson.TryParse(economic.Replace("\"codes\":7", $"\"codes\":{older}", StringComparison.Ordinal)));
+                Assert.Null(DecisionJson.TryParse(economic.Replace("\"codes\":8", $"\"codes\":{older}", StringComparison.Ordinal)));
             }
 
             Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(economic)!.Reason));
-            Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(economic.Replace("\"codes\":7", "\"codes\":6", StringComparison.Ordinal))!.Reason));
+            Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(economic.Replace("\"codes\":8", "\"codes\":6", StringComparison.Ordinal))!.Reason));
         }
 
         // Version 7 (the planner codes) is no decision of version 6 or any earlier one; plan_slot_target and goal_met have been in the list since version 1,
@@ -349,18 +349,28 @@ public sealed class DecisionLogTests : IDisposable
             Assert.NotEqual(current, planned);
             foreach (var older in new[] { 6, 5, 4, 3, 2 })
             {
-                Assert.Null(DecisionJson.TryParse(planned.Replace("\"codes\":7", $"\"codes\":{older}", StringComparison.Ordinal)));
+                Assert.Null(DecisionJson.TryParse(planned.Replace("\"codes\":8", $"\"codes\":{older}", StringComparison.Ordinal)));
             }
 
             Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(planned)!.Reason));
+            Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(planned.Replace("\"codes\":8", "\"codes\":7", StringComparison.Ordinal))!.Reason));
+        }
+
+        // Version 8 (dispatch_fault) is no decision of version 7 or any earlier one: before it, a dispatch error stopped the add-on and left no line.
+        var fault = current.Replace("\"reason\":\"guard_tier_exceeded\"", "\"reason\":\"dispatch_fault\"", StringComparison.Ordinal);
+        Assert.NotEqual(current, fault);
+        Assert.Equal(ReasonCode.DispatchFault, DecisionJson.TryParse(fault)!.Reason);
+        foreach (var older in new[] { 7, 6, 5, 4, 3, 2 })
+        {
+            Assert.Null(DecisionJson.TryParse(fault.Replace("\"codes\":8", $"\"codes\":{older}", StringComparison.Ordinal)));
         }
 
         foreach (var code in new[] { "plan_slot_target", "goal_met" })
         {
             var old = current.Replace("\"reason\":\"guard_tier_exceeded\"", $"\"reason\":\"{code}\"", StringComparison.Ordinal);
-            foreach (var version in new[] { 7, 6, 5, 4, 3, 2 })
+            foreach (var version in new[] { 8, 7, 6, 5, 4, 3, 2 })
             {
-                Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(old.Replace("\"codes\":7", $"\"codes\":{version}", StringComparison.Ordinal))!.Reason));
+                Assert.Equal(code, ReasonCodes.Name(DecisionJson.TryParse(old.Replace("\"codes\":8", $"\"codes\":{version}", StringComparison.Ordinal))!.Reason));
             }
         }
     }

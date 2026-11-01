@@ -31,7 +31,7 @@ public sealed class PlanDecisionJsonTests
     }
 
     [Fact]
-    public void The_plan_block_round_trips_through_the_log_line_and_the_line_says_list_version_7()
+    public void The_plan_block_round_trips_through_the_log_line_and_the_line_says_list_version_8()
     {
         // Why: the Log page and the API after a restart read the block back from the file; a round trip that changed it would show a different plan than the one used.
         var decision = UrgentStart();
@@ -42,7 +42,7 @@ public sealed class PlanDecisionJsonTests
 
         Assert.Equal(written, read.Inputs.Dispatch!.Plan);
         Assert.Equal(line, DecisionJson.Serialize(read));
-        Assert.Contains("\"codes\":7", line, StringComparison.Ordinal);
+        Assert.Contains("\"codes\":8", line, StringComparison.Ordinal);
         Assert.Contains("\"reason\":\"goal_deadline_urgent\"", line, StringComparison.Ordinal);
         Assert.Contains("\"want\":\"urgent\"", line, StringComparison.Ordinal);
         Assert.Contains("\"class\":\"zone:morning_peak\"", line, StringComparison.Ordinal);
@@ -68,7 +68,7 @@ public sealed class PlanDecisionJsonTests
 
         Assert.Null(start.Inputs.Dispatch!.Plan);
         Assert.DoesNotContain("\"plan\"", line, StringComparison.Ordinal);
-        Assert.Contains("\"codes\":7", line, StringComparison.Ordinal);
+        Assert.Contains("\"codes\":8", line, StringComparison.Ordinal);
         Assert.Null(DecisionJson.TryParse(line)!.Inputs.Dispatch!.Plan);
         Assert.Equal(line, DecisionJson.Serialize(DecisionJson.TryParse(line)!));
     }
@@ -77,12 +77,16 @@ public sealed class PlanDecisionJsonTests
     public void A_plan_block_in_a_line_of_an_older_list_version_is_not_a_decision()
     {
         // Why: no add-on of version 6 or earlier could have written a plan block; a line that carries one under an older list was edited, not written by us.
+        // The lines list version 7 wrote carry it and must keep reading with it after version 8 (dispatch_fault) for the log's retention.
         var line = DecisionJson.Serialize(UrgentStart());
         Assert.NotNull(DecisionJson.TryParse(line));
+        var planner = line.Replace("\"codes\":8", "\"codes\":7", StringComparison.Ordinal);
+        Assert.NotEqual(line, planner);
+        Assert.Equal(DecisionJson.TryParse(line)!.Inputs.Dispatch!.Plan, DecisionJson.TryParse(planner)!.Inputs.Dispatch!.Plan);
 
         foreach (var older in new[] { 6, 5, 4, 3, 2 })
         {
-            Assert.Null(DecisionJson.TryParse(line.Replace("\"codes\":7", $"\"codes\":{older}", StringComparison.Ordinal)));
+            Assert.Null(DecisionJson.TryParse(line.Replace("\"codes\":8", $"\"codes\":{older}", StringComparison.Ordinal)));
         }
     }
 

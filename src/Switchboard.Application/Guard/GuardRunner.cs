@@ -13,9 +13,10 @@ namespace Switchboard.Application.Guard;
 /// <summary>One step as listeners (state persistence, the MQTT entities) see it.</summary>
 public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decision> Decisions, GuardMemory Memory)
 {
-    /// <summary>Dispatch's evaluation of the same step; null only in steps built by tests without dispatch.</summary>
+    /// <summary>Dispatch's evaluation of the same step; null while dispatch is in its fault, in the shutdown step, and in steps built by tests without dispatch.</summary>
     public DispatchEvaluation? Dispatch { get; init; }
 
+    /// <summary>The dispatch status of the step; null when building it failed, and in steps built by tests without dispatch.</summary>
     public DispatchStatus? DispatchStatus { get; init; }
 
     /// <summary>The control inputs this step read (one store cycle); for read-only consumers such as the presentation.</summary>
@@ -39,8 +40,11 @@ public sealed record GuardStep(GuardEvaluation Evaluation, ImmutableArray<Decisi
 /// inputs once (protection and dispatch views of the same cycle), resolves the mode from them,
 /// evaluates the guard first, then dispatch against the guard's envelope, passes both through the
 /// effector gate (which alone holds the command port) and records the decisions: protection always
-/// comes first in the same step. It runs on the signal clock, so the budget follows the meter's
-/// timeline even in development replay; the recorder only queues.
+/// comes first in the same step. Nothing but protection can stop the loop: a dispatch that fails
+/// (economics, plan, EV, the allocation) enters its fault (dispatch_fault, recorded and logged once per
+/// fault, retried at every step), and the step applies the guard with no dispatch; the shutdown step
+/// never evaluates dispatch. It runs on the signal clock, so the budget follows the meter's timeline
+/// even in development replay; the recorder only queues.
 /// </summary>
 public sealed class GuardRunner : IDisposable
 {
@@ -67,6 +71,10 @@ public sealed class GuardRunner : IDisposable
     private ModeRecord? _recordedMode;
     private ModeStatus? _appliedMode;
     private bool _recorderFailing;
+    private bool _statusFailing;
+    private DateTimeOffset? _dispatchFaultSince;
+    private int _dispatchFaultSteps;
+    private volatile bool _shutdown;
 
     public GuardRunner(
         GuardInbox inbox,
@@ -179,12 +187,13 @@ public sealed class GuardRunner : IDisposable
             _lockouts.Observe(protection.Setup ?? _engine.Setup, protection.DeviceStates, now);
             _gate.BeginStep(inputs, now);
             var evaluation = _engine.Evaluate(new GuardInput(trigger, protection, _killSwitch.Status, mode), now);
-            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current, Prices = inputs.Prices }, now);
+
+            // The shutdown step is the guard's alone (SAFE-01); any other step applies the guard with no dispatch when dispatch fails.
+            var dispatch = _shutdown ? null : EvaluateDispatch(inputs, evaluation, overrides, mode, decisions, now);
             decisions.AddRange(_gate.Apply(evaluation, dispatch, overrides, mode, inputs, now));
             Record(decisions.ToImmutable());
             _holder.Publish(evaluation.Status);
-            var dispatchStatus = DispatchStatusFactory.Build(evaluation, dispatch, _gate.Ledger, overrides, _lockouts, inputs, mode, now);
-            _dispatchHolder.Publish(dispatchStatus);
+            var dispatchStatus = PublishDispatchStatus(evaluation, dispatch, overrides, inputs, mode, now);
             var (baselines, selfStarted) = _gate.Persisted();
             Notify(new GuardStep(evaluation, decisions.ToImmutable(), _engine.Export())
             {
@@ -221,11 +230,14 @@ public sealed class GuardRunner : IDisposable
 
     /// <summary>
     /// The graceful-stop path of SAFE-01: evaluates the shutdown safe state (every controlled device
-    /// off, recorded) at once, on the caller's thread, whether or not the run loop is still alive.
+    /// off, recorded) at once, on the caller's thread, whether or not the run loop is still alive. It
+    /// takes the guard path only: from here on no step evaluates dispatch, so a dispatch that fails
+    /// cannot keep the offs from leaving.
     /// </summary>
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        _shutdown = true;
         _inbox.Post(GuardTrigger.Shutdown);
         Step();
         return Task.CompletedTask;
@@ -245,6 +257,61 @@ public sealed class GuardRunner : IDisposable
     {
         var deadline = NextDeadline(now);
         timer.Change(deadline is { } due ? SignalStoreRunner.DueTime(due - now) : Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>
+    /// Dispatch against the guard's evaluation, or null when it fails: the step then applies the guard alone (no start, increase, decrease or
+    /// stop by dispatch, nothing deferred by it is applied; protection holds, sheds and stops as always). Entering the fault adds one
+    /// dispatch_fault decision and logs the error once; dispatch is tried again at every step, and the first one that evaluates ends the fault.
+    /// </summary>
+    private DispatchEvaluation? EvaluateDispatch(ControlInputs inputs, GuardEvaluation evaluation, OverrideSnapshot overrides, ModeStatus mode, ImmutableArray<Decision>.Builder decisions, DateTimeOffset now)
+    {
+        try
+        {
+            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current, Prices = inputs.Prices }, now);
+            if (_dispatchFaultSince is { } since)
+            {
+                _logger.LogInformation("Dispatch evaluates again after {Steps} failed step(s) since {Since:O}; dispatch_fault ended", _dispatchFaultSteps, since);
+                _dispatchFaultSince = null;
+                _dispatchFaultSteps = 0;
+            }
+
+            return dispatch;
+        }
+        catch (Exception ex)
+        {
+            _dispatchFaultSteps++;
+            if (_dispatchFaultSince is null)
+            {
+                _dispatchFaultSince = now;
+                _logger.LogError(ex, "Dispatch failed (dispatch_fault): protection keeps running without it, dispatch changes nothing and is tried again at every step");
+                decisions.Add(_gate.DispatchFaultDecision(mode, now));
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>The dispatch status of the step (from the ledger alone while dispatch is in its fault); building it never stops protection.</summary>
+    private DispatchStatus? PublishDispatchStatus(GuardEvaluation evaluation, DispatchEvaluation? dispatch, OverrideSnapshot overrides, ControlInputs inputs, ModeStatus mode, DateTimeOffset now)
+    {
+        try
+        {
+            var status = DispatchStatusFactory.Build(evaluation, dispatch ?? DispatchEvaluation.Empty(now), _gate.Ledger, overrides, _lockouts, inputs, mode, now);
+            _dispatchHolder.Publish(status);
+            _statusFailing = false;
+            return status;
+        }
+        catch (Exception ex)
+        {
+            if (!_statusFailing)
+            {
+                _logger.LogError(ex, "Building the dispatch status failed; the guard keeps running");
+                _statusFailing = true;
+            }
+
+            return null;
+        }
     }
 
     private void Record(ImmutableArray<Decision> decisions)

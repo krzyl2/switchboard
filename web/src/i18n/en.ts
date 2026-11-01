@@ -472,6 +472,8 @@ export const en = {
   'reason.plan_discharge': 'The plan calls for discharging the battery in this slot.',
   'reason.soc_floor': 'The battery is at its minimum state of charge, so it is not discharged.',
   'reason.soc_ceiling': 'The battery is at its maximum state of charge, so it is not charged.',
+  // List version 8: dispatch failed; versions 1 to 7 had no code (the error stopped the add-on).
+  'reason.dispatch_fault': 'Dispatch failed with an error: protection keeps running, but dispatch starts, raises or lowers nothing until it works again.',
   // The end of a condition is worded by its action: the reason code still names the condition that ended.
   'reason.kill_switch.released': 'The kill switch was released.',
   'reason.safe_state.exited': 'Valid data again; the safe state ended.',

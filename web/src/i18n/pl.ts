@@ -473,6 +473,8 @@ export const pl: Messages = {
   'reason.plan_discharge': 'Plan przewiduje rozładowanie baterii w tym odcinku.',
   'reason.soc_floor': 'Bateria jest na minimalnym poziomie naładowania, więc nie jest rozładowywana.',
   'reason.soc_ceiling': 'Bateria jest naładowana do maksimum, więc nie jest ładowana.',
+  // Wersja listy 8: błąd rozdziału mocy; wersje 1 do 7 nie miały kodu (błąd zatrzymywał dodatek).
+  'reason.dispatch_fault': 'Rozdział mocy zakończył się błędem: ochrona działa dalej, ale rozdział mocy niczego nie włącza, nie zwiększa ani nie zmniejsza, dopóki znów nie zadziała.',
   'reason.kill_switch.released': 'Wstrzymanie sterowania zostało wyłączone.',
   'reason.safe_state.exited': 'Dane znów są poprawne; stan bezpieczny zakończony.',
   'reason.device_unresponsive.cleared': 'Próba się zgodziła: urządzenie znów reaguje i bierze udział w rozdziale mocy.',

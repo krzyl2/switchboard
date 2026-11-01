@@ -20,6 +20,7 @@ internal sealed class ControlLoop
 {
     /// <param name="inbox">The guard's inbox, when the test built it first (a mode state that wakes the guard needs it).</param>
     /// <param name="gateLogger">The effector gate's logger, for a test that reads its warnings; silent otherwise.</param>
+    /// <param name="runnerLogger">The guard runner's logger, for a test that reads what it logs; silent otherwise.</param>
     public ControlLoop(
         IControlInputSource inputs,
         SignalClock clock,
@@ -32,7 +33,8 @@ internal sealed class ControlLoop
         ControlSwitchState? control = null,
         SelfTestSlot? selfTest = null,
         ILogger<EffectorGate>? gateLogger = null,
-        Switchboard.Application.Planning.IPlanView? plan = null)
+        Switchboard.Application.Planning.IPlanView? plan = null,
+        ILogger<GuardRunner>? runnerLogger = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         Inbox = inbox ?? new GuardInbox();
@@ -51,7 +53,7 @@ internal sealed class ControlLoop
         var now = clock.Time.GetUtcNow();
         Status = new GuardStatusHolder(GuardStatus.Initial(now, mode.Current), NullLogger<GuardStatusHolder>.Instance);
         DispatchStatus = new DispatchStatusHolder(Switchboard.Application.Dispatch.DispatchStatus.Initial(now, mode.Current), NullLogger<DispatchStatusHolder>.Instance);
-        Runner = new GuardRunner(Inbox, inputs, clock, Engine, Dispatch, Gate, Lockouts, Recorder, Status, DispatchStatus, mode, KillSwitch, Overrides, NullLogger<GuardRunner>.Instance, control, selfTest);
+        Runner = new GuardRunner(Inbox, inputs, clock, Engine, Dispatch, Gate, Lockouts, Recorder, Status, DispatchStatus, mode, KillSwitch, Overrides, runnerLogger ?? NullLogger<GuardRunner>.Instance, control, selfTest);
     }
 
     public GuardInbox Inbox { get; }
@@ -91,13 +93,13 @@ internal sealed class ControlLoop
     /// The loop with the real control switch and mode state over <paramref name="inputs"/> (the
     /// configuration validity comes from them), as GuardService composes it; control starts off.
     /// </summary>
-    public static ControlLoop WithControl(IControlInputSource inputs, SignalClock clock, OperatingMode ceiling, string boot, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null, ILogger<EffectorGate>? gateLogger = null)
+    public static ControlLoop WithControl(IControlInputSource inputs, SignalClock clock, OperatingMode ceiling, string boot, IDeviceCommandPort? port = null, SelfTestSlot? selfTest = null, ILogger<EffectorGate>? gateLogger = null, Switchboard.Application.Planning.IPlanView? plan = null, ILogger<GuardRunner>? runnerLogger = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         var inbox = new GuardInbox();
         var killSwitch = new KillSwitchState(inbox, clock, NullLogger<KillSwitchState>.Instance);
         var control = new ControlSwitchState(inbox, killSwitch, clock, NullLogger<ControlSwitchState>.Instance);
         var mode = new ModeState(ceiling, control, inputs);
-        return new ControlLoop(inputs, clock, mode, boot, port, inbox: inbox, killSwitch: killSwitch, control: control, selfTest: selfTest, gateLogger: gateLogger);
+        return new ControlLoop(inputs, clock, mode, boot, port, inbox: inbox, killSwitch: killSwitch, control: control, selfTest: selfTest, gateLogger: gateLogger, plan: plan, runnerLogger: runnerLogger);
     }
 }

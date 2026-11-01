@@ -28,8 +28,8 @@ namespace Switchboard.Infrastructure.Persistence;
 /// dispatch inputs; lines of format 1 (0.3.x, kept for the retention period) still read, without them.
 /// Reason-code list version 3 (0.7.0) only appended codes, so lines of version 2 still read; a
 /// version 2 line carrying a version 3 code is not a decision; the same holds for the codes of versions 4
-/// (balance), 5 (mode_active, command_failed, command_not_sent) and 6 (zone_allowed, source_not_allowed,
-/// value_below_cost, surplus_available, surplus_low). 0.7.0 adds, inside the same format,
+/// (balance), 5 (mode_active, command_failed, command_not_sent), 6 (zone_allowed, source_not_allowed,
+/// value_below_cost, surplus_available, surplus_low), 7 (the planner codes) and 8 (dispatch_fault). 0.7.0 adds, inside the same format,
 /// the control switch to the mode inputs and <c>reasserted</c> to the dispatch inputs (both optional
 /// on read). The dispatch inputs may carry <c>balance</c> (the hourly balance of the step, BAL-07; absent
 /// on older lines and while no energy counters are mapped) and <c>economics</c> (the zone, prices, effective value, order key,
@@ -106,7 +106,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PlannerListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -441,7 +441,7 @@ public static class DecisionJson
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
             Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
             Economics = d.TryGetProperty("economics", out var economics) && economics.ValueKind != JsonValueKind.Null ? Economics(economics) : null,
-            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes == ReasonCodes.ListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
+            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes is ReasonCodes.ListVersion or ReasonCodes.PlannerListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
         };
     }
 
