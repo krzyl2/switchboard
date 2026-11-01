@@ -106,10 +106,11 @@ public static class SwitchboardServices
             sp.GetRequiredService<RuntimeEnvironment>().DevTrustAllRequests,
             sp.GetRequiredService<RuntimeEnvironment>().IsAddon));
 
-        // Started in this order, stopped in reverse: the guard stops first (shutdown safe state
-        // recorded and, in active mode, sent through the command path while it still runs, decision
-        // log and state.json written), then the command path, then the heartbeat, then MQTT leaves
-        // the entity OFF and offline, then the Home Assistant socket closes; the signal pipeline
+        // Started in this order, stopped in reverse. The guard's shutdown does not depend on it: it
+        // runs in StoppingAsync, which the host calls on every service before any StopAsync (shutdown
+        // safe state recorded and, in active mode, sent through the command path while it still runs,
+        // decision log and state.json written). Then the stops: the command path, the heartbeat, MQTT
+        // leaves the entity OFF and offline, the Home Assistant socket closes; the signal pipeline
         // (which the links feed) starts before them and stops after them.
         services.AddHostedService<SignalStoreService>();
         services.AddHostedService<ConfigurationWatcherService>();
@@ -130,8 +131,9 @@ public static class SwitchboardServices
         services.AddHostedService<PlannerHostedService>();
         services.AddHostedService<EvSnapshotHostedService>();
 
-        // The command path's sender runs until the guard has stopped, so the shutdown safe state's
-        // commands still leave (bounded by HomeAssistant:ShutdownCommandWait).
+        // The command path's sender runs until its StopAsync, which follows the guard's StoppingAsync
+        // whatever the order, so the shutdown safe state's commands still leave (bounded by
+        // HomeAssistant:ShutdownCommandWait).
         services.AddHostedService<CommandPathService>();
         services.AddHostedService<GuardService>();
         return services;

@@ -13,12 +13,12 @@ using Switchboard.Infrastructure.Persistence;
 namespace Switchboard.Host.Hosting;
 
 /// <summary>
-/// Runs the guard and its two writers (decision log, state.json). Registered last, so it stops
-/// first: on stop it evaluates the shutdown safe state (every controlled device off, SAFE-01) and,
-/// while commands may leave, sends it before the link closes (bounded by
-/// HomeAssistant:ShutdownCommandWait), then writes the decision log and state.json, all within
-/// Persistence:ShutdownTimeout plus that wait, while the MQTT and Home Assistant links are still open
-/// behind it. A state.json that could not be trusted starts with control locked off and the kill
+/// Runs the guard and its two writers (decision log, state.json). Its shutdown is in StoppingAsync,
+/// which the host runs on every service before any StopAsync, so it does not depend on registration
+/// order: it evaluates the shutdown safe state (every controlled device off, SAFE-01) and, while
+/// commands may leave, sends it before the command path, MQTT and the Home Assistant link stop
+/// (bounded by HomeAssistant:ShutdownCommandWait), then writes the decision log and state.json, all
+/// within Persistence:ShutdownTimeout plus that wait; StopAsync only ends the writers. A state.json that could not be trusted starts with control locked off and the kill
 /// switch on until the user confirms. A guard loop that fails stops the whole add-on: a process that
 /// keeps serving a frozen status, with the health entity ON, would look protected while nothing is
 /// evaluated; stopping turns the health entity OFF and the Supervisor restarts the add-on.
@@ -42,12 +42,13 @@ internal sealed class GuardService(
     IOptions<HomeAssistantOptions> homeAssistant,
     IHostApplicationLifetime lifetime,
     TimeProvider time,
-    ILogger<GuardService> logger) : IHostedService
+    ILogger<GuardService> logger) : IHostedLifecycleService
 {
     private readonly CancellationTokenSource _guardStop = new();
     private readonly CancellationTokenSource _writersStop = new();
     private Task _guard = Task.CompletedTask;
     private Task _writers = Task.CompletedTask;
+    private CancellationTokenSource? _deadline;
     private string? _devices;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -108,11 +109,17 @@ internal sealed class GuardService(
         return Task.CompletedTask;
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// The shutdown safe state, evaluated and sent while every other service is still running. The host
+    /// calls StoppingAsync on all services before it calls StopAsync on any, so this holds whatever the
+    /// registration order: the offs leave through the command path before it, MQTT and the Home
+    /// Assistant link stop, and the decision log and state.json are written once the offs are answered.
+    /// </summary>
+    public async Task StoppingAsync(CancellationToken cancellationToken)
     {
-        var limit = options.Value.ShutdownTimeout + homeAssistant.Value.ShutdownCommandWait;
-        using var deadline = new CancellationTokenSource(limit, time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, cancellationToken);
+        var limit = StopLimit;
+        _deadline = new CancellationTokenSource(limit, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_deadline.Token, cancellationToken);
         try
         {
             // The loop first, so the shutdown step runs alone.
@@ -144,16 +151,19 @@ internal sealed class GuardService(
             await state.FlushAsync(linked.Token).ConfigureAwait(false);
             logger.LogInformation("Guard stopped: shutdown safe state recorded, decision log and state.json written");
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (_deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("The guard's stop did not complete within {Timeout}; the next start treats this stop as not clean", limit);
         }
-        finally
-        {
-            status.Published -= OnPublished;
-            await _writersStop.CancelAsync().ConfigureAwait(false);
-        }
+    }
 
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // The deadline started in StoppingAsync: the writers' wait is inside the same limit.
+        _deadline ??= new CancellationTokenSource(StopLimit, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_deadline.Token, cancellationToken);
+        status.Published -= OnPublished;
+        await _writersStop.CancelAsync().ConfigureAwait(false);
         try
         {
             // Both writers end at their next await; one stuck in a write is left to the process exit.
@@ -163,7 +173,19 @@ internal sealed class GuardService(
         {
             logger.LogWarning("A persistence writer was still busy when the guard stopped");
         }
+        finally
+        {
+            _deadline.Dispose();
+        }
     }
+
+    public Task StartingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private TimeSpan StopLimit => options.Value.ShutdownTimeout + homeAssistant.Value.ShutdownCommandWait;
 
     private void OnPublished(object? sender, GuardStatus published)
     {

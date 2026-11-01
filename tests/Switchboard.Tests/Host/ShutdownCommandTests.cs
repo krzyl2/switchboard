@@ -15,7 +15,7 @@ namespace Switchboard.Tests.Host;
 
 /// <summary>
 /// SAFE-01 at an add-on stop with control in force: the shutdown safe state is not only recorded, it
-/// is sent before the link closes. GuardService.StopAsync runs the shutdown step, waits (at most
+/// is sent before the link closes. GuardService.StoppingAsync runs the shutdown step, waits (at most
 /// HomeAssistant:ShutdownCommandWait) for the command path to go idle, and only then records what
 /// came back: an off Home Assistant acknowledged is commanded, one it did not answer in time is
 /// recorded as not answered (command_failed), never as commanded. Here the same order over the
@@ -43,7 +43,7 @@ public sealed class ShutdownCommandTests
         harness.Runner.Step();
         Assert.Equal(0, channel.Count);
 
-        // GuardService.StopAsync: the shutdown step, the bounded wait for the command path, the drain.
+        // GuardService.StoppingAsync: the shutdown step, the bounded wait for the command path, the drain.
         await harness.Runner.ShutdownAsync(TestContext.Current.CancellationToken);
         var calls = new List<AnsweringChannel.Call>();
         for (var i = 0; i < 4; i++)

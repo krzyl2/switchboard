@@ -5,8 +5,8 @@ using Switchboard.Infrastructure.HomeAssistant;
 namespace Switchboard.Host.Hosting;
 
 /// <summary>
-/// Runs the command path's sender for the life of the process. Registered just before the guard,
-/// so it stops right after it: the shutdown safe state's commands still leave.
+/// Runs the command path's sender for the life of the process. It stops in StopAsync, after the
+/// guard's StoppingAsync has sent the shutdown safe state's commands.
 /// </summary>
 internal sealed class CommandPathService(HomeAssistantDeviceCommandPort port) : BackgroundService
 {

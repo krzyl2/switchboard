@@ -17,9 +17,9 @@ namespace Switchboard.Tests.Host;
 
 /// <summary>
 /// Hosted services stop in reverse registration order, and that order is the shutdown contract:
-/// the guard first (shutdown safe state recorded and written while the links are still up), then
-/// the presentation (the shutdown step counted, statistics written), the heartbeat (no more ON),
-/// then MQTT (OFF, offline, disconnect), then the HA socket.
+/// the guard's StoppingAsync first, before any stop (shutdown safe state recorded and written while
+/// the links are still up), then the presentation (the shutdown step counted, statistics written),
+/// the heartbeat (no more ON), then MQTT (OFF, offline, disconnect), then the HA socket.
 /// </summary>
 public sealed class CompositionTests
 {
