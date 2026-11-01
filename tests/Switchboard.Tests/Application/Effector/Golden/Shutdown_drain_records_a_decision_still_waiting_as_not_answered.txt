@@ -1,0 +1,22 @@
+2026-10-24T12:00:30.0000000+00:00 test-000000001 Device dev=heater_l3 stage= phase=L3 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:01:00.0000000+00:00 test-000000002 Device dev=heater_l2 stage= phase=L2 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:01:30.0000000+00:00 test-000000003 Device dev=heater_l1 stage= phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:02:10.0000000+00:00 test-000000004 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:03:00.0000000+00:00 test-000000006 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:03:00.0000000+00:00 test-000000007 Phase dev= stage= phase=L1 StopIncreases GuardBudgetLow over= mode=Active cmd=False refused= origin= group= target=
+-- commands
+heater_l3 relay 1 on
+heater_l2 relay 1 on
+heater_l1 relay 1 on
+heater_l1 relay 1 off
+-- ledger
+heater_l1: target=0 origin=Guard reason=GuardTierExceeded deferred=- window=// timedOut=False mismatches=2 unresponsive= retry= commanded=True refuted=True baseline=- selfStarted= unconfirmed=
+  history 2026-10-24T12:01:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+  history 2026-10-24T12:02:20.0000000+00:00 Command exp=-1500 meas=0 Watts Mismatch from=1 to=0
+heater_l2: target=1 origin=Dispatch reason=HeadroomAvailable deferred=- window=// timedOut=False mismatches=1 unresponsive= retry= commanded=True refuted=True baseline=- selfStarted=2026-10-24T12:01:00.0000000+00:00 unconfirmed=
+  history 2026-10-24T12:01:10.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+heater_l3: target=1 origin=Dispatch reason=HeadroomAvailable deferred=- window=// timedOut=False mismatches=1 unresponsive= retry= commanded=True refuted=True baseline=- selfStarted=2026-10-24T12:00:30.0000000+00:00 unconfirmed=
+  history 2026-10-24T12:00:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+pending decisions: 0
+pending before drain: 1, after: 0
+drained 2026-10-24T12:02:10.0000000+00:00 test-000000005 Device dev=heater_l1 stage= phase=L1 SwitchOff GuardTierExceeded over=LockoutMinOn mode=Active cmd=False refused=CommandFailed origin=Guard group= target=0

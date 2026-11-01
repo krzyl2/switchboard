@@ -1,0 +1,20 @@
+2026-10-24T12:00:30.0000000+00:00 test-000000001 Device dev=heater_l3 stage= phase=L3 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:01:00.0000000+00:00 test-000000002 Device dev=heater_l2 stage= phase=L2 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:01:30.0000000+00:00 test-000000003 Device dev=heater_l1 stage= phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:02:30.0000000+00:00 test-000000004 Device dev=heater_l1 stage= phase=L1 Deferred HeadroomAvailable over= mode=Active cmd=False refused=LockoutMinOff origin=Dispatch group= target=0
+2026-10-24T12:04:00.0000000+00:00 test-000000005 Device dev=heater_l1 stage= phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+-- commands
+heater_l3 relay 1 on
+heater_l2 relay 1 on
+heater_l1 relay 1 on
+heater_l1 relay 1 on
+-- ledger
+heater_l1: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted=2026-10-24T12:04:00.0000000+00:00 unconfirmed=
+  history 2026-10-24T12:01:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+  history 2026-10-24T12:02:20.0000000+00:00 Observed exp=-1500 meas=0 Watts Mismatch from=1 to=0
+  history 2026-10-24T12:04:10.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+heater_l2: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted=2026-10-24T12:01:00.0000000+00:00 unconfirmed=
+  history 2026-10-24T12:01:10.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+heater_l3: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted=2026-10-24T12:00:30.0000000+00:00 unconfirmed=
+  history 2026-10-24T12:00:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+pending decisions: 0

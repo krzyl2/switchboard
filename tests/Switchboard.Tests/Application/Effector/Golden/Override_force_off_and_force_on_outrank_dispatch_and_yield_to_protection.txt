@@ -1,0 +1,29 @@
+2026-10-24T12:02:10.0000000+00:00 test-000000001 Device dev=heater_l1 stage= phase=L1 OverrideSet ManualOverride over= mode=Active cmd=False refused= origin=Override group= target=
+2026-10-24T12:02:10.0000000+00:00 test-000000002 Device dev=heater_l1 stage= phase=L1 SwitchOff ManualOverride over= mode=Active cmd=True refused= origin=Override group= target=0
+2026-10-24T12:02:20.0000000+00:00 test-000000003 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:06:10.0000000+00:00 test-000000004 Device dev=heater_l1 stage= phase=L1 OverrideSet ManualOverride over= mode=Active cmd=False refused= origin=Override group= target=0
+2026-10-24T12:06:30.0000000+00:00 test-000000005 Device dev=heater_l1 stage= phase=L1 SwitchOn ManualOverride over= mode=Active cmd=True refused= origin=Override group= target=1
+2026-10-24T12:12:10.0000000+00:00 test-000000006 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:12:10.0000000+00:00 test-000000007 Device dev=heater_l1 stage= phase=L1 SwitchOff GuardTierExceeded over=ManualOverride mode=Active cmd=True refused= origin=Guard group= target=0
+2026-10-24T12:13:00.0000000+00:00 test-000000008 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:13:00.0000000+00:00 test-000000009 Phase dev= stage= phase=L1 StopIncreases GuardBudgetLow over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:14:10.0000000+00:00 test-000000010 Device dev=heater_l1 stage= phase=L1 OverrideSet ManualOverride over= mode=Active cmd=False refused= origin=Override group= target=0
+2026-10-24T12:14:30.0000000+00:00 test-000000011 Phase dev= stage= phase=L1 ReductionRequestCleared HeadroomAvailable over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:19:30.0000000+00:00 test-000000012 Phase dev= stage= phase=L1 IncreasesAllowed HeadroomAvailable over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:19:30.0000000+00:00 test-000000013 Device dev=heater_l1 stage= phase= Release HeadroomAvailable over= mode=Active cmd=False refused= origin=Guard group= target=0
+2026-10-24T12:19:30.0000000+00:00 test-000000014 Device dev=heater_l1 stage= phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+2026-10-24T12:19:40.0000000+00:00 test-000000015 Device dev=heater_l1 stage= phase=L1 MarkedUnresponsive DeviceUnresponsive over= mode=Active cmd=False refused= origin=Dispatch group= target=1
+-- commands
+heater_l1 relay 1 off
+heater_l1 relay 1 on
+heater_l1 relay 1 off
+heater_l1 relay 1 on
+-- ledger
+heater_l1: target=1 origin=Dispatch reason=HeadroomAvailable deferred=- window=// timedOut=False mismatches=3 unresponsive=2026-10-24T12:19:40.0000000+00:00 retry=2026-10-24T12:49:40.0000000+00:00 commanded=True refuted=True baseline=- selfStarted= unconfirmed=
+  history 2026-10-24T12:02:20.0000000+00:00 Command exp=-1500 meas=0 Watts Inconclusive from=1 to=0
+  history 2026-10-24T12:06:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+  history 2026-10-24T12:12:20.0000000+00:00 Command exp=-1500 meas=0 Watts Mismatch from=1 to=0
+  history 2026-10-24T12:19:40.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+heater_l2: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+heater_l3: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+pending decisions: 0

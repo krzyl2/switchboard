@@ -162,21 +162,21 @@ public sealed class DeviceTargets : IDispatchLedgerView
     private readonly Dictionary<DeviceName, State> _devices = [];
 
     public InFlightEntry? For(DeviceName device) =>
-        _devices.TryGetValue(device, out var state) && state.Target is { } target
-            ? state.Window is { Kind: WindowKind.Command, Open: true } open
+        _devices.TryGetValue(device, out var state) && state.Resolved.Target is { } target
+            ? state.Settling.Window is { Kind: WindowKind.Command, Open: true } open
                 ? new InFlightEntry(target, true, open.From, open.ContributionAtCommand, open.GroupTermAtCommand)
                 : new InFlightEntry(target, false, null, ImmutableDictionary<Phase, Amperes>.Empty, ImmutableDictionary<Phase, Amperes>.Empty)
             : null;
 
     public LedgerEntry? Entry(DeviceName device) =>
         _devices.TryGetValue(device, out var s)
-            ? new LedgerEntry(s.Target, s.Origin, s.Reason, s.Deferred, s.Window is { Open: true } w ? w : null, s.TimedOut, s.Mismatches, s.UnresponsiveSince, s.RetryAt, [.. s.History])
+            ? new LedgerEntry(s.Resolved.Target, s.Resolved.Origin, s.Resolved.Reason, s.Deferrals.Deferred, s.Settling.Window is { Open: true } w ? w : null, s.Settling.TimedOut, s.Settling.Mismatches, s.Settling.UnresponsiveSince, s.Settling.RetryAt, [.. s.Settling.History])
             {
-                TargetCommanded = s.TargetCommanded,
-                CommandRefuted = s.CommandRefuted,
-                Baseline = s.Baseline,
-                SelfStarted = s.SelfStarted,
-                UnconfirmedSince = s.UnconfirmedSince,
+                TargetCommanded = s.Resolved.TargetCommanded,
+                CommandRefuted = s.Resolved.CommandRefuted,
+                Baseline = s.Baselines.Baseline,
+                SelfStarted = s.Baselines.SelfStarted,
+                UnconfirmedSince = s.Commands.UnconfirmedSince,
             }
             : null;
 
@@ -197,11 +197,40 @@ public sealed class DeviceTargets : IDispatchLedgerView
 
     internal void Remove(DeviceName device) => _devices.Remove(device);
 
-    /// <summary>Everything the ledger holds for one device; mutated by the gate only.</summary>
+    /// <summary>Everything the ledger holds for one device, in five groups; mutated by the gate and the parts it owns, on the guard thread only.</summary>
     internal sealed class State
     {
         public DeviceSpec? Spec { get; set; }
 
+        /// <summary>The last known applied state (unknown samples leave it), for transition detection.</summary>
+        public DeviceLevel? LastReported { get; set; }
+
+        /// <summary>The override last recorded for this device (Auto until one is set).</summary>
+        public Dispatch.OverrideMode Override { get; set; }
+
+        public ResolvedTarget Resolved { get; } = new();
+
+        public DeferralLedger Deferrals { get; } = new();
+
+        public SettlingLedger Settling { get; } = new();
+
+        public BaselineLedger Baselines { get; } = new();
+
+        public CommandLedger Commands { get; } = new();
+
+        /// <summary>The device starts unset: no target, no deferral, no window, no verdicts, no command in flight. Baselines, history, the self-start mark and the re-assert flag survive.</summary>
+        public void Unset()
+        {
+            Resolved.Reset();
+            Deferrals.Reset();
+            Settling.Reset();
+            Commands.Reset();
+        }
+    }
+
+    /// <summary>The resolved target and who set it.</summary>
+    internal sealed class ResolvedTarget
+    {
         public DeviceLevel? Target { get; set; }
 
         /// <summary>The target was commanded through the port (active mode).</summary>
@@ -214,9 +243,19 @@ public sealed class DeviceTargets : IDispatchLedgerView
 
         public ReasonCode? Reason { get; set; }
 
-        /// <summary>The last known applied state (unknown samples leave it), for transition detection.</summary>
-        public DeviceLevel? LastReported { get; set; }
+        public void Reset()
+        {
+            Target = null;
+            TargetCommanded = false;
+            CommandRefuted = false;
+            Origin = null;
+            Reason = null;
+        }
+    }
 
+    /// <summary>A change refused by a lockout and waiting for it (DISP-09).</summary>
+    internal sealed class DeferralLedger
+    {
         public Deferral? Deferred { get; set; }
 
         /// <summary>The deferral was recorded (once per deferral).</summary>
@@ -225,6 +264,17 @@ public sealed class DeviceTargets : IDispatchLedgerView
         /// <summary>The last deferral recorded, so one lockout episode is recorded once even when dispatch stops wanting the change in between.</summary>
         public Deferral? LastDeferralRecord { get; set; }
 
+        /// <summary>The deferral ends; the record of the last episode stays.</summary>
+        public void Reset()
+        {
+            Deferred = null;
+            DeferredRecorded = false;
+        }
+    }
+
+    /// <summary>The open settling window, the verdicts counted against the device and its history (DISP-05, DISP-07).</summary>
+    internal sealed class SettlingLedger
+    {
         public OpenWindow? Window { get; set; }
 
         public bool TimedOut { get; set; }
@@ -237,9 +287,28 @@ public sealed class DeviceTargets : IDispatchLedgerView
 
         public Queue<VerificationRecord> History { get; } = new();
 
-        /// <summary>The override last recorded for this device (Auto until one is set).</summary>
-        public Dispatch.OverrideMode Override { get; set; }
+        /// <summary>A mismatch was counted for the current target's command already (at most one per command).</summary>
+        public bool CommandMismatchCounted { get; set; }
 
+        /// <summary>Home Assistant answered the current target's command with an error: one mismatch is counted in the step's resolution.</summary>
+        public bool PendingMismatch { get; set; }
+
+        /// <summary>Everything but the history ends.</summary>
+        public void Reset()
+        {
+            Window = null;
+            TimedOut = false;
+            Mismatches = 0;
+            UnresponsiveSince = null;
+            RetryAt = null;
+            CommandMismatchCounted = false;
+            PendingMismatch = false;
+        }
+    }
+
+    /// <summary>What Switchboard took from the device (restore baseline) and the start it made itself; persisted in state.json.</summary>
+    internal sealed class BaselineLedger
+    {
         /// <summary>The pre-intervention level restore_only restores up to.</summary>
         public StartBaseline? Baseline { get; set; }
 
@@ -258,17 +327,23 @@ public sealed class DeviceTargets : IDispatchLedgerView
         /// <summary>Dispatch switched the device on under start: headroom (off to on), and it has not been switched off since.</summary>
         public DateTimeOffset? SelfStarted { get; set; }
 
+        public void ClearBaseline()
+        {
+            Baseline = null;
+            BaselinePending = null;
+            PendingAckedAt = null;
+            BaselineRestored = false;
+        }
+    }
+
+    /// <summary>The commands of the current target: their tickets, their confirmation and the re-sends of a failed protective one.</summary>
+    internal sealed class CommandLedger
+    {
         /// <summary>When an acknowledged command must show in the reported state: ack + reaction time + effector.confirm_timeout.</summary>
         public DateTimeOffset? ConfirmBy { get; set; }
 
         /// <summary>The reported state did not show the acknowledged target by <see cref="ConfirmBy"/>.</summary>
         public DateTimeOffset? UnconfirmedSince { get; set; }
-
-        /// <summary>A mismatch was counted for the current target's command already (at most one per command).</summary>
-        public bool CommandMismatchCounted { get; set; }
-
-        /// <summary>Home Assistant answered the current target's command with an error: one mismatch is counted in the step's resolution.</summary>
-        public bool PendingMismatch { get; set; }
 
         /// <summary>The last command of a protective or lowering target failed or timed out: re-sent at every cycle boundary while the device still differs.</summary>
         public bool ProtectiveFailed { get; set; }
@@ -282,32 +357,11 @@ public sealed class DeviceTargets : IDispatchLedgerView
         /// <summary>Tickets of commands not yet answered, for the current target.</summary>
         public HashSet<long> OpenTickets { get; } = [];
 
-        public void ClearBaseline()
+        /// <summary>Everything but the re-assert flag ends.</summary>
+        public void Reset()
         {
-            Baseline = null;
-            BaselinePending = null;
-            PendingAckedAt = null;
-            BaselineRestored = false;
-        }
-
-        public void Unset()
-        {
-            Target = null;
-            TargetCommanded = false;
-            CommandRefuted = false;
-            Origin = null;
-            Reason = null;
-            Deferred = null;
-            DeferredRecorded = false;
-            Window = null;
-            TimedOut = false;
-            Mismatches = 0;
-            UnresponsiveSince = null;
-            RetryAt = null;
             ConfirmBy = null;
             UnconfirmedSince = null;
-            CommandMismatchCounted = false;
-            PendingMismatch = false;
             ProtectiveFailed = false;
             ResendRecorded = false;
             OpenTickets.Clear();

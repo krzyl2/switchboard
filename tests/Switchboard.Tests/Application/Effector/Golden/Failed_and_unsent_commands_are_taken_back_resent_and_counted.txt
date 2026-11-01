@@ -1,0 +1,36 @@
+2026-10-24T12:02:00.0000000+00:00 test-000000001 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:02:00.0000000+00:00 test-000000002 Device dev=heater_l1 stage= phase=L1 SwitchOff ReserveThreshold over= mode=Active cmd=False refused=CommandFailed origin=Dispatch group= target=0
+2026-10-24T12:02:30.0000000+00:00 test-000000003 Device dev=heater_l1 stage= phase=L1 SwitchOff ReserveThreshold over= mode=Active cmd=False refused=CommandFailed origin=Dispatch group= target=0
+2026-10-24T12:04:10.0000000+00:00 test-000000004 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:04:10.0000000+00:00 test-000000005 Device dev=heater_l1 stage= phase=L1 SwitchOff GuardTierExceeded over= mode=Active cmd=False refused= origin=Guard group= target=0
+2026-10-24T12:05:00.0000000+00:00 test-000000006 Phase dev= stage= phase=L1 StopIncreases GuardBudgetLow over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:06:10.0000000+00:00 test-000000007 Device dev=heater_l1 stage= phase=L1 SwitchOff ReserveThreshold over= mode=Active cmd=True refused= origin=Dispatch group= target=0
+2026-10-24T12:06:30.0000000+00:00 test-000000008 Phase dev= stage= phase=L1 ReductionRequestCleared HeadroomAvailable over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:10:10.0000000+00:00 test-000000009 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:11:00.0000000+00:00 test-000000010 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+-- commands
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+heater_l1 relay 1 off
+-- ledger
+heater_l1: target=0 origin=Dispatch reason=ReserveThreshold deferred=- window=// timedOut=False mismatches=1 unresponsive= retry= commanded=False refuted=False baseline=1/0/2026-10-24T12:02:00.0000000+00:00/True/ selfStarted= unconfirmed=2026-10-24T12:10:31.0000000+00:00
+  history 2026-10-24T12:02:00.0000000+00:00 Command exp=0 meas=0 Watts NotDelivered from=1 to=0
+heater_l2: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+heater_l3: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+pending decisions: 0

@@ -1,0 +1,33 @@
+-- first run, control off
+persisted baseline ev_charger: 16 A/6 A/2026-10-24T12:02:30.0000000+00:00/True/
+-- first run, control on again
+persisted baseline ev_charger: 16 A/6 A/2026-10-24T12:02:30.0000000+00:00/True/
+2026-10-24T12:02:30.0000000+00:00 test-000000001 Device dev=ev_charger stage= phase=L1 ReduceToMinimum GuardTierExceeded over= mode=Active cmd=True refused= origin=Guard group= target=6 A
+2026-10-24T12:03:00.0000000+00:00 test-000000002 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:04:30.0000000+00:00 test-000000003 Phase dev= stage= phase=L1 ReductionRequestCleared HeadroomAvailable over= mode=Shadow cmd=False refused= origin= group= target=
+2026-10-24T12:04:30.0000000+00:00 test-000000004 Phase dev= stage= phase=L1 StopIncreases GuardBudgetLow over= mode=Shadow cmd=False refused= origin= group= target=
+2026-10-24T12:06:30.0000000+00:00 test-000000005 Phase dev= stage= phase=L1 IncreasesAllowed HeadroomAvailable over= mode=Shadow cmd=False refused= origin= group= target=
+2026-10-24T12:06:30.0000000+00:00 test-000000006 Device dev=ev_charger stage= phase= Release HeadroomAvailable over= mode=Shadow cmd=False refused=ModeShadow origin=Guard group= target=6 A
+2026-10-24T12:06:30.0000000+00:00 test-000000007 Device dev=ev_charger stage= phase=L1 SetSetpoint HeadroomAvailable over= mode=Shadow cmd=False refused=ModeShadow origin=Dispatch group= target=15 A
+2026-10-24T12:07:30.0000000+00:00 test-000000008 Device dev=ev_charger stage= phase=L1 SetSetpoint HeadroomAvailable over= mode=Shadow cmd=False refused=ModeShadow origin=Dispatch group= target=16 A
+-- commands
+ev_charger setpoint 6
+-- ledger
+ev_charger: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=16 A/6 A/2026-10-24T12:02:30.0000000+00:00/True/ selfStarted= unconfirmed=
+  history 2026-10-24T12:03:00.0000000+00:00 Command exp=6 meas=6 Amperes Match from=16 A to=6 A
+  history 2026-10-24T12:07:00.0000000+00:00 Command exp=0 meas=0 Watts NotApplied from=6 A to=15 A
+  history 2026-10-24T12:08:00.0000000+00:00 Command exp=0 meas=0 Watts NotApplied from=15 A to=16 A
+heater_l1: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+pending decisions: 0
+== restart
+persisted selfStarted heater_l3: 2026-10-24T12:00:00.0000000+00:00
+2026-10-24T13:00:30.0000000+00:00 test-000000001 Device dev=heater_l1 stage= phase=L1 Deferred HeadroomAvailable over= mode=Active cmd=False refused=LockoutMinOff origin=Dispatch group= target=
+2026-10-24T13:02:00.0000000+00:00 test-000000002 Device dev=heater_l1 stage= phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=1
+-- commands
+heater_l1 relay 1 on
+-- ledger
+heater_l1: target=1 origin=Dispatch reason=HeadroomAvailable deferred=- window=// timedOut=False mismatches=1 unresponsive= retry= commanded=True refuted=True baseline=- selfStarted= unconfirmed=
+  history 2026-10-24T13:02:10.0000000+00:00 Command exp=1500 meas=0 Watts Mismatch from=0 to=1
+heater_l2: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted= unconfirmed=
+heater_l3: target= origin= reason= deferred=- window=// timedOut=False mismatches=0 unresponsive= retry= commanded=False refuted=False baseline=- selfStarted=2026-10-24T12:00:00.0000000+00:00 unconfirmed=
+pending decisions: 0

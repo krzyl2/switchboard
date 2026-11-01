@@ -1,0 +1,28 @@
+2026-10-24T12:00:30.0000000+00:00 test-000000001 Device dev=boiler stage=1 phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=100
+2026-10-24T12:01:00.0000000+00:00 test-000000002 Device dev=boiler stage=2 phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=110
+2026-10-24T12:01:30.0000000+00:00 test-000000003 Device dev=boiler stage=3 phase=L1 SwitchOn HeadroomAvailable over= mode=Active cmd=True refused= origin=Dispatch group= target=111
+2026-10-24T12:01:40.0000000+00:00 test-000000004 Device dev=boiler stage= phase=L1 MarkedUnresponsive DeviceUnresponsive over= mode=Active cmd=False refused= origin=Dispatch group= target=111
+2026-10-24T12:06:10.0000000+00:00 test-000000005 Phase dev= stage= phase=L1 ForeignLoadDetected ForeignLoad over= mode=Active cmd=False refused= origin=Dispatch group= target=
+2026-10-24T12:06:30.0000000+00:00 test-000000006 Device dev=boiler stage= phase=L1 Deferred DeviceUnresponsive over= mode=Active cmd=False refused=LockoutMinOn origin=Dispatch group= target=111
+2026-10-24T12:07:00.0000000+00:00 test-000000007 Phase dev= stage= phase=L1 RequestReduction ReserveThreshold over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:07:00.0000000+00:00 test-000000008 Device dev=boiler stage=3 phase=L1 SwitchOff GuardTierExceeded over=LockoutMinOn mode=Active cmd=True refused= origin=Guard group= target=110
+2026-10-24T12:07:00.0000000+00:00 test-000000009 Device dev=boiler stage=2 phase=L1 SwitchOff DeviceUnresponsive over= mode=Active cmd=True refused= origin=Dispatch group= target=100
+2026-10-24T12:07:30.0000000+00:00 test-000000010 Device dev=boiler stage=1 phase=L1 SwitchOff GuardTierExceeded over= mode=Active cmd=True refused= origin=Guard group= target=000
+2026-10-24T12:10:30.0000000+00:00 test-000000011 Phase dev= stage= phase=L1 ReductionRequestCleared HeadroomAvailable over= mode=Active cmd=False refused= origin= group= target=
+2026-10-24T12:10:30.0000000+00:00 test-000000012 Device dev=boiler stage=1 phase= Release HeadroomAvailable over= mode=Active cmd=False refused= origin=Guard group= target=000
+2026-10-24T12:10:30.0000000+00:00 test-000000013 Device dev=boiler stage=3 phase= Release HeadroomAvailable over= mode=Active cmd=False refused= origin=Guard group= target=000
+-- commands
+boiler relay 1 on
+boiler relay 2 on
+boiler relay 3 on
+boiler relay 3 off
+boiler relay 2 off
+boiler relay 1 off
+-- ledger
+boiler: target=000 origin=Dispatch reason=GuardTierExceeded deferred=- window=// timedOut=False mismatches=5 unresponsive=2026-10-24T12:01:40.0000000+00:00 retry=2026-10-24T12:31:40.0000000+00:00 commanded=True refuted=True baseline=- selfStarted= unconfirmed=
+  history 2026-10-24T12:00:40.0000000+00:00 Command exp=690 meas=0 Watts Mismatch from=000 to=100
+  history 2026-10-24T12:01:10.0000000+00:00 Command exp=690 meas=0 Watts Mismatch from=100 to=110
+  history 2026-10-24T12:01:40.0000000+00:00 Command exp=690 meas=0 Watts Mismatch from=110 to=111
+  history 2026-10-24T12:07:10.0000000+00:00 Command exp=-690 meas=0 Watts Mismatch from=110 to=100
+  history 2026-10-24T12:07:40.0000000+00:00 Command exp=-690 meas=0 Watts Mismatch from=100 to=000
+pending decisions: 0
