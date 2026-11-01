@@ -695,6 +695,41 @@ public sealed class SetupValidatorTests
         Assert.DoesNotContain(resumeOnly.Issues, i => i.Code == SetupIssueCodes.StopChangedWhileReduced);
     }
 
+    [Theory]
+    [InlineData("modulating", true)]
+    [InlineData("Modulating", false)]
+    [InlineData("storage", false)]
+    [InlineData("onoff", false)]
+    [InlineData(null, false)]
+    public void Only_a_modulating_draft_has_its_select_stop_options_checked(string? type, bool checkedForOptions)
+    {
+        // Why: a stop actuator belongs to a modulating device alone; the wizard writes it for no other type, so no other type is judged on it.
+        var draft = SetupFixtures.MaintainerDraft();
+        var charger = draft.Devices[3] with { Type = type, StopActuator = "select.goe_422752_frc", StopOption = null, ResumeOption = "0" };
+
+        var validation = Validate(draft with { Devices = [.. draft.Devices.Take(3), charger] });
+
+        Assert.Equal(checkedForOptions, validation.Issues.Any(i => i.Code == SetupIssueCodes.RequiredField && i.Field == "devices[3].stopOption"));
+    }
+
+    [Theory]
+    [InlineData("onoff", true)]
+    [InlineData("Onoff", false)]
+    [InlineData("storage", false)]
+    [InlineData("modulating", false)]
+    [InlineData(null, false)]
+    public void Only_an_onoff_draft_on_one_phase_is_judged_by_the_self_test(string? type, bool judged)
+    {
+        var evidence = Evidence(("switch.grzalka_1", Phase.L2));
+        var draft = SetupFixtures.MaintainerDraft();
+        var swapped = draft with { Devices = [draft.Devices[0], draft.Devices[1] with { Phase = "L3", Type = type }, .. draft.Devices.Skip(2)] };
+
+        var validation = SetupValidator.Validate(swapped, Context(evidence: evidence));
+
+        Assert.Equal(judged, validation.Issues.Any(i => i.Code == SetupIssueCodes.PhaseSelfTestMismatch && i.Field == "devices[1].phase"));
+        Assert.Equal(judged, validation.SelfTest.Any(s => s.Field == "devices[1].phase"));
+    }
+
     /// <summary>The maintainer's draft with the go-e force state as the charger's stop.</summary>
     private static SetupDraft WithSelectStop(string? stop, string? resume)
     {

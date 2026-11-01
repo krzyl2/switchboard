@@ -40,13 +40,7 @@ internal static class DeviceSectionParser
     private const int MaxNameLength = 40;
 
 
-    private static readonly string[] CommonKeys = ["id", "name", "type", "value_per_kwh", "shed_priority", "reaction_time", "no_shed", "min_on", "min_off", "state_max_age", "state_reports", "draw", "circuit_group", "start", "value_follows", "value_factor", "sources", GoalSectionParser.Key];
-    private static readonly string[] StageKeys = ["actuator", "state_entity", "phase", "rated_current_a", "rated_power_w"];
-    private static readonly string[] OnOffKeys = [.. StageKeys, "rotation_group"];
-    private static readonly string[] ModulatingKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit", "stop_actuator", "stop_option", "resume_option"];
     private static readonly string[] StopOptionKeys = ["stop_option", "resume_option"];
-    private static readonly string[] StorageKeys = ["actuator", "state_entity", "phase", "min", "max", "step", "unit"];
-    private static readonly string[] SteppedKeys = ["stages"];
     private static readonly string[] DrawKeys = ["current", "power", "max_age", "current_unit", "power_unit"];
 
     // Keys of 03-ARCHITECTURE for later versions: accepted with a warning so a document written for
@@ -54,13 +48,8 @@ internal static class DeviceSectionParser
     private static readonly string[] LaterKeys = ["guards"];
     private static readonly string[] PowerRangeKeys = ["power_min", "power_max"];
 
-    private static readonly ImmutableDictionary<string, DeviceType> Types = new Dictionary<string, DeviceType>
-    {
-        ["onoff"] = DeviceType.OnOff,
-        ["stepped"] = DeviceType.Stepped,
-        ["modulating"] = DeviceType.Modulating,
-        ["storage"] = DeviceType.Storage,
-    }.ToImmutableDictionary(StringComparer.Ordinal);
+    private static readonly ImmutableDictionary<string, DeviceType> Types =
+        DeviceTypeSchema.All.ToImmutableDictionary(schema => schema.Name, schema => schema.Type, StringComparer.Ordinal);
 
     private static readonly ImmutableDictionary<string, ValueFollows> ValueFollowsNames = new Dictionary<string, ValueFollows>
     {
@@ -75,11 +64,7 @@ internal static class DeviceSectionParser
         ["on_change"] = StateFreshness.OnChange,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
-    private static readonly ImmutableArray<string> RelayActuatorDomains = ["switch", "input_boolean"];
     private static readonly ImmutableArray<string> SelectActuatorDomains = ["select", "input_select"];
-    private static readonly ImmutableArray<string> ModulatingActuatorDomains = ["number", "input_number"];
-    private static readonly ImmutableArray<string> RelayStateDomains = ["switch", "input_boolean", "binary_sensor"];
-    private static readonly ImmutableArray<string> ModulatingStateDomains = ["number", "input_number", "sensor"];
 
     private static readonly ImmutableDictionary<string, Phase> PhaseNames = new Dictionary<string, Phase>
     {
@@ -183,36 +168,28 @@ internal static class DeviceSectionParser
         SignalName.Parse(perPhase ? $"{SignalPrefix}{device.Value}_{kind}_{phase.ToString().ToLowerInvariant()}" : $"{SignalPrefix}{device.Value}_{kind}");
 
     /// <summary>The keys a device of <paramref name="type"/> may carry; the wizard's templates are checked against them.</summary>
-    public static ImmutableArray<string> KeysFor(DeviceType type) => [.. CommonKeys, .. type switch
-    {
-        DeviceType.OnOff => OnOffKeys,
-        DeviceType.Modulating => ModulatingKeys,
-        DeviceType.Storage => StorageKeys,
-        _ => SteppedKeys,
-    }];
+    public static ImmutableArray<string> KeysFor(DeviceType type) => DeviceTypeSchema.Of(type).Keys;
 
     /// <summary>The domains an actuator of <paramref name="type"/> may have (SAFE-05: only these can ever be declared).</summary>
-    public static ImmutableArray<string> ActuatorDomainsFor(DeviceType type) =>
-        type is DeviceType.OnOff or DeviceType.Stepped ? RelayActuatorDomains : ModulatingActuatorDomains;
+    public static ImmutableArray<string> ActuatorDomainsFor(DeviceType type) => DeviceTypeSchema.Of(type).ActuatorDomains;
 
     /// <summary>
     /// The domains a modulating device's stop actuator may have: a switch (off stops it, on resumes
     /// it) or a select (its declared stop_option stops it, its resume_option resumes it).
     /// </summary>
-    public static ImmutableArray<string> StopActuatorDomains() => [.. RelayActuatorDomains, .. SelectActuatorDomains];
+    public static ImmutableArray<string> StopActuatorDomains() => [.. DeviceTypeSchema.OnOff.ActuatorDomains, .. SelectActuatorDomains];
 
     /// <summary>The stop actuator domains that take options (select_option) instead of on and off.</summary>
     public static ImmutableArray<string> SelectStopDomains => SelectActuatorDomains;
 
     /// <summary>The domains a state entity of <paramref name="type"/> may have.</summary>
-    public static ImmutableArray<string> StateDomainsFor(DeviceType type) =>
-        type is DeviceType.OnOff or DeviceType.Stepped ? RelayStateDomains : ModulatingStateDomains;
+    public static ImmutableArray<string> StateDomainsFor(DeviceType type) => DeviceTypeSchema.Of(type).StateDomains;
 
     /// <summary>The spelling of a device type in the document.</summary>
-    public static string TypeName(DeviceType type) => Types.First(t => t.Value == type).Key;
+    public static string TypeName(DeviceType type) => DeviceTypeSchema.Of(type).Name;
 
     /// <summary>The device type a document spelling names, if any.</summary>
-    public static DeviceType? TypeOf(string? name) => name is not null && Types.TryGetValue(name, out var type) ? type : null;
+    public static DeviceType? TypeOf(string? name) => DeviceTypeSchema.TryParse(name)?.Type;
 
     /// <summary>Every id declared under <c>circuit_groups:</c> that is a valid group name.</summary>
     public static IReadOnlySet<GroupName> DeclaredGroupIds(ConfigMapping root)
@@ -292,7 +269,7 @@ internal static class DeviceSectionParser
                 Freshness = device.StateReports,
             };
 
-    private static bool IsSetpointDevice(this DeviceDefinition device) => device.Type is DeviceType.Modulating or DeviceType.Storage;
+    private static bool IsSetpointDevice(this DeviceDefinition device) => DeviceTypeSchema.Of(device.Type).IsSetpoint;
 
     private static DeviceDraft? ReadDevice(ConfigNode node, int index, Context context)
     {
@@ -323,21 +300,22 @@ internal static class DeviceSectionParser
             }
         }
 
-        DeviceType? type = null;
+        DeviceTypeSchema? schema = null;
         var typePath = ConfigRead.Join(path, "type");
         if (ConfigRead.Required(mapping, "type", path, issues) is { } typeNode && ConfigRead.String(typeNode, typePath, issues) is not null)
         {
-            type = ConfigRead.Choice(typeNode, typePath, issues, Types);
+            schema = ConfigRead.Choice(typeNode, typePath, issues, Types) is { } chosen ? DeviceTypeSchema.Of(chosen) : null;
         }
 
-        if (type is not { } deviceType)
+        if (schema is null)
         {
             return null;
         }
 
-        CheckDeviceKeys(mapping, path, deviceType, issues);
+        CheckDeviceKeys(mapping, path, schema, issues);
         var control = context.Control;
-        var setpoint = deviceType is DeviceType.Modulating or DeviceType.Storage;
+        var deviceType = schema.Type;
+        var setpoint = schema.IsSetpoint;
         var valuePerKwh = ConfigRead.Required(mapping, "value_per_kwh", path, issues) is { } valueNode
             ? ConfigRead.Number(valueNode, ConfigRead.Join(path, "value_per_kwh"), issues, Range.AtLeast(0))
             : null;
@@ -373,11 +351,11 @@ internal static class DeviceSectionParser
         switch (deviceType)
         {
             case DeviceType.OnOff:
-                stages.Add(ReadStage(mapping, path, 1, deviceType, context));
+                stages.Add(ReadStage(mapping, path, 1, schema, context));
                 break;
             case DeviceType.Modulating or DeviceType.Storage:
                 (range, unit) = ReadRange(mapping, path, deviceType, context);
-                stages.Add(ReadStage(mapping, path, 1, deviceType, context, range?.Max));
+                stages.Add(ReadStage(mapping, path, 1, schema, context, range?.Max));
                 break;
             case DeviceType.Stepped:
                 stages.AddRange(ReadStages(mapping, path, context));
@@ -385,7 +363,7 @@ internal static class DeviceSectionParser
         }
 
         var phases = stages.Where(s => s.Valid).SelectMany(s => s.Phases).Distinct().Order().ToImmutableArray();
-        var stop = deviceType == DeviceType.Modulating ? ReadStopActuator(mapping, path, issues) : (null, null, null);
+        var stop = schema.HasStopActuator ? ReadStopActuator(mapping, path, issues) : (null, null, null);
         var draw = ReadDraw(mapping, path, phases, context);
         var rotation = ReadGroupName(mapping, "rotation_group", path, issues);
         var circuit = ReadCircuitGroup(mapping, path, phases, context);
@@ -535,16 +513,9 @@ internal static class DeviceSectionParser
     }
 
     /// <summary>Each type has an exact key set; later keys warn, a power range is refused, anything else is unknown.</summary>
-    private static void CheckDeviceKeys(ConfigMapping mapping, string path, DeviceType type, ConfigIssues issues)
+    private static void CheckDeviceKeys(ConfigMapping mapping, string path, DeviceTypeSchema schema, ConfigIssues issues)
     {
-        var allowed = type switch
-        {
-            DeviceType.OnOff => CommonKeys.Concat(OnOffKeys),
-            DeviceType.Modulating => CommonKeys.Concat(ModulatingKeys),
-            DeviceType.Storage => CommonKeys.Concat(StorageKeys),
-            _ => CommonKeys.Concat(SteppedKeys),
-        };
-        var keys = allowed.ToArray();
+        var keys = schema.Keys;
         foreach (var entry in mapping.Entries)
         {
             var keyPath = ConfigRead.Join(path, entry.Key);
@@ -563,7 +534,7 @@ internal static class DeviceSectionParser
                     ConfigurationIssueCodes.KeyNotAllowed,
                     keyPath,
                     entry,
-                    type is DeviceType.Modulating or DeviceType.Storage
+                    schema.IsSetpoint
                         ? $"'{entry.Key}' is not used: a setpoint device's range is min, max and step in its actuator's unit."
                         : $"'{entry.Key}' applies to modulating devices only, and is not used: their range is min, max and step.");
             }
@@ -655,26 +626,26 @@ internal static class DeviceSectionParser
                 continue;
             }
 
-            ConfigRead.CheckKeys(stage, stagePath, StageKeys, issues);
-            yield return ReadStage(stage, stagePath, i + 1, DeviceType.Stepped, context);
+            ConfigRead.CheckKeys(stage, stagePath, DeviceTypeSchema.StageKeys, issues);
+            yield return ReadStage(stage, stagePath, i + 1, DeviceTypeSchema.Stepped, context);
         }
     }
 
     /// <param name="setpointMax">A setpoint device's maximum in A: its rated current.</param>
-    private static StageDraft ReadStage(ConfigMapping mapping, string path, int index, DeviceType type, Context context, Amperes? setpointMax = null)
+    private static StageDraft ReadStage(ConfigMapping mapping, string path, int index, DeviceTypeSchema schema, Context context, Amperes? setpointMax = null)
     {
         var issues = context.Issues;
         var errorsBefore = issues.Errors.Count;
-        var relay = type is DeviceType.OnOff or DeviceType.Stepped;
+        var relay = schema.IsRelay;
 
         var actuatorNode = ConfigRead.Required(mapping, "actuator", path, issues);
-        var actuator = ReadEntity(actuatorNode, ConfigRead.Join(path, "actuator"), relay ? RelayActuatorDomains : ModulatingActuatorDomains, ConfigurationIssueCodes.ActuatorDomainNotAllowed, "an actuator", issues);
+        var actuator = ReadEntity(actuatorNode, ConfigRead.Join(path, "actuator"), schema.ActuatorDomains, ConfigurationIssueCodes.ActuatorDomainNotAllowed, "an actuator", issues);
 
         // Every actuator domain can report its own state, so the default needs no domain check.
         var stateNode = ConfigRead.Optional(mapping, "state_entity");
         var state = stateNode is null
             ? actuator
-            : ReadEntity(stateNode, ConfigRead.Join(path, "state_entity"), relay ? RelayStateDomains : ModulatingStateDomains, ConfigurationIssueCodes.StateEntityDomainNotAllowed, "a state entity", issues);
+            : ReadEntity(stateNode, ConfigRead.Join(path, "state_entity"), schema.StateDomains, ConfigurationIssueCodes.StateEntityDomainNotAllowed, "a state entity", issues);
 
         var phases = ReadPhases(mapping, path, context);
 
@@ -1320,7 +1291,7 @@ internal static class DeviceSectionParser
                     s.RatedPower,
                     StateSignalName(name, s.Index, stages.Count)))],
                 range,
-                type is DeviceType.Modulating or DeviceType.Storage ? unit : null,
+                DeviceTypeSchema.Of(type).IsSetpoint ? unit : null,
                 valuePerKwh,
                 shedPriority,
                 reactionTime,

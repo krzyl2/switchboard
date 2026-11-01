@@ -1,3 +1,7 @@
+using System.Text.Json.Serialization;
+using Switchboard.Application.Configuration;
+using Switchboard.Domain.Devices;
+
 namespace Switchboard.Application.Setup;
 
 /// <summary>
@@ -155,8 +159,12 @@ public sealed record DeviceDraft
 
     public string? Name { get; init; }
 
-    /// <summary>onoff, modulating or storage (stepped devices are kept as written).</summary>
+    /// <summary>onoff, modulating or storage (stepped devices are kept as written). The text as the client sent it: a spelling the parser does not know is the parser's to refuse, at this field.</summary>
     public string? Type { get; init; }
+
+    /// <summary>The type <see cref="Type"/> spells, null when it is absent or spelled in no way the document knows (case and spacing count); the one place the text is read as a type.</summary>
+    [JsonIgnore]
+    public DeviceType? Kind => DeviceSectionParser.TypeOf(Type);
 
     public string? Actuator { get; init; }
 

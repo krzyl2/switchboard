@@ -31,13 +31,7 @@ internal static class ControlParametersBinder
     private const int MaxRetentionDays = 3650;
 
     private static readonly ImmutableDictionary<string, DeviceType> DeviceTypes =
-        new Dictionary<string, DeviceType>
-        {
-            ["onoff"] = DeviceType.OnOff,
-            ["stepped"] = DeviceType.Stepped,
-            ["modulating"] = DeviceType.Modulating,
-            ["storage"] = DeviceType.Storage,
-        }.ToImmutableDictionary(StringComparer.Ordinal);
+        DeviceTypeSchema.All.ToImmutableDictionary(schema => schema.Name, schema => schema.Type, StringComparer.Ordinal);
 
     // Schema bound, not a control parameter: more mismatches than this before acting is a typo.
     private const int MaxMismatchLimit = 100;

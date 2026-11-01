@@ -638,7 +638,7 @@ public static class SetupValidator
         {
             var device = draft.Devices[i];
             var path = $"devices[{i.ToString(CultureInfo.InvariantCulture)}]";
-            if ((device.Existing && !device.Editable) || device.Type != "modulating")
+            if ((device.Existing && !device.Editable) || device.Kind != DeviceType.Modulating)
             {
                 continue;
             }
@@ -870,7 +870,7 @@ public static class SetupValidator
         for (var i = 0; i < draft.Devices.Count; i++)
         {
             var device = draft.Devices[i];
-            if ((device.Existing && !device.Editable) || device.Type != "onoff"
+            if ((device.Existing && !device.Editable) || device.Kind != DeviceType.OnOff
                 || device.Phase is not ("L1" or "L2" or "L3")
                 || !EntityId.TryParse(device.StateEntity ?? device.Actuator, out var state))
             {

@@ -633,7 +633,7 @@ internal static class SetupEndpoint
             }
 
             var d = draft.Devices[device.Index];
-            if (d.Type != "onoff" || d.Phase is not ("L1" or "L2" or "L3"))
+            if (d.Kind != DeviceType.OnOff || d.Phase is not ("L1" or "L2" or "L3"))
             {
                 return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, $"{field}.phase", "The self-test watches an on/off device on one phase (a charger or a three-phase device cannot be judged this way).")]);
             }

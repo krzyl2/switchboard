@@ -3,6 +3,7 @@ using System.Globalization;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Connection;
+using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Application.Setup;
@@ -43,8 +44,6 @@ public static class SetupDocumentMapper
         ("min_on", "minOn"), ("min_off", "minOff"), ("rotation_group", "rotationGroup"), ("circuit_group", "circuitGroup"), ("draw", "draw"),
         ("stop_actuator", "stopActuator"), ("stop_option", "stopOption"), ("resume_option", "resumeOption"), ("start", "start"),
     ];
-
-    private static readonly string[] EditableTypes = ["onoff", "modulating", "storage"];
 
     public static SetupLoad Read(ConfigNode? root)
     {
@@ -277,7 +276,7 @@ public static class SetupDocumentMapper
     /// any, a single-phase draw. A stepped device or a per-phase draw is kept as written.
     /// </summary>
     private static bool IsEditable(ConfigMapping device) =>
-        EditableTypes.Contains(ConfigTree.AsText(device.Get("type")))
+        DeviceTypeSchema.TryParse(ConfigTree.AsText(device.Get("type"))) is { WizardEditable: true }
         && device.Get("phase") is null or ConfigScalar
         && device.Get("id") is ConfigScalar { IsNull: false }
         && (device.Get("draw") is null || device.Get("draw") is ConfigMapping draw
@@ -450,7 +449,7 @@ public static class SetupDocumentMapper
                         $"{path}.id",
                         $"The id '{id}' is already used by a device in the file (removed in this edit or not); choose another id for the new device.",
                         ("device", id)));
-                    items.Add(Patch(ConfigTree.EmptyMapping().SetText("id", id).SetPlain("type", draft.Type), draft, draft.Type, defaultStart));
+                    items.Add(Patch(ConfigTree.EmptyMapping().SetText("id", id).SetPlain("type", draft.Type), draft, draft.Kind, defaultStart));
                     continue;
                 }
 
@@ -461,8 +460,10 @@ public static class SetupDocumentMapper
                     continue;
                 }
 
-                var type = ConfigTree.AsText(base_.Get("type"))!;
-                if (draft.Type is { } requested && requested != type)
+                // The file's type is one the wizard edits (IsEditable), so it names a type.
+                var kind = DeviceSectionParser.TypeOf(ConfigTree.AsText(base_.Get("type")))!.Value;
+                var type = DeviceSectionParser.TypeName(kind);
+                if (draft.Type is not null && draft.Kind != kind)
                 {
                     issues.Add(SetupIssue.Error(
                         SetupIssueCodes.ExistingDeviceImmutable,
@@ -472,7 +473,7 @@ public static class SetupDocumentMapper
                         ("type", type)));
                 }
 
-                items.Add(Patch(base_, draft, type, defaultStart));
+                items.Add(Patch(base_, draft, kind, defaultStart));
                 continue;
             }
 
@@ -488,17 +489,20 @@ public static class SetupDocumentMapper
                 created = created.SetPlain("type", draft.Type);
             }
 
-            items.Add(Patch(created, draft, draft.Type, defaultStart));
+            items.Add(Patch(created, draft, draft.Kind, defaultStart));
         }
 
         return ConfigTree.Sequence(items);
     }
 
     /// <summary>The wizard's keys of one device; keys valid only for another type are removed (they are owned too).</summary>
-    private static ConfigMapping Patch(ConfigMapping device, DeviceDraft draft, string? type, string? defaultStart)
+    private static ConfigMapping Patch(ConfigMapping device, DeviceDraft draft, DeviceType? type, string? defaultStart)
     {
-        var relay = type == "onoff";
-        var setpoint = type is "modulating" or "storage";
+        // Only an onoff device owns a rating and a rotation group (a stepped one is never patched), only a setpoint device a range.
+        var relay = type == DeviceType.OnOff;
+        var schema = type is { } known ? DeviceTypeSchema.Of(known) : null;
+        var setpoint = schema is { IsSetpoint: true };
+        var hasStop = schema is { HasStopActuator: true };
 
         // start: the default needs no key (a later default still applies); a key the file had stays
         // written, whatever its value, so the wizard never silently changes what the user wrote.
@@ -506,7 +510,7 @@ public static class SetupDocumentMapper
 
         // The options belong to a select stop only (a switch stop is turned off and on); an option
         // the file wrote as 1 stays 1, a new one is written quoted so it reads back as text.
-        var selectStop = type == "modulating" && IsSelectStop(draft.StopActuator);
+        var selectStop = hasStop && IsSelectStop(draft.StopActuator);
         device = device
             .SetText("name", draft.Name)
             .SetText("actuator", draft.Actuator)
@@ -524,7 +528,7 @@ public static class SetupDocumentMapper
             .SetPlain("min_off", draft.MinOff)
             .SetText("rotation_group", relay ? draft.RotationGroup : null)
             .SetText("circuit_group", draft.CircuitGroup)
-            .SetText("stop_actuator", type == "modulating" ? draft.StopActuator : null)
+            .SetText("stop_actuator", hasStop ? draft.StopActuator : null)
             .SetText("stop_option", selectStop ? draft.StopOption : null)
             .SetText("resume_option", selectStop ? draft.ResumeOption : null)
             .SetPlain("start", start);
