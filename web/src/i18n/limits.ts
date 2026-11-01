@@ -64,6 +64,14 @@ const en = {
   'limits.kill.how': 'It can also be switched with the Kill switch entity in Home Assistant.',
   'limits.kill.late': 'Changed, but not evaluated in time; the next refresh shows it.',
   'limits.kill.failed': 'The kill switch could not be changed.',
+  'limits.kill.unknown': 'Kill switch state unknown',
+  'limits.kill.unknownNote': 'Its state cannot be read right now. Engaging it is always safe; releasing it is offered once the state can be read.',
+  'limits.kill.engaged': 'Engaged: the add-on confirmed it.',
+  'limits.kill.confirm.title': 'Release the kill switch?',
+  'limits.kill.confirm.body':
+    'Switchboard stops holding the controlled devices off and restores them one at a time, as the limits allow. In shadow mode nothing is switched.',
+  'limits.kill.confirm.release': 'Release',
+  'limits.kill.confirm.cancel': 'Cancel',
   'limits.decisionLog': 'Every decision, with its reason, is in the decision log.',
 };
 
@@ -133,6 +141,14 @@ export const limits: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'limits.kill.how': 'Można je też przełączać encją „Kill switch” w Home Assistant.',
     'limits.kill.late': 'Zmieniono, ale nie przeliczono na czas; pokaże się przy następnym odświeżeniu.',
     'limits.kill.failed': 'Nie udało się zmienić wstrzymania sterowania.',
+    'limits.kill.unknown': 'Stan wstrzymania sterowania nieznany',
+    'limits.kill.unknownNote': 'Nie można teraz odczytać jego stanu. Włączenie jest zawsze bezpieczne; wyłączenie będzie dostępne, gdy stan da się odczytać.',
+    'limits.kill.engaged': 'Włączone: dodatek to potwierdził.',
+    'limits.kill.confirm.title': 'Wyłączyć wstrzymanie sterowania?',
+    'limits.kill.confirm.body':
+      'Switchboard przestaje trzymać sterowane urządzenia w stanie wyłączonym i przywraca je po jednym, na ile pozwalają limity. W trybie Obserwacja nic nie jest przełączane.',
+    'limits.kill.confirm.release': 'Wyłącz',
+    'limits.kill.confirm.cancel': 'Anuluj',
     'limits.decisionLog': 'Każda decyzja wraz z powodem jest w dzienniku decyzji.',
   },
 };

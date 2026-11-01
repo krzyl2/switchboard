@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Excursion, ExcursionDecision, Excursions, PhaseExcursions } from './api/excursions';
 import type { DeviceConfig, Devices } from './api/devices';
 import { parseGuard } from './api/guard';
@@ -13,6 +13,7 @@ import { useDevices } from './useDevices';
 import { useExcursions } from './useExcursions';
 import { useGuard } from './useGuard';
 import type { PollView } from './usePoll';
+import './control.css';
 import './limits.css';
 
 // Screen 05 — Limits and overloads (BRK-01 … BRK-05, DISP-02, SAFE-03), route #/guard. Structure and
@@ -62,9 +63,10 @@ class KillSwitchError extends Error {
  * SAFE-03 from the page. A JSON body, as the add-on requires (a cross-site form cannot send one
  * without a CORS preflight). The answer is the guard's view after it evaluated the change; 503 is an
  * evaluation that came late (the kill switch holds in memory either way). It changes the add-on's
- * own state only: no Home Assistant entity is commanded by it.
+ * own state only: no Home Assistant entity is commanded by it. A 2xx answer the page cannot read is
+ * still an applied change (null): an unreadable guard view is usually why the state was unknown.
  */
-async function postKillSwitch(engaged: boolean, signal: AbortSignal): Promise<GuardStatus> {
+async function postKillSwitch(engaged: boolean, signal: AbortSignal): Promise<GuardStatus | null> {
   const response = await fetch(KILL_SWITCH_URL, {
     method: 'POST',
     signal,
@@ -73,7 +75,11 @@ async function postKillSwitch(engaged: boolean, signal: AbortSignal): Promise<Gu
     body: JSON.stringify({ engaged }),
   });
   if (!response.ok) throw new KillSwitchError(response.status === 503 ? 'late' : 'failed');
-  return parseGuard(await response.json());
+  try {
+    return parseGuard(await response.json());
+  } catch {
+    return null;
+  }
 }
 
 const multiple = (value: number, lang: Lang) => formatNumber(value, lang, 2);
@@ -657,20 +663,53 @@ function ShedOrderCard({ guard, devices, names, ...props }: { guard: GuardStatus
   );
 }
 
-/** SAFE-03: the kill switch's state, where it was set, and the control to engage or release it. */
-function KillSwitchCard({ guard, onAnswer, t, lang }: { guard: GuardStatus; onAnswer: (guard: GuardStatus) => void } & Props) {
+/** How the last change ended; 'engaged' is the add-on's confirmation, said only while the page reads no state. */
+type KillSwitchOutcome = KillSwitchRefusal | 'engaged';
+
+const OUTCOME_KEY: Record<KillSwitchOutcome, 'limits.kill.late' | 'limits.kill.failed' | 'limits.kill.engaged'> = {
+  late: 'limits.kill.late',
+  failed: 'limits.kill.failed',
+  engaged: 'limits.kill.engaged',
+};
+
+/**
+ * SAFE-03: the kill switch's state, where it was set, and the control to engage or release it.
+ * Engaging is offered always, also while the state cannot be read (null): engaging an engaged kill
+ * switch changes nothing. Releasing is offered only from a known engaged state and asks first, as
+ * allowing control does; engaging is sent at once, because it is the direction that holds devices off.
+ */
+export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: GuardStatus['killSwitch'] | null; onAnswer?: (guard: GuardStatus) => void } & Props) {
   const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState<KillSwitchRefusal | null>(null);
-  const { killSwitch } = guard;
-  const change = async () => {
+  const [asking, setAsking] = useState(false);
+  const [outcome, setOutcome] = useState<KillSwitchOutcome | null>(null);
+  const releaseButton = useRef<HTMLButtonElement>(null);
+  const known = killSwitch !== null;
+  const knownNow = useRef(known);
+  knownNow.current = known;
+  const engaged = killSwitch?.engaged === true;
+  const confirming = asking && engaged;
+
+  useEffect(() => {
+    if (confirming) releaseButton.current?.focus();
+  }, [confirming]);
+
+  // Once the page reads a state again, that state speaks for itself.
+  useEffect(() => {
+    if (known) setOutcome((current) => (current === 'engaged' ? null : current));
+  }, [known]);
+
+  const change = async (engage: boolean) => {
+    setAsking(false);
     setSaving(true);
-    setRefusal(null);
+    setOutcome(null);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), KILL_SWITCH_REQUEST_TIMEOUT_MS);
     try {
-      onAnswer(await postKillSwitch(!killSwitch.engaged, controller.signal));
+      const answer = await postKillSwitch(engage, controller.signal);
+      if (answer !== null) onAnswer?.(answer);
+      if (!knownNow.current) setOutcome('engaged');
     } catch (error) {
-      setRefusal(error instanceof KillSwitchError ? error.refusal : 'failed');
+      setOutcome(error instanceof KillSwitchError ? error.refusal : 'failed');
     } finally {
       clearTimeout(timeout);
       setSaving(false);
@@ -681,30 +720,53 @@ function KillSwitchCard({ guard, onAnswer, t, lang }: { guard: GuardStatus; onAn
       <header class="cardhead">
         <h2 id="kill-title">{t['limits.kill.title']}</h2>
       </header>
-      <p class="lim-killstate">
-        <StateLabel tone={killSwitch.engaged ? 'crit' : 'ok'} label={killSwitch.engaged ? t.killSwitchTitle : t['limits.kill.released']} />
-        {(killSwitch.source !== null || killSwitch.changedAt !== null) && (
-          <span class="sub">
-            {killSwitch.source !== null && t[`killSwitchSource.${killSwitch.source}`]}
-            {killSwitch.changedAt !== null && (
-              <>
-                {killSwitch.source !== null && ', '}
-                {t.since} <Timestamp at={killSwitch.changedAt} lang={lang} />
-              </>
-            )}
-          </span>
-        )}
-      </p>
+      {killSwitch === null ? (
+        <p class="lim-killstate">
+          <StateLabel tone="warn" label={t['limits.kill.unknown']} />
+          <span class="sub">{t['limits.kill.unknownNote']}</span>
+        </p>
+      ) : (
+        <p class="lim-killstate">
+          <StateLabel tone={killSwitch.engaged ? 'crit' : 'ok'} label={killSwitch.engaged ? t.killSwitchTitle : t['limits.kill.released']} />
+          {(killSwitch.source !== null || killSwitch.changedAt !== null) && (
+            <span class="sub">
+              {killSwitch.source !== null && t[`killSwitchSource.${killSwitch.source}`]}
+              {killSwitch.changedAt !== null && (
+                <>
+                  {killSwitch.source !== null && ', '}
+                  {t.since} <Timestamp at={killSwitch.changedAt} lang={lang} />
+                </>
+              )}
+            </span>
+          )}
+        </p>
+      )}
       <p class="note">{t['limits.kill.what']}</p>
       <p class="lim-killaction">
-        <button type="button" class="lim-button" disabled={saving} onClick={() => void change()}>
-          {killSwitch.engaged ? t['limits.kill.release'] : t['limits.kill.engage']}
+        <button type="button" class="lim-button" disabled={saving} onClick={() => (engaged ? setAsking(true) : void change(true))}>
+          {engaged ? t['limits.kill.release'] : t['limits.kill.engage']}
         </button>
         {saving && <span class="sub-inline">{t.overrideSaving}</span>}
       </p>
-      {refusal !== null && (
+      {confirming && (
+        <div class="ctl-confirm" role="group" aria-labelledby="kill-confirm-title">
+          <p id="kill-confirm-title" class="ctl-confirm-title">
+            {t['limits.kill.confirm.title']}
+          </p>
+          <p>{t['limits.kill.confirm.body']}</p>
+          <div class="ctl-buttons">
+            <button type="button" class="lim-button ctl-primary" ref={releaseButton} onClick={() => void change(false)}>
+              {t['limits.kill.confirm.release']}
+            </button>
+            <button type="button" class="lim-button" onClick={() => setAsking(false)}>
+              {t['limits.kill.confirm.cancel']}
+            </button>
+          </div>
+        </div>
+      )}
+      {outcome !== null && (outcome !== 'engaged' || !known) && (
         <p class="sub" role="status">
-          {t[refusal === 'late' ? 'limits.kill.late' : 'limits.kill.failed']}
+          {t[OUTCOME_KEY[outcome]]}
         </p>
       )}
       <p class="sub">{t['limits.kill.how']}</p>
@@ -753,7 +815,8 @@ export function Limits({ lang }: { lang: Lang }) {
         <ExcursionCard view={excursions} names={names} {...props} />
       </div>
       {guard !== null && (breaker !== null || guard.devices.length > 0) && <ShedOrderCard guard={guard} devices={devices} names={names} {...props} />}
-      {guard !== null && <KillSwitchCard guard={guard} onAnswer={setAnswer} {...props} />}
+      {/* Always on the page: engaging must never depend on reading the guard. */}
+      <KillSwitchCard killSwitch={guard?.killSwitch ?? null} onAnswer={setAnswer} {...props} />
     </>
   );
 }

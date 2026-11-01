@@ -56,6 +56,16 @@ function stateLabel(container: Element): { label: string; tone: string | null } 
   return { label: label?.textContent ?? '', tone: label?.getAttribute('data-tone') ?? null };
 }
 
+/** A guard payload change: the kill switch engaged from the given source. */
+function engagedFrom(source: 'api' | 'mqtt'): (p: any) => void {
+  return (p) => (p.killSwitch = { engaged: true, changedAt: '2026-10-24T09:58:00.000+00:00', source, locked: false, switchesDevices: false });
+}
+
+/** The bodies of every kill switch change the page sent, in order. */
+function killPosts(): unknown[] {
+  return fetchMock.mock.calls.filter(([input]) => input === 'api/guard/kill-switch').map(([, init]) => init?.body);
+}
+
 function fact(container: HTMLElement, label: string): HTMLElement {
   const value = within(container).getByText(label, { selector: 'dt' }).nextElementSibling;
   if (!(value instanceof HTMLElement)) throw new Error(`No value next to "${label}".`);
@@ -260,7 +270,7 @@ describe('limits page', () => {
     expect(screen.queryByRole('heading', { name: 'Overload budget' })).toBeNull();
     expect(screen.queryByRole('heading', { name: /Breaker profile/ })).toBeNull();
     expect(screen.queryByText(/62%/)).toBeNull();
-    expect(screen.queryByRole('button', { name: /kill switch/ })).toBeNull();
+    expect(screen.queryByText('Kill switch released')).toBeNull();
   });
 
   it('treats a guard payload it does not understand as unavailable instead of guessing', async () => {
@@ -461,6 +471,102 @@ describe('kill switch', () => {
     await advance();
 
     expect(within(card('Kill switch')).getByRole('status').textContent).toBe('Changed, but not evaluated in time; the next refresh shows it.');
+  });
+
+  // The guard view can fail for a moment or for good (an add-on that does not answer, a payload this
+  // page does not understand). Engaging is the safe direction and must stay at hand; releasing is
+  // offered only from a state the page has read.
+  it('keeps engaging on offer while the state cannot be read, and never offers releasing then', async () => {
+    let fail = false;
+    serve({ guard: () => (fail ? Promise.reject(new TypeError('Failed to fetch')) : respond(copy(guardSample, engagedFrom('mqtt')))) });
+    await open();
+    expect(within(card('Kill switch')).getByRole('button', { name: 'Release the kill switch' })).toBeTruthy();
+
+    fail = true;
+    await advance(GUARD_REFRESH_INTERVAL_MS);
+
+    const kill = card('Kill switch');
+    expect(stateLabel(kill)).toEqual({ label: 'Kill switch state unknown', tone: 'warn' });
+    expect(kill.textContent).not.toContain('from Home Assistant');
+    expect(within(kill).queryByRole('button', { name: 'Release the kill switch' })).toBeNull();
+    expect((within(kill).getByRole('button', { name: 'Engage the kill switch' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // An unreadable guard view is the usual reason the state is unknown, so the answer to the engage
+  // is unreadable too: the add-on applied it (2xx), and the page must not say it could not.
+  it('engages while the state is unknown and says the add-on confirmed it, until a state can be read', async () => {
+    let readable = false;
+    const engaged = copy(guardSample, engagedFrom('api'));
+    const unreadable = () => copy(engaged, (p) => (p.breaker.tiers[0].reaction = 'made_up'));
+    serve({ guard: () => respond(readable ? copy(engaged) : unreadable()), post: () => respond(unreadable()) });
+    await open();
+    expect(screen.getByRole('alert').textContent).toContain('Limits unavailable');
+
+    await act(async () => {
+      fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Engage the kill switch' }));
+    });
+    await advance();
+
+    expect(killPosts()).toEqual(['{"engaged":true}']);
+    expect(within(card('Kill switch')).getByRole('status').textContent).toBe('Engaged: the add-on confirmed it.');
+
+    readable = true;
+    await advance(GUARD_REFRESH_INTERVAL_MS);
+
+    const kill = card('Kill switch');
+    expect(stateLabel(kill)).toEqual({ label: 'Kill switch engaged', tone: 'crit' });
+    expect(within(kill).queryByRole('status')).toBeNull();
+    expect(within(kill).getByRole('button', { name: 'Release the kill switch' })).toBeTruthy();
+  });
+
+  // Releasing lets Switchboard switch devices again: it asks first, as allowing control does.
+  it('releasing asks first, sends nothing until confirmed, and then sends {"engaged":false}', async () => {
+    const released = copy(guardSample, (p) => {
+      p.at = '2026-10-24T10:00:01.000+00:00';
+      p.killSwitch = { engaged: false, changedAt: '2026-10-24T10:00:01.000+00:00', source: 'api', locked: false, switchesDevices: false };
+    });
+    serve({ guard: () => respond(copy(guardSample, engagedFrom('api'))), post: () => respond(copy(released)) });
+    await open();
+
+    fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release the kill switch' }));
+    await advance();
+
+    const confirm = within(card('Kill switch')).getByRole('group', { name: 'Release the kill switch?' });
+    expect(confirm.textContent).toContain('restores them one at a time');
+    expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'Release' }));
+    expect(killPosts()).toEqual([]);
+
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    await advance();
+    expect(within(card('Kill switch')).queryByRole('group')).toBeNull();
+    expect(killPosts()).toEqual([]);
+
+    fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release the kill switch' }));
+    await advance();
+    await act(async () => {
+      fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release' }));
+    });
+    await advance();
+
+    expect(killPosts()).toEqual(['{"engaged":false}']);
+    expect(stateLabel(card('Kill switch'))).toEqual({ label: 'Kill switch released', tone: 'ok' });
+    expect(within(card('Kill switch')).queryByRole('group')).toBeNull();
+  });
+
+  it('withdraws an open release confirmation when the state can no longer be read', async () => {
+    let fail = false;
+    serve({ guard: () => (fail ? Promise.reject(new TypeError('Failed to fetch')) : respond(copy(guardSample, engagedFrom('api')))) });
+    await open();
+    fireEvent.click(within(card('Kill switch')).getByRole('button', { name: 'Release the kill switch' }));
+    await advance();
+    expect(within(card('Kill switch')).getByRole('group')).toBeTruthy();
+
+    fail = true;
+    await advance(GUARD_REFRESH_INTERVAL_MS);
+
+    expect(within(card('Kill switch')).queryByRole('group')).toBeNull();
+    expect(within(card('Kill switch')).queryByRole('button', { name: 'Release' })).toBeNull();
+    expect(killPosts()).toEqual([]);
   });
 
   it('shows an engaged kill switch from Home Assistant as a banner above everything', async () => {

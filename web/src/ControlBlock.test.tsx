@@ -272,6 +272,27 @@ describe('control allowed switch', () => {
     expect(controlSwitch().getAttribute('aria-checked')).toBe('false');
   });
 
+  // A change that failed on the way back (a dropped connection, a timeout) may still have applied:
+  // the block reads the add-on again at once instead of showing the old position until the next poll.
+  it('a change that fails reads the add-on again at once, so a change that applied unanswered shows', async () => {
+    control = payload(optionActive);
+    answerPost = () => {
+      control = payload(inForce);
+      return Promise.reject(new TypeError('Failed to fetch'));
+    };
+    await open();
+
+    fireEvent.click(controlSwitch());
+    await advance();
+    fireEvent.click(within(block()).getByRole('button', { name: 'Allow control' }));
+    await advance();
+
+    expect(block().querySelector('[data-notice="failed"]')?.textContent).toContain('The panel shows what the add-on reports.');
+    expect(controlSwitch().getAttribute('aria-checked')).toBe('true');
+    expect(block().getAttribute('data-effective')).toBe('active');
+    expect(banner().getAttribute('data-mode')).toBe('active');
+  });
+
   it('a switch changed from Home Assistant shows at the next poll, with who changed it', async () => {
     control = payload(optionActive);
     await open();

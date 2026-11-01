@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
+import { useEffect, useErrorBoundary, useState } from 'preact/hooks';
 import type { ConnectionState, Status } from './api/status';
 import { PRODUCT_NAME } from './config';
 import { ControlBlock, modeKind, type ModeKind } from './ControlBlock';
@@ -7,7 +8,7 @@ import { DecisionLog } from './DecisionLog';
 import { DeviceCard } from './DeviceCard';
 import { Flows } from './Flows';
 import { fill, messages, type Lang, type Messages } from './i18n';
-import { Limits } from './Limits';
+import { KillSwitchCard, Limits } from './Limits';
 import { PlanPage } from './Plan';
 import { parseSetupStep, Setup } from './Setup';
 import type { StepName } from './setupDraft';
@@ -221,6 +222,33 @@ function ModeBanner({ t }: { t: Messages }) {
   );
 }
 
+/**
+ * A render error in the page on screen replaces that page only: the rail, the mode banner and the
+ * statement stay, and the fallback keeps the kill switch's engage action (its state unread, so only
+ * engaging is offered). The error goes to the browser console with its stack. Another route renders
+ * its page afresh.
+ */
+function PageBoundary({ route, t, lang, children }: { route: Route; t: Messages; lang: Lang; children: ComponentChildren }) {
+  const [error, reset] = useErrorBoundary((caught) => console.error(caught));
+  useEffect(() => {
+    // Only a fallback is reset: resetting while Preact still handles the error would rethrow it.
+    if (error !== undefined) reset();
+  }, [route]);
+  if (error === undefined) return <>{children}</>;
+  return (
+    <>
+      <section class="card" role="alert" aria-labelledby="page-error-title">
+        <header class="cardhead">
+          <h2 id="page-error-title">{t['shell.pageError.title']}</h2>
+        </header>
+        <p>{t['shell.pageError.body']}</p>
+        <p class="sub mono">{error instanceof Error ? error.message : String(error)}</p>
+      </section>
+      <KillSwitchCard killSwitch={null} t={t} lang={lang} />
+    </>
+  );
+}
+
 /** UI-13: system → light → dark, applied at once and kept for this browser when it allows. */
 function ThemeToggle({ t }: { t: Messages }) {
   const [choice, setChoice] = useState<ThemeChoice>(readTheme);
@@ -269,15 +297,17 @@ export function App({ lang }: { lang: Lang }) {
             <h1>{PRODUCT_NAME}</h1>
             <ModeBanner t={t} />
           </header>
-          {route.page === 'dashboard' && <Dashboard lang={lang} />}
-          {route.page === 'flows' && <Flows lang={lang} />}
-          {route.page === 'device' && <DeviceCard lang={lang} id={route.id} />}
-          {route.page === 'limits' && <Limits lang={lang} />}
-          {route.page === 'plan' && <PlanPage lang={lang} />}
-          {route.page === 'setup' && <Setup lang={lang} step={route.step} />}
-          {route.page === 'log' && <DecisionLog lang={lang} />}
-          {route.page === 'signals' && <SignalsPage lang={lang} />}
-          {route.page === 'status' && <StatusPage lang={lang} />}
+          <PageBoundary route={route} t={t} lang={lang}>
+            {route.page === 'dashboard' && <Dashboard lang={lang} />}
+            {route.page === 'flows' && <Flows lang={lang} />}
+            {route.page === 'device' && <DeviceCard lang={lang} id={route.id} />}
+            {route.page === 'limits' && <Limits lang={lang} />}
+            {route.page === 'plan' && <PlanPage lang={lang} />}
+            {route.page === 'setup' && <Setup lang={lang} step={route.step} />}
+            {route.page === 'log' && <DecisionLog lang={lang} />}
+            {route.page === 'signals' && <SignalsPage lang={lang} />}
+            {route.page === 'status' && <StatusPage lang={lang} />}
+          </PageBoundary>
           <aside class="card disclaimer" role="note">
             <strong>{t.notProtectiveTitle}</strong> {t.notProtectiveBody}
           </aside>

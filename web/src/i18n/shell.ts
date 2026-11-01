@@ -19,6 +19,9 @@ const en = {
   'nav.log': 'Decision log',
   'nav.diagnostics': 'Diagnostics',
   'nav.notInThisVersion': 'not in this version',
+  'shell.pageError.title': 'This page could not be shown',
+  'shell.pageError.body':
+    'The page stopped with an error in this browser. The add-on is not affected and keeps running. The kill switch can still be engaged below; another page, or reloading this one, may work.',
   'theme.button': 'Theme: {mode}',
   'theme.change': 'Change the colour theme (now {mode})',
   'theme.system': 'system',
@@ -76,6 +79,9 @@ export const shell: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'nav.log': 'Dziennik decyzji',
     'nav.diagnostics': 'Diagnostyka',
     'nav.notInThisVersion': 'nie w tej wersji',
+    'shell.pageError.title': 'Nie udało się wyświetlić tej strony',
+    'shell.pageError.body':
+      'Strona zatrzymała się z błędem w tej przeglądarce. Dodatek nie jest tym dotknięty i działa dalej. Wstrzymanie sterowania nadal można włączyć poniżej; inna strona albo ponowne wczytanie tej może zadziałać.',
     'theme.button': 'Motyw: {mode}',
     'theme.change': 'Zmień motyw kolorów (teraz {mode})',
     'theme.system': 'systemowy',

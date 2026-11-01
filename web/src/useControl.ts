@@ -48,7 +48,7 @@ export interface ControlState {
   busy: 'idle' | 'changing' | 'confirming';
   /** Why the last change did not apply; cleared by the next one. */
   notice: ControlNotice;
-  /** POST api/control; a refusal is read again so the lock that caused it shows. */
+  /** POST api/control; a refusal or a failure is read again, so the lock that caused it, or a change that applied unanswered, shows. */
   setAllowed: (allowed: boolean) => Promise<void>;
   /** POST api/control/confirm after an untrusted state.json. */
   confirm: () => Promise<void>;
@@ -102,6 +102,8 @@ export function useControl(): ControlState {
       }
     } catch {
       if (mounted.current) setNotice({ kind: 'failed' });
+      // A change that timed out may still have applied: what the add-on holds now shows at once.
+      await refresh();
     } finally {
       if (mounted.current) setBusy('idle');
     }
