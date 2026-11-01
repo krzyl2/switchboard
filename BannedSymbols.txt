@@ -16,3 +16,4 @@ M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan);Use WaitAsync(TimeSpa
 M:System.Threading.Tasks.Task`1.WaitAsync(System.TimeSpan,System.Threading.CancellationToken);Use WaitAsync(TimeSpan, TimeProvider, CancellationToken)
 M:System.Threading.CancellationTokenSource.#ctor(System.TimeSpan);Use new CancellationTokenSource(TimeSpan, TimeProvider)
 M:System.Threading.CancellationTokenSource.#ctor(System.Int32);Use new CancellationTokenSource(TimeSpan, TimeProvider)
+P:System.TimeProvider.System;Take the TimeProvider from DI; only the composition root (SwitchboardServices) may use TimeProvider.System

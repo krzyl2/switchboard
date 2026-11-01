@@ -16,7 +16,7 @@ public sealed record EvManual(EvMode Mode, EvChargeNow? ChargeNow)
 /// </summary>
 public sealed class EvManualState
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private EvManual _value = EvManual.Default;
     private bool _seeded;
     private bool _modeTouched;

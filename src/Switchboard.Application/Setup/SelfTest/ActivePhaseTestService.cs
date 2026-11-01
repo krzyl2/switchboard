@@ -151,7 +151,7 @@ public sealed class ActivePhaseTestService : IActiveTestTransitions
     private readonly SetupDefaults _defaults;
     private readonly TimeProvider _time;
     private readonly ILogger<ActivePhaseTestService> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly HashSet<(DeviceName Device, int Stage, DateTimeOffset At)> _switchings = [];
     private GuardStep? _last;
     private Test? _test;

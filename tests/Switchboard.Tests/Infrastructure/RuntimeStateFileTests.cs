@@ -248,7 +248,7 @@ public sealed class RuntimeStateFileTests : IDisposable
         // Engaged from Home Assistant, saved at once, and engaged again from the first evaluation
         // after a restart, with the restart as its source.
         var file = File();
-        var coordinator = new RuntimeStateCoordinator(file, file.Load(), () => null, Microsoft.Extensions.Options.Options.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(file, file.Load(), () => null, Microsoft.Extensions.Options.Options.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         coordinator.OnKillSwitchChanged(new KillSwitchStatus(true, At, KillSwitchSource.Mqtt));
         await coordinator.FlushAsync(CancellationToken.None);
 

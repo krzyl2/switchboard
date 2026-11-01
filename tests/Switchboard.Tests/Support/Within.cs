@@ -9,9 +9,9 @@ internal static class Within
 {
     private static readonly TimeSpan HangLimit = TimeSpan.FromSeconds(10);
 
-    public static Task<T> Soon<T>(this Task<T> task) => task.WaitAsync(HangLimit, TimeProvider.System);
+    public static Task<T> Soon<T>(this Task<T> task) => task.WaitAsync(HangLimit, RealClock.Provider);
 
-    public static Task Soon(this Task task) => task.WaitAsync(HangLimit, TimeProvider.System);
+    public static Task Soon(this Task task) => task.WaitAsync(HangLimit, RealClock.Provider);
 
     public static Task<T> Soon<T>(this ValueTask<T> task) => task.AsTask().Soon();
 }

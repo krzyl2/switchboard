@@ -27,7 +27,7 @@ public sealed class PhaseEvidenceRecorder
     private readonly ISetupRuntimeView _runtime;
     private readonly SetupDefaults _defaults;
     private readonly int _historyLength;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<Phase, List<PowerPoint>> _power = [];
     private readonly Dictionary<Phase, List<ReportPoint>> _current = [];
     private readonly Dictionary<Phase, bool> _currentCautious = [];

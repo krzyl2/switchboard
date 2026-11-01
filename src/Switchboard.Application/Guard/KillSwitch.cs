@@ -38,7 +38,7 @@ public sealed class KillSwitchState : IKillSwitchControl
     private readonly GuardInbox _inbox;
     private readonly TimeProvider _time;
     private readonly ILogger<KillSwitchState> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private KillSwitchStatus _status = KillSwitchStatus.Off;
 
     public KillSwitchState(GuardInbox inbox, SignalClock clock, ILogger<KillSwitchState> logger)

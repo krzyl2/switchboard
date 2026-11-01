@@ -16,7 +16,7 @@ internal sealed class ScriptedWebSocketTransport : IWebSocketTransport
     private readonly Channel<string> _outbound = Channel.CreateUnbounded<string>();
     private readonly CancellationTokenSource _aborted = new();
     private readonly TaskCompletionSource _connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<string> _sent = [];
     private readonly List<(int Calls, TaskCompletionSource Signal)> _receiveWaiters = [];
     private int _receiveCalls;

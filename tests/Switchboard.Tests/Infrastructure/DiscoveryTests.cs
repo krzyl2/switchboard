@@ -440,7 +440,7 @@ public sealed class DiscoveryLinkTests : IAsyncDisposable
         // polling for that completion, like Within.Soon, never a timing assumption of the rule.
         for (var i = 0; Followers() > 1 && i < 500; i++)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(10), TimeProvider.System, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(10), RealClock.Provider, TestContext.Current.CancellationToken);
         }
 
         Assert.Equal(1, Followers());

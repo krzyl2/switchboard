@@ -24,7 +24,7 @@ public sealed class DevCommandSink : ICallServiceChannel
 
     private readonly TimeProvider _signalTime;
     private readonly SimulatedPlant? _plant;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Queue<SinkEntry> _entries = new();
     private int _lastId;
 

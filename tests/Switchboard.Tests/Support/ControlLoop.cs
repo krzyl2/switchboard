@@ -39,7 +39,7 @@ internal sealed class ControlLoop
         ArgumentNullException.ThrowIfNull(clock);
         Inbox = inbox ?? new GuardInbox();
         Lockouts = lockouts ?? new LockoutClocks();
-        Dispatch = new DispatchEngine(TimeProvider.System, plan);
+        Dispatch = new DispatchEngine(RealClock.Provider, plan);
         Mode = mode;
         Port = port;
         SelfTest = selfTest;

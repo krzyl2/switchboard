@@ -66,7 +66,7 @@ public sealed class CandidateReadoutStore
     private readonly int _historyLength;
     private readonly int _maxRetained;
     private readonly RefreshDetectionParameters _refresh;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<EntityId, Entry> _entries = [];
     private long _touches;
 

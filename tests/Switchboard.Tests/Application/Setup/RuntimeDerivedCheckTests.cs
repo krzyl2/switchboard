@@ -207,7 +207,7 @@ public sealed class RuntimeDerivedCheckTests
             for (var tries = 0; !condition(); tries++)
             {
                 Assert.True(tries < 2000, "The derived-sensor check never got there.");
-                await Task.Delay(TimeSpan.FromMilliseconds(5), TimeProvider.System, TestContext.Current.CancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(5), RealClock.Provider, TestContext.Current.CancellationToken);
             }
         }
 

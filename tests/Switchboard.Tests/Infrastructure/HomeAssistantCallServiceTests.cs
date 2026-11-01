@@ -170,7 +170,7 @@ public sealed class HomeAssistantCallServiceTests : IAsyncDisposable
         for (var tries = 0; !_client.Ready; tries++)
         {
             Assert.True(tries < 2000, "The session never became ready.");
-            await Task.Delay(TimeSpan.FromMilliseconds(5), TimeProvider.System, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(5), RealClock.Provider, TestContext.Current.CancellationToken);
         }
 
         return transport;

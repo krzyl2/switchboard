@@ -48,7 +48,7 @@ public sealed class PresentationHub : IPresentationSource
 {
     private readonly StatisticsOptions _options;
     private readonly ILogger<PresentationHub> _logger;
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly EnergyAccumulator _energy;
     private readonly ExcursionRecorder _excursions;
     private readonly Dictionary<Phase, DateTimeOffset> _foreignDetected = [];

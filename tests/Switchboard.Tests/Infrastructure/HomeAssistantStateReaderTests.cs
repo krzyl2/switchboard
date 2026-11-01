@@ -151,7 +151,7 @@ public sealed class HomeAssistantStateReaderTests
                 request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken)));
             if (Hold)
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, TimeProvider.System, cancellationToken);
+                await Task.Delay(Timeout.InfiniteTimeSpan, RealClock.Provider, cancellationToken);
             }
 
             return new HttpResponseMessage(_status) { Content = new StringContent(_body, Encoding.UTF8, "application/json") };

@@ -23,7 +23,7 @@ public sealed record GoalLedgerSnapshot(long Version, ImmutableDictionary<Device
 /// </summary>
 public sealed class GoalLedger(ILogger<GoalLedger> logger) : IGoalProgress
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private GoalLedgerSnapshot _current = new(0, ImmutableDictionary<DeviceName, GoalLedgerEntry>.Empty);
 
     /// <summary>Raised after every change, outside the lock; for persistence. Handlers must not block.</summary>

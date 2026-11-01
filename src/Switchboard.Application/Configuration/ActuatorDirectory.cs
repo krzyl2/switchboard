@@ -304,7 +304,7 @@ public sealed class ActuatorDirectory
 /// </summary>
 public sealed class ActuatorDirectoryHolder : IActuatorDirectory
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ActuatorDirectory _current = ActuatorDirectory.Empty;
     private ActuatorDirectory _retiring = ActuatorDirectory.Empty;
     private HashSet<(DeviceName Device, DeviceCommandKind Kind, int Stage)> _retiringLeft = [];

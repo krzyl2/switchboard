@@ -94,7 +94,7 @@ public sealed class ConfigurationFileWatcherTests : IDisposable
         Assert.Equal(ConfigurationStatus.Invalid, result.Status);
         Assert.Contains(result.Errors, e => e.Code == "unknown_key" && e.Line is not null);
         Assert.Contains(_logs.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error
-                                            && e.Text.Contains(":", StringComparison.Ordinal) && e.Text.Contains("unknown_key", StringComparison.Ordinal));
+                                            && e.Text.Contains(':') && e.Text.Contains("unknown_key", StringComparison.Ordinal));
     }
 
     [Fact]

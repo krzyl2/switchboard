@@ -29,7 +29,7 @@ public sealed class RuntimeStateCoordinator : IDiscoveryLedger, ILastKnownStates
     private readonly PersistenceOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<RuntimeStateCoordinator> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly LatestStateWriter<RuntimeState> _writer;
     private RuntimeState _current;
     private RuntimeState? _lastQueued;

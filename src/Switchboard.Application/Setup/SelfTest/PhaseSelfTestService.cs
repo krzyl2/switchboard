@@ -137,7 +137,7 @@ public sealed class PhaseSelfTestService : IDisposable
     private readonly Func<int> _lagPolls;
     private readonly TimeProvider _time;
     private readonly ILogger<PhaseSelfTestService> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<Guid, Session> _sessions = [];
 
     public PhaseSelfTestService(

@@ -26,7 +26,7 @@ public sealed class ReplaySignalSource : ISignalSource, IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger<ReplaySignalSource> _logger;
     private readonly ImmutableDictionary<EntityId, ImmutableArray<int>> _rowsByEntity;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ImmutableDictionary<EntityId, string?> _tracked = ImmutableDictionary<EntityId, string?>.Empty;
     private ITimer? _timer;
     private int _next;

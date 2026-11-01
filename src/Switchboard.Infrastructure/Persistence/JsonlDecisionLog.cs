@@ -42,7 +42,7 @@ public sealed class JsonlDecisionLog : IDecisionRecorder
     private readonly TimeProvider _time;
     private readonly ILogger<JsonlDecisionLog> _logger;
     private readonly string _instance = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4));
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly List<Entry> _recent = [];

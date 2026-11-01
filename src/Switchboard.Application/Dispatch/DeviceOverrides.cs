@@ -80,7 +80,7 @@ public sealed class DeviceOverrides : IDeviceOverrideControl
     private readonly IControlInputSource _inputs;
     private readonly TimeProvider _time;
     private readonly ILogger<DeviceOverrides> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private OverrideSnapshot _current = OverrideSnapshot.None;
 
     public DeviceOverrides(GuardInbox inbox, IControlInputSource inputs, SignalClock clock, ILogger<DeviceOverrides> logger)

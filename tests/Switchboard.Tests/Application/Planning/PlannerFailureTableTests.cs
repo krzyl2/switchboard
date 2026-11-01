@@ -210,7 +210,7 @@ public sealed class PlannerFailureTableTests
         var loop = service.RunAsync(cts.Token);
         for (var i = 0; i < 1000 && !logs.Entries.Any(e => e.Text.Contains("plan_failed", StringComparison.Ordinal)); i++)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(10), TimeProvider.System, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(10), RealClock.Provider, TestContext.Current.CancellationToken);
         }
 
         var failure = Assert.Single(logs.Entries, e => e.Text.Contains("plan_failed", StringComparison.Ordinal));

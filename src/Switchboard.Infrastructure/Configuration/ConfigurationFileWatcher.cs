@@ -123,7 +123,7 @@ public sealed class ConfigurationFileWatcher : IDisposable, IConfigurationReload
     private readonly ConfigurationOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<ConfigurationFileWatcher> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ITimer? _poll;
     private ITimer? _debounce;
     private FileSystemWatcher? _watcher;

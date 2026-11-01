@@ -154,7 +154,7 @@ public static class MeterValues
 /// </summary>
 public sealed class PhaseEvidenceStore(int perEntity)
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<EntityId, List<PhaseObservation>> _observations = [];
 
     /// <summary>Raised after an observation was added (outside the lock); handlers must only note it, never write inline.</summary>

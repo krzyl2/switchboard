@@ -639,13 +639,13 @@ public sealed class PlannerServiceTests(ITestOutputHelper output)
             rig.Service.Notify();
         }
 
-        await Task.Delay(TimeSpan.FromMilliseconds(200), TimeProvider.System, TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromMilliseconds(200), RealClock.Provider, TestContext.Current.CancellationToken);
         Assert.Equal(1, rig.World.Captures);
 
         rig.Time.Advance(Parameters().MinReplanInterval);
         rig.Service.Notify();
-        var deadline = TimeProvider.System.GetUtcNow() + TimeSpan.FromSeconds(10);
-        while (rig.World.Captures < 2 && TimeProvider.System.GetUtcNow() < deadline)
+        var deadline = RealClock.Provider.GetUtcNow() + TimeSpan.FromSeconds(10);
+        while (rig.World.Captures < 2 && RealClock.Provider.GetUtcNow() < deadline)
         {
             await Task.Yield();
         }

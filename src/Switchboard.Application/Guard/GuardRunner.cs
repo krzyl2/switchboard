@@ -65,7 +65,7 @@ public sealed class GuardRunner : IDisposable
     private readonly IControlSwitchView? _control;
     private readonly SelfTestSlot? _selfTest;
     private readonly IBalanceSource? _balance;
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private DateTimeOffset? _lastStep;
     private bool _started;
     private ModeRecord? _recordedMode;

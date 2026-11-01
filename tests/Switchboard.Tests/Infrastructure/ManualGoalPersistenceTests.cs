@@ -220,7 +220,7 @@ public sealed class ManualGoalPersistenceTests : IDisposable
         var harness = new StoreHarness(TestDevices.Document(
             "  - id: ev_charger\n    type: modulating\n    actuator: number.charger_current\n    phase: L1\n    min: 6\n    max: 16\n    step: 1\n    value_per_kwh: 2.03\n"));
         var goals = new ManualGoalStore(new Inputs(harness), new SignalClock(harness.Time), NullLogger<ManualGoalStore>.Instance);
-        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         coordinator.Attach(goals);
 
         goals.Begin(Car, GoalKind.Energy, 8, harness.Now.AddHours(5), hard: false);
@@ -245,7 +245,7 @@ public sealed class ManualGoalPersistenceTests : IDisposable
     {
         // Why: two changes from different threads (the API and the tracker's expiry) may arrive out of order; state.json must never keep an older set.
         var store = new RecordingStore();
-        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         var newer = new ManualGoalSnapshot(5, ImmutableDictionary<DeviceName, ManualGoal>.Empty.Add(Car, new ManualGoal(GoalKind.Energy, 8, At.AddHours(2), false, At, 3, At)));
         var older = new ManualGoalSnapshot(4, ImmutableDictionary<DeviceName, ManualGoal>.Empty);
 

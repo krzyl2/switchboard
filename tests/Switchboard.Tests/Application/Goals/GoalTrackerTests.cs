@@ -264,7 +264,7 @@ public sealed class GoalTrackerTests : IDisposable
         // target again. Run end to end on the virtual clock: count, write state.json at the clean stop, read it in a fresh process, go on.
         var file = new RuntimeStateFile(_data.Path, TestDecisions.Options(), NullLogger<RuntimeStateFile>.Instance);
         var first = new Rig(EnergyGoal);
-        var coordinator = new RuntimeStateCoordinator(file, file.Load(), () => null, MsOptions.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(file, file.Load(), () => null, MsOptions.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         coordinator.Attach(first.Ledger);
         first.Step(TimeSpan.Zero);
         for (var i = 0; i < 10; i++)
@@ -302,7 +302,7 @@ public sealed class GoalTrackerTests : IDisposable
         // the shape of the ledger is immediate, progress rides the interval (and the clean stop).
         var store = new RecordingStore();
         var rig = new Rig(EnergyGoal);
-        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         coordinator.Attach(rig.Ledger);
 
         rig.Step(TimeSpan.Zero);
@@ -324,7 +324,7 @@ public sealed class GoalTrackerTests : IDisposable
     {
         // Why: two changes from different threads may arrive out of order; state.json must never keep an older ledger.
         var store = new RecordingStore();
-        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var coordinator = new RuntimeStateCoordinator(store, new RuntimeStateLoad(RuntimeState.Fresh, StateFileStatus.Fresh, null), () => null, MsOptions.Create(TestDecisions.Options()), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         var newer = new GoalLedgerSnapshot(5, ImmutableDictionary<DeviceName, GoalLedgerEntry>.Empty.Add(Car, new GoalLedgerEntry(GoalKind.Energy, Start, null, 3, Start)));
         var older = new GoalLedgerSnapshot(4, ImmutableDictionary<DeviceName, GoalLedgerEntry>.Empty);
 

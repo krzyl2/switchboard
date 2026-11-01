@@ -33,7 +33,7 @@ public sealed class HomeAssistantDiscoveryLink : IEntityDiscoverySource, ICandid
     private readonly TimeProvider _signalTime;
     private readonly ILoggerFactory _loggers;
     private readonly ILogger<HomeAssistantDiscoveryLink> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<EntityId, DateTimeOffset> _leases = [];
     private readonly List<HoldHandle> _holds = [];
     private readonly Dictionary<EntityId, DateTimeOffset> _probedAt = [];

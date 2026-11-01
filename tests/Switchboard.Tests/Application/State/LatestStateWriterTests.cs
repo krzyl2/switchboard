@@ -95,7 +95,7 @@ public sealed class LatestStateWriterTests
         writer.Wake();
         writer.Wake();
         writer.Wake();
-        await written.Task.WaitAsync(TimeSpan.FromSeconds(10), TimeProvider.System, TestContext.Current.CancellationToken);
+        await written.Task.WaitAsync(TimeSpan.FromSeconds(10), RealClock.Provider, TestContext.Current.CancellationToken);
         await cts.CancelAsync();
         await loop;
 
@@ -121,7 +121,7 @@ public sealed class LatestStateWriterTests
         Assert.Equal("disk full", writer.Error);
         _diskFull = false;
         clock.Advance(TimeSpan.FromSeconds(30));
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TimeProvider.System, TestContext.Current.CancellationToken);
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10), RealClock.Provider, TestContext.Current.CancellationToken);
         await cts.CancelAsync();
         await loop;
 

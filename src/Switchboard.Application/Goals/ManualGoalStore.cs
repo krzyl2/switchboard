@@ -85,7 +85,7 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
     private readonly TimeProvider _time;
     private readonly ILogger<ManualGoalStore> _logger;
     private readonly IModuleSocSource? _moduleSoc;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ManualGoalSnapshot _current = ManualGoalSnapshot.None;
 
     public ManualGoalStore(IGoalInputSource inputs, SignalClock clock, ILogger<ManualGoalStore> logger, IModuleSocSource? moduleSoc = null)

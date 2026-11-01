@@ -45,7 +45,9 @@ public static class SwitchboardServices
     /// </summary>
     public static IServiceCollection AddSwitchboard(this IServiceCollection services)
     {
+#pragma warning disable RS0030 // Composition root: the single place the real clock enters the process.
         services.AddSingleton(TimeProvider.System);
+#pragma warning restore RS0030
         services.AddSingleton(sp => RuntimeEnvironment.Read(key => sp.GetRequiredService<IConfiguration>()[key]));
         services.AddSingleton(sp =>
         {

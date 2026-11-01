@@ -318,7 +318,7 @@ public sealed class RuntimeStateCoordinatorTests
         new RuntimeStateLoad(loaded ?? RuntimeState.Fresh, StateFileStatus.Loaded, null),
         () => _scenario.Setup.Budget,
         MsOptions.Create(TestDecisions.Options()),
-        TimeProvider.System,
+        RealClock.Provider,
         NullLogger<RuntimeStateCoordinator>.Instance);
 
     private (KillSwitchState KillSwitch, ControlSwitchState Control) Switches()

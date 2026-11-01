@@ -44,7 +44,7 @@ public sealed class HomeAssistantDeviceCommandPort : IDeviceCommandPort, IComman
     private readonly TimeSpan _timeout;
     private readonly TimeProvider _time;
     private readonly ILogger<HomeAssistantDeviceCommandPort> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<Slot, Queued> _queued = [];
     private readonly HashSet<Slot> _inFlight = [];
     private readonly ConcurrentQueue<CommandResult> _results = new();

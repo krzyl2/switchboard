@@ -73,12 +73,12 @@ public sealed class EvPlanDispatchTests
         using var cts = new CancellationTokenSource();
 
         var loop = rig.Keeper.RunAsync(cts.Token);
-        await Task.Delay(TimeSpan.FromMilliseconds(50), TimeProvider.System, TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromMilliseconds(50), RealClock.Provider, TestContext.Current.CancellationToken);
         Assert.False(loop.IsCompleted);
         Assert.True(rig.Keeper.Current.Failed);
 
         await cts.CancelAsync();
-        await loop.WaitAsync(TimeSpan.FromSeconds(5), TimeProvider.System, TestContext.Current.CancellationToken);
+        await loop.WaitAsync(TimeSpan.FromSeconds(5), RealClock.Provider, TestContext.Current.CancellationToken);
         Assert.Single(rig.Log.Entries, e => e.Level == LogLevel.Error);
     }
 

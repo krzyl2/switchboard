@@ -96,7 +96,7 @@ public sealed class SignalsEndpointTests
         var response = SignalsEndpoint.Build(new SignalDiagnostics(store.Snapshot(now), result, [], []), now, Live, TestConfigurations.Path);
 
         Assert.Equal(("invalid", TestConfigurations.Path), (response.Configuration.State, response.Configuration.Path));
-        var error = response.Configuration.Errors.First();
+        var error = response.Configuration.Errors[0];
         Assert.Equal("unknown_key", error.Code);
         Assert.NotNull(error.Line);
         Assert.Empty(response.Signals);

@@ -27,7 +27,7 @@ public sealed partial class ConfigurationDocumentStore : ISetupDocumentStore
     private readonly int _maxBackups;
     private readonly TimeProvider _time;
     private readonly ILogger<ConfigurationDocumentStore> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly string _directory;
     private readonly string _fileName;
 

@@ -13,7 +13,7 @@ internal sealed class PlannerSuspension : IPlannerSuspension
     private readonly IGuardStatusSource _guard;
     private readonly IKillSwitchView _killSwitch;
     private readonly IHomeAssistantConnectionState _home;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private bool _last;
 
     public PlannerSuspension(IGuardStatusSource guard, IKillSwitchView killSwitch, IHomeAssistantConnectionState home)

@@ -15,7 +15,7 @@ namespace Switchboard.Application.Planning;
 /// </summary>
 public sealed class LoadProfileFeed(IPresentationStore<LoadProfile> store, Func<SwitchboardConfiguration?> configuration, SignalClock clock)
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private LoadProfileKeeper? _keeper;
     private (ForecastParameters Parameters, string Zone, HolidayCalendar Holidays)? _built;
 

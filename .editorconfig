@@ -1,0 +1,57 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yaml,yml,csproj,props,slnx,xml,md,ts,tsx,js,mjs,css,html}]
+indent_size = 2
+
+[*.{sh,yaml,yml}]
+end_of_line = lf
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_new_line_before_open_brace = all
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+
+# Analyzer severities. The build runs AnalysisLevel=latest-recommended with warnings as errors; the rules below are
+# switched off or lowered where fixing them would be a sweeping, non-behavioral rewrite (see docs/DECISIONS.md).
+[*.cs]
+# Logging: ~180 ILogger calls would all become [LoggerMessage] partials; a style migration, not part of the refactoring.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+# Public interface members named Set/For/End/Unsigned/Signed read naturally; renames would change the API surface.
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1720.severity = none
+# The name value types are compared for ordering only through IComparable (sorting); relational operators are never used.
+dotnet_diagnostic.CA1036.severity = none
+# Types owning a SemaphoreSlim/CTS live for the whole process; making them IDisposable changes DI and shutdown behavior.
+dotnet_diagnostic.CA1001.severity = none
+# Interface-typed returns and parameters are deliberate (callers depend on the abstraction, not the concrete type).
+dotnet_diagnostic.CA1859.severity = none
+# Instance members kept as instance for call-site symmetry with their siblings; making them static is cosmetic.
+dotnet_diagnostic.CA1822.severity = none
+# Single TryGetValue rewrite in the protection classifier is not worth touching a safety path for a micro-optimization.
+dotnet_diagnostic.CA1854.severity = none
+# Constant arrays passed inline are cold paths; hoisting them to static fields adds noise.
+dotnet_diagnostic.CA1861.severity = none
+# AtomicFile passes a UTF-8 path to libc open() (a LibraryImport-style string marshal is already pinned with LPUTF8Str); the path is never user data.
+dotnet_diagnostic.CA2101.severity = none
+
+[tests/**.cs]
+# Test names are sentences with underscores by convention (Rule_holds_when_x).
+dotnet_diagnostic.CA1707.severity = none
+# Tests parse and format fixed invariant literals; culture arguments would be noise.
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1806.severity = none
+dotnet_diagnostic.CA1869.severity = none
+dotnet_diagnostic.CA1863.severity = none

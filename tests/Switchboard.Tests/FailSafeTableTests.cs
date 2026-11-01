@@ -51,9 +51,9 @@ public sealed class FailSafeTableTests
         var blocked = Path.Combine(data.Path, "not-a-folder");
         await File.WriteAllTextAsync(blocked, "x", TestContext.Current.CancellationToken);
         var options = TestDecisions.Options();
-        var log = new JsonlDecisionLog(new DecisionFileSystem(), blocked, options, () => 30, TimeProvider.System, NullLogger<JsonlDecisionLog>.Instance);
+        var log = new JsonlDecisionLog(new DecisionFileSystem(), blocked, options, () => 30, RealClock.Provider, NullLogger<JsonlDecisionLog>.Instance);
         var stateFile = new RuntimeStateFile(blocked, options, NullLogger<RuntimeStateFile>.Instance);
-        var state = new RuntimeStateCoordinator(stateFile, stateFile.Load(), () => null, MsOptions.Create(options), TimeProvider.System, NullLogger<RuntimeStateCoordinator>.Instance);
+        var state = new RuntimeStateCoordinator(stateFile, stateFile.Load(), () => null, MsOptions.Create(options), RealClock.Provider, NullLogger<RuntimeStateCoordinator>.Instance);
         var scenario = new GuardScenario(TestDevices.Document());
 
         log.Start();

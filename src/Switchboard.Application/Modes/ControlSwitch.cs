@@ -72,7 +72,7 @@ public sealed class ControlSwitchState : IControlSwitch
     private readonly KillSwitchState _killSwitch;
     private readonly TimeProvider _time;
     private readonly ILogger<ControlSwitchState> _logger;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private ControlSwitchStatus _status = ControlSwitchStatus.Default;
 
     public ControlSwitchState(GuardInbox inbox, KillSwitchState killSwitch, SignalClock clock, ILogger<ControlSwitchState> logger)

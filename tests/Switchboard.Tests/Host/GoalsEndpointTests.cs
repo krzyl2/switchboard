@@ -39,7 +39,7 @@ public sealed class GoalsEndpointTests
         public void Wake() => Wakes++;
     }
 
-    private static string Deadline(double hours) => TimeProvider.System.GetUtcNow().AddHours(hours).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Deadline(double hours) => RealClock.Provider.GetUtcNow().AddHours(hours).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string Body(string device = "ev_charger", string kind = "energy", string target = "8", string? deadline = null, string hard = "true") =>
         $$"""{"device":"{{device}}","kind":"{{kind}}","target":{{target}},"deadline":"{{deadline ?? Deadline(5)}}","hard":{{hard}}}""";
@@ -266,7 +266,7 @@ public sealed class GoalsEndpointTests
         using var factory = Host(root.Path, trigger);
         _ = factory.Server;
         Configure(factory);
-        factory.Services.GetRequiredService<ManualGoalStore>().Begin(DeviceName.Parse("ev_charger"), GoalKind.Energy, 4, TimeProvider.System.GetUtcNow().AddHours(3), hard: false);
+        factory.Services.GetRequiredService<ManualGoalStore>().Begin(DeviceName.Parse("ev_charger"), GoalKind.Energy, 4, RealClock.Provider.GetUtcNow().AddHours(3), hard: false);
         var path = method == "POST" ? "/api/goals" : "/api/goals/ev_charger";
 
         var outsider = await Send(factory, method, path, "application/json", Body(target: "9"), "10.1.2.3");

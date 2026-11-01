@@ -21,7 +21,7 @@ internal sealed record MqttOperation(string Kind, string Topic = "", string Payl
 internal sealed class FakeMqttTransport(MqttTopicGuard guard) : IMqttTransport
 {
     private readonly Channel<MqttOperation> _operations = Channel.CreateUnbounded<MqttOperation>();
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<MqttOperation> _log = [];
     private readonly List<MqttConnectSettings> _connects = [];
 

@@ -72,7 +72,7 @@ public sealed class SimulatedPlant : IReplayOverlay
     private readonly ImmutableDictionary<EntityId, PlantLoad> _loads;
     private readonly ReplayData _data;
     private readonly Func<SwitchboardConfiguration?> _configuration;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<EntityId, (string State, double Watts, double Amps)> _switched = [];
     private ReplaySignalSource? _source;
 

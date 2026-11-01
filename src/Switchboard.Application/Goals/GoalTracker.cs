@@ -30,7 +30,7 @@ public sealed class GoalEvaluator(IEnumerable<IGoalSource> sources, ILogger<Goal
 {
     private readonly IGoalSource[] _sources = [.. sources];
     private readonly HashSet<IGoalSource> _failing = [];
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
 
     public GoalBoard Evaluate(GoalContext context)
     {
@@ -108,7 +108,7 @@ public sealed class GoalTracker
     private readonly StatisticsOptions _options;
     private readonly ILogger<GoalTracker> _logger;
     private readonly ManualGoalStore? _manual;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private (DateTimeOffset At, ImmutableDictionary<DeviceName, double> Watts)? _held;
     private bool _failing;
 

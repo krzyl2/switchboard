@@ -186,7 +186,7 @@ public sealed class PresentationPersistenceTests
         where T : class
     {
         private readonly SemaphoreSlim _saved = new(0);
-        private readonly object _sync = new();
+        private readonly Lock _sync = new();
         private readonly List<T> _states = [];
 
         public PresentationLoad<T> Loaded { get; set; } = new(null, StateFileStatus.Fresh, null);

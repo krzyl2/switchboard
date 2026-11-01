@@ -24,7 +24,7 @@ namespace Switchboard.Host.Composition;
 /// </summary>
 internal sealed class DiagnosticsPlannerSource(ISignalDiagnosticsSource diagnostics, GoalTracker goals, LoadProfileFeed loadProfile, SignalClock clock) : IPlannerSource
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private SwitchboardConfiguration? _revisionOf;
     private long _revision;
 

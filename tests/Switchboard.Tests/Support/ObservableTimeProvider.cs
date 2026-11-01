@@ -9,7 +9,7 @@ namespace Switchboard.Tests.Support;
 /// </summary>
 internal sealed class ObservableTimeProvider : FakeTimeProvider
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<TimeSpan> _armed = [];
     private readonly Dictionary<TimeSpan, int> _unclaimed = [];
     private readonly List<(TimeSpan Due, TaskCompletionSource Signal)> _waiters = [];
