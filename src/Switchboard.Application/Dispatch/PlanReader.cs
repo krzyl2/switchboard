@@ -6,6 +6,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Planning;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Application.Dispatch;
 
@@ -76,7 +77,7 @@ internal sealed class PlanReader(IPlanView? plan)
 
             if (now > draw.At)
             {
-                draw.Kwh += draw.Watts * (now - draw.At).TotalHours / 1000;
+                draw.Kwh += (new Watts(draw.Watts) * (now - draw.At)).Value;
             }
 
             draw.At = now;

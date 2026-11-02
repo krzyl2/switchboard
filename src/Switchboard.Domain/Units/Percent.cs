@@ -32,6 +32,8 @@ public readonly record struct Percent(double Value) : IComparable<Percent>
 
     public static Percent Max(Percent left, Percent right) => left.Value >= right.Value ? left : right;
 
+    public static Percent Min(Percent left, Percent right) => left.Value <= right.Value ? left : right;
+
     public Percent Abs() => new(Math.Abs(Value));
 
     public int CompareTo(Percent other) => Value.CompareTo(other.Value);

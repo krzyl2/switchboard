@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -26,7 +27,7 @@ internal sealed class PlanAssembler(PlanContext ctx)
             var cells = ctx.Cells(w, anyZone: false, valueTest: false, sources).OrderBy(c => c.Slot).ThenBy(c => c.Source is EnergySource.Surplus ? 0 : 1).ThenBy(c => PlanContext.Key(c.Cost)).ThenBy(c => c.Source, EnergySource.Ordering).ToList();
             var into = new List<Alloc>();
             ledger.Fill(ctx, w.Device, cells, w.Need, into, urgent: false);
-            total += into.Sum(a => a.Kwh * a.Cost);
+            total += into.Sum(a => (a.Cost * new KilowattHours(a.Kwh)).Amount);
         }
 
         return total;
@@ -58,8 +59,8 @@ internal sealed class PlanAssembler(PlanContext ctx)
             var last = w.Allocs.Max(a => a.Slot);
             var kwhThere = w.Allocs.Where(a => a.Slot == last).Sum(a => a.Kwh);
             var atLast = w.Allocs.Where(a => a.Slot == last).ToList();
-            var ceiling = (atLast.All(a => a.CapW is not null) ? Math.Min(ctx.CeilingW(device), atLast.Max(a => a.CapW!.Value)) : ctx.CeilingW(device)) / 1000;
-            var end = ceiling > 0 ? ctx.Slots[last].Slot.Start + TimeSpan.FromHours(kwhThere / ceiling) : ctx.Slots[last].Slot.End;
+            var ceiling = new Watts(atLast.All(a => a.CapW is not null) ? Math.Min(ctx.CeilingW(device), atLast.Max(a => a.CapW!.Value)) : ctx.CeilingW(device)).ToKilowatts();
+            var end = ceiling > Kilowatts.Zero ? ctx.Slots[last].Slot.Start + (new KilowattHours(kwhThere) / ceiling) : ctx.Slots[last].Slot.End;
             completion = end < ctx.Slots[last].Slot.End ? end : ctx.Slots[last].Slot.End;
         }
 

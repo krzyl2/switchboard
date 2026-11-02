@@ -22,6 +22,9 @@ public readonly record struct KilowattHours(double Value) : IComparable<Kilowatt
 
     public static KilowattHours operator /(KilowattHours value, double divisor) => new(value.Value / divisor);
 
+    /// <summary>The time <paramref name="energy"/> takes at <paramref name="power"/>: kWh / kW, as hours.</summary>
+    public static TimeSpan operator /(KilowattHours energy, Kilowatts power) => TimeSpan.FromHours(energy.Value / power.Value);
+
     public static bool operator <(KilowattHours left, KilowattHours right) => left.Value < right.Value;
 
     public static bool operator >(KilowattHours left, KilowattHours right) => left.Value > right.Value;
@@ -31,6 +34,8 @@ public readonly record struct KilowattHours(double Value) : IComparable<Kilowatt
     public static bool operator >=(KilowattHours left, KilowattHours right) => left.Value >= right.Value;
 
     public static KilowattHours Max(KilowattHours left, KilowattHours right) => left.Value >= right.Value ? left : right;
+
+    public static KilowattHours Min(KilowattHours left, KilowattHours right) => left.Value <= right.Value ? left : right;
 
     public KilowattHours Abs() => new(Math.Abs(Value));
 

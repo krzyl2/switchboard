@@ -14,12 +14,6 @@ public readonly record struct PriceBook(PricePoint? Import, PricePoint? Export)
     public static PriceBook At(DateTimeOffset t, Tariff? import, Tariff? export, PriceInputs? prices = null) => new(import?.PriceAt(t, prices), export?.PriceAt(t, prices));
 }
 
-/// <summary>An amount in the configured currency; the label belongs to configuration, never to code.</summary>
-public readonly record struct Money(double Amount)
-{
-    public static Money Zero => new(0);
-}
-
 /// <summary>The energy a settlement period exchanged with the grid, both directions apart, kWh, each not negative.</summary>
 public readonly record struct PeriodFlows(KilowattHours Exported, KilowattHours Imported)
 {

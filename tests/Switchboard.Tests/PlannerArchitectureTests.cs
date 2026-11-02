@@ -178,6 +178,32 @@ public sealed partial class PlannerArchitectureTests
     /// <summary>The plan words the dispatch engine may name: the view it reads through, its entry, the want and the mode.</summary>
     private static Regex AllowedInDispatch() => new(@"\b(IPlanView|PlanEntryView|PlanDecisionInputs|PlanWant|PlannerDispatchMode)\b", RegexOptions.CultureInvariant);
 
+    [Fact]
+    public void No_planner_ev_or_economics_source_converts_between_watts_and_kilowatts_by_hand()
+    {
+        // Why: a hand-written /1000 or *1000 in the planner is a unit change nobody checks (the predecessor planner had sixteen, and a percent once met a kWh
+        // epsilon). Watts x duration, kW x duration and price x kWh live in Domain/Units, the signal layer normalises on the way in; nothing else may scale
+        // by a thousand or by 3600 in the places that plan, compose an EV goal or settle money.
+        var files = SourceFiles("src/Switchboard.Domain/Planning", "src/Switchboard.Domain/Ev", "src/Switchboard.Domain/Economics", "src/Switchboard.Application/Planning", "src/Switchboard.Application/Ev")
+            .Append(RepoPaths.Combine("src", "Switchboard.Application", "Dispatch", "PlanReader.cs"))
+            .ToList();
+
+        var offenders = files
+            .SelectMany(f => File.ReadAllLines(f).Select((line, i) => (File: Path.GetFileName(f), Line: i + 1, Code: LineComment().Replace(line, string.Empty))))
+            .Where(x => ManualScale().IsMatch(x.Code))
+            .Select(x => $"{x.File}:{x.Line}")
+            .ToList();
+
+        Assert.True(files.Count >= 30, $"the sources were not found ({files.Count})");
+        Assert.Empty(offenders);
+    }
+
+    [GeneratedRegex(@"//.*$|""[^""]*""")]
+    private static partial Regex LineComment();
+
+    [GeneratedRegex(@"[/*]\s*(1000|3600)(\.0)?(?![0-9.])|(?<![0-9.])(1000|3600)(\.0)?\s*[/*]", RegexOptions.CultureInvariant)]
+    private static partial Regex ManualScale();
+
     private static IEnumerable<Type> MemberTypes(MemberInfo member) => member switch
     {
         MethodBase method => method.GetParameters().Select(p => p.ParameterType).Append(method is MethodInfo info ? info.ReturnType : typeof(void)).SelectMany(Unwrap),

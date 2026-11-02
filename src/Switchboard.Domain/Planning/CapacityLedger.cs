@@ -1,15 +1,16 @@
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
 /// <summary>One placement: <paramref name="Kwh"/> of <paramref name="Source"/> in a slot at a cost per kWh.</summary>
 /// <param name="CapW">The ceiling the entry carries for this energy when a goal spread it over its window (<see cref="Switchboard.Domain.Goals.GoalRequest.Spread"/>); null: the device's ceiling.</param>
-internal readonly record struct Alloc(int Slot, EnergySource Source, double Kwh, double Cost, bool Urgent, double? CapW = null);
+internal readonly record struct Alloc(int Slot, EnergySource Source, double Kwh, PricePerKwh Cost, bool Urgent, double? CapW = null);
 
 /// <summary>A place energy may go: a slot, the source it would come from, its cost per kWh and the hours of the slot a goal can use.</summary>
-internal readonly record struct Cell(int Slot, EnergySource Source, double Cost, double AvailHours);
+internal readonly record struct Cell(int Slot, EnergySource Source, PricePerKwh Cost, TimeSpan Available);
 
 /// <summary>
 /// What is left of every limit per slot while goals are placed: the surplus, each constraint's static capacity and each device's own power, all in kWh. A
@@ -34,10 +35,10 @@ internal sealed class CapacityLedger
         var cap = new Dictionary<ConstraintKey, double[]>();
         foreach (var (key, watts) in ctx.Input.CapacityW.OrderBy(p => p.Key.ToString(), StringComparer.Ordinal))
         {
-            cap[key] = [.. ctx.Hours.Select(h => Math.Max(0, watts) / 1000 * h)];
+            cap[key] = [.. ctx.Durations.Select(d => (new Watts(Math.Max(0, watts)).ToKilowatts() * d).Value)];
         }
 
-        var dev = ctx.Devices.ToDictionary(d => d.Id, d => (double[])[.. ctx.Hours.Select(h => Math.Max(0, d.MaxW) / 1000 * h)]);
+        var dev = ctx.Devices.ToDictionary(d => d.Id, d => (double[])[.. ctx.Durations.Select(h => (new Watts(Math.Max(0, d.MaxW)).ToKilowatts() * h).Value)]);
         return new CapacityLedger([.. ctx.Slots.Select(s => s.SurplusKwh)], cap, dev);
     }
 
@@ -61,7 +62,7 @@ internal sealed class CapacityLedger
         }
 
         var t = cell.Slot;
-        var capacity = Math.Min(_dev[device.Id][t], cell.AvailHours * device.MaxW / 1000);
+        var capacity = Math.Min(_dev[device.Id][t], (new Watts(device.MaxW) * cell.Available).Value);
         foreach (var key in device.Keys)
         {
             if (key.Share <= 0)
@@ -86,7 +87,7 @@ internal sealed class CapacityLedger
     /// </summary>
     public void Fill(PlanContext ctx, PlanDevice device, List<Cell> cells, double need, List<Alloc> into, bool urgent)
     {
-        var minFill = device.MinW * device.MinRun.TotalHours / 1000;
+        var minFill = (new Watts(device.MinW) * device.MinRun).Value;
         foreach (var cell in cells)
         {
             if (need <= Planner.Tolerance)

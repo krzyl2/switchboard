@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -202,7 +203,7 @@ public sealed class PvForecast
             var span = (End - Start).Ticks;
             var pa = P0 + ((P1 - P0) * (from - Start).Ticks / span);
             var pb = P0 + ((P1 - P0) * (to - Start).Ticks / span);
-            return (pa + pb) / 2 * (to - from).TotalHours / 1000;
+            return (new Watts((pa + pb) / 2) * (to - from)).Value;
         }
     }
 

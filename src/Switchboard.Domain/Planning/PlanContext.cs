@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -18,7 +19,7 @@ internal sealed class PlanContext
         Cancel = cancel;
         Slots = input.Inputs.Slots;
         Count = Slots.Length;
-        Hours = [.. Slots.Select(s => s.Slot.Hours)];
+        Durations = [.. Slots.Select(s => s.Slot.Duration)];
         Devices = [.. input.Devices.OrderBy(d => d.Id)];
         ByName = Devices.GroupBy(d => d.Id).ToDictionary(g => g.Key, g => g.First());
     }
@@ -32,7 +33,7 @@ internal sealed class PlanContext
     /// <summary>The number of slots.</summary>
     public int Count { get; }
 
-    public double[] Hours { get; }
+    public TimeSpan[] Durations { get; }
 
     /// <summary>The devices in name order (the order of every tie and of the plan's device list).</summary>
     public PlanDevice[] Devices { get; }
@@ -42,12 +43,14 @@ internal sealed class PlanContext
     /// <summary>A cost as a whole number of nano-units, so equal costs compare equal whatever their arithmetic.</summary>
     public static long Key(double cost) => (long)Math.Round(cost * 1e9, MidpointRounding.AwayFromZero);
 
+    public static long Key(PricePerKwh price) => Key(price.Value);
+
     /// <summary>Hours of the slot that lie between now (or the slot's start) and <paramref name="cutoff"/>.</summary>
-    public double Overlap(int slot, DateTimeOffset cutoff)
+    public TimeSpan Overlap(int slot, DateTimeOffset cutoff)
     {
         var start = Slots[slot].Slot.Start > Input.Now ? Slots[slot].Slot.Start : Input.Now;
         var end = Slots[slot].Slot.End < cutoff ? Slots[slot].Slot.End : cutoff;
-        return end > start ? (end - start).TotalHours : 0;
+        return end > start ? end - start : TimeSpan.Zero;
     }
 
     public double EffectiveValue(PlanDevice device, int slot)
@@ -77,13 +80,13 @@ internal sealed class PlanContext
         for (var t = 0; t < Count; t++)
         {
             var avail = Overlap(t, cutoff);
-            if (avail <= 0)
+            if (avail <= TimeSpan.Zero)
             {
                 continue;
             }
 
             // With the grid the slot holds what the device can draw; without it, only its surplus.
-            var reach = ceilingW / 1000 * avail;
+            var reach = (new Watts(ceilingW).ToKilowatts() * avail).Value;
             if (Slots[t].Import is not null)
             {
                 total += reach;
@@ -105,7 +108,7 @@ internal sealed class PlanContext
         for (var t = 0; t < Count; t++)
         {
             var avail = Overlap(t, w.Cutoff);
-            if (avail <= 0)
+            if (avail <= TimeSpan.Zero)
             {
                 continue;
             }
@@ -113,8 +116,8 @@ internal sealed class PlanContext
             var slot = Slots[t];
             if (slot.SurplusKwh > Planner.Tolerance)
             {
-                var cost = slot.Export?.PerKwh ?? 0;
-                if (!valueTest || slot.Export is null || WorthIt(w.Device, t, cost))
+                var cost = new PricePerKwh(slot.Export?.PerKwh ?? 0);
+                if (!valueTest || slot.Export is null || WorthIt(w.Device, t, cost.Value))
                 {
                     cells.Add(new Cell(t, EnergySource.Surplus.Instance, cost, avail));
                 }
@@ -122,7 +125,7 @@ internal sealed class PlanContext
 
             if (slot.Import is { } import && (anyZone || sources.AllZones || (ZoneId.Of(slot.Zone) is { } slotZone && sources.Zones.Contains(slotZone))) && (!valueTest || WorthIt(w.Device, t, import.PerKwh)))
             {
-                cells.Add(new Cell(t, new EnergySource.Grid(ZoneId.Of(slot.Zone)), import.PerKwh, avail));
+                cells.Add(new Cell(t, new EnergySource.Grid(ZoneId.Of(slot.Zone)), new PricePerKwh(import.PerKwh), avail));
             }
         }
 

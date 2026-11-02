@@ -32,6 +32,8 @@ public readonly record struct Volts(double Value) : IComparable<Volts>
 
     public static Volts Max(Volts left, Volts right) => left.Value >= right.Value ? left : right;
 
+    public static Volts Min(Volts left, Volts right) => left.Value <= right.Value ? left : right;
+
     public Volts Abs() => new(Math.Abs(Value));
 
     public int CompareTo(Volts other) => Value.CompareTo(other.Value);

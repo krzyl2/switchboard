@@ -12,7 +12,20 @@ namespace Switchboard.Tests.Domain;
 /// </summary>
 public sealed class UnitsTests
 {
-    private static readonly Type[] UnitTypes = [typeof(Amperes), typeof(Watts), typeof(Volts), typeof(KilowattHours), typeof(Percent)];
+    private static readonly Type[] UnitTypes = [typeof(Amperes), typeof(Watts), typeof(Volts), typeof(KilowattHours), typeof(Percent), typeof(Kilowatts), typeof(PricePerKwh), typeof(Money)];
+
+    // The only products between units: energy from a power and a duration, a duration from energy and a power, money from a price and energy. Every one is
+    // named here, so a new one cannot arrive without this list changing (UPGRADE.md: units end at the guard and dispatch boundary).
+    private static readonly string[] NamedProducts =
+    [
+        "Watts.op_Multiply(Watts, TimeSpan) -> KilowattHours",
+        "Watts.op_Multiply(TimeSpan, Watts) -> KilowattHours",
+        "Kilowatts.op_Multiply(Kilowatts, TimeSpan) -> KilowattHours",
+        "Kilowatts.op_Multiply(TimeSpan, Kilowatts) -> KilowattHours",
+        "KilowattHours.op_Division(KilowattHours, Kilowatts) -> TimeSpan",
+        "PricePerKwh.op_Multiply(PricePerKwh, KilowattHours) -> Money",
+        "PricePerKwh.op_Multiply(KilowattHours, PricePerKwh) -> Money",
+    ];
 
     [Fact]
     public void Units_have_no_cross_unit_operators_or_conversions()
@@ -23,13 +36,20 @@ public sealed class UnitsTests
             foreach (var method in operators)
             {
                 Assert.DoesNotContain(method.Name, new[] { "op_Implicit", "op_Explicit" });
+                var signature = $"{unit.Name}.{method.Name}({string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name))}) -> {method.ReturnType.Name}";
+                if (NamedProducts.Contains(signature))
+                {
+                    continue;
+                }
+
                 var types = method.GetParameters().Select(p => p.ParameterType).Append(method.ReturnType);
                 var foreign = types.Where(t => UnitTypes.Contains(t) && t != unit).ToList();
                 Assert.True(foreign.Count == 0, $"{unit.Name}.{method.Name} mixes in {string.Join(", ", foreign.Select(t => t.Name))}.");
             }
 
+            // The kilowatt view is the one named conversion (Watts.ToKilowatts, Kilowatts.ToWatts); no other method returns another unit.
             var conversions = unit.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Where(m => UnitTypes.Contains(m.ReturnType) && m.ReturnType != unit);
+                .Where(m => !m.IsSpecialName && UnitTypes.Contains(m.ReturnType) && m.ReturnType != unit && m.Name is not ("ToKilowatts" or "ToWatts"));
             Assert.Empty(conversions);
         }
     }

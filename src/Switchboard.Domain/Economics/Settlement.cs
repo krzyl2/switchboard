@@ -108,7 +108,7 @@ public sealed class HourlyNettingModel(HourlyBalanceParameters parameters) : ISe
             return Money.Zero;
         }
 
-        return (net > 0 ? prices.Export : prices.Import) is { } price ? new Money(net * price.PerKwh) : null;
+        return (net > 0 ? prices.Export : prices.Import) is { } price ? new PricePerKwh(price.PerKwh) * new KilowattHours(net) : null;
     }
 }
 
@@ -156,7 +156,7 @@ public sealed record NetBillingModel(Watts StartHysteresis, Watts StopHysteresis
                 return null;
             }
 
-            income = flows.Exported.Value * export.PerKwh;
+            income = (new PricePerKwh(export.PerKwh) * flows.Exported).Amount;
         }
 
         var cost = 0.0;
@@ -167,7 +167,7 @@ public sealed record NetBillingModel(Watts StartHysteresis, Watts StopHysteresis
                 return null;
             }
 
-            cost = flows.Imported.Value * import.PerKwh;
+            cost = (new PricePerKwh(import.PerKwh) * flows.Imported).Amount;
         }
 
         return new Money(income - cost);

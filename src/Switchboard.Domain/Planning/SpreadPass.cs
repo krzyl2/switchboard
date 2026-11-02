@@ -1,5 +1,6 @@
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -58,7 +59,7 @@ internal static class SpreadPass
         w.Allocs = [.. w.Allocs.Where(a => !minePool.Contains(a))];
 
         var capacity = window.ToDictionary(t => t, t => ledger.Room(ctx, device, cells[t]));
-        double Held(double powerW) => window.Sum(t => Math.Min(powerW / 1000 * cells[t].AvailHours, capacity[t]));
+        double Held(double powerW) => window.Sum(t => Math.Min((new Watts(powerW).ToKilowatts() * cells[t].Available).Value, capacity[t]));
 
         if (Held(ceilingW) < energy - Planner.Tolerance)
         {
@@ -87,7 +88,7 @@ internal static class SpreadPass
         }
 
         power = Math.Min(power, ceilingW);
-        var minFill = device.MinW * device.MinRun.TotalHours / 1000;
+        var minFill = (new Watts(device.MinW) * device.MinRun).Value;
         var placed = new List<Alloc>();
         var remaining = energy;
         foreach (var t in window)
@@ -97,7 +98,7 @@ internal static class SpreadPass
                 break;
             }
 
-            var take = Math.Min(remaining, Math.Min(power / 1000 * cells[t].AvailHours, capacity[t]));
+            var take = Math.Min(remaining, Math.Min((new Watts(power).ToKilowatts() * cells[t].Available).Value, capacity[t]));
             if (take <= Planner.Tolerance || (take < minFill - Planner.Tolerance && take < remaining - Planner.Tolerance))
             {
                 continue;
@@ -121,7 +122,7 @@ internal static class SpreadPass
     {
         foreach (var a in allocs)
         {
-            ledger.Commit(w.Device, new Cell(a.Slot, a.Source, a.Cost, 0), a.Kwh, w.Allocs, a.Urgent, a.CapW);
+            ledger.Commit(w.Device, new Cell(a.Slot, a.Source, a.Cost, TimeSpan.Zero), a.Kwh, w.Allocs, a.Urgent, a.CapW);
         }
     }
 }

@@ -3,6 +3,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -94,7 +95,7 @@ public static class PlanVerifier
             }
 
             var energyTotal = 0.0;
-            var ceilingKw = Planner.CeilingW(device, input.CapacityW) / 1000;
+            var ceilingKw = new Watts(Planner.CeilingW(device, input.CapacityW)).ToKilowatts();
             var seen = new HashSet<DateTimeOffset>();
             foreach (var entry in entries)
             {
@@ -111,7 +112,7 @@ public static class PlanVerifier
                     continue;
                 }
 
-                var hours = slots[index].Slot.Hours;
+                var duration = slots[index].Slot.Duration;
                 var active = entry.Want is PlanWant.Run or PlanWant.Urgent;
                 if (!active)
                 {
@@ -129,12 +130,12 @@ public static class PlanVerifier
                     Add(PlanViolationCode.NotPlannable, device.Id, entry.Start, "a run entry for a device the plan may not start or that has no goal to serve");
                 }
 
-                if (entry.MaxPowerW > device.MaxW + Tolerance || entry.EnergyKwh > (device.MaxW / 1000 * hours) + Tolerance)
+                if (entry.MaxPowerW > device.MaxW + Tolerance || entry.EnergyKwh > (new Watts(device.MaxW).ToKilowatts() * duration).Value + Tolerance)
                 {
                     Add(PlanViolationCode.DevicePowerExceeded, device.Id, entry.Start, "the entry asks for more than the device can draw");
                 }
 
-                if (entry.MaxPowerW > (ceilingKw * 1000) + Tolerance || entry.EnergyKwh > (ceilingKw * hours) + Tolerance)
+                if (entry.MaxPowerW > ceilingKw.ToWatts().Value + Tolerance || entry.EnergyKwh > (ceilingKw * duration).Value + Tolerance)
                 {
                     Add(PlanViolationCode.CapacityExceeded, device.Id, entry.Start, "the entry asks for more than the static limits leave this device");
                 }
@@ -166,9 +167,10 @@ public static class PlanVerifier
         foreach (var ((key, index), kwh) in capacity.OrderBy(p => p.Key.Slot).ThenBy(p => p.Key.Key.ToString(), StringComparer.Ordinal))
         {
             var limitW = input.CapacityW.TryGetValue(key, out var w) ? w : 0;
-            if (kwh > (limitW / 1000 * slots[index].Slot.Hours) + Tolerance)
+            var limit = (new Watts(limitW).ToKilowatts() * slots[index].Slot.Duration).Value;
+            if (kwh > limit + Tolerance)
             {
-                Add(PlanViolationCode.CapacityExceeded, null, slots[index].Slot.Start, $"{key} carries {kwh:0.###} kWh against a limit of {limitW / 1000 * slots[index].Slot.Hours:0.###} kWh");
+                Add(PlanViolationCode.CapacityExceeded, null, slots[index].Slot.Start, $"{key} carries {kwh:0.###} kWh against a limit of {limit:0.###} kWh");
             }
         }
 
@@ -296,10 +298,10 @@ public static class PlanVerifier
         // Within what the goal may use: its sources, or any zone when it may escalate (only a deadline inside the horizon escalates: what lies beyond it a later
         // plan can still serve) or is already past its deadline.
         var sources = goal.Sources ?? device.Sources ?? SourceSet.Any;
-        var ceilingKw = Planner.CeilingW(device, input.CapacityW) / 1000;
+        var ceilingKw = new Watts(Planner.CeilingW(device, input.CapacityW)).ToKilowatts();
         var cutoff = goal.Deadline is null || goal.Deadline <= input.Now ? input.Inputs.Grid.To : goal.UsableDeadline!.Value > input.Now ? goal.UsableDeadline.Value : goal.Deadline.Value;
         var anyZone = (goal.Escalate && cutoff <= input.Inputs.Grid.To) || (goal.Deadline is { } due && due <= input.Now);
-        if (device.MinW > 0 && (ceilingKw * 1000) + Tolerance < device.MinW)
+        if (device.MinW > 0 && ceilingKw.ToWatts().Value + Tolerance < device.MinW)
         {
             // Its minimum power is above what the static limits leave it: it can never run.
             return 0;
@@ -315,7 +317,7 @@ public static class PlanVerifier
                 continue;
             }
 
-            var reach = ceilingKw * (end - start).TotalHours;
+            var reach = (ceilingKw * (end - start)).Value;
             var grid = slot.Import is not null && (anyZone || sources.AllZones || (ZoneId.Of(slot.Zone) is { } slotZone && sources.Zones.Contains(slotZone)));
             if (grid)
             {

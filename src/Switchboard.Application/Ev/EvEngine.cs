@@ -10,6 +10,7 @@ using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Planning;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Application.Ev;
 
@@ -207,7 +208,7 @@ public sealed class EvEngine(
         _held = (view.EvaluatedAt, watts);
         return elapsed > _maxGap
             ? (new ChargerEnergy(0, false, couldFlow), watts)
-            : (new ChargerEnergy(held.Watts * elapsed.TotalHours / 1000, true, couldFlow), watts);
+            : (new ChargerEnergy((new Watts(held.Watts) * elapsed).Value, true, couldFlow), watts);
     }
 
     private EvState Restore()

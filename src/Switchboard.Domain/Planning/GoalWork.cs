@@ -1,6 +1,7 @@
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Domain.Planning;
 
@@ -94,7 +95,7 @@ internal sealed class GoalWork
 
     public double Shortfall => Planned ? Math.Max(0, Need - Placed) : 0;
 
-    public double Cost => Allocs.Sum(a => a.Kwh * a.Cost);
+    public double Cost => Allocs.Sum(a => (a.Cost * new KilowattHours(a.Kwh)).Amount);
 
     /// <summary>What the request and the input say about the goal, before anything is placed.</summary>
     public static GoalWork Describe(PlanContext ctx, GoalRequest request, PlanDevice device)
@@ -128,7 +129,7 @@ internal sealed class GoalWork
         if (request.Hard && request.Deadline is not null && !missed)
         {
             // Grid-only delivery at full power: the last start that still makes the deadline (15-PLANNER step 6).
-            w.LatestGridStart = ceilingW > 0 ? cutoff - TimeSpan.FromHours(w.Need / (ceilingW / 1000)) : null;
+            w.LatestGridStart = ceilingW > 0 ? cutoff - new KilowattHours(w.Need) / new Watts(ceilingW).ToKilowatts() : null;
             // A spread goal runs below the ceiling on purpose, so the escalation margin would turn it urgent in the last hours of its window (it trades a buffer
             // it holds in the ceiling's headroom for an early finish). It goes urgent when delivery at the ceiling only just fits: spread power rises as the goal
             // falls behind (every replan), so that moment is reached only when it is truly late. The cutoff already excludes the goal's own ready margin.
