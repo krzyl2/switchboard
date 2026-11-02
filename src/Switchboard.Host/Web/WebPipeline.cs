@@ -31,6 +31,19 @@ internal static class WebPipeline
         },
     };
 
+    /// <summary>
+    /// A POST, PUT or PATCH needs a JSON body: a cross-site form cannot send one without a CORS
+    /// preflight, which the add-on never answers, so no other page can change anything here. (A DELETE
+    /// carries no body and is not asked for one; it cannot be sent cross-site without a preflight either.)
+    /// </summary>
+    private static ValueTask<object?> RequireJsonOnWrites(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.HttpContext.Request;
+        return (HttpMethods.IsPost(request.Method) || HttpMethods.IsPut(request.Method) || HttpMethods.IsPatch(request.Method)) && !request.HasJsonContentType()
+            ? ValueTask.FromResult<object?>(ApiResults.Refusal(StatusCodes.Status400BadRequest, ApiResults.BadRequestCode, "Send Content-Type: application/json."))
+            : next(context);
+    }
+
     public static WebApplication UseSwitchboardWeb(this WebApplication app)
     {
         app.Use((context, next) =>
@@ -39,6 +52,9 @@ internal static class WebPipeline
             return next(context);
         });
 
+        // An answer with a status and no body (a 403, a 404, a 413) gets a problem document, so every error of the API reads the same.
+        app.UseStatusCodePages();
+
         // The guard runs first so a refused peer reaches nothing, not even static files.
         app.UseMiddleware<IngressGuardMiddleware>();
         app.UseMiddleware<RequestBodyLimitMiddleware>();
@@ -46,33 +62,37 @@ internal static class WebPipeline
         app.UseStaticFiles(SpaFiles);
         app.UseRouting();
 
-        app.MapStatusApi();
-        app.MapSignalsApi();
-        app.MapGuardApi();
-        app.MapDecisionsApi();
-        app.MapDispatchApi();
-        app.MapPowerApi();
-        app.MapStatisticsApi();
-        app.MapExcursionsApi();
-        app.MapDevicesApi();
-        app.MapSetupApi();
-        app.MapModeApi();
-        app.MapBalanceApi();
-        app.MapEconomicsApi();
-        app.MapPlanApi();
-        app.MapEvApi();
-        app.MapGoalsApi();
-        app.MapControlApi();
-        app.MapDecisionHistoryApi();
+        // Every API route sits in one group; a body-carrying method needs JSON there (see RequireJsonOnWrites).
+        var api = app.MapGroup("/api");
+        api.AddEndpointFilter(RequireJsonOnWrites);
+
+        api.MapStatusApi();
+        api.MapSignalsApi();
+        api.MapGuardApi();
+        api.MapDecisionsApi();
+        api.MapDispatchApi();
+        api.MapPowerApi();
+        api.MapStatisticsApi();
+        api.MapExcursionsApi();
+        api.MapDevicesApi();
+        api.MapSetupApi();
+        api.MapModeApi();
+        api.MapBalanceApi();
+        api.MapEconomicsApi();
+        api.MapPlanApi();
+        api.MapEvApi();
+        api.MapGoalsApi();
+        api.MapControlApi();
+        api.MapDecisionHistoryApi();
 
         // The development sink's record exists only in standalone development replay.
         if (app.Services.GetRequiredService<Composition.SignalSourceSelection>().IsReplay)
         {
-            app.MapDevApi();
+            api.MapDevApi();
         }
 
         // Unknown API routes are 404s, not the SPA shell.
-        app.Map("/api/{**rest}", () => Results.NotFound());
+        app.Map("/api/{**rest}", () => TypedResults.NotFound());
 
         if (app.Environment.WebRootFileProvider.GetFileInfo(SpaEntry).Exists)
         {
@@ -81,7 +101,7 @@ internal static class WebPipeline
         else
         {
             // `dotnet run` without a web build: the service must still start and answer.
-            app.MapGet("/", ([FromServices] AppVersion version) => Results.Text(
+            app.MapGet("/", ([FromServices] AppVersion version) => TypedResults.Text(
                 $"Switchboard {version.Value} is running. The web UI has not been built.\n"
                 + "Switchboard is not a protective device; it does not replace breakers or EVSE protection.\n",
                 "text/plain"));

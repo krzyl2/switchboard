@@ -110,8 +110,8 @@ public sealed partial class EvSignalArchitectureTests
         var endpoint = File.ReadAllText(RepoPaths.Combine("src", "Switchboard.Host", "Web", "EvEndpoint.cs"));
         var writes = System.Text.RegularExpressions.Regex.Matches(endpoint, @"Map(Post|Put|Delete|Patch)\(""([^""]+)""").Select(m => $"{m.Groups[1].Value} {m.Groups[2].Value}").Order().ToList();
 
-        Assert.Contains("MapGet(\"/api/ev\"", endpoint, StringComparison.Ordinal);
-        Assert.Equal(["Delete /api/ev/charge-now", "Post /api/ev/charge-now", "Post /api/ev/mode"], writes);
+        Assert.Contains("MapGet(\"/ev\"", endpoint, StringComparison.Ordinal);
+        Assert.Equal(["Delete /ev/charge-now", "Post /ev/charge-now", "Post /ev/mode"], writes);
         Assert.DoesNotMatch(Commanding(), endpoint);
     }
 

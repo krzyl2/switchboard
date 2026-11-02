@@ -41,20 +41,21 @@ internal sealed class IngressPathBaseMiddleware(RequestDelegate next)
 }
 
 /// <summary>
-/// One limit for every request body (<see cref="IngressOptions.MaxRequestBodyBytes"/>); an endpoint
-/// may hold a smaller one of its own. A declared length above it is refused before any endpoint runs;
-/// a body without one (chunked) is cut off by the server once it grows past it, and answered 413 here
-/// instead of as an unhandled exception in the log.
+/// The global limit for every request body (<see cref="IngressOptions.MaxRequestBodyBytes"/>); an
+/// endpoint may hold a smaller one of its own (<see cref="RequestBody.WithBodyLimit"/>). A declared
+/// length above it is refused before any endpoint runs; a body without one (chunked) is cut off by the
+/// server once it grows past it, which the one body reader (<see cref="RequestBody.ReadBodyAsync"/>)
+/// answers as 413.
 /// </summary>
 internal sealed class RequestBodyLimitMiddleware(RequestDelegate next, IOptions<IngressOptions> options)
 {
-    public async Task InvokeAsync(HttpContext context)
+    public Task InvokeAsync(HttpContext context)
     {
         var limit = options.Value.MaxRequestBodyBytes;
         if (context.Request.ContentLength > limit)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            return;
+            return Task.CompletedTask;
         }
 
         if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } feature)
@@ -62,13 +63,6 @@ internal sealed class RequestBodyLimitMiddleware(RequestDelegate next, IOptions<
             feature.MaxRequestBodySize = limit;
         }
 
-        try
-        {
-            await next(context).ConfigureAwait(false);
-        }
-        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge && !context.Response.HasStarted)
-        {
-            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-        }
+        return next(context);
     }
 }

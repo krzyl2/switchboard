@@ -16,7 +16,7 @@ internal static class StatusEndpoint
 {
     public static IEndpointRouteBuilder MapStatusApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/status", (
+        endpoints.MapGet("/status", (
                 [FromServices] AppVersion version,
                 [FromServices] IModeSource mode,
                 [FromServices] IHomeAssistantConnectionState homeAssistant,

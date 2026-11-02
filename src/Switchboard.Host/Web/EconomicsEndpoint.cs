@@ -112,7 +112,7 @@ internal static class EconomicsEndpoint
 {
     public static IEndpointRouteBuilder MapEconomicsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/economics", (
+        endpoints.MapGet("/economics", IResult (
             HttpRequest request,
             [FromServices] ISignalDiagnosticsSource diagnostics,
             [FromServices] SignalClock clock,
@@ -122,12 +122,10 @@ internal static class EconomicsEndpoint
         {
             if (!StatisticsEndpoint.TryRange(request.Query, options.Value.Retention, out var range))
             {
-                return Results.Problem(
-                    $"Range: from and to are both given or both left out, ISO 8601 instants with an offset, from before to, at most {options.Value.Retention} apart.",
-                    statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, $"Range: from and to are both given or both left out, ISO 8601 instants with an offset, from before to, at most {options.Value.Retention} apart.");
             }
 
-            return Results.Json(Build(diagnostics.Current.Configuration, clock.Time.GetUtcNow(), clock.Time.LocalTimeZone, diagnostics.Current.Snapshot.Prices, presentation.Statistics, range, dispatch.Current));
+            return TypedResults.Json(Build(diagnostics.Current.Configuration, clock.Time.GetUtcNow(), clock.Time.LocalTimeZone, diagnostics.Current.Snapshot.Prices, presentation.Statistics, range, dispatch.Current));
         });
         return endpoints;
     }

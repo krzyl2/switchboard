@@ -14,6 +14,7 @@ builder.Logging.AddSimpleConsole(console =>
 });
 
 builder.Services.AddSwitchboard();
+builder.Services.AddProblemDetails();
 
 // The ingress port is the only listener; explicit Listen overrides ASPNETCORE_URLS / HTTP_PORTS.
 builder.WebHost.ConfigureKestrel(kestrel =>

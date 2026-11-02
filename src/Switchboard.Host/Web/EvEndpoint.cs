@@ -161,26 +161,22 @@ internal static partial class EvEndpoint
 {
     public static IEndpointRouteBuilder MapEvApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/ev", (
+        endpoints.MapGet("/ev", (
             [FromServices] ISignalDiagnosticsSource diagnostics,
             [FromServices] IEvInputSource inputs,
             [FromServices] IEvSnapshotSource snapshots,
             [FromServices] IEvControl control,
-            [FromServices] SignalClock clock) => Results.Json(Build(diagnostics.Current.Configuration, clock.Time.GetUtcNow(), inputs.Current.Inputs, clock.Time.LocalTimeZone, snapshots.Current, control.Manual)));
+            [FromServices] SignalClock clock) => TypedResults.Json(Build(diagnostics.Current.Configuration, clock.Time.GetUtcNow(), inputs.Current.Inputs, clock.Time.LocalTimeZone, snapshots.Current, control.Manual)));
 
         // The user's controls (EV-09). Same protection as POST api/goals: ingress only, a JSON body (a cross-site form cannot send one), a bounded strict body.
         // They change only the add-on's own state; no entity is written.
-        endpoints.MapPost("/api/ev/mode", async (
+        endpoints.MapPost("/ev/mode", async Task<IResult> (
             HttpRequest request,
             [FromServices] IEvControl control,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType())
-            {
-                return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send Content-Type: application/json with the body {\"mode\": \"auto\" | \"pv_only\" | \"full_charge\"}.");
-            }
-
-            var body = await ReadObjectAsync(request, cancellationToken).ConfigureAwait(false);
+            // A body past the bound is not an EV request: answered as a malformed one (400), as it always was.
+            var body = (await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false)).AsObject();
             if (body is null || body.Value.EnumerateObject().Count() != 1 || !body.Value.TryGetProperty("mode", out var text) || text.ValueKind != JsonValueKind.String
                 || Enum.GetValues<EvMode>().Where(m => ApiText.Snake(m) == text.GetString()).Select(m => (EvMode?)m).SingleOrDefault() is not { } mode)
             {
@@ -190,21 +186,16 @@ internal static partial class EvEndpoint
             return control.SetMode(mode) switch
             {
                 EvControlResult.NotConfigured => Refused(StatusCodes.Status404NotFound, NotConfigured, "There is no ev: section in the valid configuration."),
-                _ => Results.Json(new EvManualMode(ApiText.Snake(control.Manual.Mode))),
+                _ => TypedResults.Json(new EvManualMode(ApiText.Snake(control.Manual.Mode))),
             };
-        });
+        }).WithBodyLimit(MaxBodyBytes);
 
-        endpoints.MapPost("/api/ev/charge-now", async (
+        endpoints.MapPost("/ev/charge-now", async Task<IResult> (
             HttpRequest request,
             [FromServices] IEvControl control,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType())
-            {
-                return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send Content-Type: application/json with the body {} or {\"targetPct\": number, \"durationMinutes\": number}.");
-            }
-
-            var body = await ReadObjectAsync(request, cancellationToken).ConfigureAwait(false);
+            var body = (await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false)).AsObject();
             if (body is null || !TryOptionalNumber(body.Value, out var target, out var minutes))
             {
                 return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send {} or an object with only targetPct (percent) and durationMinutes (minutes), both numbers.");
@@ -240,14 +231,14 @@ internal static partial class EvEndpoint
             var running = control.Manual.ChargeNow;
             return running is null
                 ? Refused(StatusCodes.Status409Conflict, AlreadyAtTarget, "The charge ended as it began.")
-                : Results.Json(new EvChargeNowResponse(true, running.TargetPercent, running.ExpiresAt));
-        });
+                : TypedResults.Json(new EvChargeNowResponse(true, running.TargetPercent, running.ExpiresAt));
+        }).WithBodyLimit(MaxBodyBytes);
 
-        endpoints.MapDelete("/api/ev/charge-now", ([FromServices] IEvControl control) => control.CancelChargeNow() switch
+        endpoints.MapDelete("/ev/charge-now", ([FromServices] IEvControl control) => control.CancelChargeNow() switch
         {
             EvControlResult.NotConfigured => Refused(StatusCodes.Status404NotFound, NotConfigured, "There is no ev: section in the valid configuration."),
             EvControlResult.NoChargeNow => Refused(StatusCodes.Status404NotFound, NoChargeNow, "No charge-now is running."),
-            _ => Results.Json(new { ended = true }),
+            _ => TypedResults.Json(new { ended = true }),
         });
         return endpoints;
     }
@@ -266,47 +257,10 @@ internal static partial class EvEndpoint
     public const string DeadlineBeyondHorizon = "deadline_beyond_horizon";
     public const string NoChargeNow = "no_charge_now";
 
-    private static IResult Refused(int status, string code, string message) => Results.Json(new GoalRefusal(code, message), statusCode: status);
+    private static IResult Refused(int status, string code, string message) => ApiResults.Refusal(status, code, message);
 
     /// <summary>What POST api/ev/mode answers: the mode now in force.</summary>
     public sealed record EvManualMode(string Mode);
-
-    /// <summary>A bounded JSON object body (an empty body is not one); null when it is anything else.</summary>
-    private static async Task<JsonElement?> ReadObjectAsync(HttpRequest request, CancellationToken cancellationToken)
-    {
-        if (request.ContentLength is > MaxBodyBytes)
-        {
-            return null;
-        }
-
-        var buffer = new byte[MaxBodyBytes + 1];
-        var read = 0;
-        while (read < buffer.Length)
-        {
-            var n = await request.Body.ReadAsync(buffer.AsMemory(read), cancellationToken).ConfigureAwait(false);
-            if (n == 0)
-            {
-                break;
-            }
-
-            read += n;
-        }
-
-        if (read is 0 or > MaxBodyBytes)
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(buffer.AsMemory(0, read), new JsonDocumentOptions { MaxDepth = 4 });
-            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>Only <c>targetPct</c> and <c>durationMinutes</c> may appear, each a finite number; absent means "take the configured value".</summary>
     private static bool TryOptionalNumber(JsonElement body, out double? target, out double? minutes)

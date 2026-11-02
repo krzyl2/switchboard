@@ -252,7 +252,7 @@ internal static class SetupEndpoint
 
     public static IEndpointRouteBuilder MapSetupApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/setup/discovery", async (
+        endpoints.MapGet("/setup/discovery", async (
             HttpRequest request,
             [FromServices] EntityDiscoveryCache cache,
             [FromServices] SetupDefaults defaults,
@@ -270,7 +270,7 @@ internal static class SetupEndpoint
             }
         });
 
-        endpoints.MapGet("/api/setup/readouts", (
+        endpoints.MapGet("/setup/readouts", (
             HttpRequest request,
             [FromServices] ICandidateReadouts readouts,
             [FromServices] SignalClock clock,
@@ -282,7 +282,7 @@ internal static class SetupEndpoint
             {
                 if (!EntityId.TryParse(text, out var entity))
                 {
-                    return Results.Problem($"'{text}' is not a Home Assistant entity ID.", statusCode: StatusCodes.Status400BadRequest);
+                    return ApiResults.Problem(StatusCodes.Status400BadRequest, $"'{text}' is not a Home Assistant entity ID.");
                 }
 
                 entities.Add(entity.Value);
@@ -290,14 +290,14 @@ internal static class SetupEndpoint
 
             if (entities.Count == 0 || entities.Distinct().Count() > options.Value.MaxReadoutEntities)
             {
-                return Results.Problem($"Ask for 1 to {options.Value.MaxReadoutEntities} entities with entity=<entity_id>.", statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, $"Ask for 1 to {options.Value.MaxReadoutEntities} entities with entity=<entity_id>.");
             }
 
             var items = readouts.Lease(entities);
             return Json(new ReadoutsResponse(clock.Time.GetUtcNow(), [.. items.Select(Readout)]));
         });
 
-        endpoints.MapGet("/api/setup/draft", ([FromServices] SetupService setup) =>
+        endpoints.MapGet("/setup/draft", ([FromServices] SetupService setup) =>
         {
             var view = setup.LoadDraft();
             return Json(new DraftResponse(
@@ -310,9 +310,15 @@ internal static class SetupEndpoint
                 [.. view.FileIssues.Select(Issue)]));
         });
 
-        endpoints.MapPost("/api/setup/validate", async (HttpRequest request, [FromServices] SetupService setup, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/setup/validate", async (HttpRequest request, [FromServices] SetupService setup, CancellationToken cancellationToken) =>
         {
-            if (await ReadAsync<DraftRequest>(request, cancellationToken).ConfigureAwait(false) is not { Draft: { } draft })
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
+            {
+                return ApiResults.TooLarge(read.Limit);
+            }
+
+            if (read.As<DraftRequest>(Strict) is not { Draft: { } draft })
             {
                 return JsonRequired("{\"draft\": {...}, \"baseRevision\": \"...\"}");
             }
@@ -321,9 +327,15 @@ internal static class SetupEndpoint
             return Json(Validation(outcome));
         });
 
-        endpoints.MapPost("/api/setup/save", async (HttpRequest request, [FromServices] SetupService setup, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/setup/save", async (HttpRequest request, [FromServices] SetupService setup, CancellationToken cancellationToken) =>
         {
-            if (await ReadAsync<DraftRequest>(request, cancellationToken).ConfigureAwait(false) is not { Draft: { } draft } body)
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
+            {
+                return ApiResults.TooLarge(read.Limit);
+            }
+
+            if (read.As<DraftRequest>(Strict) is not { Draft: { } draft } body)
             {
                 return JsonRequired("{\"draft\": {...}, \"baseRevision\": \"...\"}");
             }
@@ -335,20 +347,26 @@ internal static class SetupEndpoint
                     new SetupRefusalDto(SetupIssueCodes.RevisionConflict, [Issue(SetupIssue.Error(SetupIssueCodes.RevisionConflict, null, "The configuration file changed since the wizard loaded it; reload the wizard (your changes are not saved)."))], conflict.CurrentRevision),
                     StatusCodes.Status409Conflict),
                 SaveResult.Refused refused => Json(new SetupRefusalDto("invalid", [.. refused.Issues.Select(Issue)], null), StatusCodes.Status422UnprocessableEntity),
-                _ => Results.StatusCode(StatusCodes.Status500InternalServerError),
+                _ => TypedResults.StatusCode(StatusCodes.Status500InternalServerError),
             };
         });
 
-        endpoints.MapGet("/api/setup/templates", ([FromServices] SetupService setup) => Json(Templates(setup.Defaults, setup.CurrentControl())));
+        endpoints.MapGet("/setup/templates", ([FromServices] SetupService setup) => Json(Templates(setup.Defaults, setup.CurrentControl())));
 
-        endpoints.MapPost("/api/setup/self-test", async (
+        endpoints.MapPost("/setup/self-test", async (
             HttpRequest request,
             [FromServices] PhaseSelfTestService selfTest,
             [FromServices] SetupDefaults defaults,
             [FromServices] SetupService setup,
             CancellationToken cancellationToken) =>
         {
-            if (await ReadAsync<SelfTestStartRequest>(request, cancellationToken).ConfigureAwait(false) is not { Draft: { } draft } body
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
+            {
+                return ApiResults.TooLarge(read.Limit);
+            }
+
+            if (read.As<SelfTestStartRequest>(Strict) is not { Draft: { } draft } body
                 || (body.Device is null) == (body.TestLoad is null))
             {
                 return JsonRequired("{\"draft\": {...}, \"device\": {\"index\": 0}} or {\"draft\": {...}, \"testLoad\": {\"stateEntity\": \"...\", \"phase\": \"L1\", \"ratedPowerW\": 2000}}");
@@ -371,24 +389,30 @@ internal static class SetupEndpoint
             }
         });
 
-        endpoints.MapGet("/api/setup/self-test/{id}", (string id, [FromServices] PhaseSelfTestService selfTest) =>
+        endpoints.MapGet("/setup/self-test/{id}", (string id, [FromServices] PhaseSelfTestService selfTest) =>
             Guid.TryParseExact(id, "N", out var guid) && selfTest.Get(guid) is { } view
                 ? Json(SelfTest(view))
-                : Results.NotFound());
+                : TypedResults.NotFound());
 
-        endpoints.MapDelete("/api/setup/self-test/{id}", (string id, [FromServices] PhaseSelfTestService selfTest) =>
-            Guid.TryParseExact(id, "N", out var guid) && selfTest.Cancel(guid) ? Results.NoContent() : Results.NotFound());
+        endpoints.MapDelete("/setup/self-test/{id}", IResult (string id, [FromServices] PhaseSelfTestService selfTest) =>
+            Guid.TryParseExact(id, "N", out var guid) && selfTest.Cancel(guid) ? TypedResults.NoContent() : TypedResults.NotFound());
 
         // The active phase self-test (CONN-05): Switchboard switches a declared, idle relay stage on and
         // off through the effector gate, below protection, only in effective active mode.
-        endpoints.MapGet("/api/setup/active-test/preconditions", (string? device, int? stage, [FromServices] ActivePhaseTestService activeTest) =>
+        endpoints.MapGet("/setup/active-test/preconditions", (string? device, int? stage, [FromServices] ActivePhaseTestService activeTest) =>
             DeviceName.TryParse(device, out var name)
                 ? Json(Preconditions(activeTest.Check(name.Value, stage ?? 1)))
-                : Results.Problem("Name a declared device: ?device=<id>&stage=<n>.", statusCode: StatusCodes.Status400BadRequest));
+                : ApiResults.Problem(StatusCodes.Status400BadRequest, "Name a declared device: ?device=<id>&stage=<n>."));
 
-        endpoints.MapPost("/api/setup/active-test", async (HttpRequest request, [FromServices] ActivePhaseTestService activeTest, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/setup/active-test", async (HttpRequest request, [FromServices] ActivePhaseTestService activeTest, CancellationToken cancellationToken) =>
         {
-            if (await ReadAsync<ActiveTestStartRequest>(request, cancellationToken).ConfigureAwait(false) is not { Device: { } device } body
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
+            {
+                return ApiResults.TooLarge(read.Limit);
+            }
+
+            if (read.As<ActiveTestStartRequest>(Strict) is not { Device: { } device } body
                 || !DeviceName.TryParse(device, out var name) || body.Stage is < 1)
             {
                 return JsonRequired("{\"device\": \"<id>\", \"stage\": 1}");
@@ -400,15 +424,15 @@ internal static class SetupEndpoint
                 : Json(new ActiveTestStartedResponse(test.Id.ToString("N"), test.ExpectedDuration.TotalSeconds), StatusCodes.Status202Accepted);
         });
 
-        endpoints.MapGet("/api/setup/active-test/{id}", (string id, [FromServices] ActivePhaseTestService activeTest) =>
+        endpoints.MapGet("/setup/active-test/{id}", (string id, [FromServices] ActivePhaseTestService activeTest) =>
             Guid.TryParseExact(id, "N", out var guid) && activeTest.Get(guid) is { } view
                 ? Json(ActiveTest(view))
-                : Results.NotFound());
+                : TypedResults.NotFound());
 
-        endpoints.MapDelete("/api/setup/active-test/{id}", (string id, [FromServices] ActivePhaseTestService activeTest) =>
-            Guid.TryParseExact(id, "N", out var guid) && activeTest.Cancel(guid) ? Results.NoContent() : Results.NotFound());
+        endpoints.MapDelete("/setup/active-test/{id}", IResult (string id, [FromServices] ActivePhaseTestService activeTest) =>
+            Guid.TryParseExact(id, "N", out var guid) && activeTest.Cancel(guid) ? TypedResults.NoContent() : TypedResults.NotFound());
 
-        endpoints.MapGet("/api/setup/evidence", (
+        endpoints.MapGet("/setup/evidence", (
             [FromServices] PhaseEvidenceStore evidence,
             [FromServices] ISignalDiagnosticsSource diagnostics,
             [FromServices] SetupDefaults defaults) => Json(Evidence(evidence, diagnostics.Current, defaults)));
@@ -700,28 +724,9 @@ internal static class SetupEndpoint
         where TEnum : struct, Enum => ApiText.Snake(value);
 
     private static IResult JsonRequired(string shape) =>
-        Results.Problem($"Send Content-Type: application/json with the body {shape}.", statusCode: StatusCodes.Status400BadRequest);
+        ApiResults.Problem(StatusCodes.Status400BadRequest, $"Send Content-Type: application/json with the body {shape}.");
 
-    private static IResult Json<T>(T value, int status = StatusCodes.Status200OK) => Results.Json(value, Answers, statusCode: status);
-
-    /// <summary>The body, strictly: application/json only, and no key the API does not define.</summary>
-    internal static async Task<T?> ReadAsync<T>(HttpRequest request, CancellationToken cancellationToken)
-        where T : class
-    {
-        if (!request.HasJsonContentType())
-        {
-            return null;
-        }
-
-        try
-        {
-            return await JsonSerializer.DeserializeAsync<T>(request.Body, Strict, cancellationToken).ConfigureAwait(false);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    private static IResult Json<T>(T value, int status = StatusCodes.Status200OK) => TypedResults.Json(value, Answers, statusCode: status);
 }
 
 /// <summary>camelCase, but a phase name (L1, L2, L3) keeps its spelling: the draft's per-phase keys.</summary>

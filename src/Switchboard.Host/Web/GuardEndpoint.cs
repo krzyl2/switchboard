@@ -104,7 +104,7 @@ internal static class GuardEndpoint
 
     public static IEndpointRouteBuilder MapGuardApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/guard", (
+        endpoints.MapGet("/guard", (
                 [FromServices] IGuardStatusSource status,
                 [FromServices] ISignalDiagnosticsSource diagnostics,
                 [FromServices] IDecisionRecorder decisions,
@@ -113,7 +113,7 @@ internal static class GuardEndpoint
 
         // A JSON body is required: a cross-site form cannot send one without a CORS preflight,
         // which the add-on never answers, so the kill switch cannot be flipped from another page.
-        endpoints.MapPost("/api/guard/kill-switch", async (
+        endpoints.MapPost("/guard/kill-switch", async Task<IResult> (
             HttpRequest request,
             [FromServices] IKillSwitchControl killSwitch,
             [FromServices] GuardStatusHolder holder,
@@ -124,50 +124,36 @@ internal static class GuardEndpoint
             [FromServices] TimeProvider time,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType() || await ReadBodyAsync(request, cancellationToken).ConfigureAwait(false) is not { } body)
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
             {
-                return Results.Problem("Send Content-Type: application/json with the body {\"engaged\": true} or {\"engaged\": false}.", statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.TooLarge(read.Limit);
             }
 
-            // Subscribed before the change, so the evaluation of it cannot be missed.
-            var evaluated = new TaskCompletionSource<GuardStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnPublished(object? sender, GuardStatus published)
+            if (ReadKillSwitch(read) is not { } body)
             {
-                if (published.KillSwitch.Engaged == body.Engaged)
-                {
-                    evaluated.TrySetResult(published);
-                }
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, "Send Content-Type: application/json with the body {\"engaged\": true} or {\"engaged\": false}.");
             }
 
-            holder.Published += OnPublished;
-            try
+            var applied = await StatusChange.ApplyAsync(
+                StatusChange.Feed(holder),
+                status => status.KillSwitch.Engaged == body.Engaged,
+                () => killSwitch.Set(body.Engaged, KillSwitchSource.Api),
+                result => result != KillSwitchSetResult.RefusedLocked,
+                options.Value.ApiEvaluationTimeout,
+                time,
+                cancellationToken).ConfigureAwait(false);
+            if (applied.Result == KillSwitchSetResult.RefusedLocked)
             {
-                if (killSwitch.Set(body.Engaged, KillSwitchSource.Api) == KillSwitchSetResult.RefusedLocked)
-                {
-                    return Results.Json(
-                        new { code = ControlEndpoint.StateUnconfirmed, message = "state.json could not be trusted at start: the kill switch stays engaged until the state is confirmed (POST api/control/confirm)." },
-                        statusCode: StatusCodes.Status409Conflict);
-                }
+                return ApiResults.Refusal(StatusCodes.Status409Conflict, ControlEndpoint.StateUnconfirmed, "state.json could not be trusted at start: the kill switch stays engaged until the state is confirmed (POST api/control/confirm).");
+            }
 
-                if (holder.Current.KillSwitch.Engaged == body.Engaged)
-                {
-                    evaluated.TrySetResult(holder.Current);
-                }
-
-                var result = await evaluated.Task.WaitAsync(options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
-                return Results.Json(Build(result, diagnostics.Current, decisions, state));
-            }
-            catch (TimeoutException)
-            {
-                // The switch is in force in memory either way; only the evaluation is late.
-                return Results.Problem(
-                    $"The kill switch is {(body.Engaged ? "engaged" : "released")}, but the guard did not evaluate it within {options.Value.ApiEvaluationTimeout}.",
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
-            finally
-            {
-                holder.Published -= OnPublished;
-            }
+            // The switch is in force in memory either way; only the evaluation is late.
+            return applied.Late
+                ? ApiResults.Problem(
+                    StatusCodes.Status503ServiceUnavailable,
+                    $"The kill switch is {(body.Engaged ? "engaged" : "released")}, but the guard did not evaluate it within {options.Value.ApiEvaluationTimeout}.")
+                : TypedResults.Json(Build(applied.Status!, diagnostics.Current, decisions, state));
         });
         return endpoints;
     }
@@ -265,22 +251,11 @@ internal static class GuardEndpoint
             .Select(s => s.Name!.Value.Value)
             .Order(StringComparer.Ordinal)];
 
-    private static async Task<KillSwitchRequest?> ReadBodyAsync(HttpRequest request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Object
-                && root.EnumerateObject().Count() == 1
-                && root.TryGetProperty("engaged", out var engaged)
-                && engaged.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? new KillSwitchRequest(engaged.GetBoolean())
-                    : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    private static KillSwitchRequest? ReadKillSwitch(BodyRead read) =>
+        read.AsObject() is { } root
+            && root.EnumerateObject().Count() == 1
+            && root.TryGetProperty("engaged", out var engaged)
+            && engaged.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? new KillSwitchRequest(engaged.GetBoolean())
+                : null;
 }

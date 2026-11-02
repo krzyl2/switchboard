@@ -107,12 +107,12 @@ internal static class DispatchEndpoint
 {
     public static IEndpointRouteBuilder MapDispatchApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/dispatch", ([FromServices] IDispatchStatusSource status) => TypedResults.Json(Build(status.Current)));
+        endpoints.MapGet("/dispatch", ([FromServices] IDispatchStatusSource status) => TypedResults.Json(Build(status.Current)));
 
         // SAFE-04 from the UI. A JSON body is required, as for the kill switch: a cross-site form
         // cannot send one without a CORS preflight, which the add-on never answers. Only a device of
         // the current valid configuration can be addressed (SAFE-05); protection still outranks it.
-        endpoints.MapPost("/api/devices/{id}/override", async (
+        endpoints.MapPost("/devices/{id}/override", async (
             string id,
             HttpRequest request,
             [FromServices] IDeviceOverrideControl overrides,
@@ -121,57 +121,41 @@ internal static class DispatchEndpoint
             [FromServices] TimeProvider time,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType() || await ReadBodyAsync(request, cancellationToken).ConfigureAwait(false) is not { } body)
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
             {
-                return Results.Problem("Send Content-Type: application/json with the body {\"mode\": \"auto\"}, {\"mode\": \"force_on\"} or {\"mode\": \"force_off\"}.", statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.TooLarge(read.Limit);
+            }
+
+            if (ReadOverride(read) is not { } body)
+            {
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, "Send Content-Type: application/json with the body {\"mode\": \"auto\"}, {\"mode\": \"force_on\"} or {\"mode\": \"force_off\"}.");
             }
 
             if (!DeviceName.TryParse(id, out var device))
             {
-                return Results.Problem($"No declared device is called '{id}'.", statusCode: StatusCodes.Status404NotFound);
+                return ApiResults.Problem(StatusCodes.Status404NotFound, $"No declared device is called '{id}'.");
             }
 
-            // Subscribed before the change, so the evaluation of it cannot be missed.
-            var evaluated = new TaskCompletionSource<DispatchStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
-            bool Shows(DispatchStatus status) => status.Devices.Any(d => d.Id == device && d.Override.Mode == body.Mode);
-            void OnPublished(object? sender, DispatchStatus published)
+            var applied = await StatusChange.ApplyAsync(
+                StatusChange.Feed(holder),
+                status => status.Devices.Any(d => d.Id == device && d.Override.Mode == body.Mode),
+                () => overrides.Set(device.Value, body.Mode, OverrideSource.Api),
+                result => result is not (OverrideResult.UnknownDevice or OverrideResult.NoConfiguration),
+                options.Value.ApiEvaluationTimeout,
+                time,
+                cancellationToken).ConfigureAwait(false);
+            return applied switch
             {
-                if (Shows(published))
-                {
-                    evaluated.TrySetResult(published);
-                }
-            }
+                { Result: OverrideResult.UnknownDevice } => ApiResults.Problem(StatusCodes.Status404NotFound, $"No declared device is called '{id}'; only devices of the configuration can be overridden."),
+                { Result: OverrideResult.NoConfiguration } => ApiResults.Problem(StatusCodes.Status409Conflict, "There is no valid configuration to check the device against; fix switchboard.yaml first."),
 
-            holder.Published += OnPublished;
-            try
-            {
-                switch (overrides.Set(device.Value, body.Mode, OverrideSource.Api))
-                {
-                    case OverrideResult.UnknownDevice:
-                        return Results.Problem($"No declared device is called '{id}'; only devices of the configuration can be overridden.", statusCode: StatusCodes.Status404NotFound);
-                    case OverrideResult.NoConfiguration:
-                        return Results.Problem("There is no valid configuration to check the device against; fix switchboard.yaml first.", statusCode: StatusCodes.Status409Conflict);
-                }
-
-                if (Shows(holder.Current))
-                {
-                    evaluated.TrySetResult(holder.Current);
-                }
-
-                var result = await evaluated.Task.WaitAsync(options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
-                return Results.Json(Build(result));
-            }
-            catch (TimeoutException)
-            {
                 // The override is in force in memory either way; only the evaluation is late.
-                return Results.Problem(
-                    $"The override of {device} is {ApiText.Snake(body.Mode)}, but it was not evaluated within {options.Value.ApiEvaluationTimeout}.",
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
-            finally
-            {
-                holder.Published -= OnPublished;
-            }
+                { Late: true } => ApiResults.Problem(
+                    StatusCodes.Status503ServiceUnavailable,
+                    $"The override of {device} is {ApiText.Snake(body.Mode)}, but it was not evaluated within {options.Value.ApiEvaluationTimeout}."),
+                _ => Json(Build(applied.Status!)),
+            };
         });
         return endpoints;
     }
@@ -222,26 +206,19 @@ internal static class DispatchEndpoint
     private static string? Name(ReasonCode? reason) => reason is { } code ? ReasonCodes.Name(code) : null;
 
     /// <summary>Exactly one key, mode, with one of the three snake_case values.</summary>
-    private static async Task<OverrideRequest?> ReadBodyAsync(HttpRequest request, CancellationToken cancellationToken)
+    private static OverrideRequest? ReadOverride(BodyRead read)
     {
-        try
-        {
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || root.EnumerateObject().Count() != 1
-                || !root.TryGetProperty("mode", out var mode)
-                || mode.ValueKind != JsonValueKind.String)
-            {
-                return null;
-            }
-
-            var text = mode.GetString();
-            return Enum.GetValues<OverrideMode>().Where(m => ApiText.Snake(m) == text).Select(m => new OverrideRequest(m)).SingleOrDefault();
-        }
-        catch (JsonException)
+        if (read.AsObject() is not { } root
+            || root.EnumerateObject().Count() != 1
+            || !root.TryGetProperty("mode", out var mode)
+            || mode.ValueKind != JsonValueKind.String)
         {
             return null;
         }
+
+        var text = mode.GetString();
+        return Enum.GetValues<OverrideMode>().Where(m => ApiText.Snake(m) == text).Select(m => new OverrideRequest(m)).SingleOrDefault();
     }
+
+    private static IResult Json<T>(T value) => TypedResults.Json(value);
 }

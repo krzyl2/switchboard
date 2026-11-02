@@ -24,7 +24,7 @@ internal static class DecisionHistoryEndpoint
 {
     public static IEndpointRouteBuilder MapDecisionHistoryApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/decisions/history", (
+        endpoints.MapGet("/decisions/history", IResult (
             HttpRequest request,
             [FromServices] IDecisionHistory history,
             [FromServices] IDecisionRecorder recorder,
@@ -32,9 +32,7 @@ internal static class DecisionHistoryEndpoint
         {
             if (Parse(request.Query, options.Value.DecisionMaxPageSize) is not { } query)
             {
-                return Results.Problem(
-                    $"Filters: from and to (ISO 8601 instants), device, phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), kind, limit (1 to {options.Value.DecisionMaxPageSize}), cursor (from 'next').",
-                    statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, $"Filters: from and to (ISO 8601 instants), device, phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), kind, limit (1 to {options.Value.DecisionMaxPageSize}), cursor (from 'next').");
             }
 
             try
@@ -47,7 +45,7 @@ internal static class DecisionHistoryEndpoint
                 var items = !writable && query.Cursor is null
                     ? WithUnwritten(page.Items, recorder.Query(new DecisionQuery(query.Device, query.Phase, query.Reason, query.Limit, null) { Kind = query.Kind }).Items, query)
                     : page.Items;
-                return Results.Json(new DecisionHistoryResponse(
+                return TypedResults.Json(new DecisionHistoryResponse(
                     [.. items.Select(DecisionsEndpoint.Dto)],
                     page.Next,
                     page.RetainedFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -57,7 +55,7 @@ internal static class DecisionHistoryEndpoint
             }
             catch (ArgumentException ex)
             {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, ex.Message);
             }
         });
         return endpoints;

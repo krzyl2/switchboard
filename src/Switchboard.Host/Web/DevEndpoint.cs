@@ -16,10 +16,10 @@ internal static class DevEndpoint
 {
     public static IEndpointRouteBuilder MapDevApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/dev/sink", ([FromServices] ICallServiceChannel channel) =>
+        endpoints.MapGet("/dev/sink", IResult ([FromServices] ICallServiceChannel channel) =>
             channel is DevCommandSink sink
-                ? Results.Json(sink.Entries.Select(e => new SinkEntryDto(e.At, e.Domain, e.Service, e.EntityId, e.ServiceData)).ToList())
-                : Results.NotFound());
+                ? TypedResults.Json(sink.Entries.Select(e => new SinkEntryDto(e.At, e.Domain, e.Service, e.EntityId, e.ServiceData)).ToList())
+                : TypedResults.NotFound());
         return endpoints;
     }
 }

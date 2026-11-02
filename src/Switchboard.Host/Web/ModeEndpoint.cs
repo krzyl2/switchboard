@@ -16,7 +16,7 @@ internal static class ModeEndpoint
 {
     public static IEndpointRouteBuilder MapModeApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/mode", ([FromServices] IModeSource mode) => Results.Json(Build(mode.Current)));
+        endpoints.MapGet("/mode", ([FromServices] IModeSource mode) => TypedResults.Json(Build(mode.Current)));
         return endpoints;
     }
 

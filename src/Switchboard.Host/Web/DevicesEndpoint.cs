@@ -52,7 +52,7 @@ internal static class DevicesEndpoint
 {
     public static IEndpointRouteBuilder MapDevicesApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/devices", ([FromServices] ISignalDiagnosticsSource diagnostics, [FromServices] SignalClock clock) =>
+        endpoints.MapGet("/devices", ([FromServices] ISignalDiagnosticsSource diagnostics, [FromServices] SignalClock clock) =>
             TypedResults.Json(Build(diagnostics.Current, clock.Time.GetUtcNow())));
         return endpoints;
     }

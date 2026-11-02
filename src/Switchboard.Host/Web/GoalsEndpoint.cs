@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
@@ -20,9 +21,6 @@ public sealed record ManualGoalRequest(string Device, GoalKind Kind, double Targ
 /// <summary>What POST api/goals stored (camelCase like the other endpoints).</summary>
 /// <param name="Created">False when the same goal was already stored (nothing changed).</param>
 public sealed record ManualGoalResponse(string Device, string Kind, double Target, DateTimeOffset Deadline, bool Hard, DateTimeOffset Since, double DeliveredKwh, bool Created);
-
-/// <summary>Why a request was refused: a closed code the UI words, and a sentence for a person reading the answer.</summary>
-public sealed record GoalRefusal(string Code, string Message);
 
 /// <summary>
 /// POST api/goals and DELETE api/goals/{device} (PLAN-19, 15-PLANNER "How want is entered"): the "want now" action of the device card. It stores
@@ -52,24 +50,23 @@ internal static partial class GoalsEndpoint
 
     public static IEndpointRouteBuilder MapGoalsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/goals", async (
+        endpoints.MapPost("/goals", async Task<IResult> (
             HttpRequest request,
             [FromServices] IManualGoalControl goals,
             [FromServices] IPlanTrigger planner,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType())
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
             {
-                return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send Content-Type: application/json with the body {\"device\", \"kind\", \"target\", \"deadline\", \"hard\"}.");
+                return ApiResults.TooLarge(read.Limit);
             }
 
-            var parsed = await ReadAsync(request, cancellationToken).ConfigureAwait(false);
-            if (parsed.Problem is { } problem)
+            if (Parse(read) is not { } body)
             {
-                return Refused(problem.Status, BadRequest, problem.Message);
+                return Refused(StatusCodes.Status400BadRequest, BadRequest, Shape);
             }
 
-            var body = parsed.Request!;
             if (!DeviceName.TryParse(body.Device, out var device))
             {
                 return Refused(StatusCodes.Status404NotFound, UnknownDevice, $"No declared device is called '{body.Device}'; only devices of the configuration can have a goal.");
@@ -101,10 +98,10 @@ internal static partial class GoalsEndpoint
                 planner.Wake();
             }
 
-            return Results.Json(new ManualGoalResponse(device.Value.Value, ApiText.Snake(stored.Kind), stored.Target, stored.Deadline, stored.Hard, stored.Since, stored.DeliveredKwh, created));
-        });
+            return TypedResults.Json(new ManualGoalResponse(device.Value.Value, ApiText.Snake(stored.Kind), stored.Target, stored.Deadline, stored.Hard, stored.Since, stored.DeliveredKwh, created));
+        }).WithBodyLimit(MaxBodyBytes);
 
-        endpoints.MapDelete("/api/goals/{device}", (
+        endpoints.MapDelete("/goals/{device}", IResult (
             string device,
             [FromServices] IManualGoalControl goals,
             [FromServices] IPlanTrigger planner) =>
@@ -120,80 +117,44 @@ internal static partial class GoalsEndpoint
                     return Refused(StatusCodes.Status404NotFound, NoManualGoal, $"{device} has no manual goal.");
                 default:
                     planner.Wake();
-                    return Results.Json(new { device = name.Value.Value, ended = true });
+                    return TypedResults.Json(new { device = name.Value.Value, ended = true });
             }
         });
         return endpoints;
     }
 
-    private static IResult Refused(int status, string code, string message) => Results.Json(new GoalRefusal(code, message), statusCode: status);
+    private static ProblemHttpResult Refused(int status, string code, string message) => ApiResults.Refusal(status, code, message);
 
-    private readonly record struct Problem(int Status, string Message);
+    private const string Shape = "Send exactly {\"device\": string, \"kind\": \"energy\" | \"soc\", \"target\": number, \"deadline\": ISO 8601 instant with an offset, \"hard\": boolean}.";
 
-    private readonly record struct Parsed(ManualGoalRequest? Request, Problem? Problem);
-
-    /// <summary>Exactly device, kind, target, deadline and hard, each of its type; a body above <see cref="MaxBodyBytes"/> is refused unread.</summary>
-    private static async Task<Parsed> ReadAsync(HttpRequest request, CancellationToken cancellationToken)
+    /// <summary>Exactly device, kind, target, deadline and hard, each of its type; null when the body is anything else.</summary>
+    private static ManualGoalRequest? Parse(BodyRead read)
     {
-        const string Shape = "Send exactly {\"device\": string, \"kind\": \"energy\" | \"soc\", \"target\": number, \"deadline\": ISO 8601 instant with an offset, \"hard\": boolean}.";
-        Parsed Bad(string message = Shape) => new(null, new Problem(StatusCodes.Status400BadRequest, message));
-
-        if (request.ContentLength is > MaxBodyBytes)
+        var root = read.AsObject();
+        if (root is not { } body || body.EnumerateObject().Count() != 5)
         {
-            return new Parsed(null, new Problem(StatusCodes.Status413PayloadTooLarge, $"The body is larger than {MaxBodyBytes} bytes."));
+            return null;
         }
 
-        var buffer = new byte[MaxBodyBytes + 1];
-        var read = 0;
-        while (read < buffer.Length)
+        if (!body.TryGetProperty("device", out var device) || device.ValueKind != JsonValueKind.String
+            || !body.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String
+            || !body.TryGetProperty("target", out var target) || target.ValueKind != JsonValueKind.Number || !target.TryGetDouble(out var targetValue) || !double.IsFinite(targetValue)
+            || !body.TryGetProperty("deadline", out var deadline) || deadline.ValueKind != JsonValueKind.String
+            || !body.TryGetProperty("hard", out var hard) || hard.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
         {
-            var n = await request.Body.ReadAsync(buffer.AsMemory(read), cancellationToken).ConfigureAwait(false);
-            if (n == 0)
-            {
-                break;
-            }
-
-            read += n;
+            return null;
         }
 
-        if (read > MaxBodyBytes)
+        var kindText = kind.GetString();
+        var kinds = Enum.GetValues<GoalKind>().Where(k => ApiText.Snake(k) == kindText).ToArray();
+        var deadlineText = deadline.GetString()!;
+        if (kinds.Length != 1
+            || !Instant().IsMatch(deadlineText)
+            || !DateTimeOffset.TryParse(deadlineText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var instant))
         {
-            return new Parsed(null, new Problem(StatusCodes.Status413PayloadTooLarge, $"The body is larger than {MaxBodyBytes} bytes."));
+            return null;
         }
 
-        try
-        {
-            using var document = JsonDocument.Parse(buffer.AsMemory(0, read), new JsonDocumentOptions { MaxDepth = 4 });
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 5)
-            {
-                return Bad();
-            }
-
-            if (!root.TryGetProperty("device", out var device) || device.ValueKind != JsonValueKind.String
-                || !root.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String
-                || !root.TryGetProperty("target", out var target) || target.ValueKind != JsonValueKind.Number || !target.TryGetDouble(out var targetValue) || !double.IsFinite(targetValue)
-                || !root.TryGetProperty("deadline", out var deadline) || deadline.ValueKind != JsonValueKind.String
-                || !root.TryGetProperty("hard", out var hard) || hard.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-            {
-                return Bad();
-            }
-
-            var kindText = kind.GetString();
-            var kinds = Enum.GetValues<GoalKind>().Where(k => ApiText.Snake(k) == kindText).ToArray();
-            var deadlineText = deadline.GetString()!;
-            if (kinds.Length != 1
-                || !Instant().IsMatch(deadlineText)
-                || !DateTimeOffset.TryParse(deadlineText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var instant))
-            {
-                return Bad();
-            }
-
-            return new Parsed(new ManualGoalRequest(device.GetString()!, kinds[0], targetValue, instant, hard.GetBoolean()), null);
-        }
-        catch (JsonException)
-        {
-            return Bad();
-        }
+        return new ManualGoalRequest(device.GetString()!, kinds[0], targetValue, instant, hard.GetBoolean());
     }
 }

@@ -42,7 +42,7 @@ internal static class BalanceEndpoint
 {
     public static IEndpointRouteBuilder MapBalanceApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/balance", ([FromServices] IBalanceSource source, [FromServices] IDispatchStatusSource dispatch) => Results.Json(Build(source.Current, dispatch.Current)));
+        endpoints.MapGet("/balance", ([FromServices] IBalanceSource source, [FromServices] IDispatchStatusSource dispatch) => TypedResults.Json(Build(source.Current, dispatch.Current)));
         return endpoints;
     }
 

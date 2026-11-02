@@ -141,26 +141,24 @@ internal static class DecisionsEndpoint
 
     public static IEndpointRouteBuilder MapDecisionsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/decisions", (
+        endpoints.MapGet("/decisions", IResult (
             HttpRequest request,
             [FromServices] IDecisionRecorder recorder,
             [FromServices] IOptions<PersistenceOptions> options) =>
         {
             if (Parse(request.Query, options.Value.DecisionMaxPageSize) is not { } query)
             {
-                return Results.Problem(
-                    $"Filters: device (a device name), phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), kind ({string.Join(", ", Enum.GetValues<DecisionKind>().Select(ApiText.Snake))}), limit (1 to {options.Value.DecisionMaxPageSize}), before (a cursor from 'next').",
-                    statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, $"Filters: device (a device name), phase (L1, L2, L3), reason (a reason code of list version {ReasonCodes.ListVersion}), kind ({string.Join(", ", Enum.GetValues<DecisionKind>().Select(ApiText.Snake))}), limit (1 to {options.Value.DecisionMaxPageSize}), before (a cursor from 'next').");
             }
 
             try
             {
                 var page = recorder.Query(query);
-                return Results.Json(new DecisionsResponse([.. page.Items.Select(Dto)], page.Next, page.LogWritable));
+                return TypedResults.Json(new DecisionsResponse([.. page.Items.Select(Dto)], page.Next, page.LogWritable));
             }
             catch (ArgumentException ex)
             {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, ex.Message);
             }
         });
         return endpoints;

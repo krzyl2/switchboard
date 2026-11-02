@@ -48,17 +48,17 @@ internal static class ControlEndpoint
 
     public static IEndpointRouteBuilder MapControlApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/control", (
+        endpoints.MapGet("/control", (
                 [FromServices] IControlSwitchView control,
                 [FromServices] IModeSource mode,
                 [FromServices] RuntimeStateCoordinator state,
                 [FromServices] ICommandPathStatus commands,
                 [FromServices] IDispatchStatusSource dispatch) =>
-            Results.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current)));
+            TypedResults.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current)));
 
         // A JSON body is required: a cross-site form cannot send one without a CORS preflight,
         // which the add-on never answers, so control cannot be allowed from another page.
-        endpoints.MapPost("/api/control", async (
+        endpoints.MapPost("/control", async Task<IResult> (
             HttpRequest request,
             [FromServices] IControlSwitch control,
             [FromServices] IModeSource mode,
@@ -70,23 +70,28 @@ internal static class ControlEndpoint
             [FromServices] TimeProvider time,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType() || await ReadFlagAsync(request, "allowed", cancellationToken).ConfigureAwait(false) is not { } allowed)
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
             {
-                return Results.Problem("Send Content-Type: application/json with the body {\"allowed\": true} or {\"allowed\": false}.", statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.TooLarge(read.Limit);
             }
 
-            var result = await EvaluatedAsync(holder, s => s.Mode.ControlAllowed == allowed, () => control.Set(allowed, ControlSwitchSource.Api), options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
-            if (result == ControlSetResult.RefusedLocked)
+            if (ReadFlag(read, "allowed") is not { } allowed)
             {
-                return Results.Json(
-                    new { code = StateUnconfirmed, message = "state.json could not be trusted at start: confirm the state first; control stays off until then." },
-                    statusCode: StatusCodes.Status409Conflict);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, "Send Content-Type: application/json with the body {\"allowed\": true} or {\"allowed\": false}.");
             }
 
-            return Results.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current));
+            // The switch is in force in memory either way; only the evaluation can be late.
+            var applied = await StatusChange.ApplyAsync(StatusChange.Feed(holder), s => s.Mode.ControlAllowed == allowed, () => control.Set(allowed, ControlSwitchSource.Api), _ => true, options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
+            if (applied.Result == ControlSetResult.RefusedLocked)
+            {
+                return ApiResults.Refusal(StatusCodes.Status409Conflict, StateUnconfirmed, "state.json could not be trusted at start: confirm the state first; control stays off until then.");
+            }
+
+            return TypedResults.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current));
         });
 
-        endpoints.MapPost("/api/control/confirm", async (
+        endpoints.MapPost("/control/confirm", async Task<IResult> (
             HttpRequest request,
             [FromServices] IControlSwitch control,
             [FromServices] IModeSource mode,
@@ -98,18 +103,24 @@ internal static class ControlEndpoint
             [FromServices] TimeProvider time,
             CancellationToken cancellationToken) =>
         {
-            if (!request.HasJsonContentType() || await ReadFlagAsync(request, "confirm", cancellationToken).ConfigureAwait(false) is not true)
+            var read = await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false);
+            if (read.TooLarge)
             {
-                return Results.Problem("Send Content-Type: application/json with the body {\"confirm\": true}.", statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.TooLarge(read.Limit);
             }
 
-            var confirmed = await EvaluatedAsync(holder, s => s.Mode.StateConfirmed, control.Confirm, options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
-            if (!confirmed)
+            if (ReadFlag(read, "confirm") is not true)
             {
-                return Results.Json(new { code = NotLocked, message = "Nothing waits for a confirmation." }, statusCode: StatusCodes.Status409Conflict);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, "Send Content-Type: application/json with the body {\"confirm\": true}.");
             }
 
-            return Results.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current));
+            var applied = await StatusChange.ApplyAsync(StatusChange.Feed(holder), s => s.Mode.StateConfirmed, control.Confirm, _ => true, options.Value.ApiEvaluationTimeout, time, cancellationToken).ConfigureAwait(false);
+            if (!applied.Result)
+            {
+                return ApiResults.Refusal(StatusCodes.Status409Conflict, NotLocked, "Nothing waits for a confirmation.");
+            }
+
+            return TypedResults.Json(Build(control.Status, mode.Current, state, commands.Status, dispatch.Current));
         });
         return endpoints;
     }
@@ -132,61 +143,15 @@ internal static class ControlEndpoint
             [.. dispatch.Devices.Where(d => d.UnconfirmedSince is not null).Select(d => new UnconfirmedDto(d.Id.Value, d.UnconfirmedSince!.Value))]),
         [.. dispatch.Devices.Where(d => d.Baseline is { Commanded: true }).Select(d => new LeftReducedDto(d.Id.Value, ApiText.Level(d.Baseline!.Level)!, d.Baseline.Since))]);
 
-    /// <summary>Applies a change and waits until the guard evaluated it (the status shows it), so the answer reflects the mode in force.</summary>
-    private static async Task<T> EvaluatedAsync<T>(GuardStatusHolder holder, Func<GuardStatus, bool> shows, Func<T> change, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken)
-    {
-        var evaluated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnPublished(object? sender, GuardStatus published)
-        {
-            if (shows(published))
-            {
-                evaluated.TrySetResult();
-            }
-        }
-
-        holder.Published += OnPublished;
-        try
-        {
-            var result = change();
-            if (shows(holder.Current))
-            {
-                evaluated.TrySetResult();
-            }
-
-            try
-            {
-                await evaluated.Task.WaitAsync(timeout, time, cancellationToken).ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                // The switch is in force in memory either way; only the evaluation is late.
-            }
-
-            return result;
-        }
-        finally
-        {
-            holder.Published -= OnPublished;
-        }
-    }
-
     /// <summary>Exactly one key with a boolean value.</summary>
-    private static async Task<bool?> ReadFlagAsync(HttpRequest request, string key, CancellationToken cancellationToken)
+    private static bool? ReadFlag(BodyRead read, string key)
     {
-        try
-        {
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Object
-                && root.EnumerateObject().Count() == 1
-                && root.TryGetProperty(key, out var value)
-                && value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? value.GetBoolean()
-                    : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        var root = read.AsObject();
+        return root is { } body
+            && body.EnumerateObject().Count() == 1
+            && body.TryGetProperty(key, out var value)
+            && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? value.GetBoolean()
+                : null;
     }
 }

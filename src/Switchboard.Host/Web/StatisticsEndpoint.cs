@@ -87,7 +87,7 @@ internal static class StatisticsEndpoint
 
     public static IEndpointRouteBuilder MapStatisticsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/statistics", (
+        endpoints.MapGet("/statistics", IResult (
             HttpRequest request,
             [FromServices] IPresentationSource presentation,
             [FromServices] SignalClock clock,
@@ -95,12 +95,10 @@ internal static class StatisticsEndpoint
         {
             if (!TryRange(request.Query, options.Value.Retention, out var range))
             {
-                return Results.Problem(
-                    $"Range: from and to are both given or both left out, ISO 8601 instants with an offset, from before to, at most {options.Value.Retention} apart.",
-                    statusCode: StatusCodes.Status400BadRequest);
+                return ApiResults.Problem(StatusCodes.Status400BadRequest, $"Range: from and to are both given or both left out, ISO 8601 instants with an offset, from before to, at most {options.Value.Retention} apart.");
             }
 
-            return Results.Json(Build(presentation.Statistics, presentation.Report, clock.Time.GetUtcNow(), range));
+            return TypedResults.Json(Build(presentation.Statistics, presentation.Report, clock.Time.GetUtcNow(), range));
         });
         return endpoints;
     }

@@ -36,7 +36,7 @@ internal static class ExcursionsEndpoint
 {
     public static IEndpointRouteBuilder MapExcursionsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/excursions", ([FromServices] IPresentationSource presentation, [FromServices] SignalClock clock) =>
+        endpoints.MapGet("/excursions", ([FromServices] IPresentationSource presentation, [FromServices] SignalClock clock) =>
             TypedResults.Json(Build(presentation.Excursions, presentation.Report, clock.Time.GetUtcNow())));
         return endpoints;
     }

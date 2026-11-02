@@ -204,7 +204,7 @@ internal static partial class PlanEndpoint
 {
     public static IEndpointRouteBuilder MapPlanApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/plan", (
+        endpoints.MapGet("/plan", (
             [FromServices] ISignalDiagnosticsSource diagnostics,
             [FromServices] SignalClock clock,
             [FromServices] GoalTracker goals,
@@ -217,7 +217,7 @@ internal static partial class PlanEndpoint
             var sources = current.Configuration?.Configuration is { Planner: not null } configuration
                 ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone, now)
                 : null;
-            return Results.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current, ev.Current));
+            return TypedResults.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current, ev.Current));
         });
         return endpoints;
     }

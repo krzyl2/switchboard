@@ -99,7 +99,7 @@ internal static class SignalsEndpoint
 {
     public static IEndpointRouteBuilder MapSignalsApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/signals", (
+        endpoints.MapGet("/signals", (
                 [FromServices] ISignalDiagnosticsSource diagnostics,
                 [FromServices] SignalClock clock,
                 [FromServices] SignalSourceSelection selection,

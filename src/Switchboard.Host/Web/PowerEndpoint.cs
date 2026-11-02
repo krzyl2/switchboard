@@ -88,7 +88,7 @@ internal static class PowerEndpoint
 {
     public static IEndpointRouteBuilder MapPowerApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/power", ([FromServices] IPresentationSource presentation, [FromServices] SignalClock clock) =>
+        endpoints.MapGet("/power", ([FromServices] IPresentationSource presentation, [FromServices] SignalClock clock) =>
             TypedResults.Json(Build(presentation.Power, clock.Time.GetUtcNow())));
         return endpoints;
     }
