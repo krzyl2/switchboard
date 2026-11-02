@@ -11,12 +11,13 @@ export interface RequestOptions {
   method?: HttpMethod;
   /** Sent as JSON, with the content type that makes a cross-site form unable to send it without a preflight. */
   body?: unknown;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** The raw response, for a caller that reads a status other than 2xx as an answer (a refusal, a 404). */
 export function request(url: string, { method, body, signal }: RequestOptions = {}): Promise<Response> {
-  const init: RequestInit = { signal, cache: 'no-store' };
+  const init: RequestInit = { cache: 'no-store' };
+  if (signal !== undefined) init.signal = signal;
   if (method !== undefined && method !== 'GET') init.method = method;
   init.headers = { Accept: 'application/json' };
   if (body !== undefined) {

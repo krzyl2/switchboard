@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DiscoveredEntity, Readout, SetupDraft, SetupIssue, SignalDraft } from './api/setup';
 import { PHASES } from './api/signals';
 import { EntityPicker, type PickerFilter } from './EntityPicker';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang } from './i18n';
 import { ReadoutLine } from './Readout';
 import {
   CURRENT_SENSOR,
@@ -55,7 +55,6 @@ function SignalRow({
   units,
   entities,
   readouts,
-  t,
   lang,
 }: {
   setup: SetupState;
@@ -66,9 +65,9 @@ function SignalRow({
   units: readonly string[];
   entities: readonly DiscoveredEntity[] | null;
   readouts: ReadonlyMap<string, Readout>;
-  t: Messages;
   lang: Lang;
 }) {
+  const t = useT();
   const write = (next: SignalDraft) => setup.set(path, next.entity === null && next.unit === null && next.maxAge === null ? null : next);
   const current: SignalDraft = signal ?? { entity: null, unit: null, maxAge: null };
   const pick = (entity: string | null) => {
@@ -80,12 +79,12 @@ function SignalRow({
   return (
     <div class="sources-signal" data-path={path}>
       <div class="loads-field">
-        <EntityPicker id={fieldId(`${path}.entity`)} label={label} value={entity} onChange={pick} entities={entities} filter={filter} t={t} />
-        {entity !== null && <ReadoutLine readout={readouts.get(entity)} t={t} lang={lang} />}
-        <FieldErrors issues={setup.issues} field={`${path}.entity`} t={t} />
+        <EntityPicker id={fieldId(`${path}.entity`)} label={label} value={entity} onChange={pick} entities={entities} filter={filter} />
+        {entity !== null && <ReadoutLine readout={readouts.get(entity)} lang={lang} />}
+        <FieldErrors issues={setup.issues} field={`${path}.entity`} />
       </div>
       <div class="loads-grid">
-        <Field label={t['setupSources.unit']} htmlFor={fieldId(`${path}.unit`)} field={`${path}.unit`} setup={setup} t={t}>
+        <Field label={t['setupSources.unit']} htmlFor={fieldId(`${path}.unit`)} field={`${path}.unit`} setup={setup}>
           <select
             id={fieldId(`${path}.unit`)}
             class="mono"
@@ -101,23 +100,24 @@ function SignalRow({
             ))}
           </select>
         </Field>
-        <Field label={t['setupSources.maxAge']} htmlFor={fieldId(`${path}.maxAge`)} field={`${path}.maxAge`} setup={setup} t={t} hint={t['setupSources.maxAgeHint']}>
+        <Field label={t['setupSources.maxAge']} htmlFor={fieldId(`${path}.maxAge`)} field={`${path}.maxAge`} setup={setup} hint={t['setupSources.maxAgeHint']}>
           <TextInput id={fieldId(`${path}.maxAge`)} value={current.maxAge} onChange={(maxAge) => write({ ...current, maxAge })} invalid={hasError(setup, `${path}.maxAge`)} mono trim />
-          <RefreshCheck setup={setup} field={path} onSuggest={(maxAge) => write({ ...current, maxAge })} t={t} lang={lang} />
+          <RefreshCheck setup={setup} field={path} onSuggest={(maxAge) => write({ ...current, maxAge })} lang={lang} />
         </Field>
       </div>
     </div>
   );
 }
 
-function InverterForm({ setup, inverter, entities, readouts, t, lang }: { setup: SetupState; inverter: Inverter; entities: readonly DiscoveredEntity[] | null; readouts: ReadonlyMap<string, Readout>; t: Messages; lang: Lang }) {
+function InverterForm({ setup, inverter, entities, readouts, lang }: { setup: SetupState; inverter: Inverter; entities: readonly DiscoveredEntity[] | null; readouts: ReadonlyMap<string, Readout>; lang: Lang }) {
+  const t = useT();
   const set = (name: string, value: unknown) => setup.set(`sources.inverter.${name}`, value);
   const sign = inverter.sign;
   return (
     <div class="sources-inverter">
-      <SignalRow setup={setup} path="sources.inverter.power" label={t['setupSources.pv.power']} signal={inverter.power} filter={POWER_SENSOR} units={POWER_UNITS} entities={entities} readouts={readouts} t={t} lang={lang} />
+      <SignalRow setup={setup} path="sources.inverter.power" label={t['setupSources.pv.power']} signal={inverter.power} filter={POWER_SENSOR} units={POWER_UNITS} entities={entities} readouts={readouts} lang={lang} />
       <div class="loads-grid">
-        <Field label={t['setupSources.pv.sign']} htmlFor={fieldId('sources.inverter.sign')} field="sources.inverter.sign" setup={setup} t={t}>
+        <Field label={t['setupSources.pv.sign']} htmlFor={fieldId('sources.inverter.sign')} field="sources.inverter.sign" setup={setup}>
           <select
             id={fieldId('sources.inverter.sign')}
             value={sign ?? ''}
@@ -133,7 +133,7 @@ function InverterForm({ setup, inverter, entities, readouts, t, lang }: { setup:
             {sign !== null && !isInverterSign(sign) && <option value={sign}>{sign}</option>}
           </select>
         </Field>
-        <Field label={t['setupSources.pv.phase']} htmlFor={fieldId('sources.inverter.phase')} field="sources.inverter.phase" setup={setup} t={t}>
+        <Field label={t['setupSources.pv.phase']} htmlFor={fieldId('sources.inverter.phase')} field="sources.inverter.phase" setup={setup}>
           <select id={fieldId('sources.inverter.phase')} value={inverter.phase ?? ''} onChange={(e) => set('phase', (e.currentTarget as HTMLSelectElement).value || null)}>
             <option value="">{t['setupSources.pv.phase.three']}</option>
             {PHASES.map((p) => (
@@ -155,7 +155,7 @@ function InverterForm({ setup, inverter, entities, readouts, t, lang }: { setup:
           {t['setupSources.pv.asleep']}
         </label>
         <span class="sub">{t['setupSources.pv.asleepHint']}</span>
-        <FieldErrors issues={setup.issues} field="sources.inverter.unavailableAsZero" t={t} />
+        <FieldErrors issues={setup.issues} field="sources.inverter.unavailableAsZero" />
       </div>
       <fieldset class="loads-fieldset" id={fieldId('sources.inverter.phaseCurrents')} tabIndex={-1}>
         <legend>{t['setupSources.pv.currents']}</legend>
@@ -177,7 +177,6 @@ function InverterForm({ setup, inverter, entities, readouts, t, lang }: { setup:
                 units={CURRENT_UNITS}
                 entities={entities}
                 readouts={readouts}
-                t={t}
                 lang={lang}
               />
             ))}
@@ -195,7 +194,8 @@ function InverterForm({ setup, inverter, entities, readouts, t, lang }: { setup:
  * Step 3 (Sources and storage). Choosing "No PV" keeps the inverter's mapping for this visit, so
  * choosing the inverter again brings it back; a save without it removes it from the file.
  */
-export function SetupSources({ setup, t, lang, goTo }: StepProps) {
+export function SetupSources({ setup, lang, goTo }: StepProps) {
+  const t = useT();
   const discovery = useDiscovery();
   const inverter = setup.draft.sources.inverter;
   const lastInverter = useRef<Inverter | null>(inverter);
@@ -229,8 +229,8 @@ export function SetupSources({ setup, t, lang, goTo }: StepProps) {
         <p class="sub">{t['setupSources.stepLine']}</p>
       </header>
       <p>{t['setupSources.lead']}</p>
-      <SetupIssues issues={issues} t={t} />
-      <DiscoveryNotice state={discovery.state} refresh={discovery.refresh} t={t} />
+      <SetupIssues issues={issues} />
+      <DiscoveryNotice state={discovery.state} refresh={discovery.refresh} />
 
       <fieldset class="loads-fieldset sources-pv" id={fieldId('sources.inverter')} tabIndex={-1}>
         <legend>{t['setupSources.pv.title']}</legend>
@@ -244,7 +244,7 @@ export function SetupSources({ setup, t, lang, goTo }: StepProps) {
             {t['setupSources.pv.choice.inverter']}
           </label>
         </div>
-        {inverter !== null && discovery.state.kind !== 'loading' && <InverterForm setup={setup} inverter={inverter} entities={entities} readouts={readouts} t={t} lang={lang} />}
+        {inverter !== null && discovery.state.kind !== 'loading' && <InverterForm setup={setup} inverter={inverter} entities={entities} readouts={readouts} lang={lang} />}
       </fieldset>
 
       <div class="loads-block sources-storage">
@@ -254,7 +254,7 @@ export function SetupSources({ setup, t, lang, goTo }: StepProps) {
         {storage.length === 0 && <p class="sub">{t['setupSources.storage.none']}</p>}
         {discovery.state.kind !== 'loading' &&
           storage.map(({ device, index }) => (
-            <DeviceEditor key={`${index}/${setup.draft.devices.length}`} setup={setup} index={index} device={device} context={context} t={t} lang={lang} />
+            <DeviceEditor key={`${index}/${setup.draft.devices.length}`} setup={setup} index={index} device={device} context={context} lang={lang} />
           ))}
         <button
           type="button"
@@ -268,7 +268,7 @@ export function SetupSources({ setup, t, lang, goTo }: StepProps) {
         </button>
       </div>
 
-      <CheckAndContinue setup={setup} label={t['setupSources.check']} owns={owns} next="loads" goTo={goTo} t={t} />
+      <CheckAndContinue setup={setup} label={t['setupSources.check']} owns={owns} next="loads" goTo={goTo} />
     </section>
   );
 }

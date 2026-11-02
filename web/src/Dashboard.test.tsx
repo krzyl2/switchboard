@@ -12,7 +12,7 @@ import { parsePower } from './api/power';
 import powerSample from './api/power.sample.json';
 import statisticsSample from './api/statistics.sample.json';
 import { DISPATCH_REFRESH_INTERVAL_MS, POWER_REFRESH_INTERVAL_MS } from './config';
-import type { Lang } from './i18n';
+import { I18n, type Lang } from './i18n';
 import { advance, serveSamples } from './screens.test-support';
 
 let fetchMock: Mock<typeof fetch>;
@@ -36,7 +36,11 @@ function variant<T>(sample: T, change: (p: any) => void): unknown {
 
 async function show(lang: Lang = 'en', samples: Record<string, unknown> = SAMPLES): Promise<void> {
   serveSamples(fetchMock, { ...SAMPLES, ...samples });
-  render(<Dashboard lang={lang} zone={ZONE} />);
+  render(
+    <I18n lang={lang}>
+      <Dashboard lang={lang} zone={ZONE} />
+    </I18n>,
+  );
   // The hourly balance asks for its statistics once the power picture has given it the hour.
   await advance();
   await advance();
@@ -309,7 +313,11 @@ describe('dashboard: power balance', () => {
 
   it('says the hourly balance is unavailable when the statistics cannot be read', async () => {
     serveSamples(fetchMock, { 'api/power': powerSample, 'api/dispatch': dispatchSample, 'api/devices': devicesSample });
-    render(<Dashboard lang="en" zone={ZONE} />);
+    render(
+      <I18n lang="en">
+        <Dashboard lang="en" zone={ZONE} />
+      </I18n>,
+    );
     await advance();
     await advance();
 

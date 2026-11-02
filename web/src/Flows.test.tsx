@@ -9,6 +9,7 @@ import { POWER_REFRESH_INTERVAL_MS } from './config';
 import { layoutFlows, MIN_STROKE_PX, STOPPED_STROKE_PX, strokeWidth } from './flowLayout';
 import { Flows } from './Flows';
 import stylesheet from './flows.styles.css?raw';
+import { I18n } from './i18n';
 import { localClock } from './localTime';
 import { advance, serveSamples } from './screens.test-support';
 
@@ -27,7 +28,11 @@ function serve(overrides: Partial<Record<'power' | 'guard' | 'devices' | 'statis
 }
 
 async function renderFlows(lang: 'en' | 'pl' = 'en') {
-  render(<Flows lang={lang} />);
+  render(
+    <I18n lang={lang}>
+      <Flows lang={lang} />
+    </I18n>,
+  );
   // The power picture first; the guard, devices and statistics follow once it is on screen.
   await advance();
   await advance();
@@ -60,7 +65,11 @@ describe('flows: what the page asks for', () => {
   // nothing else is requested either.
   it('asks only for the power picture until one arrives', async () => {
     fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
-    render(<Flows lang="pl" />);
+    render(
+      <I18n lang="pl">
+        <Flows lang="pl" />
+      </I18n>,
+    );
     await advance();
 
     expect(screen.getByRole('heading', { name: 'Przepływy' })).toBeTruthy();

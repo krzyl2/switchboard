@@ -1,10 +1,9 @@
-import { en, type Messages } from './en';
-import { pl } from './pl';
+import type { Lang } from './messages';
 
-export type { Messages };
-export type Lang = 'en' | 'pl';
-
-export const messages: Record<Lang, Messages> = { en, pl };
+// The one entry point of the texts: every screen imports from here, never from a language file.
+export type { Messages } from './en';
+export { messages, type Lang } from './messages';
+export { I18n, useT } from './useT';
 
 /** Polish for any Polish browser locale (pl, pl-PL), English for everything else. */
 export function detectLanguage(browserLanguage: string | undefined): Lang {

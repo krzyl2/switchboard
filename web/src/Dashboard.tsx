@@ -5,7 +5,7 @@ import type { DeviceType } from './api/guard';
 import { SEGMENT_KINDS, type Balance, type DevicePower, type PhasePower, type PlannedChange, type Power, type Quantity, type ReserveBanner } from './api/power';
 import { DISPATCH_REFRESH_INTERVAL_MS, DISPATCH_REQUEST_TIMEOUT_MS } from './config';
 import { formatAge, formatAmps, formatCountdown, formatFixed, formatKw, formatKwh, formatNumber, formatQuantity, roundTo } from './format';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { browserZone, localClock, localHourStart } from './localTime';
 import { SavingsCard, TariffCard } from './Economics';
 import { HourlyBalanceCard } from './HourlyBalance';
@@ -25,7 +25,6 @@ import './dashboard.css';
 // limits, and api/statistics for the current hour. Nothing here can change what Switchboard does.
 
 interface Ctx {
-  t: Messages;
   lang: Lang;
   /** The IANA zone local times are shown in (the browser's); only this screen's edge knows it. */
   zone: string;
@@ -98,7 +97,8 @@ function amps(value: number, lang: Lang): string {
   return formatAmps(roundTo(value, 6), lang);
 }
 
-function Withdrawn<T>({ view, t, lang, zone }: { view: PollView<T> } & Ctx) {
+function Withdrawn<T>({ view, lang, zone }: { view: PollView<T> } & Ctx) {
+  const t = useT();
   // The freshness line itself (with its alert) is the first card's; here only why nothing is shown.
   if (view.kind === 'loading') return <p class="updated">{t['common.loading']}</p>;
   if (view.kind === 'live') return null;
@@ -110,7 +110,8 @@ function Withdrawn<T>({ view, t, lang, zone }: { view: PollView<T> } & Ctx) {
 }
 
 /** Export minus import since the start of the local hour, from the add-on's integrated energy. */
-function HourBalance({ at, t, lang, zone }: { at: Date } & Ctx) {
+function HourBalance({ at, lang, zone }: { at: Date } & Ctx) {
+  const t = useT();
   const from = localHourStart(at, zone);
   const view = useStatistics({ from, to: new Date(from.getTime() + HOUR_MS) });
   if (view.kind === 'loading') return <span class="sub-inline">{t['common.loading']}</span>;
@@ -132,11 +133,12 @@ function HourBalance({ at, t, lang, zone }: { at: Date } & Ctx) {
 }
 
 function BalanceRows({ power, name, ...ctx }: { power: Power; name: NameOf } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const b = power.total;
   const figures = balanceFigures(b);
   const devices = b.unknownDevices.map(name);
-  const age = (q: Quantity) => <Age reportedAt={q.reportedAt} now={power.at} lang={lang} t={t} />;
+  const age = (q: Quantity) => <Age reportedAt={q.reportedAt} now={power.at} lang={lang} />;
   const grid = b.netImport.w;
   const storage = b.storage.w;
   return (
@@ -144,7 +146,7 @@ function BalanceRows({ power, name, ...ctx }: { power: Power; name: NameOf } & C
       <dl class="dash-kv">
         <dt>{t['dashboard.production']}</dt>
         <dd data-row="production">
-          <QuantityText quantity={b.generation} t={t} lang={lang} />
+          <QuantityText quantity={b.generation} lang={lang} />
           {b.generationNote !== null && <span class="sub">{t[`generationNote.${b.generationNote}`]}</span>}
           {age(b.generation)}
         </dd>
@@ -153,23 +155,23 @@ function BalanceRows({ power, name, ...ctx }: { power: Power; name: NameOf } & C
           <span class="sub">{t['dashboard.houseNote']}</span>
         </dt>
         <dd data-row="house">
-          {figures.house !== null ? <span class="mono">{kwText(figures.house, lang)}</span> : <QuantityText quantity={b.uncontrolled} t={t} lang={lang} devices={devices} />}
+          {figures.house !== null ? <span class="mono">{kwText(figures.house, lang)}</span> : <QuantityText quantity={b.uncontrolled} lang={lang} devices={devices} />}
           {age(b.uncontrolled)}
         </dd>
         <dt>{t['dashboard.controlled']}</dt>
         <dd data-row="controlled">
-          <QuantityText quantity={b.controlled} t={t} lang={lang} devices={devices} />
+          <QuantityText quantity={b.controlled} lang={lang} devices={devices} />
           {age(b.controlled)}
         </dd>
         <dt>{t['dashboard.storage']}</dt>
         <dd data-row="storage">
-          <QuantityText quantity={b.storage} t={t} lang={lang} devices={devices} />
+          <QuantityText quantity={b.storage} lang={lang} devices={devices} />
           {storage !== null && storage !== 0 && <span class="sub-inline"> ({t[storage > 0 ? 'dashboard.charging' : 'dashboard.discharging']})</span>}
           {age(b.storage)}
         </dd>
         <dt>{t['dashboard.grid']}</dt>
         <dd data-row="grid">
-          <QuantityText quantity={b.netImport} t={t} lang={lang} />
+          <QuantityText quantity={b.netImport} lang={lang} />
           {grid !== null && grid !== 0 && <span class="sub-inline"> ({t[grid > 0 ? 'direction.import' : 'direction.export']})</span>}
           {age(b.netImport)}
         </dd>
@@ -186,7 +188,7 @@ function BalanceRows({ power, name, ...ctx }: { power: Power; name: NameOf } & C
 }
 
 function BalanceCard({ view, name, ...ctx }: { view: PollView<Power>; name: NameOf } & Ctx) {
-  const { t } = ctx;
+  const t = useT();
   return (
     <section class="card" aria-labelledby="balance-title">
       <header class="cardhead">
@@ -205,7 +207,8 @@ function distinct(values: number[]): number[] {
   return [...new Set(values)];
 }
 
-function Legend({ phases, t, lang }: { phases: PhasePower[] } & Ctx) {
+function Legend({ phases, lang }: { phases: PhasePower[] } & Ctx) {
+  const t = useT();
   const present = new Set(phases.flatMap((p) => p.bar.map((s) => s.kind)));
   // UI-11: the legend always names base, declared devices and foreign load, each with its own colour.
   const kinds = SEGMENT_KINDS.filter((kind) => kind === 'base' || kind === 'controlled' || kind === 'foreign' || present.has(kind));
@@ -249,7 +252,8 @@ function measuredOverReserve(phase: PhasePower): boolean {
 }
 
 function PhaseLoad({ power, name, ...ctx }: { power: Power; name: NameOf } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const phases = power.phases;
   const ratings = distinct(phases.map((p) => p.ratingA));
   const thresholds = distinct(phases.map((p) => p.reserveThresholdA));
@@ -274,7 +278,7 @@ function PhaseLoad({ power, name, ...ctx }: { power: Power; name: NameOf } & Ctx
       ) : (
         <div class="phasebars">
           {phases.map((phase) => (
-            <PhaseBar key={phase.phase} phase={phase} t={t} lang={lang}>
+            <PhaseBar key={phase.phase} phase={phase} lang={lang}>
               {phase.direction === 'export' && <small>{t['direction.export']}</small>}
               {measuredOverReserve(phase) && (
                 <small>
@@ -282,7 +286,7 @@ function PhaseLoad({ power, name, ...ctx }: { power: Power; name: NameOf } & Ctx
                 </small>
               )}
               <small>
-                <Age reportedAt={phase.currentReportedAt} now={power.at} lang={lang} t={t} />
+                <Age reportedAt={phase.currentReportedAt} now={power.at} lang={lang} />
               </small>
             </PhaseBar>
           ))}
@@ -329,7 +333,8 @@ function Banner({
   commandPath,
   ...ctx
 }: { banner: ReserveBanner; power: Power; configs: DeviceConfig[] | null; name: NameOf; commandPath: boolean | null } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const phase = power.phases.find((p) => p.phase === banner.phase) ?? null;
   const current = Math.abs(banner.currentA);
   // Signed: an exporting phase is never over its reserve threshold by its measured current.
@@ -512,7 +517,7 @@ function blockingReason(device: DispatchDevice, dispatch: DispatchStatus, t: Mes
 }
 
 /** One line saying why the device is in its state (UI-10: a stopped device keeps its blocking reason). */
-function queueReason(state: QueueState, device: DispatchDevice, dispatch: DispatchStatus, { t, lang, zone }: Ctx): string {
+function queueReason(state: QueueState, device: DispatchDevice, dispatch: DispatchStatus, t: Messages, { lang, zone }: Ctx): string {
   const sentence = (code: ReasonCode | null) => (code === null ? null : reasonSentence(t, code));
   switch (state) {
     case 'held':
@@ -549,7 +554,8 @@ function oldest(times: (Date | null)[]): Date | null {
 }
 
 /** The device's power from the power picture, with its source: measured (and how old), rated, or unknown. */
-function DevicePowerText({ view, hasDraw, now, t, lang }: { view: DevicePower | null; hasDraw: boolean; now: Date | null } & Ctx) {
+function DevicePowerText({ view, hasDraw, now, lang }: { view: DevicePower | null; hasDraw: boolean; now: Date | null } & Ctx) {
+  const t = useT();
   if (view === null) return <span class="mono">{t['common.none']}</span>;
   if (view.totalW === null) {
     return <span class="unknown">{fill(t['common.unknownBecause'], { reason: t[hasDraw ? 'dashboard.drawNotFresh' : 'dashboard.noDraw'] })}</span>;
@@ -563,7 +569,7 @@ function DevicePowerText({ view, hasDraw, now, t, lang }: { view: DevicePower | 
         {reportedAt !== null && now !== null && (
           <>
             {' · '}
-            <Age reportedAt={reportedAt} now={now} lang={lang} t={t} />
+            <Age reportedAt={reportedAt} now={now} lang={lang} />
           </>
         )}
       </small>
@@ -579,7 +585,8 @@ function QueueRow({
   name,
   ...ctx
 }: { device: DispatchDevice; dispatch: DispatchStatus; power: Power | null; config: DeviceConfig | null; name: NameOf } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const voltage = power?.phases.find((p) => p.phase === device.phases[0])?.voltageV ?? null;
   const state = queueState(device, config, voltage);
   const meta: string[] = [device.phases.join(', ')];
@@ -613,7 +620,7 @@ function QueueRow({
         />
       </div>
       <p class="dash-meta">{meta.join(' · ')}</p>
-      <p class="dash-reason">{queueReason(state, device, dispatch, ctx)}</p>
+      <p class="dash-reason">{queueReason(state, device, dispatch, t, ctx)}</p>
     </li>
   );
 }
@@ -633,7 +640,8 @@ function QueueCard({
   name,
   ...ctx
 }: { view: PollView<DispatchStatus>; power: Power | null; configs: DeviceConfig[] | null; name: NameOf } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const dispatch = view.kind === 'live' ? view.data : null;
   // Every declared device keeps its row, whatever its state (UI-10): dispatch lists them all.
   const devices = dispatch === null ? [] : [...dispatch.devices].sort(byStartRank);
@@ -644,7 +652,7 @@ function QueueCard({
         <p class="sub">{t['dashboard.queueSub']}</p>
       </header>
       {/* Its age on the add-on's clock, which the power picture carries (dispatch's own time is the step's). */}
-      <PollStatus view={view} evaluatedAt={dispatch?.at ?? null} now={power?.at} lang={lang} t={t} />
+      <PollStatus view={view} evaluatedAt={dispatch?.at ?? null} now={power?.at} lang={lang} />
       {dispatch !== null && !dispatch.commandPath && <p class="sub">{t['dashboard.queueShadow']}</p>}
       {dispatch !== null &&
         (devices.length === 0 ? (
@@ -671,8 +679,8 @@ function QueueCard({
 // ---------------------------------------------------------------------------------------------
 
 export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: string }) {
-  const t = messages[lang];
-  const ctx: Ctx = { t, lang, zone };
+  const t = useT();
+  const ctx: Ctx = { lang, zone };
   const power = usePower();
   const dispatch = usePoll(fetchDispatch, DISPATCH_REFRESH_INTERVAL_MS, DISPATCH_REQUEST_TIMEOUT_MS);
   const devices = useDevices();
@@ -687,7 +695,7 @@ export function Dashboard({ lang, zone = browserZone() }: { lang: Lang; zone?: s
           <h2 id="dashboard-title">{t['dashboard.title']}</h2>
           <p class="sub">{t['dashboard.lead']}</p>
         </header>
-        <PollStatus view={power} evaluatedAt={live?.evaluatedAt ?? null} now={live?.at} lang={lang} t={t} />
+        <PollStatus view={power} evaluatedAt={live?.evaluatedAt ?? null} now={live?.at} lang={lang} />
         {live !== null && <PhaseLoad power={live} name={name} {...ctx} />}
       </section>
       {live?.banners.map((banner) => (

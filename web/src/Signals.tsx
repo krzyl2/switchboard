@@ -11,7 +11,7 @@ import type {
   SourceStatus,
 } from './api/signals';
 import { formatAge, formatInterval, formatQuantity } from './format';
-import { messages, type Lang, type Messages } from './i18n';
+import { useT, type Lang, type Messages } from './i18n';
 import { StateLabel, Timestamp, type Tone } from './ui';
 import { useSignals } from './useSignals';
 
@@ -33,7 +33,6 @@ const CONFIGURATION_TONE: Record<ConfigurationState, Tone> = { valid: 'ok', inva
 const NO_VALUE = '—';
 
 interface Props {
-  t: Messages;
   lang: Lang;
 }
 
@@ -52,7 +51,8 @@ function sourceStatusLabel(t: Messages, status: SourceStatus): string {
   }
 }
 
-function SourceBanner({ signals, t }: { signals: Signals; t: Messages }) {
+function SourceBanner({ signals }: { signals: Signals }) {
+  const t = useT();
   const { kind, status } = signals.source;
   return (
     <>
@@ -78,7 +78,7 @@ function SourceBanner({ signals, t }: { signals: Signals; t: Messages }) {
   );
 }
 
-function connectionSummary(connection: Connection, { t, lang }: Props): string {
+function connectionSummary(connection: Connection, t: Messages, { lang }: Props): string {
   const characteristic =
     connection.characteristic === 'unknown' ? t.characteristicUnknown : connection.characteristic;
   return [
@@ -89,7 +89,8 @@ function connectionSummary(connection: Connection, { t, lang }: Props): string {
   ].join(' · ');
 }
 
-function IssueItem({ issue, t }: { issue: Issue; t: Messages }) {
+function IssueItem({ issue }: { issue: Issue }) {
+  const t = useT();
   const position = [
     issue.line === null ? null : `${t.issueLine} ${issue.line}`,
     issue.column === null ? null : `${t.issueColumn} ${issue.column}`,
@@ -109,7 +110,8 @@ function IssueItem({ issue, t }: { issue: Issue; t: Messages }) {
   );
 }
 
-function ConfigurationIssues({ configuration, t }: { configuration: ConfigurationInfo; t: Messages }) {
+function ConfigurationIssues({ configuration }: { configuration: ConfigurationInfo }) {
+  const t = useT();
   const unusable = configuration.state !== 'valid';
   return (
     <>
@@ -126,7 +128,7 @@ function ConfigurationIssues({ configuration, t }: { configuration: Configuratio
               <h3>{t.configurationErrors}</h3>
               <ul>
                 {configuration.errors.map((issue, i) => (
-                  <IssueItem key={i} issue={issue} t={t} />
+                  <IssueItem key={i} issue={issue} />
                 ))}
               </ul>
             </>
@@ -140,7 +142,7 @@ function ConfigurationIssues({ configuration, t }: { configuration: Configuratio
           </h3>
           <ul>
             {configuration.warnings.map((issue, i) => (
-              <IssueItem key={i} issue={issue} t={t} />
+              <IssueItem key={i} issue={issue} />
             ))}
           </ul>
         </div>
@@ -150,7 +152,8 @@ function ConfigurationIssues({ configuration, t }: { configuration: Configuratio
 }
 
 function Overview({ signals, ...props }: { signals: Signals } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const { configuration, source, connection } = signals;
   return (
     <section class="card">
@@ -170,7 +173,7 @@ function Overview({ signals, ...props }: { signals: Signals } & Props) {
         {connection && (
           <>
             <dt>{t.rowConnection}</dt>
-            <dd>{connectionSummary(connection, props)}</dd>
+            <dd>{connectionSummary(connection, t, props)}</dd>
           </>
         )}
         <dt>{t.rowSource}</dt>
@@ -179,12 +182,13 @@ function Overview({ signals, ...props }: { signals: Signals } & Props) {
           <StateLabel tone={SOURCE_TONE[source.status]} label={sourceStatusLabel(t, source.status)} />
         </dd>
       </dl>
-      <ConfigurationIssues configuration={configuration} t={t} />
+      <ConfigurationIssues configuration={configuration} />
     </section>
   );
 }
 
-function ReserveCell({ phase, t, lang }: { phase: Phase } & Props) {
+function ReserveCell({ phase, lang }: { phase: Phase } & Props) {
+  const t = useT();
   const reserve = phase.reserve;
   if (reserve === null) return <td class="num">{NO_VALUE}</td>;
   // Without a detected refresh the derivation assumes the worst case, max_age.
@@ -214,7 +218,8 @@ function ageAt(at: Date, generatedAt: Date): number {
 }
 
 function PhasesTable({ phases, generatedAt, ...props }: { phases: Phase[]; generatedAt: Date } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   return (
     <section class="card">
       <h2>{t.phasesTitle}</h2>
@@ -265,7 +270,7 @@ function PhasesTable({ phases, generatedAt, ...props }: { phases: Phase[]; gener
                     {t.rejected}: {phase.balanceRejections}
                   </span>
                 </td>
-                <ReserveCell phase={phase} t={t} lang={lang} />
+                <ReserveCell phase={phase} lang={lang} />
               </tr>
             ))}
           </tbody>
@@ -275,7 +280,8 @@ function PhasesTable({ phases, generatedAt, ...props }: { phases: Phase[]; gener
   );
 }
 
-function DirectionCell({ direction, t }: { direction: Direction | null; t: Messages }) {
+function DirectionCell({ direction }: { direction: Direction | null }) {
+  const t = useT();
   if (direction === null) return <td>{NO_VALUE}</td>;
   const label = t[`direction.${direction.direction}`];
   return (
@@ -296,7 +302,8 @@ function DirectionCell({ direction, t }: { direction: Direction | null; t: Messa
 // SIG-05: while a signal is not fresh, every device that depends on it is unsafe (held off). A
 // device's own draw is the exception: stale, it is no longer trusted (no relief, no increases), but
 // nothing is held off because of it.
-function DependentsCell({ signal, t }: { signal: Signal; t: Messages }) {
+function DependentsCell({ signal }: { signal: Signal }) {
+  const t = useT();
   if (signal.dependentDevices.length === 0) return <td>{NO_VALUE}</td>;
   const draw = signal.role === 'device_current' || signal.role === 'device_power';
   return (
@@ -315,7 +322,8 @@ function DependentsCell({ signal, t }: { signal: Signal; t: Messages }) {
   );
 }
 
-function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
+function SignalRow({ signal, lang }: { signal: Signal } & Props) {
+  const t = useT();
   const role = t[`role.${signal.role}`];
   let value: string;
   if (signal.value === null) value = NO_VALUE;
@@ -370,14 +378,15 @@ function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
         )}
         {signal.refreshIntervals > 0 && <span class="sub">n = {signal.refreshIntervals}</span>}
       </td>
-      <DirectionCell direction={signal.direction} t={t} />
-      <DependentsCell signal={signal} t={t} />
+      <DirectionCell direction={signal.direction} />
+      <DependentsCell signal={signal} />
     </tr>
   );
 }
 
 function SignalsTable({ signals, updatedAt, ...props }: { signals: Signals; updatedAt: Date } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const { rejections } = signals;
   return (
     <section class="card">
@@ -420,7 +429,7 @@ function SignalsTable({ signals, updatedAt, ...props }: { signals: Signals; upda
 }
 
 export function SignalsPage({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  const t = useT();
   const view = useSignals();
 
   if (view.kind === 'loading') {
@@ -447,10 +456,10 @@ export function SignalsPage({ lang }: { lang: Lang }) {
   }
   return (
     <>
-      <SourceBanner signals={view.data} t={t} />
-      <Overview signals={view.data} t={t} lang={lang} />
-      <PhasesTable phases={view.data.phases} generatedAt={view.data.generatedAt} t={t} lang={lang} />
-      <SignalsTable signals={view.data} updatedAt={view.updatedAt} t={t} lang={lang} />
+      <SourceBanner signals={view.data} />
+      <Overview signals={view.data} lang={lang} />
+      <PhasesTable phases={view.data.phases} generatedAt={view.data.generatedAt} lang={lang} />
+      <SignalsTable signals={view.data} updatedAt={view.updatedAt} lang={lang} />
     </>
   );
 }

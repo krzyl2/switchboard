@@ -29,7 +29,7 @@ import { PHASES } from './api/signals';
 import { SETUP_REQUEST_TIMEOUT_MS, SETUP_SELF_TEST_REFRESH_INTERVAL_MS, SETUP_SELF_TEST_REQUEST_TIMEOUT_MS } from './config';
 import { EntityPicker, matchesFilter, type PickerFilter } from './EntityPicker';
 import { formatAge, formatInterval, formatNumber, formatQuantity } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
 import { parseNumber } from './parseNumber';
 import { ReadoutLine } from './Readout';
@@ -86,7 +86,8 @@ export function discoveredEntities(state: DiscoveryState): DiscoveredEntity[] | 
 }
 
 /** Whether discovery is still loading, with what the user should know about its result. */
-export function DiscoveryNotice({ state, refresh, t }: { state: DiscoveryState; refresh: () => void; t: Messages }) {
+export function DiscoveryNotice({ state, refresh }: { state: DiscoveryState; refresh: () => void }) {
+  const t = useT();
   if (state.kind === 'loading') return <p class="updated">{t['setupLoads.discovery.loading']}</p>;
   const notes: string[] = [];
   if (state.kind === 'unavailable') notes.push(t['setupLoads.discovery.unavailable']);
@@ -128,7 +129,8 @@ export const POWER_SENSOR: PickerFilter = { domains: ['sensor'], deviceClasses: 
  * A numeric field that keeps what the user is typing ("0," on the way to "0,35") and commits the
  * parsed number to the draft; text that is not a number clears the value and says so.
  */
-export function NumberInput({ id, value, onChange, invalid, t }: { id: string; value: number | null; onChange: (value: number | null) => void; invalid: boolean; t: Messages }) {
+export function NumberInput({ id, value, onChange, invalid }: { id: string; value: number | null; onChange: (value: number | null) => void; invalid: boolean }) {
+  const t = useT();
   const [text, setText] = useState(value === null ? '' : String(value));
   useEffect(() => {
     const parsed = parseNumber(text);
@@ -199,7 +201,8 @@ export function TextInput({
 }
 
 /** The errors the add-on reported at exactly this field, under it. */
-export function FieldErrors({ issues, field, t }: { issues: readonly SetupIssue[]; field: string; t: Messages }) {
+export function FieldErrors({ issues, field }: { issues: readonly SetupIssue[]; field: string }) {
+  const t = useT();
   const own = issues.filter((i) => i.field === field && i.severity === 'error');
   if (own.length === 0) return null;
   return (
@@ -214,13 +217,13 @@ export function FieldErrors({ issues, field, t }: { issues: readonly SetupIssue[
 }
 
 /** One labelled field with its hint and the errors at it. */
-export function Field({ label, htmlFor, hint, field, setup, t, children }: { label: string; htmlFor: string; hint?: string; field: string; setup: SetupState; t: Messages; children: ComponentChildren }) {
+export function Field({ label, htmlFor, hint, field, setup, children }: { label: string; htmlFor: string; hint?: string; field: string; setup: SetupState; children: ComponentChildren }) {
   return (
     <div class="loads-field">
       <label for={htmlFor}>{label}</label>
       {children}
       {hint !== undefined && <span class="sub">{hint}</span>}
-      <FieldErrors issues={setup.issues} field={field} t={t} />
+      <FieldErrors issues={setup.issues} field={field} />
     </div>
   );
 }
@@ -228,7 +231,8 @@ export function Field({ label, htmlFor, hint, field, setup, t, children }: { lab
 export const hasError = (setup: SetupState, field: string) => setup.issues.some((i) => i.field === field && i.severity === 'error');
 
 /** The add-on's verdict on a signal's refresh against its max age (SIG-07), with its suggestion. */
-export function RefreshCheck({ setup, field, onSuggest, t, lang }: { setup: SetupState; field: string; onSuggest: (maxAge: string) => void; t: Messages; lang: Lang }) {
+export function RefreshCheck({ setup, field, onSuggest, lang }: { setup: SetupState; field: string; onSuggest: (maxAge: string) => void; lang: Lang }) {
+  const t = useT();
   const check = setup.validation?.checks.refresh.find((c) => c.field === field);
   if (check === undefined) return null;
   const maxAge = check.maxAgeS === null ? '—' : formatInterval(check.maxAgeS, lang);
@@ -321,7 +325,8 @@ function prefillSummary(template: Template, t: Messages, lang: Lang): string {
   return parts.join(', ');
 }
 
-function TemplateCards({ setup, t, lang, onAdded }: { setup: SetupState; t: Messages; lang: Lang; onAdded: (index: number) => void }) {
+function TemplateCards({ setup, lang, onAdded }: { setup: SetupState; lang: Lang; onAdded: (index: number) => void }) {
+  const t = useT();
   if (setup.templates.length === 0) return null;
   return (
     <div class="loads-block">
@@ -402,7 +407,8 @@ const reasonText = (t: Messages, reason: StepSummary['reason']) => t[`setupLoads
  * A verdict in words. An inconclusive result is "not confirmed" with its reason, never a pass; a
  * mismatch names the phase that rose against the declared one.
  */
-export function VerdictBadge({ summary, declared, t }: { summary: Pick<StepSummary, 'verdict' | 'observedPhase' | 'reason'>; declared: string | null; t: Messages }) {
+export function VerdictBadge({ summary, declared }: { summary: Pick<StepSummary, 'verdict' | 'observedPhase' | 'reason'>; declared: string | null }) {
+  const t = useT();
   const tone: Tone = summary.verdict === 'confirmed' ? 'ok' : summary.verdict === 'mismatch' ? 'crit' : 'warn';
   const label =
     summary.verdict === 'confirmed'
@@ -417,7 +423,8 @@ export function VerdictBadge({ summary, declared, t }: { summary: Pick<StepSumma
   );
 }
 
-function Counts({ summary, t }: { summary: StepSummary; t: Messages }) {
+function Counts({ summary }: { summary: StepSummary }) {
+  const t = useT();
   return (
     <span class="sub-inline">
       {fill(t['setupLoads.verdict.counts'], { confirmed: String(summary.confirmed), mismatched: String(summary.mismatched), inconclusive: String(summary.inconclusive) })}
@@ -435,7 +442,8 @@ function deltaText(observation: Observation, lang: Lang): string {
 }
 
 /** Switchings with the step of every phase, the phase that rose and the verdict (a table that scrolls at 400 px). */
-function Observations({ observations, declared, judged, t, lang }: { observations: readonly Observation[]; declared: string | null; judged: boolean; t: Messages; lang: Lang }) {
+function Observations({ observations, declared, judged, lang }: { observations: readonly Observation[]; declared: string | null; judged: boolean; lang: Lang }) {
+  const t = useT();
   if (observations.length === 0) return null;
   return (
     <div class="tablewrap">
@@ -463,7 +471,7 @@ function Observations({ observations, declared, judged, t, lang }: { observation
                 {o.houseLoad && <span class="sub">{t['setupLoads.obs.houseLoad']}</span>}
                 {o.ratingRatio !== null && <span class="sub">{fill(t['setupLoads.obs.ratio'], { ratio: formatNumber(o.ratingRatio, lang, 2) })}</span>}
               </td>
-              <td>{judged ? <VerdictBadge summary={o} declared={declared} t={t} /> : o.observedPhase === null ? '—' : fill(t['setupLoads.obs.stepOn'], { phase: o.observedPhase })}</td>
+              <td>{judged ? <VerdictBadge summary={o} declared={declared} /> : o.observedPhase === null ? '—' : fill(t['setupLoads.obs.stepOn'], { phase: o.observedPhase })}</td>
             </tr>
           ))}
         </tbody>
@@ -549,7 +557,8 @@ function refusalText(refusal: ActiveTestRefusal, t: Messages, lang: Lang): strin
   return t[`setupLoads.active.refusal.${refusal.code}`];
 }
 
-function Refusals({ refusals, t, lang }: { refusals: readonly ActiveTestRefusal[]; t: Messages; lang: Lang }) {
+function Refusals({ refusals, lang }: { refusals: readonly ActiveTestRefusal[]; lang: Lang }) {
+  const t = useT();
   return (
     <ul class="loads-active-refusals">
       {refusals.map((refusal, n) => (
@@ -562,7 +571,8 @@ function Refusals({ refusals, t, lang }: { refusals: readonly ActiveTestRefusal[
 }
 
 /** Whether the test may start now, with the add-on's reasons and the expected duration. */
-function ActivePreconditions({ state, t, lang }: { state: PollView<ActiveTestPreconditions | null>; t: Messages; lang: Lang }) {
+function ActivePreconditions({ state, lang }: { state: PollView<ActiveTestPreconditions | null>; lang: Lang }) {
+  const t = useT();
   if (state.kind === 'unavailable') return <p class="sub">{t['setupLoads.active.preconditionsUnavailable']}</p>;
   if (state.kind === 'loading' || state.data === null) return <p class="updated">{t['setupLoads.active.checking']}</p>;
   const { ok, refusals, expectedDurationS } = state.data;
@@ -571,7 +581,7 @@ function ActivePreconditions({ state, t, lang }: { state: PollView<ActiveTestPre
   return (
     <div class="loads-active-blocked">
       <p>{t['setupLoads.active.blocked']}</p>
-      <Refusals refusals={refusals} t={t} lang={lang} />
+      <Refusals refusals={refusals} lang={lang} />
       {duration !== null && <p class="sub">{fill(t['setupLoads.active.duration'], { duration })}</p>}
     </div>
   );
@@ -604,7 +614,8 @@ function stepState(test: ActiveTest, step: ActiveStep): StepState {
  * it reports the device on, it is not back, whatever an older readout says; otherwise the live
  * state says whether the off has arrived.
  */
-function ReturnToPrior({ test, readout, addOnSeesOn, t, lang }: { test: ActiveTest; readout: Readout | undefined; addOnSeesOn: boolean; t: Messages; lang: Lang }) {
+function ReturnToPrior({ test, readout, addOnSeesOn, lang }: { test: ActiveTest; readout: Readout | undefined; addOnSeesOn: boolean; lang: Lang }) {
+  const t = useT();
   const live = readout?.status === 'found' ? readout.state : null;
   const [restored, text] =
     test.state === 'finished' && test.offAt !== null
@@ -627,16 +638,15 @@ function ActiveTestProgress({
   draftPhase,
   readout,
   addOnSeesOn,
-  t,
   lang,
 }: {
   test: ActiveTest;
   draftPhase: string | null;
   readout: Readout | undefined;
   addOnSeesOn: boolean;
-  t: Messages;
   lang: Lang;
 }) {
+  const t = useT();
   const running = test.state === 'running';
   const headline =
     test.state === 'aborted'
@@ -677,14 +687,14 @@ function ActiveTestProgress({
           );
         })}
       </ol>
-      <Observations observations={test.observations} declared={test.expectedPhase} judged={test.verdict !== null} t={t} lang={lang} />
+      <Observations observations={test.observations} declared={test.expectedPhase} judged={test.verdict !== null} lang={lang} />
       {test.verdict !== null && (
         <p class="loads-active-verdict">
-          <VerdictBadge summary={test.verdict} declared={test.expectedPhase} t={t} />
+          <VerdictBadge summary={test.verdict} declared={test.expectedPhase} />
           {test.verdict.verdict === 'mismatch' && <span class="loads-field-issue">{fill(t['setupLoads.verdict.mismatchAdvice'], { observed: test.verdict.observedPhase ?? '—' })}</span>}
         </p>
       )}
-      {!running && <ReturnToPrior test={test} readout={readout} addOnSeesOn={addOnSeesOn} t={t} lang={lang} />}
+      {!running && <ReturnToPrior test={test} readout={readout} addOnSeesOn={addOnSeesOn} lang={lang} />}
     </div>
   );
 }
@@ -695,7 +705,8 @@ function ActiveTestProgress({
  * start asks once more before anything is switched. A running test is followed until it ends; a
  * finished one asks the add-on to judge the draft again, like a finished watch.
  */
-function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { setup: SetupState; device: DeviceDraft; readouts: ReadonlyMap<string, Readout>; onFinished: () => void; t: Messages; lang: Lang }) {
+function ActivePhaseTest({ setup, device, readouts, onFinished, lang }: { setup: SetupState; device: DeviceDraft; readouts: ReadonlyMap<string, Readout>; onFinished: () => void; lang: Lang }) {
+  const t = useT();
   const deviceId = device.id;
   // The device must be in the configuration in force. After a save in this visit the loaded view is
   // older than the file, so the add-on's own answer (not_declared) decides from then on.
@@ -777,7 +788,7 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
         <p class="note loads-active-save">{t['setupLoads.active.saveFirst']}</p>
       ) : (
         <>
-          {idle && <ActivePreconditions state={preconditions} t={t} lang={lang} />}
+          {idle && <ActivePreconditions state={preconditions} lang={lang} />}
           {idle && confirming ? (
             <div class="loads-confirm" role="alertdialog" aria-label={t['setupLoads.active.start']}>
               <p>{actuator === null ? fill(t['setupLoads.active.confirm'], { entity: deviceLabel(device, t), duration }) : withEntity(t['setupLoads.active.confirm'], actuator, { duration })}</p>
@@ -808,7 +819,7 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
           {run.kind === 'refused' && (
             <div class="loads-active-blocked" role="alert">
               <p>{t['setupLoads.active.refused']}</p>
-              <Refusals refusals={run.refusals} t={t} lang={lang} />
+              <Refusals refusals={run.refusals} lang={lang} />
             </div>
           )}
           {run.kind === 'failed' && <p class="loads-field-issue">{t['setupLoads.active.failed']}</p>}
@@ -820,7 +831,6 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
                   draftPhase={device.phase}
                   readout={readouts.get(test.stateEntity)}
                   addOnSeesOn={live !== null && live.refusals.some((r) => r.code === 'device_on')}
-                  t={t}
                   lang={lang}
                 />
               )}
@@ -854,7 +864,6 @@ function PhaseSelfTest({
   evidence,
   readouts,
   onFinished,
-  t,
   lang,
 }: {
   setup: SetupState;
@@ -863,9 +872,9 @@ function PhaseSelfTest({
   evidence: EvidenceState;
   readouts: ReadonlyMap<string, Readout>;
   onFinished: () => void;
-  t: Messages;
   lang: Lang;
 }) {
+  const t = useT();
   const stateEntity = device.stateEntity ?? device.actuator;
   // A watch outlives the page: the user leaves for Home Assistant to switch the device, and on the
   // way back the watch is shown again (the add-on keeps judging it on its own timer).
@@ -941,7 +950,7 @@ function PhaseSelfTest({
           <span class="sub-inline">{t['setupLoads.history.none']}</span>
         ) : (
           <>
-            <VerdictBadge summary={judged} declared={device.phase} t={t} /> <Counts summary={judged} t={t} />
+            <VerdictBadge summary={judged} declared={device.phase} /> <Counts summary={judged} />
             {judged.verdict === 'mismatch' && <p class="loads-field-issue">{fill(t['setupLoads.verdict.mismatchAdvice'], { observed: judged.observedPhase ?? '—' })}</p>}
           </>
         )}
@@ -952,7 +961,7 @@ function PhaseSelfTest({
         </button>
       </div>
 
-      <ActivePhaseTest setup={setup} device={device} readouts={readouts} onFinished={onFinished} t={t} lang={lang} />
+      <ActivePhaseTest setup={setup} device={device} readouts={readouts} onFinished={onFinished} lang={lang} />
 
       <h5>{t['setupLoads.selfTest.passiveTitle']}</h5>
       <p class="loads-selftest-passive">
@@ -972,7 +981,7 @@ function PhaseSelfTest({
         )}
       </div>
 
-      {watch.kind === 'refused' && <SetupIssues issues={watch.issues} t={t} />}
+      {watch.kind === 'refused' && <SetupIssues issues={watch.issues} />}
       {watch.kind === 'failed' && <p class="loads-field-issue">{t['setupLoads.selfTest.failed']}</p>}
       {watch.kind === 'busy' && (
         <p class="note" role="status">
@@ -988,7 +997,7 @@ function PhaseSelfTest({
             test !== null && <p>{withEntity(t['setupLoads.selfTest.watching'], test.expected.stateEntity, { time: localClock(test.expiresAt, lang) })}</p>
           ) : (
             <p>
-              {t[`setupLoads.selfTest.status.${test.status}`]} <VerdictBadge summary={test.verdict} declared={test.expected.phase} t={t} />
+              {t[`setupLoads.selfTest.status.${test.status}`]} <VerdictBadge summary={test.verdict} declared={test.expected.phase} />
               {test.verdict.verdict === 'mismatch' && <span class="loads-field-issue">{fill(t['setupLoads.verdict.mismatchAdvice'], { observed: test.verdict.observedPhase ?? '—' })}</span>}
             </p>
           )}
@@ -1000,7 +1009,7 @@ function PhaseSelfTest({
               </button>
             </p>
           )}
-          {test !== null && <Observations observations={test.observations} declared={test.expected.phase} judged t={t} lang={lang} />}
+          {test !== null && <Observations observations={test.observations} declared={test.expected.phase} judged lang={lang} />}
         </div>
       )}
 
@@ -1013,7 +1022,7 @@ function PhaseSelfTest({
           <>
             {recorded.observations.length === 0 && <p class="sub">{withEntity(t['setupLoads.history.empty'], recorded.stateEntity)}</p>}
             {recorded.observations.length > 0 && recorded.phase !== device.phase && <p class="sub">{fill(t['setupLoads.history.otherPhase'], { phase: recorded.phase })}</p>}
-            <Observations observations={recorded.observations} declared={recorded.phase} judged={recorded.phase === device.phase} t={t} lang={lang} />
+            <Observations observations={recorded.observations} declared={recorded.phase} judged={recorded.phase === device.phase} lang={lang} />
           </>
         )}
       </details>
@@ -1045,7 +1054,8 @@ const commandable = (entities: readonly DiscoveredEntity[] | null): DiscoveredEn
  * as written, marked, so it is never lost or saved blank (the add-on names the error). When Home
  * Assistant reports no options, the user types them.
  */
-function StopOptionFields({ setup, index, device, entity, readout, t }: { setup: SetupState; index: number; device: DeviceDraft; entity: DiscoveredEntity | undefined; readout: Readout | undefined; t: Messages }) {
+function StopOptionFields({ setup, index, device, entity, readout }: { setup: SetupState; index: number; device: DeviceDraft; entity: DiscoveredEntity | undefined; readout: Readout | undefined }) {
+  const t = useT();
   const offered = entity?.options ?? null;
   // The live readout once it answers (an unavailable entity says so); discovery's state until then.
   const now = readout !== undefined && readout.status !== 'pending' ? readout.state : (entity?.state ?? null);
@@ -1076,7 +1086,7 @@ function StopOptionFields({ setup, index, device, entity, readout, t }: { setup:
                 {t['setupLoads.stopOption.now']} <span class="mono">{now}</span>
               </span>
             )}
-            <FieldErrors issues={setup.issues} field={field} t={t} />
+            <FieldErrors issues={setup.issues} field={field} />
           </div>
         );
       })}
@@ -1100,15 +1110,14 @@ function StopActuatorField({
   device,
   entities,
   readouts,
-  t,
 }: {
   setup: SetupState;
   index: number;
   device: DeviceDraft;
   entities: readonly DiscoveredEntity[] | null;
   readouts: ReadonlyMap<string, Readout>;
-  t: Messages;
 }) {
+  const t = useT();
   const field = `devices[${index}].stopActuator`;
   const template = setup.templates.find((tpl) => tpl.id === device.template && tpl.type === 'modulating') ?? setup.templates.find((tpl) => tpl.type === 'modulating');
   const filter: PickerFilter = { domains: template?.stopActuatorDomains ?? [] };
@@ -1125,7 +1134,7 @@ function StopActuatorField({
   const stop = device.stopActuator;
   return (
     <div class="loads-field loads-stop">
-      <EntityPicker id={fieldId(field)} label={t['setupLoads.field.stopActuator']} value={stop} onChange={choose} entities={ordered} filter={filter} t={t} />
+      <EntityPicker id={fieldId(field)} label={t['setupLoads.field.stopActuator']} value={stop} onChange={choose} entities={ordered} filter={filter} />
       <span class="sub">{t['setupLoads.field.stopActuatorHint']}</span>
       {entities !== null &&
         (device.actuator === null ? (
@@ -1148,8 +1157,8 @@ function StopActuatorField({
             <span class="sub">{t['setupLoads.stop.check']}</span>
           </div>
         ))}
-      <FieldErrors issues={setup.issues} field={field} t={t} />
-      {isSelectStop(stop) && <StopOptionFields setup={setup} index={index} device={device} entity={entities?.find((e) => e.entityId === stop)} readout={readouts.get(stop!)} t={t} />}
+      <FieldErrors issues={setup.issues} field={field} />
+      {isSelectStop(stop) && <StopOptionFields setup={setup} index={index} device={device} entity={entities?.find((e) => e.entityId === stop)} readout={readouts.get(stop!)} />}
     </div>
   );
 }
@@ -1169,7 +1178,8 @@ export function deviceLabel(device: DeviceDraft, t: Messages): string {
   return device.name ?? device.id ?? t['setupLoads.device.unnamed'];
 }
 
-function RemoveControl({ setup, index, device, t }: { setup: SetupState; index: number; device: DeviceDraft; t: Messages }) {
+function RemoveControl({ setup, index, device }: { setup: SetupState; index: number; device: DeviceDraft }) {
+  const t = useT();
   const [confirming, setConfirming] = useState(false);
   if (!confirming) {
     return (
@@ -1198,7 +1208,8 @@ function RemoveControl({ setup, index, device, t }: { setup: SetupState; index: 
  * add-on decides again from the file on a save); a device the wizard cannot represent is shown as
  * kept as written and can only be removed. Removal always asks first.
  */
-export function DeviceEditor({ setup, index, device, context, t, lang }: { setup: SetupState; index: number; device: DeviceDraft; context: EditorContext; t: Messages; lang: Lang }) {
+export function DeviceEditor({ setup, index, device, context, lang }: { setup: SetupState; index: number; device: DeviceDraft; context: EditorContext; lang: Lang }) {
+  const t = useT();
   const path = `devices[${index}]`;
   const f = (name: string) => `${path}.${name}`;
   const id = (name: string) => fieldId(f(name));
@@ -1258,22 +1269,22 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
         <>
           <p class="sub">{t['setupLoads.kept.note']}</p>
           {device.id !== null && <p class="mono">{device.id}</p>}
-          <RemoveControl setup={setup} index={index} device={device} t={t} />
+          <RemoveControl setup={setup} index={index} device={device} />
         </>
       ) : (
         <>
           <div class="loads-grid">
-            <Field label={t['setupLoads.field.id']} htmlFor={id('id')} field={f('id')} setup={setup} t={t} hint={device.existing ? t['setupLoads.field.idFixed'] : t['setupLoads.field.idHint']}>
+            <Field label={t['setupLoads.field.id']} htmlFor={id('id')} field={f('id')} setup={setup} hint={device.existing ? t['setupLoads.field.idFixed'] : t['setupLoads.field.idHint']}>
               {device.existing ? (
                 <input id={id('id')} type="text" class="mono" value={device.id ?? ''} readOnly />
               ) : (
                 <TextInput id={id('id')} value={device.id} onChange={(v) => set('id', v)} invalid={hasError(setup, f('id'))} mono trim />
               )}
             </Field>
-            <Field label={t['setupLoads.field.name']} htmlFor={id('name')} field={f('name')} setup={setup} t={t}>
+            <Field label={t['setupLoads.field.name']} htmlFor={id('name')} field={f('name')} setup={setup}>
               <TextInput id={id('name')} value={device.name} onChange={(v) => set('name', v)} invalid={hasError(setup, f('name'))} />
             </Field>
-            <Field label={t['setupLoads.field.type']} htmlFor={id('type')} field={f('type')} setup={setup} t={t}>
+            <Field label={t['setupLoads.field.type']} htmlFor={id('type')} field={f('type')} setup={setup}>
               <input id={id('type')} type="text" value={typeLabel(device.type, t)} readOnly />
             </Field>
           </div>
@@ -1287,10 +1298,9 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
                 onChange={(v) => set('actuator', v)}
                 entities={commandable(context.entities)}
                 filter={{ domains: spec.actuatorDomains }}
-                t={t}
               />
               <span class="sub">{t['setupLoads.field.actuatorHint']}</span>
-              <FieldErrors issues={setup.issues} field={f('actuator')} t={t} />
+              <FieldErrors issues={setup.issues} field={f('actuator')} />
             </div>
             <div class="loads-field">
               <EntityPicker
@@ -1300,28 +1310,27 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
                 onChange={(v) => set('stateEntity', v)}
                 entities={context.entities}
                 filter={{ domains: spec.stateDomains }}
-                t={t}
               />
               <span class="sub">{t['setupLoads.field.stateEntityHint']}</span>
-              <FieldErrors issues={setup.issues} field={f('stateEntity')} t={t} />
+              <FieldErrors issues={setup.issues} field={f('stateEntity')} />
             </div>
-            {device.type === 'modulating' && <StopActuatorField setup={setup} index={index} device={device} entities={context.entities} readouts={context.readouts} t={t} />}
+            {device.type === 'modulating' && <StopActuatorField setup={setup} index={index} device={device} entities={context.entities} readouts={context.readouts} />}
           </div>
           {state !== null && (
             <p class="loads-readout">
-              <span class="sub-inline">{t['setupLoads.readout.label']}</span> <span class="mono">{state}</span> <ReadoutLine readout={context.readouts.get(state)} t={t} lang={lang} />
+              <span class="sub-inline">{t['setupLoads.readout.label']}</span> <span class="mono">{state}</span> <ReadoutLine readout={context.readouts.get(state)} lang={lang} />
             </p>
           )}
 
           <div class="loads-grid">
-            <Field label={t['setupLoads.field.stateReports']} htmlFor={id('stateReports')} field={f('stateReports')} setup={setup} t={t} hint={t['setupLoads.field.stateReportsHint']}>
+            <Field label={t['setupLoads.field.stateReports']} htmlFor={id('stateReports')} field={f('stateReports')} setup={setup} hint={t['setupLoads.field.stateReportsHint']}>
               <select id={id('stateReports')} value={device.stateReports ?? ''} onChange={(e) => set('stateReports', (e.currentTarget as HTMLSelectElement).value || null)}>
                 <option value="">{t['setupLoads.stateReports.default']}</option>
                 {device.stateReports === 'age' && <option value="age">{t['setupLoads.stateReports.age']}</option>}
                 <option value="on_change">{t['setupLoads.stateReports.on_change']}</option>
               </select>
             </Field>
-            <Field label={t['setupLoads.field.phase']} htmlFor={id('phase')} field={f('phase')} setup={setup} t={t} hint={t['setupLoads.field.phaseHint']}>
+            <Field label={t['setupLoads.field.phase']} htmlFor={id('phase')} field={f('phase')} setup={setup} hint={t['setupLoads.field.phaseHint']}>
               <select id={id('phase')} value={device.phase ?? ''} aria-invalid={hasError(setup, f('phase')) ? true : undefined} onChange={(e) => set('phase', (e.currentTarget as HTMLSelectElement).value || null)}>
                 <option value="">{t['setupLoads.phase.choose']}</option>
                 {PHASES.map((p) => (
@@ -1337,18 +1346,18 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
           <div class="loads-grid">
             {relay && (
               <>
-                <Field label={`${t['setupLoads.field.ratedCurrentA']} (A)`} htmlFor={id('ratedCurrentA')} field={f('ratedCurrentA')} setup={setup} t={t}>
-                  <NumberInput id={id('ratedCurrentA')} value={device.ratedCurrentA} onChange={(v) => set('ratedCurrentA', v)} invalid={hasError(setup, f('ratedCurrentA'))} t={t} />
+                <Field label={`${t['setupLoads.field.ratedCurrentA']} (A)`} htmlFor={id('ratedCurrentA')} field={f('ratedCurrentA')} setup={setup}>
+                  <NumberInput id={id('ratedCurrentA')} value={device.ratedCurrentA} onChange={(v) => set('ratedCurrentA', v)} invalid={hasError(setup, f('ratedCurrentA'))} />
                 </Field>
-                <Field label={`${t['setupLoads.field.ratedPowerW']} (W)`} htmlFor={id('ratedPowerW')} field={f('ratedPowerW')} setup={setup} t={t}>
-                  <NumberInput id={id('ratedPowerW')} value={device.ratedPowerW} onChange={(v) => set('ratedPowerW', v)} invalid={hasError(setup, f('ratedPowerW'))} t={t} />
+                <Field label={`${t['setupLoads.field.ratedPowerW']} (W)`} htmlFor={id('ratedPowerW')} field={f('ratedPowerW')} setup={setup}>
+                  <NumberInput id={id('ratedPowerW')} value={device.ratedPowerW} onChange={(v) => set('ratedPowerW', v)} invalid={hasError(setup, f('ratedPowerW'))} />
                 </Field>
               </>
             )}
             {setpoint &&
               (['min', 'max', 'step'] as const).map((name) => (
-                <Field key={name} label={`${t[`setupLoads.field.${name}`]} (A)`} htmlFor={id(name)} field={f(name)} setup={setup} t={t}>
-                  <NumberInput id={id(name)} value={device[name]} onChange={(v) => set(name, v)} invalid={hasError(setup, f(name))} t={t} />
+                <Field key={name} label={`${t[`setupLoads.field.${name}`]} (A)`} htmlFor={id(name)} field={f(name)} setup={setup}>
+                  <NumberInput id={id(name)} value={device[name]} onChange={(v) => set(name, v)} invalid={hasError(setup, f(name))} />
                 </Field>
               ))}
           </div>
@@ -1358,7 +1367,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
             <legend>{t['setupLoads.lockouts']}</legend>
             <div class="loads-grid">
               {(['reactionTime', 'minOn', 'minOff'] as const).map((name) => (
-                <Field key={name} label={t[`setupLoads.field.${name}`]} htmlFor={id(name)} field={f(name)} setup={setup} t={t}>
+                <Field key={name} label={t[`setupLoads.field.${name}`]} htmlFor={id(name)} field={f(name)} setup={setup}>
                   <TextInput id={id(name)} value={device[name]} onChange={(v) => set(name, v)} invalid={hasError(setup, f(name))} placeholder={inherited(name)} trim />
                 </Field>
               ))}
@@ -1367,11 +1376,11 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
           </fieldset>
 
           <div class="loads-grid">
-            <Field label={t['setupLoads.field.valuePerKwh']} htmlFor={id('valuePerKwh')} field={f('valuePerKwh')} setup={setup} t={t} hint={t['setupLoads.field.valuePerKwhHint']}>
-              <NumberInput id={id('valuePerKwh')} value={device.valuePerKwh} onChange={(v) => set('valuePerKwh', v)} invalid={hasError(setup, f('valuePerKwh'))} t={t} />
+            <Field label={t['setupLoads.field.valuePerKwh']} htmlFor={id('valuePerKwh')} field={f('valuePerKwh')} setup={setup} hint={t['setupLoads.field.valuePerKwhHint']}>
+              <NumberInput id={id('valuePerKwh')} value={device.valuePerKwh} onChange={(v) => set('valuePerKwh', v)} invalid={hasError(setup, f('valuePerKwh'))} />
             </Field>
             {device.type !== 'storage' && (
-              <Field label={t['setupLoads.field.start']} htmlFor={id('start')} field={f('start')} setup={setup} t={t} hint={t['setupLoads.field.startHint']}>
+              <Field label={t['setupLoads.field.start']} htmlFor={id('start')} field={f('start')} setup={setup} hint={t['setupLoads.field.startHint']}>
                 {/* No choice yet shows the shipped default; the add-on writes start: only when it differs from the file's default or the file had it. */}
                 <select id={id('start')} value={device.start ?? 'restore_only'} aria-invalid={hasError(setup, f('start')) ? true : undefined} onChange={(e) => set('start', (e.currentTarget as HTMLSelectElement).value)}>
                   {START_POLICIES.map((policy) => (
@@ -1388,7 +1397,6 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               htmlFor={id('circuitGroup')}
               field={f('circuitGroup')}
               setup={setup}
-              t={t}
               hint={declaredGroups === null ? t['setupLoads.field.circuitGroupHint'] : `${t['setupLoads.field.circuitGroupHint']} ${fill(t['setupLoads.circuitGroups.declared'], { summary: declaredGroups })}`}
             >
               <TextInput id={id('circuitGroup')} value={device.circuitGroup} onChange={(v) => set('circuitGroup', v)} invalid={hasError(setup, f('circuitGroup'))} mono trim list={`${id('circuitGroup')}-names`} />
@@ -1399,7 +1407,7 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               </datalist>
             </Field>
             {relay && (
-              <Field label={t['setupLoads.field.rotationGroup']} htmlFor={id('rotationGroup')} field={f('rotationGroup')} setup={setup} t={t} hint={t['setupLoads.field.rotationGroupHint']}>
+              <Field label={t['setupLoads.field.rotationGroup']} htmlFor={id('rotationGroup')} field={f('rotationGroup')} setup={setup} hint={t['setupLoads.field.rotationGroupHint']}>
                 <TextInput id={id('rotationGroup')} value={device.rotationGroup} onChange={(v) => set('rotationGroup', v)} invalid={hasError(setup, f('rotationGroup'))} mono trim list={`${id('rotationGroup')}-names`} />
                 <datalist id={`${id('rotationGroup')}-names`}>
                   {rotationNames.map((name) => (
@@ -1426,15 +1434,14 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
                       onChange={(v) => setDraw(key, v)}
                       entities={context.entities}
                       filter={key === 'current' ? CURRENT_SENSOR : POWER_SENSOR}
-                      t={t}
                     />
-                    {entity !== null && <ReadoutLine readout={context.readouts.get(entity)} t={t} lang={lang} />}
-                    {entity !== null && <RefreshCheck setup={setup} field={f(`draw.${key}`)} onSuggest={(v) => setDraw('maxAge', v)} t={t} lang={lang} />}
-                    <FieldErrors issues={setup.issues} field={f(`draw.${key}`)} t={t} />
+                    {entity !== null && <ReadoutLine readout={context.readouts.get(entity)} lang={lang} />}
+                    {entity !== null && <RefreshCheck setup={setup} field={f(`draw.${key}`)} onSuggest={(v) => setDraw('maxAge', v)} lang={lang} />}
+                    <FieldErrors issues={setup.issues} field={f(`draw.${key}`)} />
                   </div>
                 );
               })}
-              <Field label={t['setupLoads.draw.maxAge']} htmlFor={fieldId(f('draw.maxAge'))} field={f('draw.maxAge')} setup={setup} t={t}>
+              <Field label={t['setupLoads.draw.maxAge']} htmlFor={fieldId(f('draw.maxAge'))} field={f('draw.maxAge')} setup={setup}>
                 <TextInput
                   id={fieldId(f('draw.maxAge'))}
                   value={device.draw?.maxAge ?? null}
@@ -1455,14 +1462,13 @@ export function DeviceEditor({ setup, index, device, context, t, lang }: { setup
               evidence={context.evidence ?? { kind: 'unavailable' }}
               readouts={context.readouts}
               onFinished={context.onFinishedSelfTest}
-              t={t}
               lang={lang}
             />
           ) : (
             device.type !== 'storage' && <p class="sub loads-selftest-na">{t['setupLoads.selfTest.notApplicable']}</p>
           )}
 
-          <RemoveControl setup={setup} index={index} device={device} t={t} />
+          <RemoveControl setup={setup} index={index} device={device} />
         </>
       )}
     </article>
@@ -1479,7 +1485,8 @@ export function deviceIndexOf(field: string | null): number | null {
   return match === null ? null : Number(match[1]);
 }
 
-export function CheckAndContinue({ setup, label, owns, next, goTo, t }: { setup: SetupState; label: string; owns: (issue: SetupIssue) => boolean; next: StepName; goTo: (step: StepName) => void; t: Messages }) {
+export function CheckAndContinue({ setup, label, owns, next, goTo }: { setup: SetupState; label: string; owns: (issue: SetupIssue) => boolean; next: StepName; goTo: (step: StepName) => void }) {
+  const t = useT();
   const [failed, setFailed] = useState(false);
   const check = async () => {
     const result = await setup.validate();
@@ -1539,7 +1546,8 @@ export function deviceEntities(device: DeviceDraft): (string | null)[] {
  * readouts, phase, groups and start policy, a charger's stop actuator, and the phase self-test
  * (automatic and passive) of an on/off device. Storage devices are edited in step 3.
  */
-export function SetupLoads({ setup, t, lang, goTo }: StepProps) {
+export function SetupLoads({ setup, lang, goTo }: StepProps) {
+  const t = useT();
   const discovery = useDiscovery();
   const evidence = useEvidence();
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
@@ -1573,9 +1581,9 @@ export function SetupLoads({ setup, t, lang, goTo }: StepProps) {
         <p class="sub">{t['setupLoads.stepLine']}</p>
       </header>
       <p>{t['setupLoads.lead']}</p>
-      <SetupIssues issues={setup.issuesOf('loads').filter(owns)} t={t} />
-      <DiscoveryNotice state={discovery.state} refresh={discovery.refresh} t={t} />
-      <TemplateCards setup={setup} t={t} lang={lang} onAdded={setFocusIndex} />
+      <SetupIssues issues={setup.issuesOf('loads').filter(owns)} />
+      <DiscoveryNotice state={discovery.state} refresh={discovery.refresh} />
+      <TemplateCards setup={setup} lang={lang} onAdded={setFocusIndex} />
 
       <div class="loads-block">
         <h3>{t['setupLoads.devices.title']}</h3>
@@ -1596,11 +1604,11 @@ export function SetupLoads({ setup, t, lang, goTo }: StepProps) {
         {discovery.state.kind !== 'loading' &&
           devices.map(({ device, index }) => (
             // Keyed by position and count: a removal or an addition starts every form's local state afresh.
-            <DeviceEditor key={`${index}/${setup.draft.devices.length}`} setup={setup} index={index} device={device} context={context} t={t} lang={lang} />
+            <DeviceEditor key={`${index}/${setup.draft.devices.length}`} setup={setup} index={index} device={device} context={context} lang={lang} />
           ))}
       </div>
 
-      <CheckAndContinue setup={setup} label={t['setupLoads.check']} owns={owns} next="mode" goTo={goTo} t={t} />
+      <CheckAndContinue setup={setup} label={t['setupLoads.check']} owns={owns} next="mode" goTo={goTo} />
     </section>
   );
 }

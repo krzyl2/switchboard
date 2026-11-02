@@ -11,7 +11,7 @@ import startedSample from './api/setup-self-test-started.sample.json';
 import selfTestSample from './api/setup-self-test.sample.json';
 import templatesSample from './api/setup-templates.sample.json';
 import validationSample from './api/setup-validation.sample.json';
-import { messages, type Lang } from './i18n';
+import { I18n, type Lang } from './i18n';
 import { advance, respond } from './screens.test-support';
 import type { StepName } from './setupDraft';
 import { useSetup, type SetupState, type StepProps } from './useSetup';
@@ -135,7 +135,7 @@ export async function renderStep(Step: ComponentType<StepProps>, goTo: (step: St
   function Harness() {
     const setup = useSetup();
     current = setup;
-    return setup.load.kind === 'ready' ? <Step setup={setup} t={messages[lang]} lang={lang} goTo={goTo} /> : null;
+    return setup.load.kind === 'ready' ? <I18n lang={lang}><Step setup={setup} lang={lang} goTo={goTo} /></I18n> : null;
   }
   render(<Harness />);
   for (let i = 0; i < 4; i++) await advance();

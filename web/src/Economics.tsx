@@ -1,7 +1,7 @@
 import { Fragment } from 'preact';
 import type { Economics, EconomicsDevice, PriceBasis, PriceSignal, Savings, SavingsDevice, SavingsTotal } from './api/economics';
 import { formatAge, formatFixed, formatKwh, roundTo } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
 import { PollStatus, StateLabel } from './ui';
 import type { PollView } from './usePoll';
@@ -15,7 +15,6 @@ import type { PollView } from './usePoll';
 export type NameOf = (id: string) => string;
 
 interface Ctx {
-  t: Messages;
   lang: Lang;
   /** The IANA zone local times are shown in; only the presentation edge knows it. */
   zone: string;
@@ -47,7 +46,8 @@ export function savingsOf(view: PollView<Economics>): { economics: Economics; sa
   return { economics, savings: economics.savings, currency: economics.savings.currency ?? economics.currency! };
 }
 
-function BasisPill({ basis, t }: { basis: PriceBasis; t: Messages }) {
+function BasisPill({ basis }: { basis: PriceBasis }) {
+  const t = useT();
   return (
     <span class="badge" data-tone={basis === 'fallback' ? 'warn' : 'muted'} data-basis={basis}>
       <span class="dot" aria-hidden="true" />
@@ -63,7 +63,8 @@ function changeTime(at: Date, now: Date, lang: Lang, zone: string): string {
   return `${new Intl.DateTimeFormat(lang, { timeZone: zone, weekday: 'short' }).format(at)} ${localClock(at, lang, zone)}`;
 }
 
-function SignalRow({ signal, t, lang }: { signal: PriceSignal; t: Messages; lang: Lang }) {
+function SignalRow({ signal, lang }: { signal: PriceSignal; lang: Lang }) {
+  const t = useT();
   const state = t[`signalState.${signal.state}`];
   return (
     <>
@@ -79,7 +80,8 @@ function SignalRow({ signal, t, lang }: { signal: PriceSignal; t: Messages; lang
 }
 
 function TariffRows({ economics, currency, ...ctx }: { economics: Economics; currency: string } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const tariff = economics.tariff!;
   const exportPrice = economics.settlement?.exportPrice ?? null;
   const fallback = tariff.fallbackInForce || exportPrice?.fallbackInForce === true;
@@ -92,7 +94,7 @@ function TariffRows({ economics, currency, ...ctx }: { economics: Economics; cur
         <dt>{t['dashboard.eco.importPrice']}</dt>
         <dd data-row="eco-import">
           {tariff.importPrice !== null ? <span class="mono">{priceText(t, lang, tariff.importPrice, currency)}</span> : <span class="unknown">{t['dashboard.eco.priceUnknown']}</span>}
-          {tariff.priceBasis !== null && <BasisPill basis={tariff.priceBasis} t={t} />}
+          {tariff.priceBasis !== null && <BasisPill basis={tariff.priceBasis} />}
         </dd>
         <dt>{t['dashboard.eco.exportPrice']}</dt>
         <dd data-row="eco-export">
@@ -101,7 +103,7 @@ function TariffRows({ economics, currency, ...ctx }: { economics: Economics; cur
           ) : (
             <>
               {exportPrice.perKwh !== null ? <span class="mono">{priceText(t, lang, exportPrice.perKwh, currency)}</span> : <span class="unknown">{t['dashboard.eco.priceUnknown']}</span>}
-              {exportPrice.priceBasis !== null && <BasisPill basis={exportPrice.priceBasis} t={t} />}
+              {exportPrice.priceBasis !== null && <BasisPill basis={exportPrice.priceBasis} />}
             </>
           )}
         </dd>
@@ -122,7 +124,7 @@ function TariffRows({ economics, currency, ...ctx }: { economics: Economics; cur
           )}
         </dd>
         {signals.map((signal) => (
-          <SignalRow key={signal.name} signal={signal} t={t} lang={lang} />
+          <SignalRow key={signal.name} signal={signal} lang={lang} />
         ))}
       </dl>
       {fallback && <p class="note">{t['dashboard.eco.fallbackNote']}</p>}
@@ -136,31 +138,33 @@ export function TariffCard({ view, ...ctx }: { view: PollView<Economics> } & Ctx
   const economics = usable(view);
   // No economics section, no tariff in it, or no answer: no card (nothing to say that the page does not already).
   if (economics === null || economics.tariff === null) return null;
-  const { t } = ctx;
+  const t = useT();
   return (
     <section class="card" aria-labelledby="eco-tariff-title" data-card="tariff">
       <header class="cardhead">
         <h2 id="eco-tariff-title">{t['dashboard.eco.tariff.title']}</h2>
         <p class="sub">{t['dashboard.eco.tariff.sub']}</p>
       </header>
-      <PollStatus view={view} evaluatedAt={economics.at} now={economics.at} lang={ctx.lang} t={t} />
+      <PollStatus view={view} evaluatedAt={economics.at} now={economics.at} lang={ctx.lang} />
       <TariffRows economics={economics} currency={economics.currency!} {...ctx} />
     </section>
   );
 }
 
 /** A savings figure with its minus kept: "+" is not added, a negative number is never hidden. */
-export function SavingsNumber({ value, currency, t, lang }: { value: number; currency: string; t: Messages; lang: Lang }) {
+export function SavingsNumber({ value, currency, lang }: { value: number; currency: string; lang: Lang }) {
+  const t = useT();
   return <span class="mono">{amountText(t, lang, value, currency)}</span>;
 }
 
-function DeviceRow({ device, currency, name, t, lang }: { device: SavingsDevice; currency: string; name: NameOf } & Omit<Ctx, 'zone'>) {
+function DeviceRow({ device, currency, name, lang }: { device: SavingsDevice; currency: string; name: NameOf } & Omit<Ctx, 'zone'>) {
+  const t = useT();
   const negative = roundTo(device.savings, 2) < 0;
   return (
     <>
       <dt>{name(device.id)}</dt>
       <dd data-row={`eco-savings-${device.id}`} data-negative={negative ? 'true' : undefined}>
-        <SavingsNumber value={device.savings} currency={currency} t={t} lang={lang} />
+        <SavingsNumber value={device.savings} currency={currency} lang={lang} />
         <span class="sub">
           {fill(t['dashboard.eco.savings.deviceDetail'], {
             energy: formatKwh(device.energyKwh, lang),
@@ -181,11 +185,12 @@ function DeviceRow({ device, currency, name, t, lang }: { device: SavingsDevice;
 
 /** Today's figure with what it is measured against and what it counts: shared by the card and the decision-log summary. */
 export function SavingsBody({ total, savings, currency, ...ctx }: { total: SavingsTotal; savings: Savings; currency: string } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   return (
     <>
       <span data-savings="today">
-        {total.periods === 0 ? <span class="unknown">{t['common.none']}</span> : <SavingsNumber value={total.savings} currency={currency} t={t} lang={lang} />}
+        {total.periods === 0 ? <span class="unknown">{t['common.none']}</span> : <SavingsNumber value={total.savings} currency={currency} lang={lang} />}
       </span>
       <span class="sub">{t['dashboard.eco.savings.basis']}</span>
       <span class="sub" data-savings="since">
@@ -213,7 +218,8 @@ export function SavingsCard({ view, name, ...ctx }: { view: PollView<Economics>;
   // No economics section (or no savings in it): no card, and the decision-log summary keeps its "not available" text.
   if (found === null) return null;
   const { savings, currency } = found;
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const today = savings.today;
   const running = savings.running;
   return (
@@ -222,7 +228,7 @@ export function SavingsCard({ view, name, ...ctx }: { view: PollView<Economics>;
         <h2 id="eco-savings-title">{t['dashboard.eco.savings.title']}</h2>
         <p class="sub">{t['dashboard.eco.savings.sub']}</p>
       </header>
-      <PollStatus view={view} evaluatedAt={found.economics.at} now={found.economics.at} lang={lang} t={t} />
+      <PollStatus view={view} evaluatedAt={found.economics.at} now={found.economics.at} lang={lang} />
       <dl class="dash-kv">
         <dt>{t['dashboard.eco.savings.today']}</dt>
         <dd data-row="eco-savings">
@@ -239,7 +245,7 @@ export function SavingsCard({ view, name, ...ctx }: { view: PollView<Economics>;
         {today.devices.length > 0 && (
           <Fragment>
             {today.devices.map((device) => (
-              <DeviceRow key={device.id} device={device} currency={currency} name={name} t={t} lang={lang} />
+              <DeviceRow key={device.id} device={device} currency={currency} name={name} lang={lang} />
             ))}
           </Fragment>
         )}
@@ -270,7 +276,8 @@ export function SavingsCard({ view, name, ...ctx }: { view: PollView<Economics>;
 }
 
 /** The device's sources in words (en, pl); zone ids in monospace. */
-export function SourcesText({ sources, t }: { sources: string; t: Messages }) {
+export function SourcesText({ sources }: { sources: string }) {
+  const t = useT();
   if (sources === 'pv_only') return <>{t['device.eco.sources.pv_only']}</>;
   if (sources === 'any') return <>{t['device.eco.sources.any']}</>;
   const zones = sources.slice('pv_and_zone:'.length).split(',');

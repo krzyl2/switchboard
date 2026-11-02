@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import type { PhasePower, PowerUnknownReason, Quantity } from './api/power';
 import { formatAge, formatAmps, formatKw, formatPercent } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import type { PollView } from './usePoll';
 
 /** `muted` is for "nothing to report" (an unmapped slot): neither good nor bad. */
@@ -38,7 +38,8 @@ export function Timestamp({ at, lang }: { at: Date; lang: Lang }) {
  * data time in development replay), so a frozen value is told apart from a calm one. Nothing is
  * shown for a value without a report time (a model value).
  */
-export function Age({ reportedAt, now, lang, t, template = 'age.ago' }: { reportedAt: Date | null; now: Date; lang: Lang; t: Messages; template?: 'age.ago' | 'age.reported' }) {
+export function Age({ reportedAt, now, lang, template = 'age.ago' }: { reportedAt: Date | null; now: Date; lang: Lang; template?: 'age.ago' | 'age.reported' }) {
+  const t = useT();
   if (reportedAt === null) return null;
   const seconds = Math.max(0, (now.getTime() - reportedAt.getTime()) / 1000);
   return (
@@ -53,7 +54,8 @@ export function Age({ reportedAt, now, lang, t, template = 'age.ago' }: { report
  * poll, "unavailable" with the time of the last successful update (the browser's clock). A failed
  * poll withdraws the values, so this is what stays on screen.
  */
-export function PollStatus<T>({ view, evaluatedAt, now, lang, t }: { view: PollView<T>; evaluatedAt?: Date | null; now?: Date; lang: Lang; t: Messages }) {
+export function PollStatus<T>({ view, evaluatedAt, now, lang }: { view: PollView<T>; evaluatedAt?: Date | null; now?: Date | undefined; lang: Lang }) {
+  const t = useT();
   if (view.kind === 'loading') return <p class="updated">{t['common.loading']}</p>;
   if (view.kind === 'unavailable') {
     return (
@@ -86,7 +88,8 @@ export function unknownReason(t: Messages, reason: PowerUnknownReason, devices: 
  * A power figure: "1.50 kW", or "not declared" (counted as 0 in the balance, never shown as 0 W),
  * or "unknown — <reason>". An unknown figure is never rendered as a number.
  */
-export function QuantityText({ quantity, t, lang, devices = [] }: { quantity: Quantity; t: Messages; lang: Lang; devices?: readonly string[] }) {
+export function QuantityText({ quantity, lang, devices = [] }: { quantity: Quantity; lang: Lang; devices?: readonly string[] }) {
+  const t = useT();
   if (quantity.w !== null) return <span class="mono">{formatKw(quantity.w, lang)}</span>;
   if (quantity.unknown === 'not_declared') return <span class="sub-inline">{t['common.notDeclared']}</span>;
   return <span class="unknown">{fill(t['common.unknownBecause'], { reason: unknownReason(t, quantity.unknown ?? 'power_not_fresh', devices) })}</span>;
@@ -105,7 +108,8 @@ function barScale(phase: PhasePower): number {
  * the continuous limit, with the current and its share of the rating beside it. Controlled and
  * foreign never share a colour (styles.css tokens --load-controlled and --load-foreign).
  */
-export function PhaseBar({ phase, t, lang, children }: { phase: PhasePower; t: Messages; lang: Lang; children?: ComponentChildren }) {
+export function PhaseBar({ phase, lang, children }: { phase: PhasePower; lang: Lang; children?: ComponentChildren }) {
+  const t = useT();
   const scale = barScale(phase);
   const percent = (value: number) => `${Math.min(100, (Math.max(0, value) / scale) * 100)}%`;
   let left = 0;

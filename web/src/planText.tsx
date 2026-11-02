@@ -1,7 +1,7 @@
 import { Fragment } from 'preact';
 import type { PlanEntry, PlanSlot } from './api/plan';
 import { formatFixed, formatKw, formatKwh, roundTo } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
 
 // Small pure helpers the day-plan screen and the device card's goal row share: runs made of consecutive entries, the words for an
@@ -45,7 +45,8 @@ export function dayTime(at: Date, now: Date, lang: Lang, zone: string): string {
 }
 
 /** An energy class in words; a zone id in monospace. */
-export function ClassText({ cls, t }: { cls: string; t: Messages }) {
+export function ClassText({ cls }: { cls: string }) {
+  const t = useT();
   if (cls === 'pv') return <>{t['plan.class.pv']}</>;
   const zone = cls.slice('zone:'.length);
   const [before, after] = t['plan.class.zone'].split('{zone}');
@@ -59,7 +60,8 @@ export function ClassText({ cls, t }: { cls: string; t: Messages }) {
 }
 
 /** One planned run as a sentence: "22:00–06:00, from the grid, zone offpeak, 6.20 kWh, up to 3.70 kW". */
-export function RunText({ run, now, t, lang, zone }: { run: Run; now: Date; t: Messages; lang: Lang; zone: string }) {
+export function RunText({ run, now, lang, zone }: { run: Run; now: Date; lang: Lang; zone: string }) {
+  const t = useT();
   const sentence = fill(t['plan.device.run'], {
     from: dayTime(run.from, now, lang, zone),
     to: dayTime(run.to, now, lang, zone),
@@ -71,7 +73,7 @@ export function RunText({ run, now, t, lang, zone }: { run: Run; now: Date; t: M
   return (
     <Fragment>
       {before}
-      <ClassText cls={run.class} t={t} />
+      <ClassText cls={run.class} />
       {after}
     </Fragment>
   );

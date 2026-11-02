@@ -7,7 +7,7 @@ import { Dashboard } from './Dashboard';
 import { DecisionLog } from './DecisionLog';
 import { DeviceCard } from './DeviceCard';
 import { Flows } from './Flows';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, I18n, useT, type Lang, type Messages } from './i18n';
 import { KillSwitchCard, Limits } from './Limits';
 import { PlanPage } from './Plan';
 import { parseSetupStep, Setup } from './Setup';
@@ -35,7 +35,8 @@ function connectionLabel(t: Messages, state: ConnectionState): string {
   }
 }
 
-function StatusList({ status, updatedAt, t, lang }: { status: Status; updatedAt: Date; t: Messages; lang: Lang }) {
+function StatusList({ status, updatedAt, lang }: { status: Status; updatedAt: Date; lang: Lang }) {
+  const t = useT();
   const shadow = status.mode === 'shadow';
   return (
     <>
@@ -71,7 +72,7 @@ function StatusList({ status, updatedAt, t, lang }: { status: Status; updatedAt:
 }
 
 function StatusPage({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  const t = useT();
   const view = useStatus();
   const control = useControl();
 
@@ -79,7 +80,7 @@ function StatusPage({ lang }: { lang: Lang }) {
     <>
       <section class="card">
         {view.kind === 'loading' && <p>{t.loading}</p>}
-        {view.kind === 'live' && <StatusList status={view.data} updatedAt={view.updatedAt} t={t} lang={lang} />}
+        {view.kind === 'live' && <StatusList status={view.data} updatedAt={view.updatedAt} lang={lang} />}
         {view.kind === 'unavailable' && (
           <div role="alert">
             <p class="unavailable">
@@ -92,7 +93,7 @@ function StatusPage({ lang }: { lang: Lang }) {
           </div>
         )}
       </section>
-      <ControlBlock state={control} t={t} lang={lang} place="status" />
+      <ControlBlock state={control} lang={lang} place="status" />
     </>
   );
 }
@@ -171,7 +172,8 @@ const DIAGNOSTICS: readonly NavItem[] = [
   { index: '', page: 'status', label: 'navStatus' },
 ];
 
-function NavEntry({ item, route, t }: { item: NavItem; route: Route; t: Messages }) {
+function NavEntry({ item, route }: { item: NavItem; route: Route }) {
+  const t = useT();
   if (item.page === null) {
     return (
       <span class="navitem" aria-disabled="true">
@@ -205,7 +207,8 @@ const BANNER: Record<ModeKind, { tone: Tone; key: 'shell.mode.shadow' | 'shell.m
  * MODE-02 on every page: whether Switchboard switches anything right now, as api/mode reports it.
  * Never guessed: before the first answer, and when the add-on does not answer, it says so.
  */
-function ModeBanner({ t }: { t: Messages }) {
+function ModeBanner() {
+  const t = useT();
   const view = useModeBanner();
   const kind = view.kind === 'live' ? modeKind(view.data) : null;
   const [mode, tone, text]: [string, Tone, string] =
@@ -228,7 +231,8 @@ function ModeBanner({ t }: { t: Messages }) {
  * engaging is offered). The error goes to the browser console with its stack. Another route renders
  * its page afresh.
  */
-function PageBoundary({ route, t, lang, children }: { route: Route; t: Messages; lang: Lang; children: ComponentChildren }) {
+function PageBoundary({ route, lang, children }: { route: Route; lang: Lang; children: ComponentChildren }) {
+  const t = useT();
   const [error, reset] = useErrorBoundary((caught) => console.error(caught));
   useEffect(() => {
     // Only a fallback is reset: resetting while Preact still handles the error would rethrow it.
@@ -244,13 +248,14 @@ function PageBoundary({ route, t, lang, children }: { route: Route; t: Messages;
         <p>{t['shell.pageError.body']}</p>
         <p class="sub mono">{error instanceof Error ? error.message : String(error)}</p>
       </section>
-      <KillSwitchCard killSwitch={null} t={t} lang={lang} />
+      <KillSwitchCard killSwitch={null} lang={lang} />
     </>
   );
 }
 
 /** UI-13: system → light → dark, applied at once and kept for this browser when it allows. */
-function ThemeToggle({ t }: { t: Messages }) {
+function ThemeToggle() {
+  const t = useT();
   const [choice, setChoice] = useState<ThemeChoice>(readTheme);
   const mode = t[`theme.${choice}`];
   return (
@@ -271,7 +276,15 @@ function ThemeToggle({ t }: { t: Messages }) {
 }
 
 export function App({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  return (
+    <I18n lang={lang}>
+      <Shell lang={lang} />
+    </I18n>
+  );
+}
+
+function Shell({ lang }: { lang: Lang }) {
+  const t = useT();
   const route = useRoute();
 
   // Only the page on screen polls the add-on; the shell itself requests nothing.
@@ -283,21 +296,21 @@ export function App({ lang }: { lang: Lang }) {
           <span class="tagline">{t['shell.tagline']}</span>
         </div>
         {SCREENS.map((item) => (
-          <NavEntry key={item.index} item={item} route={route} t={t} />
+          <NavEntry key={item.index} item={item} route={route} />
         ))}
         <span class="navgroup">{t['nav.diagnostics']}</span>
         {DIAGNOSTICS.map((item) => (
-          <NavEntry key={item.page} item={item} route={route} t={t} />
+          <NavEntry key={item.page} item={item} route={route} />
         ))}
-        <ThemeToggle t={t} />
+        <ThemeToggle />
       </nav>
       <main class="main">
         <div class="page">
           <header class="pagehead">
             <h1>{PRODUCT_NAME}</h1>
-            <ModeBanner t={t} />
+            <ModeBanner />
           </header>
-          <PageBoundary route={route} t={t} lang={lang}>
+          <PageBoundary route={route} lang={lang}>
             {route.page === 'dashboard' && <Dashboard lang={lang} />}
             {route.page === 'flows' && <Flows lang={lang} />}
             {route.page === 'device' && <DeviceCard lang={lang} id={route.id} />}

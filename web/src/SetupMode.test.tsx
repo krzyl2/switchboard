@@ -6,7 +6,7 @@ import { emptyDraft, parseDraftView, parseSaved, type DraftView, type SaveOutcom
 import controlSample from './api/control.sample.json';
 import draftSample from './api/setup-draft.sample.json';
 import savedSample from './api/setup-saved.sample.json';
-import { messages } from './i18n';
+import { I18n } from './i18n';
 import { draftReducer, issuesAt, issuesOfStep, newDevice, type StepName } from './setupDraft';
 import { advance, respond } from './screens.test-support';
 import type { SetupState } from './useSetup';
@@ -124,7 +124,7 @@ function Harness({ view, draft: initial, issues: initialIssues, answer, lang }: 
     issuesOf: (step) => issuesOfStep(issues, step),
     issuesAt: (field) => issuesAt(issues, field),
   };
-  return <SetupMode setup={state} t={messages[lang]} lang={lang} goTo={goTo} />;
+  return <I18n lang={lang}><SetupMode setup={state} lang={lang} goTo={goTo} /></I18n>;
 }
 
 async function mount({ view = existingView(), draft, issues = [], answer = () => Promise.resolve(saved()), lang = 'en' }: Options = {}) {

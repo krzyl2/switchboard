@@ -1,5 +1,5 @@
 import type { ComponentType } from 'preact';
-import { messages, type Lang } from './i18n';
+import { useT, type Lang } from './i18n';
 import { SetupConnection } from './SetupConnection';
 import { SetupIssues } from './SetupIssues';
 import { SetupLoads } from './SetupLoads';
@@ -36,7 +36,7 @@ export function parseSetupStep(hash: string): StepName {
 }
 
 export function Setup({ lang, step }: { lang: Lang; step: StepName }) {
-  const t = messages[lang];
+  const t = useT();
   const setup = useSetup();
   const goTo = (next: StepName) => {
     window.location.hash = setupHref(next);
@@ -99,7 +99,7 @@ export function Setup({ lang, step }: { lang: Lang; step: StepName }) {
             </ul>
           </details>
         )}
-        {setup.issues.some((i) => i.field === null) && <SetupIssues issues={setup.issues.filter((i) => i.field === null)} t={t} />}
+        {setup.issues.some((i) => i.field === null) && <SetupIssues issues={setup.issues.filter((i) => i.field === null)} />}
       </section>
       {setup.load.kind === 'loading' && <p class="updated">{t['setup.loading']}</p>}
       {setup.load.kind === 'unavailable' && (
@@ -112,7 +112,7 @@ export function Setup({ lang, step }: { lang: Lang; step: StepName }) {
           </button>
         </div>
       )}
-      {setup.load.kind === 'ready' && <Step setup={setup} t={t} lang={lang} goTo={goTo} />}
+      {setup.load.kind === 'ready' && <Step setup={setup} lang={lang} goTo={goTo} />}
       <div class="setup-nav">
         {index > 0 && (
           <a class="log-button" href={setupHref(STEPS[index - 1]!)}>

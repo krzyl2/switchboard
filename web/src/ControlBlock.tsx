@@ -3,7 +3,7 @@ import type { CommandFailure, Control } from './api/control';
 import type { ModeCondition } from './api/decisions';
 import type { Mode } from './api/mode';
 import { formatNumber } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { levelText } from './reasons';
 import { PollStatus, StateBadge, StateLabel, type Tone } from './ui';
 import type { ControlState } from './useControl';
@@ -81,13 +81,14 @@ function noticeText(t: Messages, notice: NonNullable<ControlState['notice']>): s
   return fill(t['control.refused.other'], { code: notice.code });
 }
 
-type Props = { state: ControlState; t: Messages; lang: Lang };
+type Props = { state: ControlState; lang: Lang };
 
 /**
  * The control block. On the Status page it is a card of its own with the command path; inside setup
  * step 5 (a card already) it is a section without the command path.
  */
-export function ControlBlock({ state, t, lang, place }: Props & { place: 'status' | 'setup' }) {
+export function ControlBlock({ state, lang, place }: Props & { place: 'status' | 'setup' }) {
+  const t = useT();
   const { view } = state;
   const control = view.kind === 'live' ? view.data : null;
   const Heading = place === 'status' ? 'h2' : 'h3';
@@ -102,21 +103,22 @@ export function ControlBlock({ state, t, lang, place }: Props & { place: 'status
         <Heading id="ctl-title">{t['control.title']}</Heading>
         <p class="sub">{t['control.lead']}</p>
       </header>
-      <PollStatus view={view} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} />
       {control !== null && (
         <>
-          {control.locked && <LockCard state={state} t={t} />}
-          <Facts control={control} state={state} t={t} lang={lang} />
-          <Missing mode={control.mode} t={t} />
-          {control.leftReduced.length > 0 && <LeftReduced control={control} t={t} lang={lang} />}
-          {place === 'status' && <Commands control={control} t={t} lang={lang} />}
+          {control.locked && <LockCard state={state} />}
+          <Facts control={control} state={state} lang={lang} />
+          <Missing mode={control.mode} />
+          {control.leftReduced.length > 0 && <LeftReduced control={control} lang={lang} />}
+          {place === 'status' && <Commands control={control} lang={lang} />}
         </>
       )}
     </section>
   );
 }
 
-function Facts({ control, state, t, lang }: { control: Control } & Props) {
+function Facts({ control, state, lang }: { control: Control } & Props) {
+  const t = useT();
   const effective = effectiveFacts(t, control.mode);
   const observation = control.observation;
   return (
@@ -133,7 +135,7 @@ function Facts({ control, state, t, lang }: { control: Control } & Props) {
       </dd>
       <dt id="ctl-switch-label">{t['control.row.switch']}</dt>
       <dd data-fact="switch">
-        <ControlSwitch control={control} state={state} t={t} lang={lang} />
+        <ControlSwitch control={control} state={state} lang={lang} />
       </dd>
       {observation !== null && (
         <>
@@ -162,7 +164,8 @@ function Facts({ control, state, t, lang }: { control: Control } & Props) {
 }
 
 /** The switch. Allowing asks first; switching off is sent at once (it sends nothing to any device). */
-function ControlSwitch({ control, state, t, lang }: { control: Control } & Props) {
+function ControlSwitch({ control, state, lang }: { control: Control } & Props) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   const allowButton = useRef<HTMLButtonElement>(null);
   const on = control.controlAllowed;
@@ -256,7 +259,8 @@ const MISSING_KEY: Record<ModeCondition, `control.missing.${ModeCondition}`> = {
 };
 
 /** Every condition that keeps the mode in shadow, in the add-on's order, each in words. */
-function Missing({ mode, t }: { mode: Mode; t: Messages }) {
+function Missing({ mode }: { mode: Mode }) {
+  const t = useT();
   if (mode.missing.length === 0) return null;
   const offsOnly = modeKind(mode) === 'offs_only';
   return (
@@ -281,7 +285,8 @@ function Missing({ mode, t }: { mode: Mode; t: Messages }) {
 }
 
 /** After an untrusted state.json: locked off, kill switch on, until the user confirms (recorded). */
-function LockCard({ state, t }: { state: ControlState; t: Messages }) {
+function LockCard({ state }: { state: ControlState }) {
+  const t = useT();
   return (
     <div class="ctl-lock" role="alert" aria-labelledby="ctl-lock-title">
       <p id="ctl-lock-title">
@@ -297,7 +302,8 @@ function LockCard({ state, t }: { state: ControlState; t: Messages }) {
 }
 
 /** Devices Switchboard switched off or lowered and would bring back (restore_only baselines). */
-function LeftReduced({ control, t, lang }: { control: Control; t: Messages; lang: Lang }) {
+function LeftReduced({ control, lang }: { control: Control; lang: Lang }) {
+  const t = useT();
   const active = control.mode.effective === 'active';
   return (
     <div class="ctl-reduced" data-left-reduced={control.leftReduced.map((d) => d.device).join(' ')}>
@@ -318,7 +324,8 @@ function LeftReduced({ control, t, lang }: { control: Control; t: Messages; lang
 }
 
 /** The command path: the link, the queue, the last accepted command, the last failure, devices that did not follow. */
-function Commands({ control, t, lang }: { control: Control; t: Messages; lang: Lang }) {
+function Commands({ control, lang }: { control: Control; lang: Lang }) {
+  const t = useT();
   const { commands } = control;
   const failure = commands.lastFailure;
   return (

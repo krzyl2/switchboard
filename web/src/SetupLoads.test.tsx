@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { SetupLoads } from './SetupLoads';
 import { cleanDraft, posted, readoutsFor, renderStep, samples, serve, type Payload } from './SetupLoads.test-support';
 import { emptyDraft, type SetupIssue } from './api/setup';
-import { messages } from './i18n';
+import { I18n } from './i18n';
 import { advance, respond } from './screens.test-support';
 import { fieldId, issuesAt, issuesOfStep } from './setupDraft';
 import type { SetupState } from './useSetup';
@@ -61,17 +61,17 @@ const elsewhere: SetupIssue = { ...refusal, field: 'connection.voltageV' };
 describe('SetupLoads', () => {
   it('has its heading in English and Polish', () => {
     serve(fetchMock);
-    const { unmount } = render(<SetupLoads setup={state([])} t={messages.en} lang="en" goTo={() => {}} />);
+    const { unmount } = render(<I18n lang="en"><SetupLoads setup={state([])} lang="en" goTo={() => {}} /></I18n>);
     expect(screen.getByRole('heading', { name: 'Loads' })).toBeTruthy();
     unmount();
 
-    render(<SetupLoads setup={state([])} t={messages.pl} lang="pl" goTo={() => {}} />);
+    render(<I18n lang="pl"><SetupLoads setup={state([])} lang="pl" goTo={() => {}} /></I18n>);
     expect(screen.getByRole('heading', { name: 'Odbiorniki' })).toBeTruthy();
   });
 
   it('shows a refusal at one of its fields and not another step’s', () => {
     serve(fetchMock);
-    render(<SetupLoads setup={state([refusal, elsewhere])} t={messages.en} lang="en" goTo={() => {}} />);
+    render(<I18n lang="en"><SetupLoads setup={state([refusal, elsewhere])} lang="en" goTo={() => {}} /></I18n>);
 
     const alert = screen.getByRole('alert');
     expect(alert.querySelectorAll('li')).toHaveLength(1);

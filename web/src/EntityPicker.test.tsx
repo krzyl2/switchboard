@@ -3,9 +3,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { EntityPicker, matchesFilter, type PickerFilter } from './EntityPicker';
 import { parseDiscovery, type DiscoveredEntity } from './api/setup';
 import discoverySample from './api/setup-discovery.sample.json';
-import { messages } from './i18n';
+import { I18n } from './i18n';
 
-const t = messages.en;
 const entities = parseDiscovery(structuredClone(discoverySample)).entities;
 const CURRENT: PickerFilter = { domains: ['sensor'], deviceClasses: ['current'], units: ['A', 'mA'] };
 const RELAY: PickerFilter = { domains: ['switch', 'input_boolean'] };
@@ -20,7 +19,7 @@ afterEach(cleanup);
 // a derived sensor is visible but never selectable (07-PITFALLS); nothing is ever preselected.
 describe('entity picker', () => {
   it('offers only current-class sensors for phase rows', () => {
-    render(<EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={entities} filter={CURRENT} t={t} />);
+    render(<I18n lang="en"><EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={entities} filter={CURRENT} /></I18n>);
 
     expect(options()).toContain('sensor.solaredge_m1_ac_current_a');
     expect(options()).not.toContain('sensor.solaredge_m1_ac_power_a');
@@ -37,7 +36,7 @@ describe('entity picker', () => {
   });
 
   it('lists a derived sensor disabled with its platform as the reason', () => {
-    render(<EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={entities} filter={{ domains: ['sensor'], deviceClasses: ['power'], units: ['W'] }} t={t} />);
+    render(<I18n lang="en"><EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={entities} filter={{ domains: ['sensor'], deviceClasses: ['power'], units: ['W'] }} /></I18n>);
 
     const usage = [...(screen.getByLabelText('L1 current') as HTMLSelectElement).options].find((o) => o.value === 'sensor.usage')!;
     expect(usage.disabled).toBe(true);
@@ -46,7 +45,7 @@ describe('entity picker', () => {
 
   it('actuator picker lists declarable domains and never preselects', () => {
     const changed = vi.fn();
-    render(<EntityPicker id="p" label="L1 current" value={null} onChange={changed} entities={entities} filter={RELAY} t={t} />);
+    render(<I18n lang="en"><EntityPicker id="p" label="L1 current" value={null} onChange={changed} entities={entities} filter={RELAY} /></I18n>);
 
     const select = screen.getByLabelText('L1 current') as HTMLSelectElement;
     expect(select.value).toBe('');
@@ -60,7 +59,7 @@ describe('entity picker', () => {
 
   it('keeps a value Home Assistant does not offer, and allows typing one by hand', () => {
     const changed = vi.fn();
-    render(<EntityPicker id="p" label="L1 current" value="sensor.hand_written" onChange={changed} entities={entities} filter={CURRENT} t={t} />);
+    render(<I18n lang="en"><EntityPicker id="p" label="L1 current" value="sensor.hand_written" onChange={changed} entities={entities} filter={CURRENT} /></I18n>);
 
     expect((screen.getByLabelText('L1 current') as HTMLSelectElement).value).toBe('sensor.hand_written');
     fireEvent.click(screen.getByRole('button', { name: 'Enter the entity ID by hand' }));
@@ -71,7 +70,7 @@ describe('entity picker', () => {
   });
 
   it('falls back to manual entry when Home Assistant cannot be reached', () => {
-    render(<EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={null} filter={CURRENT} t={t} />);
+    render(<I18n lang="en"><EntityPicker id="p" label="L1 current" value={null} onChange={() => {}} entities={null} filter={CURRENT} /></I18n>);
 
     expect(screen.getByLabelText('L1 current').tagName).toBe('INPUT');
     expect(screen.getByText('Home Assistant cannot be reached: enter the entity ID by hand.')).toBeTruthy();

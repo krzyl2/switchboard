@@ -2,7 +2,7 @@ import type { Plan, PlanDevice, PlanSlot, PlanStatus } from './api/plan';
 import { formatAge, formatKwh, formatNumber } from './format';
 import { GoalLines } from './GoalView';
 import { EvCard } from './EvView';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { browserZone, localClock } from './localTime';
 import { costText, dayTime, priceTones, RunText, runsOf, type PriceTone } from './planText';
 import { PollStatus, StateBadge, type Tone } from './ui';
@@ -15,7 +15,6 @@ import './plan.css';
 // with planner.dispatch off it is only a preview. The only thing that can be changed here is on the device card (the manual goal).
 
 interface Ctx {
-  t: Messages;
   lang: Lang;
   zone: string;
 }
@@ -27,14 +26,16 @@ function ageSince(at: Date, now: Date, lang: Lang): string {
 }
 
 /** The plan's own state, in words, and what it means for whether the plan can be used. */
-function StatusNote({ plan, t, lang }: { plan: Plan } & Omit<Ctx, 'zone'>) {
+function StatusNote({ plan, lang }: { plan: Plan } & Omit<Ctx, 'zone'>) {
+  const t = useT();
   const age = plan.computedAt === null ? '' : ageSince(plan.computedAt, plan.at, lang);
   const key =
     plan.status === 'suspended' ? (plan.computedAt === null ? 'plan.statusNote.suspendedNone' : 'plan.statusNote.suspended') : (`plan.statusNote.${plan.status}` as const);
   return <p class="sub" data-plan="status-note">{fill(t[key], { age })}</p>;
 }
 
-function DispatchNote({ plan, t }: { plan: Plan; t: Messages }) {
+function DispatchNote({ plan }: { plan: Plan }) {
+  const t = useT();
   if (!plan.enabled || plan.dispatchMode === null) return <p class="note" data-plan="not-enabled">{t['plan.notEnabled']}</p>;
   return (
     <p class="note" data-plan="dispatch" data-dispatch={plan.dispatchMode}>
@@ -49,7 +50,8 @@ function solveReason(t: Messages, reason: string): string {
 }
 
 function Header({ plan, ...ctx }: { plan: Plan } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const solve = plan.lastSolve;
   return (
     <section class="card" aria-labelledby="plan-title" data-card="plan-head">
@@ -58,8 +60,8 @@ function Header({ plan, ...ctx }: { plan: Plan } & Ctx) {
         <StateBadge tone={STATUS_TONE[plan.status]} label={`${t['plan.status.label']}: ${t[`plan.status.${plan.status}`]}`} />
         <p class="sub">{t['plan.lead']}</p>
       </header>
-      <DispatchNote plan={plan} t={t} />
-      {plan.enabled && <StatusNote plan={plan} t={t} lang={lang} />}
+      <DispatchNote plan={plan} />
+      {plan.enabled && <StatusNote plan={plan} lang={lang} />}
       {plan.enabled && (
         <dl class="dash-kv plan-kv">
           {plan.computedAt !== null && (
@@ -115,7 +117,8 @@ function Header({ plan, ...ctx }: { plan: Plan } & Ctx) {
 }
 
 function Inputs({ plan, ...ctx }: { plan: Plan } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const { pvForecast, loadForecast, prices, goalsActive, goalsInactive } = plan.inputs;
   if (!plan.enabled) return null;
   return (
@@ -163,7 +166,8 @@ function Inputs({ plan, ...ctx }: { plan: Plan } & Ctx) {
   );
 }
 
-function Notes({ plan, t }: { plan: Plan; t: Messages }) {
+function Notes({ plan }: { plan: Plan }) {
+  const t = useT();
   if (plan.notes.length === 0 && plan.issues.length === 0) return null;
   return (
     <section class="card" aria-labelledby="plan-notes-title" data-card="plan-notes">
@@ -215,7 +219,8 @@ function wallHour(at: Date, zone: string): number {
 }
 
 function Chart({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice[] } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const slots = plan.slots;
   if (slots.length === 0) return <p class="note" data-plan="no-slots">{t['plan.chart.noSlots']}</p>;
   const t0 = slots[0]!.start.getTime();
@@ -289,7 +294,8 @@ function Chart({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice[] } 
   );
 }
 
-function Legend({ t }: { t: Messages }) {
+function Legend() {
+  const t = useT();
   return (
     <ul class="plan-legend" aria-label={t['plan.chart.zones']}>
       {(['cheap', 'middle', 'dear'] as const).map((tone) => (
@@ -307,7 +313,8 @@ function Legend({ t }: { t: Messages }) {
 }
 
 function DeviceBlock({ device, plan, ...ctx }: { device: PlanDevice; plan: Plan } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const runs = runsOf(device.entries);
   const fresh = plan.status === 'fresh';
   const goals = device.goals;
@@ -317,7 +324,7 @@ function DeviceBlock({ device, plan, ...ctx }: { device: PlanDevice; plan: Plan 
         <code class="entity mono">{device.device}</code>
       </h3>
       {goals.map((goal, i) => (
-        <GoalLines key={`${goal.source}-${goal.kind}-${goal.deadline?.getTime() ?? i}`} goal={goal} plan={plan} t={t} lang={lang} />
+        <GoalLines key={`${goal.source}-${goal.kind}-${goal.deadline?.getTime() ?? i}`} goal={goal} plan={plan} lang={lang} />
       ))}
       {!fresh && plan.enabled && <p class="sub">{t['plan.device.notFresh']}</p>}
       {plan.enabled && (
@@ -331,7 +338,7 @@ function DeviceBlock({ device, plan, ...ctx }: { device: PlanDevice; plan: Plan 
             <ul class="plainlist" data-device-runs="list">
               {runs.map((run) => (
                 <li key={run.from.getTime()}>
-                  <RunText run={run} now={plan.at} t={t} lang={lang} zone={zone} />
+                  <RunText run={run} now={plan.at} lang={lang} zone={zone} />
                 </li>
               ))}
             </ul>
@@ -347,7 +354,8 @@ function DeviceBlock({ device, plan, ...ctx }: { device: PlanDevice; plan: Plan 
 }
 
 function Cost({ plan, ...ctx }: { plan: Plan } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const cost = plan.cost;
   return (
     <div data-card="plan-cost">
@@ -382,7 +390,8 @@ function Cost({ plan, ...ctx }: { plan: Plan } & Ctx) {
 }
 
 function SlotsTable({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice[] } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   if (plan.slots.length === 0) return null;
   const tones = priceTones(plan.slots);
   const columns = devices.filter((d) => runsOf(d.entries).length > 0);
@@ -438,21 +447,22 @@ function SlotsTable({ plan, devices, ...ctx }: { plan: Plan; devices: PlanDevice
 }
 
 function Body({ plan, ev, ...ctx }: { plan: Plan; ev: EvControl } & Ctx) {
-  const { t, lang, zone } = ctx;
+  const t = useT();
+  const { lang, zone } = ctx;
   const planned = plan.devices.filter((d) => d.goals.length > 0);
   return (
     <>
       <Header plan={plan} {...ctx} />
-      <EvCard control={ev} t={t} lang={lang} />
+      <EvCard control={ev} lang={lang} />
       <Inputs plan={plan} {...ctx} />
-      <Notes plan={plan} t={t} />
+      <Notes plan={plan} />
       {plan.enabled && (
         <section class="card" aria-labelledby="plan-chart-title" data-card="plan-chart">
           <header class="cardhead">
             <h2 id="plan-chart-title">{plan.horizonEnd === null ? t['plan.title'] : fill(t['plan.chart.title'], { end: dayTime(plan.horizonEnd, plan.at, lang, zone) })}</h2>
           </header>
           <Chart plan={plan} devices={planned} {...ctx} />
-          <Legend t={t} />
+          <Legend />
           <SlotsTable plan={plan} devices={planned} {...ctx} />
           <div class="plan-columns">
             <div>
@@ -468,14 +478,14 @@ function Body({ plan, ev, ...ctx }: { plan: Plan; ev: EvControl } & Ctx) {
 }
 
 export function PlanPage({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  const t = useT();
   const { view } = usePlan();
   const ev = useEv();
   const zone = browserZone();
   return (
     <>
       {view.kind === 'live' ? (
-        <Body plan={view.data} ev={ev} t={t} lang={lang} zone={zone} />
+        <Body plan={view.data} ev={ev} lang={lang} zone={zone} />
       ) : (
         <section class="card" aria-labelledby="plan-title">
           <header class="cardhead">
@@ -484,7 +494,7 @@ export function PlanPage({ lang }: { lang: Lang }) {
           </header>
         </section>
       )}
-      <PollStatus view={view} evaluatedAt={view.kind === 'live' ? view.data.at : null} now={view.kind === 'live' ? view.data.at : undefined} lang={lang} t={t} />
+      <PollStatus view={view} evaluatedAt={view.kind === 'live' ? view.data.at : null} now={view.kind === 'live' ? view.data.at : undefined} lang={lang} />
     </>
   );
 }

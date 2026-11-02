@@ -7,7 +7,7 @@ import dispatchSample from './api/dispatch.sample.json';
 import economicsSample from './api/economics.sample.json';
 import powerSample from './api/power.sample.json';
 import statisticsSample from './api/statistics.sample.json';
-import type { Lang } from './i18n';
+import { I18n, type Lang } from './i18n';
 import { advance, serveSamples } from './screens.test-support';
 
 // ECO-12: the tariff status and savings cards on the dashboard. The numbers come from the sample the
@@ -35,7 +35,11 @@ function variant<T>(sample: T, change: (p: any) => void): unknown {
 
 async function show(lang: Lang = 'en', economics: unknown = economicsSample): Promise<void> {
   serveSamples(fetchMock, { ...SAMPLES, 'api/economics': economics });
-  render(<Dashboard lang={lang} zone={ZONE} />);
+  render(
+    <I18n lang={lang}>
+      <Dashboard lang={lang} zone={ZONE} />
+    </I18n>,
+  );
   await advance();
   await advance();
 }

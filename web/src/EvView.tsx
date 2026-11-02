@@ -5,7 +5,7 @@ import type { EvCause } from './api/plan';
 import type { SignalState } from './api/signals';
 import { SourcesText } from './Economics';
 import { formatAge, formatFixed, formatKwh, formatNumber } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { browserZone } from './localTime';
 import { dayTime } from './planText';
 import { StateBadge, StateLabel, type Tone } from './ui';
@@ -18,7 +18,6 @@ import './ev.css';
 // what the add-on reports; its only writes are POST api/ev/mode and POST and DELETE api/ev/charge-now, the module's own state, never an entity.
 
 interface Ctx {
-  t: Messages;
   lang: Lang;
 }
 
@@ -65,7 +64,8 @@ function socText(t: Messages, lang: Lang, assessment: EvAssessment | null, ev: E
   return gap === null ? t['ev.soc.none'] : `${t['ev.soc.none']}: ${word(t, `ev.socGap.${gap}`, gap)}`;
 }
 
-function PluggedText({ ev, t }: { ev: Ev; t: Messages }) {
+function PluggedText({ ev }: { ev: Ev }) {
+  const t = useT();
   const config = ev.config!;
   if (config.pluggedSignal === null) return <>{t['ev.plugged.notMapped']}</>;
   const plugged = ev.inputs?.isPlugged ?? null;
@@ -83,7 +83,8 @@ function PluggedText({ ev, t }: { ev: Ev; t: Messages }) {
   );
 }
 
-function GoalItem({ goal, ev, t, lang }: { goal: EvOfferedGoal; ev: Ev } & Ctx) {
+function GoalItem({ goal, ev, lang }: { goal: EvOfferedGoal; ev: Ev } & Ctx) {
+  const t = useT();
   const zone = browserZone();
   return (
     <li class="plan-goal" data-ev-goal={goal.kind}>
@@ -105,14 +106,15 @@ function GoalItem({ goal, ev, t, lang }: { goal: EvOfferedGoal; ev: Ev } & Ctx) 
       {goal.sources !== null && (
         <span class="line sub" data-ev-goal="sources">
           {t['plan.goal.sources'].split('{sources}')[0]}
-          <SourcesText sources={goal.sources} t={t} />
+          <SourcesText sources={goal.sources} />
         </span>
       )}
     </li>
   );
 }
 
-function InputLine({ name, read, t, lang }: { name: string; read: EvRead } & Ctx) {
+function InputLine({ name, read, lang }: { name: string; read: EvRead } & Ctx) {
+  const t = useT();
   if (!read.configured) {
     return (
       <li data-ev-input={name}>
@@ -129,7 +131,8 @@ function InputLine({ name, read, t, lang }: { name: string; read: EvRead } & Ctx
   );
 }
 
-function Inputs({ ev, t, lang }: { ev: Ev } & Ctx) {
+function Inputs({ ev, lang }: { ev: Ev } & Ctx) {
+  const t = useT();
   const inputs = ev.inputs;
   if (inputs === null) return null;
   const reads: [string, EvRead][] = [
@@ -145,7 +148,7 @@ function Inputs({ ev, t, lang }: { ev: Ev } & Ctx) {
       <summary>{t['ev.inputs.title']}</summary>
       <ul class="plainlist">
         {reads.map(([name, read]) => (
-          <InputLine key={name} name={name} read={read} t={t} lang={lang} />
+          <InputLine key={name} name={name} read={read} lang={lang} />
         ))}
       </ul>
       {ev.config!.rangeSignal !== null && <p class="sub">{t['ev.range.note']}</p>}
@@ -159,7 +162,8 @@ function Inputs({ ev, t, lang }: { ev: Ev } & Ctx) {
 }
 
 /** The calendar events the module ignored, and the warning that one of them may hide the next trip (the entity shows one event). */
-function Unparsed({ ev, t, lang }: { ev: Ev } & Ctx) {
+function Unparsed({ ev, lang }: { ev: Ev } & Ctx) {
+  const t = useT();
   const trips = ev.trips;
   if (trips === null || (trips.unparsed.length === 0 && trips.warnings.length === 0)) return null;
   const zone = browserZone();
@@ -186,7 +190,8 @@ function Unparsed({ ev, t, lang }: { ev: Ev } & Ctx) {
   );
 }
 
-function Issues({ ev, t }: { ev: Ev; t: Messages }) {
+function Issues({ ev }: { ev: Ev }) {
+  const t = useT();
   if (ev.issues.length === 0) return null;
   return (
     <div data-ev="issues">
@@ -203,7 +208,8 @@ function Issues({ ev, t }: { ev: Ev; t: Messages }) {
 }
 
 /** The manual control of S6: the mode and "charge now". Nothing is assumed to have worked until the add-on answers; a refusal is worded. */
-function Controls({ ev, control, t, lang }: { ev: Ev; control: EvControl } & Ctx) {
+function Controls({ ev, control, lang }: { ev: Ev; control: EvControl } & Ctx) {
+  const t = useT();
   const manual = ev.manual!;
   const config = ev.config!;
   const defaults = ev.parameters;
@@ -331,7 +337,8 @@ function Controls({ ev, control, t, lang }: { ev: Ev; control: EvControl } & Ctx
 }
 
 /** The card of the day plan. Nothing without an ev: section (or without an answer): the module is optional and off by default. */
-export function EvCard({ control, lang, t }: { control: EvControl } & Ctx) {
+export function EvCard({ control, lang }: { control: EvControl } & Ctx) {
+  const t = useT();
   const view = control.view;
   if (view.kind !== 'live' || !view.data.enabled || view.data.config === null) return null;
   const ev = view.data;
@@ -380,7 +387,7 @@ export function EvCard({ control, lang, t }: { control: EvControl } & Ctx) {
           <code class="entity mono">{config.device}</code>
         </Row>
         <Row name={t['ev.row.plugged']} row="ev-plugged">
-          <PluggedText ev={ev} t={t} />
+          <PluggedText ev={ev} />
         </Row>
         <Row name={t['ev.row.soc']} row="ev-soc">
           {socText(t, lang, a, ev)}
@@ -419,23 +426,24 @@ export function EvCard({ control, lang, t }: { control: EvControl } & Ctx) {
           ) : (
             <ul class="plainlist">
               {a.goals.map((goal) => (
-                <GoalItem key={`${goal.kind}-${goal.deadline?.getTime() ?? 'none'}`} goal={goal} ev={ev} t={t} lang={lang} />
+                <GoalItem key={`${goal.kind}-${goal.deadline?.getTime() ?? 'none'}`} goal={goal} ev={ev} lang={lang} />
               ))}
             </ul>
           )}
           {a.computedAt !== null && <p class="sub">{fill(t['ev.computed'], { time: dayTime(a.computedAt, ev.at, lang, zone) })}</p>}
         </div>
       )}
-      <Unparsed ev={ev} t={t} lang={lang} />
-      <Inputs ev={ev} t={t} lang={lang} />
-      <Issues ev={ev} t={t} />
-      {ev.manual !== null && <Controls ev={ev} control={control} t={t} lang={lang} />}
+      <Unparsed ev={ev} lang={lang} />
+      <Inputs ev={ev} lang={lang} />
+      <Issues ev={ev} />
+      {ev.manual !== null && <Controls ev={ev} control={control} lang={lang} />}
     </section>
   );
 }
 
 /** The charger's row on its device card: where the car stands and what the module wants, with the way to the card above. Nothing for another device. */
-export function EvDeviceLines({ ev, device, t, lang }: { ev: Ev | null; device: string } & Ctx) {
+export function EvDeviceLines({ ev, device, lang }: { ev: Ev | null; device: string } & Ctx) {
+  const t = useT();
   if (ev === null || !ev.enabled || ev.config === null || ev.config.device !== device) return null;
   const a = ev.assessment;
   const mode: EvMode | null = ev.manual?.mode ?? a?.mode ?? null;

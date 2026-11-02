@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import type { GoalRefusal } from './api/goals';
 import type { GoalKind, Plan, PlanDevice, PlanGoal } from './api/plan';
 import { formatAge, formatFixed, formatKwh, formatNumber } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang } from './i18n';
 import { browserZone } from './localTime';
 import { SourcesText } from './Economics';
 import { dayTime, RunText, runsOf } from './planText';
@@ -15,7 +15,6 @@ import './plan.css';
 // says it is on track, and the "want now" action. It reads api/plan; the only thing it writes is the add-on's own manual goal.
 
 interface Ctx {
-  t: Messages;
   lang: Lang;
 }
 
@@ -35,7 +34,8 @@ const kwh = (value: number, lang: Lang) => formatKwh(value, lang);
 
 /** One goal: what it asks for and when, its progress, its status and what the plan says about it. */
 export function GoalLines({ goal, plan, ...ctx }: { goal: PlanGoal; plan: Plan } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const zone = browserZone();
   const inactive = goal.status === 'inactive';
   const judged = goal.plannedKwh !== null;
@@ -95,7 +95,7 @@ export function GoalLines({ goal, plan, ...ctx }: { goal: PlanGoal; plan: Plan }
       {!inactive && goal.sources !== null && (
         <span class="line sub" data-goal="sources">
           {t['plan.goal.sources'].split('{sources}')[0]}
-          <SourcesText sources={goal.sources} t={t} />
+          <SourcesText sources={goal.sources} />
         </span>
       )}
     </div>
@@ -118,8 +118,8 @@ export function localInputValue(at: Date): string {
  * "Want now": asks for energy (or a state of charge) by a deadline. Stored in the add-on's own state, dropped at the deadline, never an entity
  * write. The add-on's refusals are shown in words; nothing is assumed to have worked until it answers.
  */
-function WantNow({ device, plan, control, ...ctx }: { device: string; plan: PlanDevice | undefined; control: PlanControl } & Ctx) {
-  const { t } = ctx;
+function WantNow({ device, plan, control }: { device: string; plan: PlanDevice | undefined; control: PlanControl }) {
+  const t = useT();
   const { manual, soc } = wishCapabilities(plan);
   const [kind, setKind] = useState<GoalKind>('energy');
   const [target, setTarget] = useState('');
@@ -197,7 +197,8 @@ function WantNow({ device, plan, control, ...ctx }: { device: string; plan: Plan
  * the "want now" action. Without a goal it says so; without an answer it says the goal is not available instead of showing none.
  */
 export function GoalRow({ device, control, ...ctx }: { device: string; control: PlanControl } & Ctx) {
-  const { t, lang } = ctx;
+  const t = useT();
+  const { lang } = ctx;
   const view: PollView<Plan> = control.view;
   if (view.kind === 'loading') return <span class="sub-inline" data-goal-row="loading">{t['plan.goal.loading']}</span>;
   if (view.kind === 'unavailable') {
@@ -221,7 +222,7 @@ export function GoalRow({ device, control, ...ctx }: { device: string; control: 
           {t['plan.goal.none']}
         </span>
       ) : (
-        goals.map((goal, i) => <GoalLines key={`${goal.source}-${goal.kind}-${goal.deadline?.getTime() ?? i}`} goal={goal} plan={plan} t={t} lang={lang} />)
+        goals.map((goal, i) => <GoalLines key={`${goal.source}-${goal.kind}-${goal.deadline?.getTime() ?? i}`} goal={goal} plan={plan} lang={lang} />)
       )}
       {setAside.map((goal, i) => (
         <span key={`aside-${i}`} class="line sub" data-goal-row="superseded">
@@ -245,7 +246,7 @@ export function GoalRow({ device, control, ...ctx }: { device: string; control: 
             <>
               {runs.slice(0, 3).map((run) => (
                 <span key={run.from.getTime()} class="line">
-                  <RunText run={run} now={plan.at} t={t} lang={lang} zone={zone} />
+                  <RunText run={run} now={plan.at} lang={lang} zone={zone} />
                 </span>
               ))}
             </>
@@ -262,7 +263,7 @@ export function GoalRow({ device, control, ...ctx }: { device: string; control: 
           {t['plan.goal.preview']}
         </span>
       )}
-      {plan.enabled && <WantNow device={device} plan={entry} control={control} t={t} lang={lang} />}
+      {plan.enabled && <WantNow device={device} plan={entry} control={control} />}
     </>
   );
 }

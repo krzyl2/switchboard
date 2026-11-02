@@ -5,7 +5,7 @@ import { SetupConnection } from './SetupConnection';
 import { emptyDraft, parseDraft, parseValidation, type SetupDraft, type SetupIssue, type Validation } from './api/setup';
 import draftSample from './api/setup-draft.sample.json';
 import validationSample from './api/setup-validation.sample.json';
-import { messages, type Lang } from './i18n';
+import { I18n, type Lang } from './i18n';
 import { advance } from './screens.test-support';
 import { draftReducer, fieldId, issuesAt, issuesOfStep, type StepName } from './setupDraft';
 import type { SetupState } from './useSetup';
@@ -82,7 +82,7 @@ function mount({ draft = example(), verdict = () => validation(), lang = 'en', i
       issuesAt: (f) => issuesAt(issues, f),
     };
     current = setup;
-    return <SetupConnection setup={setup} t={messages[lang]} lang={lang} goTo={goTo} />;
+    return <I18n lang={lang}><SetupConnection setup={setup} lang={lang} goTo={goTo} /></I18n>;
   }
   render(<Harness />);
   return { goTo, validate, draft: () => current!.draft };
@@ -188,7 +188,7 @@ describe('kettle arithmetic', () => {
     await settle();
 
     // Raw events, not testing-library's act-wrapped ones: no render happens between them.
-    for (const [phase, value] of [['L1', '2100'], ['L2', '2200'], ['L3', '2300']]) {
+    for (const [phase, value] of [['L1', '2100'], ['L2', '2200'], ['L3', '2300']] as const) {
       const input = screen.getByLabelText(`Reserve on ${phase} (W)`) as HTMLInputElement;
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));

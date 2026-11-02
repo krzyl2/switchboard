@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import controlSample from './api/control.sample.json';
 import savedSample from './api/setup-saved.sample.json';
-import { messages } from './i18n';
+import { I18n } from './i18n';
 import { advance, respond } from './screens.test-support';
 import { SetupConnection } from './SetupConnection';
 import { cleanDraft, posted, samples, serve, type Payload } from './SetupLoads.test-support';
@@ -51,14 +51,15 @@ function Wizard({ onStep }: { onStep: (step: StepName) => void }) {
   const Step = STEPS[step];
   onStep(step);
   return setup.load.kind === 'ready' ? (
-    <Step
-      setup={setup}
-      t={messages.en}
-      lang="en"
-      goTo={(next) => {
-        setStep(next);
-      }}
-    />
+    <I18n lang="en">
+      <Step
+        setup={setup}
+        lang="en"
+        goTo={(next) => {
+          setStep(next);
+        }}
+      />
+    </I18n>
   ) : null;
 }
 

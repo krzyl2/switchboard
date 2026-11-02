@@ -16,7 +16,7 @@ import {
   type Validation,
 } from './api/setup';
 import { SETUP_REQUEST_TIMEOUT_MS } from './config';
-import type { Lang, Messages } from './i18n';
+import type { Lang } from './i18n';
 import { draftReducer, issuesAt, issuesOfStep, type StepName } from './setupDraft';
 
 export type SetupLoad = { kind: 'loading' } | { kind: 'ready' } | { kind: 'unavailable' };
@@ -218,7 +218,6 @@ export function useSetup(): SetupState {
 /** What the shell hands every step component. */
 export interface StepProps {
   setup: SetupState;
-  t: Messages;
   lang: Lang;
   /** Moves the wizard to another step (the step's own Next/Back). */
   goTo: (step: StepName) => void;

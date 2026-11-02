@@ -8,7 +8,7 @@ import { GUARD_REFRESH_INTERVAL_MS, GUARD_REQUEST_TIMEOUT_MS } from './config';
 import { layoutFlows, type FlowLayout, type Lane, type Row, type SourceNode } from './flowLayout';
 import './flows.styles.css';
 import { formatAge, formatAmps, formatCountdown, formatKw, formatKwh, formatNumber, formatPercent } from './format';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
 import { Age, PollStatus, QuantityText, StateBadge, unknownReason, type Tone } from './ui';
 import { useDevices } from './useDevices';
@@ -28,7 +28,7 @@ const SOURCE_LINE_CHARS = 28;
 const DEVICE_LINE_CHARS = 48;
 const NAME_CHARS = 30;
 
-type Props = { t: Messages; lang: Lang };
+type Props = { lang: Lang };
 
 const PHASE_TONE: Record<PhaseGuardState, Tone> = {
   unknown: 'muted',
@@ -75,7 +75,8 @@ function age(reportedAt: Date, now: Date, lang: Lang): string {
   return formatAge(Math.max(0, (now.getTime() - reportedAt.getTime()) / 1000), lang);
 }
 
-function FlowsHead({ t }: { t: Messages }) {
+function FlowsHead() {
+  const t = useT();
   return (
     <header class="cardhead">
       <h2 id="flows-title">{t['flows.title']}</h2>
@@ -85,20 +86,20 @@ function FlowsHead({ t }: { t: Messages }) {
 }
 
 export function Flows({ lang }: { lang: Lang }) {
-  const t = messages[lang];
   const view = usePower();
-  if (view.kind === 'live') return <LiveFlows power={view.data} view={view} t={t} lang={lang} />;
+  if (view.kind === 'live') return <LiveFlows power={view.data} view={view} lang={lang} />;
   // Without a power picture nothing is drawn: a frozen schematic next to a failure would read as calm.
   return (
     <section class="card" aria-labelledby="flows-title">
-      <FlowsHead t={t} />
-      <PollStatus view={view} lang={lang} t={t} />
+      <FlowsHead />
+      <PollStatus view={view} lang={lang} />
     </section>
   );
 }
 
 /** Mounted only while a power picture exists, so the other requests start only with something to draw. */
-function LiveFlows({ power, view, t, lang }: Props & { power: Power; view: PollView<Power> }) {
+function LiveFlows({ power, view, lang }: Props & { power: Power; view: PollView<Power> }) {
+  const t = useT();
   const reducedMotion = useReducedMotion();
   const guard = usePoll(fetchGuard, GUARD_REFRESH_INTERVAL_MS, GUARD_REQUEST_TIMEOUT_MS);
   const devices = useDevices();
@@ -113,14 +114,14 @@ function LiveFlows({ power, view, t, lang }: Props & { power: Power; view: PollV
   return (
     <>
       <section class="card" aria-labelledby="flows-title">
-        <FlowsHead t={t} />
-        <PollStatus view={view} evaluatedAt={power.evaluatedAt} now={power.at} lang={lang} t={t} />
+        <FlowsHead />
+        <PollStatus view={view} evaluatedAt={power.evaluatedAt} now={power.at} lang={lang} />
         {power.invalidReason !== null && (
           <p class="note" role="status">
             {fill(t['flows.invalid'], { reason: t[`powerUnknown.${power.invalidReason}`] })}
           </p>
         )}
-        <Tiles power={power} t={t} lang={lang} />
+        <Tiles power={power} lang={lang} />
         {layout.lanes.length > 0 && (
           <Diagram
             layout={layout}
@@ -128,16 +129,15 @@ function LiveFlows({ power, view, t, lang }: Props & { power: Power; view: PollV
             configs={configs}
             guardDevices={guard.kind === 'live' ? guard.data.devices : []}
             reducedMotion={reducedMotion}
-            t={t}
             lang={lang}
           />
         )}
-        <Legend layout={layout} t={t} lang={lang} />
+        <Legend layout={layout} lang={lang} />
         <p class="flowcaption">{t['flows.independent']}</p>
       </section>
       <div class="flowgrid">
-        <HeadroomCard view={guard} t={t} lang={lang} />
-        <PvCard view={statistics} power={power} configs={configs} storageIds={storageIds} t={t} lang={lang} />
+        <HeadroomCard view={guard} lang={lang} />
+        <PvCard view={statistics} power={power} configs={configs} storageIds={storageIds} lang={lang} />
       </div>
     </>
   );
@@ -166,27 +166,28 @@ function tightestPhase(power: Power) {
   return best;
 }
 
-function Tiles({ power, t, lang }: Props & { power: Power }) {
+function Tiles({ power, lang }: Props & { power: Power }) {
+  const t = useT();
   const { generation, generationNote, netImport, storage } = power.total;
-  const reported = (q: Quantity) => <Age reportedAt={q.reportedAt} now={power.at} lang={lang} t={t} template="age.reported" />;
+  const reported = (q: Quantity) => <Age reportedAt={q.reportedAt} now={power.at} lang={lang} template="age.reported" />;
   const tightest = tightestPhase(power);
   return (
     <div class="flowstats">
       <Tile label={t['flows.tile.production']} note={generationNote !== null ? t[`generationNote.${generationNote}`] : reported(generation)}>
-        <QuantityText quantity={generation} t={t} lang={lang} />
+        <QuantityText quantity={generation} lang={lang} />
       </Tile>
       <Tile
         label={netImport.w === null ? t['flows.tile.grid'] : netImport.w < 0 ? t['flows.tile.gridExport'] : t['flows.tile.gridImport']}
         note={reported(netImport)}
       >
-        <QuantityText quantity={magnitude(netImport)} t={t} lang={lang} />
+        <QuantityText quantity={magnitude(netImport)} lang={lang} />
       </Tile>
       {storage.unknown !== 'not_declared' && (
         <Tile
           label={storage.w === null ? t['flows.tile.storage'] : storage.w < 0 ? t['flows.tile.storageDischarging'] : t['flows.tile.storageCharging']}
           note={reported(storage)}
         >
-          <QuantityText quantity={magnitude(storage)} t={t} lang={lang} />
+          <QuantityText quantity={magnitude(storage)} lang={lang} />
         </Tile>
       )}
       <Tile
@@ -195,7 +196,7 @@ function Tiles({ power, t, lang }: Props & { power: Power }) {
           tightest === null ? undefined : (
             <>
               {fill(t['bar.ofLimit'], { percent: formatPercent(Math.abs(tightest.currentA!) / tightest.ratingA, lang) })}{' '}
-              <Age reportedAt={tightest.currentReportedAt} now={power.at} lang={lang} t={t} template="age.reported" />
+              <Age reportedAt={tightest.currentReportedAt} now={power.at} lang={lang} template="age.reported" />
             </>
           )
         }
@@ -218,7 +219,8 @@ function Lines({ lines, x, y, step }: { lines: string[]; x: number; y: number; s
   );
 }
 
-function SourceBox({ source, power, t, lang }: Props & { source: SourceNode; power: Power }) {
+function SourceBox({ source, power, lang }: Props & { source: SourceNode; power: Power }) {
+  const t = useT();
   const { x, y, width, height, quantity } = source;
   let sub: string;
   if (quantity.w === null) sub = unknownReason(t, quantity.unknown ?? 'power_not_fresh');
@@ -249,7 +251,7 @@ function SourceBox({ source, power, t, lang }: Props & { source: SourceNode; pow
   );
 }
 
-function rowText(row: Row, lane: Lane, power: Power, configs: DeviceConfig[] | null, guardDevices: GuardDevice[], { t, lang }: Props) {
+function rowText(row: Row, lane: Lane, power: Power, configs: DeviceConfig[] | null, guardDevices: GuardDevice[], t: Messages, { lang }: Props) {
   if (row.kind === 'house') {
     const uncontrolled = lane.phase.balance.uncontrolled;
     const names = lane.phase.balance.unknownDevices.map((id) => deviceLabel(configs, id));
@@ -283,8 +285,9 @@ function rowText(row: Row, lane: Lane, power: Power, configs: DeviceConfig[] | n
   return { name: clip(label, NAME_CHARS), sub: parts.join(' · '), title: label };
 }
 
-function RowBox({ row, lane, power, configs, guardDevices, t, lang }: Props & { row: Row; lane: Lane; power: Power; configs: DeviceConfig[] | null; guardDevices: GuardDevice[] }) {
-  const text = rowText(row, lane, power, configs, guardDevices, { t, lang });
+function RowBox({ row, lane, power, configs, guardDevices, lang }: Props & { row: Row; lane: Lane; power: Power; configs: DeviceConfig[] | null; guardDevices: GuardDevice[] }) {
+  const t = useT();
+  const text = rowText(row, lane, power, configs, guardDevices, t, { lang });
   const kind = row.kind === 'device' ? 'controlled' : row.kind === 'foreign' ? 'foreign' : 'base';
   return (
     <g class="node" data-kind={kind} data-state={row.state} data-device={row.device ?? undefined}>
@@ -301,7 +304,8 @@ function RowBox({ row, lane, power, configs, guardDevices, t, lang }: Props & { 
   );
 }
 
-function Busbar({ lane, t, lang }: Props & { lane: Lane }) {
+function Busbar({ lane, lang }: Props & { lane: Lane }) {
+  const t = useT();
   const { x, y, width, height } = lane.busbar;
   const phase = lane.phase;
   const current = phase.currentA === null ? null : Math.abs(phase.currentA);
@@ -340,9 +344,9 @@ function Diagram({
   configs,
   guardDevices,
   reducedMotion,
-  t,
   lang,
 }: Props & { layout: FlowLayout; power: Power; configs: DeviceConfig[] | null; guardDevices: GuardDevice[]; reducedMotion: boolean }) {
+  const t = useT();
   const { junction, meter } = layout;
   return (
     <div class="flowscroll">
@@ -371,14 +375,14 @@ function Diagram({
           {t['flows.node.junction']}
         </text>
         {layout.sources.map((source) => (
-          <SourceBox key={source.kind} source={source} power={power} t={t} lang={lang} />
+          <SourceBox key={source.kind} source={source} power={power} lang={lang} />
         ))}
         {layout.lanes.map((lane) => (
           <g key={lane.phase.phase} class="lane" data-phase={lane.phase.phase}>
             <rect class="laneframe" x={lane.frame.x} y={lane.frame.y} width={lane.frame.width} height={lane.frame.height} rx={6} />
-            <Busbar lane={lane} t={t} lang={lang} />
+            <Busbar lane={lane} lang={lang} />
             {lane.rows.map((row) => (
-              <RowBox key={row.device ?? row.kind} row={row} lane={lane} power={power} configs={configs} guardDevices={guardDevices} t={t} lang={lang} />
+              <RowBox key={row.device ?? row.kind} row={row} lane={lane} power={power} configs={configs} guardDevices={guardDevices} lang={lang} />
             ))}
           </g>
         ))}
@@ -387,7 +391,8 @@ function Diagram({
   );
 }
 
-function Legend({ layout, t, lang }: Props & { layout: FlowLayout }) {
+function Legend({ layout, lang }: Props & { layout: FlowLayout }) {
+  const t = useT();
   const has = (kind: SourceNode['kind']) => layout.sources.some((s) => s.kind === kind);
   const items: [string, string][] = [
     ...(has('pv') ? [['pv', t['flows.legend.pv']] as [string, string]] : []),
@@ -416,7 +421,8 @@ function Legend({ layout, t, lang }: Props & { layout: FlowLayout }) {
 }
 
 /** A headroom in A; negative stays negative (how far the phase is over). */
-function HeadroomCell({ value, sub, t, lang }: Props & { value: number | null; sub?: string }) {
+function HeadroomCell({ value, sub, lang }: Props & { value: number | null; sub?: string }) {
+  const t = useT();
   return (
     <td class={value !== null && value < 0 ? 'num neg' : 'num'}>
       {value === null ? t['common.none'] : formatAmps(value, lang)}
@@ -425,7 +431,8 @@ function HeadroomCell({ value, sub, t, lang }: Props & { value: number | null; s
   );
 }
 
-function HeadroomRow({ phase, at, t, lang }: Props & { phase: GuardPhase; at: Date }) {
+function HeadroomRow({ phase, at, lang }: Props & { phase: GuardPhase; at: Date }) {
+  const t = useT();
   const direction = phase.direction === 'export' || phase.direction === 'unknown' ? t[`direction.${phase.direction}`] : null;
   return (
     <tr data-phase={phase.phase}>
@@ -434,11 +441,11 @@ function HeadroomRow({ phase, at, t, lang }: Props & { phase: GuardPhase; at: Da
         {phase.currentA === null ? t['common.none'] : formatAmps(Math.abs(phase.currentA), lang)}
         {direction !== null && <span class="sub">{direction}</span>}
         <span class="sub">
-          <Age reportedAt={phase.reportedAt} now={at} lang={lang} t={t} />
+          <Age reportedAt={phase.reportedAt} now={at} lang={lang} />
         </span>
       </td>
-      <HeadroomCell value={phase.headroomA} sub={fill(t['flows.headroom.threshold'], { value: formatAmps(phase.reserveThresholdA, lang) })} t={t} lang={lang} />
-      <HeadroomCell value={phase.breakerHeadroomA} t={t} lang={lang} />
+      <HeadroomCell value={phase.headroomA} sub={fill(t['flows.headroom.threshold'], { value: formatAmps(phase.reserveThresholdA, lang) })} lang={lang} />
+      <HeadroomCell value={phase.breakerHeadroomA} lang={lang} />
       <td>
         <StateBadge tone={PHASE_TONE[phase.state]} label={t[`phaseState.${phase.state}`]} />
         {phase.invalidReason !== null && <span class="sub">{t[`invalidReason.${phase.invalidReason}`]}</span>}
@@ -451,7 +458,8 @@ function HeadroomRow({ phase, at, t, lang }: Props & { phase: GuardPhase; at: Da
  * UI-08 from the guard's own figures: headroom to the reserve threshold and to the continuous current
  * (the breaker's limit for sustained load, the l<n>_breaker_headroom entity), never to the bare rating.
  */
-function HeadroomCard({ view, t, lang }: Props & { view: PollView<GuardStatus> }) {
+function HeadroomCard({ view, lang }: Props & { view: PollView<GuardStatus> }) {
+  const t = useT();
   const guard = view.kind === 'live' ? view.data : null;
   const breaker = guard?.breaker ?? null;
   const continuous = breaker?.continuousA ?? guard?.phases[0]?.continuousA ?? null;
@@ -470,7 +478,7 @@ function HeadroomCard({ view, t, lang }: Props & { view: PollView<GuardStatus> }
           </p>
         )}
       </header>
-      <PollStatus view={view} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} />
       {guard !== null && continuous !== null && (
         <>
           <div class="tablewrap">
@@ -486,7 +494,7 @@ function HeadroomCard({ view, t, lang }: Props & { view: PollView<GuardStatus> }
               </thead>
               <tbody>
                 {guard.phases.map((phase) => (
-                  <HeadroomRow key={phase.phase} phase={phase} at={guard.at} t={t} lang={lang} />
+                  <HeadroomRow key={phase.phase} phase={phase} at={guard.at} lang={lang} />
                 ))}
               </tbody>
             </table>
@@ -502,7 +510,8 @@ function HeadroomCard({ view, t, lang }: Props & { view: PollView<GuardStatus> }
 type PvProps = Props & { power: Power; configs: DeviceConfig[] | null; storageIds: ReadonlySet<string> };
 
 /** Storage devices are left out of the device rows: their share is the storage row. */
-function PvTable({ statistics, power, configs, storageIds, t, lang }: PvProps & { statistics: Statistics }) {
+function PvTable({ statistics, power, configs, storageIds, lang }: PvProps & { statistics: Statistics }) {
+  const t = useT();
   const { lastHour } = statistics;
   const totals = lastHour.totals;
   if (lastHour.buckets === 0) return <p class="note">{t['flows.pv.noData']}</p>;
@@ -551,7 +560,8 @@ function PvTable({ statistics, power, configs, storageIds, t, lang }: PvProps & 
   );
 }
 
-function PvCard({ view, power, configs, storageIds, t, lang }: PvProps & { view: PollView<Statistics> }) {
+function PvCard({ view, power, configs, storageIds, lang }: PvProps & { view: PollView<Statistics> }) {
+  const t = useT();
   const statistics = view.kind === 'live' ? view.data : null;
   const hour = statistics?.lastHour ?? null;
   const declared = power.total.generation.unknown !== 'not_declared';
@@ -570,8 +580,8 @@ function PvCard({ view, power, configs, storageIds, t, lang }: PvProps & { view:
         <p class="note">{t['flows.pv.notDeclared']}</p>
       ) : (
         <>
-          <PollStatus view={view} lang={lang} t={t} />
-          {statistics !== null && <PvTable statistics={statistics} power={power} configs={configs} storageIds={storageIds} t={t} lang={lang} />}
+          <PollStatus view={view} lang={lang} />
+          {statistics !== null && <PvTable statistics={statistics} power={power} configs={configs} storageIds={storageIds} lang={lang} />}
           {statistics !== null && statistics.integratedTo !== null && (
             <p class="updated">
               <time dateTime={statistics.integratedTo.toISOString()}>{fill(t['flows.pv.counted'], { age: age(statistics.integratedTo, statistics.at, lang) })}</time>

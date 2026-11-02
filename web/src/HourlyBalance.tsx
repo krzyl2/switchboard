@@ -1,7 +1,7 @@
 import { fetchBalance, type BalanceUnknownReason, type HourlyBalance } from './api/balance';
 import { POWER_REFRESH_INTERVAL_MS, POWER_REQUEST_TIMEOUT_MS } from './config';
 import { formatCountdown, formatNumber } from './format';
-import { messages, type Lang, type Messages } from './i18n';
+import { useT, type Lang, type Messages } from './i18n';
 import { PollStatus } from './ui';
 import { usePoll } from './usePoll';
 
@@ -28,7 +28,8 @@ function unknownText(t: Messages, reason: BalanceUnknownReason): string {
   return t[`dashboard.hb.unknown.${reason}`];
 }
 
-function Figures({ balance, t, lang }: { balance: HourlyBalance; t: Messages; lang: Lang }) {
+function Figures({ balance, lang }: { balance: HourlyBalance; lang: Lang }) {
+  const t = useT();
   const remaining = secondsToHour(balance);
   const band = balance.band;
   const unknown = balance.known ? null : unknownText(t, balance.unknownReason);
@@ -69,7 +70,7 @@ function Figures({ balance, t, lang }: { balance: HourlyBalance; t: Messages; la
 }
 
 export function HourlyBalanceCard({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  const t = useT();
   const view = usePoll(fetchBalance, POWER_REFRESH_INTERVAL_MS, POWER_REQUEST_TIMEOUT_MS);
   return (
     <section class="card" aria-labelledby="hb-title">
@@ -77,8 +78,8 @@ export function HourlyBalanceCard({ lang }: { lang: Lang }) {
         <h2 id="hb-title">{t['dashboard.hb.title']}</h2>
         <p class="sub">{t['dashboard.hb.sub']}</p>
       </header>
-      <PollStatus view={view} lang={lang} t={t} />
-      {view.kind === 'live' && (view.data.configured ? <Figures balance={view.data} t={t} lang={lang} /> : <p class="note">{t['dashboard.hb.notConfigured']}</p>)}
+      <PollStatus view={view} lang={lang} />
+      {view.kind === 'live' && (view.data.configured ? <Figures balance={view.data} lang={lang} /> : <p class="note">{t['dashboard.hb.notConfigured']}</p>)}
     </section>
   );
 }

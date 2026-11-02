@@ -19,10 +19,10 @@ export interface DecisionHistoryPage {
 }
 
 export interface DecisionHistoryQuery {
-  device?: string;
-  kind?: DecisionKind;
+  device?: string | undefined;
+  kind?: DecisionKind | undefined;
   /** A previous page's next. */
-  cursor?: string;
+  cursor?: string | undefined;
   from?: Date;
   to?: Date;
   limit?: number;

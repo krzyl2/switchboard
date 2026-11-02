@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { DiscoveredEntity } from './api/setup';
-import { fill, type Messages } from './i18n';
+import { fill, useT } from './i18n';
 
 /**
  * What a field accepts (UI-03): entities of these domains whose device class is one of
@@ -29,7 +29,6 @@ interface Props {
   /** The discovery's entities; null when Home Assistant cannot be reached (manual entry only). */
   entities: readonly DiscoveredEntity[] | null;
   filter: PickerFilter;
-  t: Messages;
 }
 
 /**
@@ -39,7 +38,8 @@ interface Props {
  * the user declares an entity, CLAUDE.md), and always allows typing the entity ID by hand. Entity
  * IDs are shown in monospace.
  */
-export function EntityPicker({ id, label, value, onChange, entities, filter, t }: Props) {
+export function EntityPicker({ id, label, value, onChange, entities, filter }: Props) {
+  const t = useT();
   const [manual, setManual] = useState(false);
   const candidates = entities === null ? [] : entities.filter((e) => matchesFilter(e, filter));
   const primary = candidates.filter((e) => e.derived === null);

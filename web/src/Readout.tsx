@@ -1,6 +1,7 @@
 import type { Readout } from './api/setup';
+import { assertNever } from './assertNever';
 import { formatAge, formatInterval } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang } from './i18n';
 import { StateLabel } from './ui';
 
 /**
@@ -9,7 +10,8 @@ import { StateLabel } from './ui';
  * its refresh once detected (SIG-07). A wrong pick (an entity that does not exist, a sleeping one,
  * a value in another unit) is visible at once.
  */
-export function ReadoutLine({ readout, t, lang }: { readout: Readout | undefined; t: Messages; lang: Lang }) {
+export function ReadoutLine({ readout, lang }: { readout: Readout | undefined; lang: Lang }) {
+  const t = useT();
   if (readout === undefined) return <span class="readout sub-inline">{t['setup.readout.none']}</span>;
   switch (readout.status) {
     case 'pending':
@@ -41,5 +43,7 @@ export function ReadoutLine({ readout, t, lang }: { readout: Readout | undefined
           </span>
         </span>
       );
+    default:
+      return assertNever(readout.status);
   }
 }

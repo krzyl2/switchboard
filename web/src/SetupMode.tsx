@@ -3,7 +3,7 @@ import type { Control } from './api/control';
 import type { DeviceDraft, SaveOutcome, SetupDraft, SetupIssue, SignalDraft } from './api/setup';
 import { ControlBlock, modeKind } from './ControlBlock';
 import { formatNumber } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { issueText, SetupIssues } from './SetupIssues';
 import { fieldId, stepOfField, type StepName } from './setupDraft';
 import { StateBadge, StateLabel, type Tone } from './ui';
@@ -66,7 +66,8 @@ function openField(field: string, goTo: (step: StepName) => void): void {
   goTo(step);
 }
 
-export function SetupMode({ setup, t, lang, goTo }: StepProps) {
+export function SetupMode({ setup, lang, goTo }: StepProps) {
+  const t = useT();
   // MODE-02: the add-on option (ceiling), the control switch and the mode in force, as they are.
   const control = useControl();
   const [running, setRunning] = useState(false);
@@ -114,7 +115,7 @@ export function SetupMode({ setup, t, lang, goTo }: StepProps) {
       </header>
       <p>{t['setupMode.lead']}</p>
 
-      <ControlBlock state={control} t={t} lang={lang} place="setup" />
+      <ControlBlock state={control} lang={lang} place="setup" />
 
       <div class="smode-statement" role="note">
         <p>
@@ -135,11 +136,11 @@ export function SetupMode({ setup, t, lang, goTo }: StepProps) {
         </div>
       )}
 
-      <Review setup={setup} t={t} lang={lang} />
+      <Review setup={setup} lang={lang} />
 
       <div class="smode-finish">
-        {refusal !== null && <Refusal issues={elsewhere} conflict={refusal.kind === 'conflict'} setup={setup} t={t} goTo={goTo} />}
-        <SetupIssues issues={own} t={t} />
+        {refusal !== null && <Refusal issues={elsewhere} conflict={refusal.kind === 'conflict'} setup={setup} goTo={goTo} />}
+        <SetupIssues issues={own} />
         {noAnswer && (
           <div role="alert">
             <p>
@@ -151,7 +152,7 @@ export function SetupMode({ setup, t, lang, goTo }: StepProps) {
           </div>
         )}
         {saved !== null ? (
-          <Saved saved={saved} previousRevision={view?.revision ?? null} modeResult={modeResult} running={running} setup={setup} t={t} />
+          <Saved saved={saved} previousRevision={view?.revision ?? null} modeResult={modeResult} running={running} setup={setup} />
         ) : (
           <>
             {missing.length > 0 && (
@@ -204,7 +205,8 @@ function Ack({ name, label, setup }: { name: Acknowledgement; label: string; set
 }
 
 /** A refused save (UI-05): nothing was written; every error names its step and opens its field. */
-function Refusal({ issues, conflict, setup, t, goTo }: { issues: SetupIssue[]; conflict: boolean; setup: SetupState; t: Messages; goTo: (step: StepName) => void }) {
+function Refusal({ issues, conflict, setup, goTo }: { issues: SetupIssue[]; conflict: boolean; setup: SetupState; goTo: (step: StepName) => void }) {
+  const t = useT();
   return (
     <div class="smode-refusal" role="alert">
       <h3>
@@ -252,15 +254,14 @@ function Saved({
   modeResult,
   running,
   setup,
-  t,
 }: {
   saved: Extract<SaveOutcome, { kind: 'saved' }>;
   previousRevision: string | null;
   modeResult: Control | 'failed' | null;
   running: boolean;
   setup: SetupState;
-  t: Messages;
 }) {
+  const t = useT();
   const unchanged = previousRevision !== null && saved.revision === previousRevision;
   const [tone, loadText]: [Tone, string] = !saved.reloaded
     ? ['warn', t['setupMode.saved.notConfirmed']]
@@ -326,7 +327,8 @@ function entityOf(signal: SignalDraft | null | undefined): string | null {
  * of the file stay as written. A preserved part the runtime refuses can be removed here, with the
  * backup keeping it, so an invalid section the wizard does not edit is never a dead end.
  */
-function Review({ setup, t, lang }: { setup: SetupState; t: Messages; lang: Lang }) {
+function Review({ setup, lang }: { setup: SetupState; lang: Lang }) {
+  const t = useT();
   const { draft, view } = setup;
   const n = (value: number, digits = 0) => formatNumber(value, lang, digits);
   const { connection, meter } = draft;
@@ -374,7 +376,7 @@ function Review({ setup, t, lang }: { setup: SetupState; t: Messages; lang: Lang
         </dd>
         <dt>{t['setupMode.review.meter']}</dt>
         <dd data-review="meter">
-          <MeterRows meter={meter} t={t} />
+          <MeterRows meter={meter} />
         </dd>
         <dt>{t['setupMode.review.inverter']}</dt>
         <dd data-review="inverter">
@@ -394,7 +396,7 @@ function Review({ setup, t, lang }: { setup: SetupState; t: Messages; lang: Lang
           ) : (
             <ul class="plainlist">
               {draft.devices.map((device, index) => (
-                <DeviceRow key={device.id ?? `new-${index}`} device={device} t={t} />
+                <DeviceRow key={device.id ?? `new-${index}`} device={device} />
               ))}
             </ul>
           )}
@@ -439,7 +441,8 @@ function Review({ setup, t, lang }: { setup: SetupState; t: Messages; lang: Lang
 
 type SignalLabel = 'setupMode.review.current' | 'setupMode.review.power' | 'setupMode.review.voltageSignal';
 
-function MeterRows({ meter, t }: { meter: SetupDraft['meter']; t: Messages }) {
+function MeterRows({ meter }: { meter: SetupDraft['meter'] }) {
+  const t = useT();
   const rows: { label: string; current: string | null; power: string | null; voltage: string | null }[] = PHASE_ROWS.map((phase) => {
     const row = meter.phases[phase];
     return { label: phase, current: entityOf(row?.current), power: entityOf(row?.power), voltage: entityOf(row?.voltage) };
@@ -472,7 +475,8 @@ function MeterRows({ meter, t }: { meter: SetupDraft['meter']; t: Messages }) {
   );
 }
 
-function DeviceRow({ device, t }: { device: DeviceDraft; t: Messages }) {
+function DeviceRow({ device }: { device: DeviceDraft }) {
+  const t = useT();
   const typeKey = device.type !== null && device.type in DEVICE_TYPE_LABEL ? DEVICE_TYPE_LABEL[device.type as keyof typeof DEVICE_TYPE_LABEL] : null;
   const [tone, badge]: [Tone, string] = !device.existing
     ? ['ok', t['setupMode.review.device.new']]

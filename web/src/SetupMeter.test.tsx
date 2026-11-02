@@ -9,7 +9,7 @@ import selfTestSample from './api/setup-self-test.sample.json';
 import startedSample from './api/setup-self-test-started.sample.json';
 import templatesSample from './api/setup-templates.sample.json';
 import validationSample from './api/setup-validation.sample.json';
-import { messages, type Lang } from './i18n';
+import { I18n, type Lang } from './i18n';
 import { advance, respond } from './screens.test-support';
 import { draftReducer, fieldId, issuesAt, issuesOfStep, type StepName } from './setupDraft';
 import type { SetupState } from './useSetup';
@@ -139,7 +139,7 @@ function mount({ draft = emptyDraft(), verdict = () => validation(), lang = 'en'
       issuesAt: (f) => issuesAt(issues, f),
     };
     current = setup;
-    return <SetupMeter setup={setup} t={messages[lang]} lang={lang} goTo={goTo} />;
+    return <I18n lang={lang}><SetupMeter setup={setup} lang={lang} goTo={goTo} /></I18n>;
   }
   render(<Harness />);
   return { goTo, draft: () => current!.draft };

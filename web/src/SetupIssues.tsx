@@ -1,5 +1,5 @@
 import type { SetupIssue } from './api/setup';
-import { fill, type Messages } from './i18n';
+import { fill, useT, type Messages } from './i18n';
 import { fieldId } from './setupDraft';
 import { StateLabel } from './ui';
 
@@ -21,7 +21,8 @@ export function issueText(issue: SetupIssue, t: Messages): string {
  * field it names so the user lands on it. An issue about a part of the file the wizard does not
  * edit names that part instead.
  */
-export function SetupIssues({ issues, t }: { issues: readonly SetupIssue[]; t: Messages }) {
+export function SetupIssues({ issues }: { issues: readonly SetupIssue[] }) {
+  const t = useT();
   if (issues.length === 0) return null;
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
@@ -32,7 +33,7 @@ export function SetupIssues({ issues, t }: { issues: readonly SetupIssue[]; t: M
           <h3>{t['setup.issues.title']}</h3>
           <ul>
             {errors.map((issue, i) => (
-              <IssueItem key={`e${i}`} issue={issue} t={t} />
+              <IssueItem key={`e${i}`} issue={issue} />
             ))}
           </ul>
         </div>
@@ -42,7 +43,7 @@ export function SetupIssues({ issues, t }: { issues: readonly SetupIssue[]; t: M
           <h3>{t['setup.issues.warnings']}</h3>
           <ul>
             {warnings.map((issue, i) => (
-              <IssueItem key={`w${i}`} issue={issue} t={t} />
+              <IssueItem key={`w${i}`} issue={issue} />
             ))}
           </ul>
         </div>
@@ -51,7 +52,8 @@ export function SetupIssues({ issues, t }: { issues: readonly SetupIssue[]; t: M
   );
 }
 
-function IssueItem({ issue, t }: { issue: SetupIssue; t: Messages }) {
+function IssueItem({ issue }: { issue: SetupIssue }) {
+  const t = useT();
   const label = <StateLabel tone={issue.severity === 'error' ? 'crit' : 'warn'} label={t[`setup.severity.${issue.severity}`]} />;
   return (
     <li data-issue={issue.code} data-field={issue.field ?? undefined}>

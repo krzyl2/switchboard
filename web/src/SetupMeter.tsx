@@ -23,7 +23,7 @@ import { readJson, request, withTimeout } from './api/http';
 import { PHASES, type PhaseName } from './api/signals';
 import { SETUP_REQUEST_TIMEOUT_MS, SETUP_SELF_TEST_REFRESH_INTERVAL_MS, SETUP_SELF_TEST_REQUEST_TIMEOUT_MS } from './config';
 import { formatCountdown, formatInterval, formatNumber, formatPercent } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { parseNumber } from './parseNumber';
 import { fieldId, getIn, issuesOfStep } from './setupDraft';
 import { PollStatus, StateBadge, StateLabel, Timestamp, type Tone } from './ui';
@@ -296,7 +296,8 @@ type CheckView = { kind: 'idle' } | { kind: 'refused'; field: string } | { kind:
  * UI-04, CONN-01, CONN-05, CONN-06, SIG-07). Only the add-on judges: "Check the measurement and
  * continue" validates the draft and moves on only when no step-1 field is refused.
  */
-export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
+export function SetupMeter({ setup, lang, goTo }: StepProps) {
+  const t = useT();
   const draft = setup.draft;
   const topology = draft.connection.topology;
   const layout = topologyPhases(topology);
@@ -403,7 +404,7 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
         </div>
 
         <div class="sm-section" data-part="device">
-          <DiscoveryNotes discovery={discovery} reread={rereadDiscovery} t={t} />
+          <DiscoveryNotes discovery={discovery} reread={rereadDiscovery} />
           {discovery.kind === 'ready' && (
             <MeterDevice
               discovery={discovery.data}
@@ -411,7 +412,6 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
               onChoose={setMeterDevice}
               layout={layout}
               setup={setup}
-              t={t}
             />
           )}
         </div>
@@ -474,7 +474,7 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
                 </span>
               )}
             </div>
-            <RefreshSummary rows={topology === 'three_phase_summed' ? rows.totals.filter((r) => r.quantity === 'current') : rows.currents} draft={draft} readoutOf={readoutOf} t={t} lang={lang} />
+            <RefreshSummary rows={topology === 'three_phase_summed' ? rows.totals.filter((r) => r.quantity === 'current') : rows.currents} draft={draft} readoutOf={readoutOf} lang={lang} />
           </div>
         </div>
 
@@ -538,8 +538,8 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
           <strong>{t['setupMeter.net.title']}</strong> {t['setupMeter.net.body']}
         </p>
 
-        <CheckResult setup={setup} t={t} lang={lang} />
-        <SetupIssues issues={setup.issuesOf('meter')} t={t} />
+        <CheckResult setup={setup} lang={lang} />
+        <SetupIssues issues={setup.issuesOf('meter')} />
         {check.kind === 'refused' && (
           <p class="note" role="alert" data-refused={check.field}>
             <StateLabel tone="crit" label={fill(t['setupMeter.check.refused'], { field: fieldLabel(check.field, t) })} />
@@ -569,7 +569,6 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
 
       <SelfTestPanel
         setup={setup}
-        t={t}
         lang={lang}
         entities={all}
         devices={devices}
@@ -613,7 +612,8 @@ function meterRows(draft: SetupDraft, t: Messages): { currents: RowSpec[]; power
   };
 }
 
-function DiscoveryNotes({ discovery, reread, t }: { discovery: DiscoveryView; reread: () => void; t: Messages }) {
+function DiscoveryNotes({ discovery, reread }: { discovery: DiscoveryView; reread: () => void }) {
+  const t = useT();
   if (discovery.kind === 'loading') return <p class="updated">{t['setupMeter.discovery.loading']}</p>;
   if (discovery.kind === 'unavailable') {
     return (
@@ -649,15 +649,14 @@ function MeterDevice({
   onChoose,
   layout,
   setup,
-  t,
 }: {
   discovery: Discovery;
   chosen: string;
   onChoose: (id: string) => void;
   layout: readonly PhaseName[];
   setup: SetupState;
-  t: Messages;
 }) {
+  const t = useT();
   const candidates = discovery.devices
     .map((device) => ({
       device,
@@ -720,7 +719,6 @@ interface RowProps {
   /** What the picker offers: every entity, or the chosen meter device's. */
   entities: readonly DiscoveredEntity[] | null;
   readoutOf: (entity: string | null | undefined) => Readout | undefined;
-  t: Messages;
   lang: Lang;
 }
 
@@ -729,7 +727,8 @@ interface RowProps {
  * picker, its unit, the live readout with age and refresh (UI-04, SIG-07), and the declared max age
  * with the add-on's verdict on it against the detected refresh (CONN-06).
  */
-function SignalRow({ spec, setup, all, entities, readoutOf, t, lang }: RowProps) {
+function SignalRow({ spec, setup, all, entities, readoutOf, lang }: RowProps) {
+  const t = useT();
   const signal = signalAt(setup.draft, spec.path);
   const entity = signal?.entity ?? null;
   const units = FILTERS[spec.quantity].units;
@@ -761,7 +760,6 @@ function SignalRow({ spec, setup, all, entities, readoutOf, t, lang }: RowProps)
           }}
           entities={entities}
           filter={FILTERS[spec.quantity]}
-          t={t}
         />
       </div>
       <div class="picker">
@@ -786,7 +784,7 @@ function SignalRow({ spec, setup, all, entities, readoutOf, t, lang }: RowProps)
       </div>
       <div class="sm-readout">
         <span class="sub">{t['setupMeter.label.readout']}</span>
-        {entity !== null ? <ReadoutLine readout={readoutOf(entity)} t={t} lang={lang} /> : <span class="sub-inline">{t['setup.readout.none']}</span>}
+        {entity !== null ? <ReadoutLine readout={readoutOf(entity)} lang={lang} /> : <span class="sub-inline">{t['setup.readout.none']}</span>}
       </div>
       <div class="picker">
         <label for={fieldId(`${spec.path}.maxAge`)}>{t['setupMeter.label.maxAge']}</label>
@@ -831,7 +829,8 @@ function SignalRow({ spec, setup, all, entities, readoutOf, t, lang }: RowProps)
  * The detected refresh of the protection inputs (mockup "Odświeżanie", SIG-07): the slowest phase
  * counts, since the minimum safe reserve in step 2 is derived from it.
  */
-function RefreshSummary({ rows, draft, readoutOf, t, lang }: { rows: RowSpec[]; draft: SetupDraft; readoutOf: RowProps['readoutOf']; t: Messages; lang: Lang }) {
+function RefreshSummary({ rows, draft, readoutOf, lang }: { rows: RowSpec[]; draft: SetupDraft; readoutOf: RowProps['readoutOf']; lang: Lang }) {
+  const t = useT();
   const entities = rows.filter((r) => r.need !== 'outside').map((r) => signalAt(draft, r.path)?.entity ?? null);
   const readouts = entities.map((e) => readoutOf(e));
   let text: string;
@@ -855,7 +854,8 @@ function RefreshSummary({ rows, draft, readoutOf, t, lang }: { rows: RowSpec[]; 
 }
 
 /** The add-on's last verdict on the measurement: the phase sum (skipped is never passed). */
-function CheckResult({ setup, t, lang }: { setup: SetupState; t: Messages; lang: Lang }) {
+function CheckResult({ setup, lang }: { setup: SetupState; lang: Lang }) {
+  const t = useT();
   const validation = setup.validation;
   if (validation === null) return null;
   const sum = validation.checks.phaseSum;
@@ -885,7 +885,8 @@ function CheckResult({ setup, t, lang }: { setup: SetupState; t: Messages; lang:
 
 const VERDICT_TONE: Record<StepSummary['verdict'], Tone> = { confirmed: 'ok', mismatch: 'crit', inconclusive: 'warn' };
 
-function VerdictText({ verdict, observed, expected, reason, t }: { verdict: StepSummary['verdict']; observed: PhaseName | null; expected: string; reason: StepSummary['reason']; t: Messages }) {
+function VerdictText({ verdict, observed, expected, reason }: { verdict: StepSummary['verdict']; observed: PhaseName | null; expected: string; reason: StepSummary['reason'] }) {
+  const t = useT();
   const text =
     verdict === 'confirmed'
       ? fill(t['setupMeter.outcome.confirmed'], { observed: observed ?? expected })
@@ -899,7 +900,8 @@ function VerdictText({ verdict, observed, expected, reason, t }: { verdict: Step
   );
 }
 
-function ObservationItem({ observation, expected, t, lang }: { observation: Observation; expected: string; t: Messages; lang: Lang }) {
+function ObservationItem({ observation, expected, lang }: { observation: Observation; expected: string; lang: Lang }) {
+  const t = useT();
   const digits = observation.unit === 'W' ? 0 : 2;
   const deltas = PHASES.filter((p) => observation.deltas[p] !== undefined)
     .map((p) => {
@@ -912,7 +914,7 @@ function ObservationItem({ observation, expected, t, lang }: { observation: Obse
       <Timestamp at={observation.at} lang={lang} />
       <span>{t[`setupMeter.obs.${observation.transition}`]}</span>
       <span class="mono sm-deltas">{deltas}</span>
-      <VerdictText verdict={observation.verdict} observed={observation.observedPhase} expected={expected} reason={observation.reason} t={t} />
+      <VerdictText verdict={observation.verdict} observed={observation.observedPhase} expected={expected} reason={observation.reason} />
       {observation.ratingRatio !== null && <span class="sub-inline">{fill(t['setupMeter.obs.ratio'], { ratio: formatPercent(observation.ratingRatio, lang) })}</span>}
       <span class="sub-inline">{t[`setupMeter.obs.${observation.source}`]}</span>
       {observation.houseLoad && <span class="sub-inline">{t['setupMeter.obs.houseLoad']}</span>}
@@ -923,7 +925,6 @@ function ObservationItem({ observation, expected, t, lang }: { observation: Obse
 
 interface PanelProps {
   setup: SetupState;
-  t: Messages;
   lang: Lang;
   entities: readonly DiscoveredEntity[] | null;
   devices: ReturnType<typeof testableDevices>;
@@ -944,7 +945,8 @@ interface PanelProps {
  * by hand while the add-on watches which meter phase rises, and the verdict names the phase that
  * rose against the declared one. Inconclusive is shown as inconclusive, never as a pass.
  */
-function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, testLoad, onTestLoad, session, readoutOf, readoutsAt, headingRef }: PanelProps) {
+function SelfTestPanel({ setup, lang, entities, devices, chosen, onChoose, testLoad, onTestLoad, session, readoutOf, readoutsAt, headingRef }: PanelProps) {
+  const t = useT();
   const [starting, setStarting] = useState(false);
   const [refusal, setRefusal] = useState<SetupIssue[]>([]);
   const [notice, setNotice] = useState<'busy' | 'failed' | null>(null);
@@ -1019,7 +1021,6 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
             onChange={(value) => onTestLoad({ stateEntity: value })}
             entities={entities}
             filter={{ domains: stateDomains }}
-            t={t}
           />
           <div class="picker">
             <label for={fieldId('testLoad.phase')}>{t['setupMeter.selfTest.loadPhase']}</label>
@@ -1051,7 +1052,7 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
       {refusal.length > 0 && (
         <div data-part="refusal">
           <p class="sub">{t['setupMeter.selfTest.refused']}</p>
-          <SetupIssues issues={refusal} t={t} />
+          <SetupIssues issues={refusal} />
         </div>
       )}
       {notice === 'busy' && <p class="note">{t['setupMeter.selfTest.busy']}</p>}
@@ -1073,13 +1074,14 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
         )}
       </div>
 
-      <SessionDetails view={session.view} readoutOf={readoutOf} readoutsAt={readoutsAt} t={t} lang={lang} />
-      <Evidence setup={setup} t={t} />
+      <SessionDetails view={session.view} readoutOf={readoutOf} readoutsAt={readoutsAt} lang={lang} />
+      <Evidence setup={setup} />
     </section>
   );
 }
 
-function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: SessionView; readoutOf: RowProps['readoutOf']; readoutsAt: Date | null; t: Messages; lang: Lang }) {
+function SessionDetails({ view, readoutOf, readoutsAt, lang }: { view: SessionView; readoutOf: RowProps['readoutOf']; readoutsAt: Date | null; lang: Lang }) {
+  const t = useT();
   if (view.kind === 'none') return null;
   if (view.kind === 'lost') {
     return (
@@ -1088,7 +1090,7 @@ function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: Sessio
       </p>
     );
   }
-  if (view.kind !== 'live') return <PollStatus view={view} lang={lang} t={t} />;
+  if (view.kind !== 'live') return <PollStatus view={view} lang={lang} />;
   const session = view.data;
   const expected = session.expected;
   const rating = `${formatNumber(expected.rating, lang, expected.unit === 'W' ? 0 : 2)} ${expected.unit}`;
@@ -1105,7 +1107,7 @@ function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: Sessio
           <strong>{fill(t['setupMeter.selfTest.watching'], { entity: expected.stateEntity, phase: expected.phase })}</strong>{' '}
           {remainingS !== null && <span class="sub-inline">{fill(t['setupMeter.selfTest.remaining'], { time: formatCountdown(remainingS) })}</span>}
           <span class="sub">
-            {t['setupMeter.selfTest.live']} <span class="mono">{expected.stateEntity}</span> <ReadoutLine readout={readoutOf(expected.stateEntity)} t={t} lang={lang} />
+            {t['setupMeter.selfTest.live']} <span class="mono">{expected.stateEntity}</span> <ReadoutLine readout={readoutOf(expected.stateEntity)} lang={lang} />
           </span>
         </p>
       )}
@@ -1114,7 +1116,7 @@ function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: Sessio
       ) : (
         <ul class="sm-observations">
           {session.observations.map((o, i) => (
-            <ObservationItem key={i} observation={o} expected={expected.phase} t={t} lang={lang} />
+            <ObservationItem key={i} observation={o} expected={expected.phase} lang={lang} />
           ))}
         </ul>
       )}
@@ -1125,7 +1127,6 @@ function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: Sessio
             observed={session.verdict.observedPhase}
             expected={expected.phase}
             reason={session.verdict.reason ?? (session.status === 'expired' ? 'timed_out' : null)}
-            t={t}
           />
         </p>
       )}
@@ -1134,7 +1135,8 @@ function SessionDetails({ view, readoutOf, readoutsAt, t, lang }: { view: Sessio
 }
 
 /** The add-on's recorded and watched switchings of the declared devices, judged against this draft's meter mapping and phases. */
-function Evidence({ setup, t }: { setup: SetupState; t: Messages }) {
+function Evidence({ setup }: { setup: SetupState }) {
+  const t = useT();
   const devices = setup.draft.devices;
   if (devices.length === 0) return null;
   const results = setup.validation?.selfTest ?? null;
@@ -1156,7 +1158,7 @@ function Evidence({ setup, t }: { setup: SetupState; t: Messages }) {
                   // Nothing recorded is not a verdict: no badge, and never a pass.
                   <span class="sub-inline">{t['setupMeter.evidence.none']}</span>
                 ) : (
-                  <VerdictText verdict={r.verdict} observed={r.observedPhase} expected={declared} reason={r.reason} t={t} />
+                  <VerdictText verdict={r.verdict} observed={r.observedPhase} expected={declared} reason={r.reason} />
                 )}{' '}
                 <span class="sub">
                   {fill(t['setupMeter.evidence.row'], {

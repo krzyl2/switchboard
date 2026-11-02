@@ -11,7 +11,7 @@ import { economicsDevice, priceText, SourcesText } from './Economics';
 import { EvDeviceLines, isEvDevice } from './EvView';
 import { GoalRow } from './GoalView';
 import { formatAmps, formatCountdown, formatKw, formatNumber, roundTo } from './format';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { levelText, reasonSentence } from './reasons';
 import { Age, PollStatus, StateBadge, StateLabel, type Tone } from './ui';
 import { useDevices } from './useDevices';
@@ -29,7 +29,6 @@ import './DeviceCard.css';
 // read-only except the override; devices are switched only while control is in force.
 
 interface Props {
-  t: Messages;
   lang: Lang;
 }
 
@@ -121,7 +120,8 @@ function Entity({ id }: { id: string }) {
   return <code class="entity mono">{id}</code>;
 }
 
-function Limits({ device, t, lang }: { device: DeviceConfig } & Props) {
+function Limits({ device, lang }: { device: DeviceConfig } & Props) {
+  const t = useT();
   const range = device.range;
   if (range !== null) {
     return (
@@ -151,7 +151,8 @@ function Limits({ device, t, lang }: { device: DeviceConfig } & Props) {
 }
 
 function Connection({ device, ...props }: { device: DeviceConfig } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const draw = device.draw;
   return (
     <section class="card" aria-labelledby="device-connection-title">
@@ -238,7 +239,8 @@ function Connection({ device, ...props }: { device: DeviceConfig } & Props) {
 }
 
 /** The value per kWh now, with what it follows and why (UI-12, ECO-13): only with an economics section, which gives the label and the prices. */
-function ValueNow({ eco, currency, t, lang }: { eco: EconomicsDevice; currency: string } & Props) {
+function ValueNow({ eco, currency, lang }: { eco: EconomicsDevice; currency: string } & Props) {
+  const t = useT();
   const factor = formatNumber(eco.valueFactor, lang, 3);
   return (
     <>
@@ -257,12 +259,13 @@ function ValueNow({ eco, currency, t, lang }: { eco: EconomicsDevice; currency: 
 }
 
 /** The sources in words, what was declared when it differs (a dropped zone), or that none is declared. */
-function SourcesNow({ eco, t }: { eco: EconomicsDevice; t: Messages }) {
+function SourcesNow({ eco }: { eco: EconomicsDevice }) {
+  const t = useT();
   if (eco.sources === null) return <span class="sub-inline" data-sources="undeclared">{t['device.eco.sources.undeclared']}</span>;
   return (
     <>
       <span class="line" data-sources={eco.sources}>
-        <SourcesText sources={eco.sources} t={t} />
+        <SourcesText sources={eco.sources} />
       </span>
       {eco.sourcesDeclared !== null && eco.sourcesDeclared !== eco.sources && (
         <span class="sub">
@@ -274,7 +277,8 @@ function SourcesNow({ eco, t }: { eco: EconomicsDevice; t: Messages }) {
 }
 
 /** Which energy class is open to the device in dispatch's last step, and the reason it gave (the same sentence the state card shows). */
-function AllowedNow({ eco, economics, state, t }: { eco: EconomicsDevice; economics: Economics; state: DispatchDevice | null; t: Messages }) {
+function AllowedNow({ eco, economics, state }: { eco: EconomicsDevice; economics: Economics; state: DispatchDevice | null }) {
+  const t = useT();
   const zone = economics.tariff?.zone ?? null;
   return (
     <>
@@ -295,7 +299,8 @@ function AllowedNow({ eco, economics, state, t }: { eco: EconomicsDevice; econom
   );
 }
 
-function Economics({ device, economics, state, plan, ev, t, lang }: { device: DeviceConfig; economics: Economics | null; state: DispatchDevice | null; plan: PlanControl; ev: Ev | null } & Props) {
+function Economics({ device, economics, state, plan, ev, lang }: { device: DeviceConfig; economics: Economics | null; state: DispatchDevice | null; plan: PlanControl; ev: Ev | null } & Props) {
+  const t = useT();
   const eco = economicsDevice(economics, device.id);
   // Without an economics: section nothing prices a kWh: the 0.9 words stay, and say so.
   const configured = economics !== null && economics.configured && economics.currency !== null && eco !== null;
@@ -305,7 +310,7 @@ function Economics({ device, economics, state, plan, ev, t, lang }: { device: De
       <dl class="dc-fields">
         <Field name={t['device.value']}>
           {configured ? (
-            <ValueNow eco={eco} currency={economics.currency!} t={t} lang={lang} />
+            <ValueNow eco={eco} currency={economics.currency!} lang={lang} />
           ) : (
             <span class="line">{fill(t['device.valueAmount'], { value: formatNumber(device.valuePerKwh, lang, 2) })}</span>
           )}
@@ -314,16 +319,16 @@ function Economics({ device, economics, state, plan, ev, t, lang }: { device: De
           {device.noShed && <span class="sub">{t['device.noShed']}</span>}
         </Field>
         <Field name={t['device.goal']}>
-          <GoalRow device={device.id} control={plan} t={t} lang={lang} />
+          <GoalRow device={device.id} control={plan} lang={lang} />
         </Field>
         {isEvDevice(ev, device.id) && (
           <Field name={t['ev.device.field']}>
-            <EvDeviceLines ev={ev} device={device.id} t={t} lang={lang} />
+            <EvDeviceLines ev={ev} device={device.id} lang={lang} />
           </Field>
         )}
         <Field name={t['device.sources']}>
           {configured ? (
-            <SourcesNow eco={eco} t={t} />
+            <SourcesNow eco={eco} />
           ) : (
             <span class="sub-inline" data-unavailable="sources">
               {t['device.sourcesNotAvailable']}
@@ -332,7 +337,7 @@ function Economics({ device, economics, state, plan, ev, t, lang }: { device: De
         </Field>
         {configured && eco.sources !== null && (
           <Field name={t['device.eco.allowed']}>
-            <AllowedNow eco={eco} economics={economics} state={state} t={t} />
+            <AllowedNow eco={eco} economics={economics} state={state} />
           </Field>
         )}
       </dl>
@@ -340,7 +345,8 @@ function Economics({ device, economics, state, plan, ev, t, lang }: { device: De
   );
 }
 
-function PowerNow({ device, state, power, t, lang }: { device: DeviceConfig; state: DispatchDevice; power: PollView<Power> } & Props) {
+function PowerNow({ device, state, power, lang }: { device: DeviceConfig; state: DispatchDevice; power: PollView<Power> } & Props) {
+  const t = useT();
   const draw = state.draw;
   const drawLine =
     draw === null ? null : draw.fresh && draw.currentA !== null ? (
@@ -371,7 +377,7 @@ function PowerNow({ device, state, power, t, lang }: { device: DeviceConfig; sta
         <span class="unknown">{t['device.powerUnknown']}</span>
       ) : (
         <span class="line">
-          <span class="mono">{formatKw(entry.totalW, lang)}</span> · {t[`source.${entry.source}`]} <Age reportedAt={oldest} now={power.data.at} lang={lang} t={t} />
+          <span class="mono">{formatKw(entry.totalW, lang)}</span> · {t[`source.${entry.source}`]} <Age reportedAt={oldest} now={power.data.at} lang={lang} />
         </span>
       )}
       {drawLine}
@@ -387,7 +393,8 @@ function deferredLines(state: DispatchDevice, at: Date, t: Messages, lang: Lang)
 }
 
 /** What keeps the device from its intention: not responding, a deferred change, an open window, a waiting increase, lockouts. */
-function Waiting({ state, at, t, lang }: { state: DispatchDevice; at: Date } & Props) {
+function Waiting({ state, at, lang }: { state: DispatchDevice; at: Date } & Props) {
+  const t = useT();
   const lockout = state.lockout;
   const deferred = deferredLines(state, at, t, lang);
   const items = [
@@ -433,7 +440,8 @@ function Waiting({ state, at, t, lang }: { state: DispatchDevice; at: Date } & P
 }
 
 /** SAFE-04 from the card: the answer is dispatch's status after the add-on evaluated the change. */
-function OverrideControl({ device, state, setOverride, t, lang }: { device: DeviceConfig; state: DispatchDevice; setOverride: SetOverride } & Props) {
+function OverrideControl({ device, state, setOverride, lang }: { device: DeviceConfig; state: DispatchDevice; setOverride: SetOverride } & Props) {
+  const t = useT();
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<OverrideRefusal | null>(null);
   const current = state.override;
@@ -483,7 +491,8 @@ function StateCard({
   setOverride,
   ...props
 }: { device: DeviceConfig; view: PollView<DispatchStatus>; state: DispatchDevice | null; power: PollView<Power>; setOverride: SetOverride } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const status = view.kind === 'live' ? view.data : null;
   return (
     <section class="card" aria-labelledby="device-state-title">
@@ -494,7 +503,7 @@ function StateCard({
           <StateBadge tone="warn" label={fill(t['device.badge.override'], { mode: t[`override.${state.override.mode}`] })} />
         )}
       </header>
-      <PollStatus view={view} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} />
       {status !== null && (
         <>
           {!status.commandPath && <p class="sub">{t['device.state.shadow']}</p>}
@@ -542,7 +551,8 @@ function StateCard({
   );
 }
 
-function HistoryRow({ entry, setpoint, at, t, lang }: { entry: HistoryEntry; setpoint: boolean; at: Date } & Props) {
+function HistoryRow({ entry, setpoint, at, lang }: { entry: HistoryEntry; setpoint: boolean; at: Date } & Props) {
+  const t = useT();
   // The time of the decision (or of the switching seen); the check comes a reaction time later.
   const when = entry.commandedAt ?? entry.at;
   const values = measurement(entry, setpoint, lang, t);
@@ -568,7 +578,8 @@ function HistoryRow({ entry, setpoint, at, t, lang }: { entry: HistoryEntry; set
 
 /** The command verification table (UI-12, DISP-07): the main diagnostic for "why isn't it running". */
 function HistoryCard({ device, view, state, ...props }: { device: DeviceConfig; view: PollView<DispatchStatus>; state: DispatchDevice | null } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const history = state?.history ?? [];
   return (
     <section class="card" aria-labelledby="device-history-title">
@@ -632,7 +643,7 @@ function DeviceDetail({ device, ...props }: { device: DeviceConfig } & Props) {
 }
 
 export function DeviceCard({ lang, id }: { lang: Lang; id: string | null }) {
-  const t = messages[lang];
+  const t = useT();
   const view = useDevices();
   const live = view.kind === 'live' ? view.data : null;
   const devices = live?.devices ?? [];
@@ -650,7 +661,7 @@ export function DeviceCard({ lang, id }: { lang: Lang; id: string | null }) {
           )}
           <p class="sub">{t['device.lead']}</p>
         </header>
-        <PollStatus view={view} lang={lang} t={t} />
+        <PollStatus view={view} lang={lang} />
         {live !== null && live.configuration !== 'valid' && <p>{t[`device.configuration.${live.configuration}`]}</p>}
         {live !== null && live.configuration === 'valid' && devices.length === 0 && <p>{t['device.noDevices']}</p>}
         {live !== null && devices.length > 0 && device === undefined && id !== null && <p role="alert">{fill(t['device.unknown'], { id })}</p>}
@@ -664,7 +675,7 @@ export function DeviceCard({ lang, id }: { lang: Lang; id: string | null }) {
           </nav>
         )}
       </section>
-      {device !== undefined && <DeviceDetail device={device} t={t} lang={lang} />}
+      {device !== undefined && <DeviceDetail device={device} lang={lang} />}
     </>
   );
 }

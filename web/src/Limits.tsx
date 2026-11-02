@@ -5,8 +5,9 @@ import { parseGuard } from './api/guard';
 import { request, withTimeout } from './api/http';
 import type { Breaker, BudgetTrend, DeviceGuardState, GuardDevice, GuardPhase, GuardStatus, PhaseGuardState, Tier } from './api/guard';
 import { MARKER_RADIUS, REDUCING_ACTIONS, excursionChart, type ExcursionGeometry } from './excursionChart';
+import { assertNever } from './assertNever';
 import { formatAge, formatAmps, formatFixed, formatInterval, formatNumber, formatQuantity } from './format';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { localClock, localDay } from './localTime';
 import { modeLabel, reasonSentence } from './reasons';
 import { Age, PollStatus, StateLabel, Timestamp, type Tone } from './ui';
@@ -48,7 +49,6 @@ const KILL_SWITCH_URL = 'api/guard/kill-switch';
 const KILL_SWITCH_REQUEST_TIMEOUT_MS = 5_000;
 
 interface Props {
-  t: Messages;
   lang: Lang;
 }
 
@@ -92,7 +92,7 @@ function kilowatts(watts: number, lang: Lang): string {
   return `${formatFixed(Math.round(watts / 10) / 100, lang, 2)} kW`;
 }
 
-function tierRange(tiers: Tier[], index: number, { t, lang }: Props): string {
+function tierRange(tiers: Tier[], index: number, t: Messages, { lang }: Props): string {
   const upTo = tiers[index]?.upTo ?? null;
   const from = index === 0 ? null : (tiers[index - 1]?.upTo ?? null);
   if (upTo === null) return fill(t.tierAbove, { from: from === null ? '0' : multiple(from, lang) });
@@ -112,7 +112,8 @@ function dayLabel(at: Date, lang: Lang): string {
   return new Intl.DateTimeFormat(lang, { day: '2-digit', month: '2-digit' }).format(at);
 }
 
-function Banners({ guard, t, lang }: { guard: GuardStatus } & Props) {
+function Banners({ guard, lang }: { guard: GuardStatus } & Props) {
+  const t = useT();
   const { killSwitch, safeState, decisionLog, stateFile } = guard;
   const shadow = guard.mode.effective === 'shadow';
   return (
@@ -181,7 +182,7 @@ function Banners({ guard, t, lang }: { guard: GuardStatus } & Props) {
   );
 }
 
-function breakerSummary(breaker: Breaker, { t, lang }: Props): string {
+function breakerSummary(breaker: Breaker, t: Messages, { lang }: Props): string {
   return fill(t.breakerSummary, {
     rating: formatQuantity(breaker.ratingA, 'A', lang),
     characteristic: breaker.characteristic === 'unknown' ? t.characteristicUnknown : breaker.characteristic,
@@ -191,7 +192,8 @@ function breakerSummary(breaker: Breaker, { t, lang }: Props): string {
 }
 
 function Overview({ guard, ...props }: { guard: GuardStatus } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const { mode, breaker } = guard;
   return (
     <>
@@ -203,7 +205,7 @@ function Overview({ guard, ...props }: { guard: GuardStatus } & Props) {
           {mode.note !== 'none' && <span class="sub">{t[`modeNote.${mode.note}`]}</span>}
         </dd>
         <dt>{t.rowBreaker}</dt>
-        <dd>{breaker === null ? NO_VALUE : breakerSummary(breaker, props)}</dd>
+        <dd>{breaker === null ? NO_VALUE : breakerSummary(breaker, t, props)}</dd>
         <dt>{t.rowEvaluated}</dt>
         <dd>
           <Timestamp at={guard.at} lang={lang} />
@@ -225,7 +227,8 @@ function Overview({ guard, ...props }: { guard: GuardStatus } & Props) {
 
 /** BRK-01: the tier table of the configured breaker, in amperes and kilowatts for this installation. */
 function TiersCard({ guard, breaker, ...props }: { guard: GuardStatus; breaker: Breaker } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const title = breaker.characteristic === 'unknown' ? t.breakerTitle : `${t.breakerTitle} ${breaker.characteristic}${formatNumber(breaker.ratingA, lang, 2)}`;
   return (
     <section class="card" aria-labelledby="tiers-title">
@@ -250,7 +253,7 @@ function TiersCard({ guard, breaker, ...props }: { guard: GuardStatus; breaker: 
               const now = guard.phases.filter((p) => p.band === i).map((p) => p.phase);
               return (
                 <tr key={i} data-band={i} data-current={now.length > 0 ? 'true' : undefined}>
-                  <td class="mono">{tierRange(breaker.tiers, i, props)}</td>
+                  <td class="mono">{tierRange(breaker.tiers, i, t, props)}</td>
                   <td class="num">{tier.upToA === null ? NO_VALUE : amps(tier.upToA, lang)}</td>
                   <td class="num">{tier.upToW === null ? NO_VALUE : kilowatts(tier.upToW, lang)}</td>
                   <td class="num">{tier.allowedS === null ? t.unlimited : formatAge(tier.allowedS, lang)}</td>
@@ -278,7 +281,8 @@ function lastExcursion(view: PollView<Excursions>, phase: GuardPhase['phase']): 
 
 /** BRK-02 / BRK-04: per phase the budget, its trend and the time to full, next to the phase's state. */
 function BudgetCard({ guard, breaker, excursions, ...props }: { guard: GuardStatus; breaker: Breaker; excursions: PollView<Excursions> } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   return (
     <section class="card lim-budget" aria-labelledby="budget-title">
       <header class="cardhead">
@@ -306,7 +310,7 @@ function BudgetCard({ guard, breaker, excursions, ...props }: { guard: GuardStat
                 </span>
               )}
               {phase.direction !== null && <span class="sub-inline">{t[`direction.${phase.direction}`]}</span>}
-              <Age reportedAt={phase.reportedAt} now={guard.at} lang={lang} t={t} template="age.reported" />
+              <Age reportedAt={phase.reportedAt} now={guard.at} lang={lang} template="age.reported" />
               <span class="mono lim-pct">{formatNumber(percent, lang, 0)}%</span>
             </div>
             <div class="budgetbar" aria-hidden="true">
@@ -367,7 +371,8 @@ function decisionReason(decision: ExcursionDecision, t: Messages): string {
 }
 
 /** Current over time on one phase with the three limits and the decisions marked (docs/05 "a real recorded excursion"). */
-function ExcursionChart({ excursion, g, phase, names, t, lang }: { excursion: Excursion; g: ExcursionGeometry; phase: string; names: Names } & Props) {
+function ExcursionChart({ excursion, g, phase, names, lang }: { excursion: Excursion; g: ExcursionGeometry; phase: string; names: Names } & Props) {
+  const t = useT();
   const { box } = g;
   // The shed moment is when a reduction takes effect; a deferral (a reduction waiting for its
   // lockout) is annotated only when nothing took effect during the excursion.
@@ -450,7 +455,8 @@ function ExcursionChart({ excursion, g, phase, names, t, lang }: { excursion: Ex
   );
 }
 
-function ExcursionDetail({ choice, at, names, t, lang }: { choice: ExcursionChoice; at: Date; names: Names } & Props) {
+function ExcursionDetail({ choice, at, names, lang }: { choice: ExcursionChoice; at: Date; names: Names } & Props) {
+  const t = useT();
   const { excursion, phase } = choice;
   const end = excursion.end ?? at;
   const duration = formatAge((end.getTime() - excursion.start.getTime()) / 1000, lang);
@@ -468,7 +474,7 @@ function ExcursionDetail({ choice, at, names, t, lang }: { choice: ExcursionChoi
   const wouldOnly = excursion.decisions.some((d) => REDUCING_ACTIONS.has(d.action) && !d.commanded);
   return (
     <>
-      <ExcursionChart excursion={excursion} g={g} phase={phase} names={names} t={t} lang={lang} />
+      <ExcursionChart excursion={excursion} g={g} phase={phase} names={names} lang={lang} />
       <p class="lim-summary">{summary}</p>
       {wouldOnly && <p class="sub">{t['limits.excursion.shadow']}</p>}
       {excursion.decimated && <p class="sub">{t['limits.excursion.decimated']}</p>}
@@ -497,7 +503,8 @@ function ExcursionDetail({ choice, at, names, t, lang }: { choice: ExcursionChoi
 }
 
 /** BRK-04 on screen: a real recorded excursion, the worst within the retention window by default. */
-function ExcursionCard({ view, names, t, lang }: { view: PollView<Excursions>; names: Names } & Props) {
+function ExcursionCard({ view, names, lang }: { view: PollView<Excursions>; names: Names } & Props) {
+  const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
   const choices = view.kind === 'live' ? choicesOf(view.data) : [];
   const choice = choices.find((c) => c.key === selected) ?? defaultChoice(choices);
@@ -519,7 +526,7 @@ function ExcursionCard({ view, names, t, lang }: { view: PollView<Excursions>; n
         <h2 id="excursion-title">{t['limits.excursion.title']}</h2>
         {span !== null && <p class="sub">{span}</p>}
       </header>
-      <PollStatus view={view} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} />
       {file !== null && file.status === 'reset_corrupt' && (
         <p class="sub" role="status">
           <StateLabel tone="warn" label={t['limits.file.reset']} />
@@ -544,7 +551,7 @@ function ExcursionCard({ view, names, t, lang }: { view: PollView<Excursions>; n
           </select>
         </label>
       )}
-      {choice !== undefined && at !== null && <ExcursionDetail choice={choice} at={at} names={names} t={t} lang={lang} />}
+      {choice !== undefined && at !== null && <ExcursionDetail choice={choice} at={at} names={names} lang={lang} />}
     </section>
   );
 }
@@ -562,7 +569,7 @@ interface ShedRow {
  * highest first; a modulating device reduced to its minimum, then stopped only through a stop
  * actuator; a storage device's charge stopped. A no_shed device is listed last, never as a step.
  */
-function shedRows(guard: GuardStatus, config: (id: string) => DeviceConfig | undefined, { t, lang }: Props): ShedRow[] {
+function shedRows(guard: GuardStatus, config: (id: string) => DeviceConfig | undefined, t: Messages, { lang }: Props): ShedRow[] {
   const devices = [...guard.devices].sort((a, b) => (a.shedRank ?? Infinity) - (b.shedRank ?? Infinity));
   let order = 0;
   return devices.flatMap((device) => {
@@ -586,6 +593,8 @@ function shedRows(guard: GuardStatus, config: (id: string) => DeviceConfig | und
       case 'storage':
         steps.push({ step: t['limits.shed.stopCharging'], isStep: true });
         break;
+      default:
+        return assertNever(device.type);
     }
     return steps.map((s, i) => ({ device, order: s.isStep ? ++order : null, step: s.step, first: i === 0 }));
   });
@@ -593,10 +602,11 @@ function shedRows(guard: GuardStatus, config: (id: string) => DeviceConfig | und
 
 /** DISP-02: what is shed first, with each device's value per kWh and how fast its draw changes. */
 function ShedOrderCard({ guard, devices, names, ...props }: { guard: GuardStatus; devices: PollView<Devices>; names: Names } & Props) {
-  const { t, lang } = props;
+  const t = useT();
+  const { lang } = props;
   const configs = new Map(devices.kind === 'live' ? devices.data.devices.map((d) => [d.id, d]) : []);
   const config = (id: string) => configs.get(id);
-  const rows = shedRows(guard, config, props);
+  const rows = shedRows(guard, config, t, props);
   return (
     <section class="card" aria-labelledby="shed-title">
       <header class="cardhead">
@@ -673,7 +683,8 @@ const OUTCOME_KEY: Record<KillSwitchOutcome, 'limits.kill.late' | 'limits.kill.f
  * switch changes nothing. Releasing is offered only from a known engaged state and asks first, as
  * allowing control does; engaging is sent at once, because it is the direction that holds devices off.
  */
-export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: GuardStatus['killSwitch'] | null; onAnswer?: (guard: GuardStatus) => void } & Props) {
+export function KillSwitchCard({ killSwitch, onAnswer, lang }: { killSwitch: GuardStatus['killSwitch'] | null; onAnswer?: (guard: GuardStatus) => void } & Props) {
+  const t = useT();
   const [saving, setSaving] = useState(false);
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<KillSwitchOutcome | null>(null);
@@ -773,7 +784,7 @@ export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: 
 }
 
 export function Limits({ lang }: { lang: Lang }) {
-  const t = messages[lang];
+  const t = useT();
   const view = useGuard();
   const excursions = useExcursions();
   const devices = useDevices();

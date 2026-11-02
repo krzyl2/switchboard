@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { cleanup, render } from '@testing-library/preact';
 import { HourlyBalanceCard, secondsToHour, whText } from './HourlyBalance';
 import { parseBalance } from './api/balance';
+import { I18n } from './i18n';
 import balanceSample from './api/balance.sample.json';
 import { advance, respond } from './screens.test-support';
 
@@ -15,7 +16,11 @@ function variant(change: (p: any) => void): unknown {
 
 async function show(body: unknown, lang: 'en' | 'pl' = 'en'): Promise<void> {
   fetchMock.mockImplementation(() => respond(structuredClone(body)));
-  render(<HourlyBalanceCard lang={lang} />);
+  render(
+    <I18n lang={lang}>
+      <HourlyBalanceCard lang={lang} />
+    </I18n>,
+  );
   await advance();
 }
 
@@ -104,7 +109,11 @@ describe('hourly balance card', () => {
 
   it('withdraws every figure when the add-on does not answer', async () => {
     fetchMock.mockImplementation(() => respond({}, 500));
-    render(<HourlyBalanceCard lang="en" />);
+    render(
+      <I18n lang="en">
+        <HourlyBalanceCard lang="en" />
+      </I18n>,
+    );
     await advance();
 
     expect(document.querySelector('[data-row="hb-balance"]')).toBeNull();

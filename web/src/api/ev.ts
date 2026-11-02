@@ -380,8 +380,8 @@ export function postEvMode(mode: EvMode, signal?: AbortSignal): Promise<void> {
 
 export interface ChargeNowRequest {
   /** Percent; the module's own default (control.ev.charge_now) when absent. */
-  targetPct?: number;
-  durationMinutes?: number;
+  targetPct?: number | undefined;
+  durationMinutes?: number | undefined;
 }
 
 /** POST api/ev/charge-now: a manual hard goal. The add-on answers 409 unless planner.dispatch is full. */

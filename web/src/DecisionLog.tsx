@@ -6,7 +6,7 @@ import type { Statistics, Totals } from './api/statistics';
 import { SIGNALS_REFRESH_INTERVAL_MS, SIGNALS_REQUEST_TIMEOUT_MS } from './config';
 import { amountText, SavingsBody, savingsOf } from './Economics';
 import { formatAge, formatFixed, formatKwh, formatPercent } from './format';
-import { fill, messages, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang } from './i18n';
 import { browserZone, localClock, localDay } from './localTime';
 import { describeDecision } from './reasons';
 import { PollStatus, StateLabel, Timestamp, type Tone } from './ui';
@@ -27,7 +27,6 @@ const NO_VALUE = '—';
 const SIGNAL_TONE: Record<SignalState, Tone> = { fresh: 'ok', stale: 'crit', unavailable: 'crit', rejected: 'crit', unmapped: 'muted' };
 
 interface Props {
-  t: Messages;
   lang: Lang;
 }
 
@@ -37,7 +36,8 @@ function dayLabel(at: Date, lang: Lang): string {
   return new Intl.DateTimeFormat(lang, { day: '2-digit', month: '2-digit' }).format(at);
 }
 
-function Subject({ decision, name, t }: { decision: Decision; name: (id: string) => string; t: Messages }) {
+function Subject({ decision, name }: { decision: Decision; name: (id: string) => string }) {
+  const t = useT();
   if (decision.scope === 'device' && decision.device !== null) {
     const label = name(decision.device);
     return (
@@ -65,7 +65,8 @@ function Subject({ decision, name, t }: { decision: Decision; name: (id: string)
   return <span>{t.subjectSystem}</span>;
 }
 
-function DecisionRow({ decision, today, name, t, lang }: { decision: Decision; today: { from: Date; to: Date }; name: (id: string) => string } & Props) {
+function DecisionRow({ decision, today, name, lang }: { decision: Decision; today: { from: Date; to: Date }; name: (id: string) => string } & Props) {
+  const t = useT();
   const text = describeDecision(decision, t, lang);
   const otherDay = decision.at < today.from || decision.at >= today.to;
   return (
@@ -75,7 +76,7 @@ function DecisionRow({ decision, today, name, t, lang }: { decision: Decision; t
         {otherDay && <span class="sub">{dayLabel(decision.at, lang)}</span>}
       </td>
       <td>
-        <Subject decision={decision} name={name} t={t} />
+        <Subject decision={decision} name={name} />
       </td>
       <td>
         <span>{text.change}</span>
@@ -98,7 +99,8 @@ function DecisionRow({ decision, today, name, t, lang }: { decision: Decision; t
  * MODE-03 / MODE-04: the decisions newest first, filtered by device and kind, paged with the
  * add-on's cursor over the retained daily files. A new filter starts again at the newest page.
  */
-function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now: Date; name: (id: string) => string } & Props) {
+function DecisionsCard({ devices, now, name, lang }: { devices: Device[]; now: Date; name: (id: string) => string } & Props) {
+  const t = useT();
   const [device, setDevice] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<DecisionKind | undefined>(undefined);
   // The cursors of the older pages opened, newest first; empty on the newest page.
@@ -152,7 +154,7 @@ function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now
           </select>
         </label>
       </div>
-      <PollStatus view={view} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} />
       {page !== null && !page.logWritable && (
         <p class="issues" role="status">
           <StateLabel tone="warn" label={t.decisionLogUnwritable} />
@@ -172,7 +174,7 @@ function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now
             </thead>
             <tbody>
               {page.items.map((decision) => (
-                <DecisionRow key={decision.id} decision={decision} today={today} name={name} t={t} lang={lang} />
+                <DecisionRow key={decision.id} decision={decision} today={today} name={name} lang={lang} />
               ))}
             </tbody>
           </table>
@@ -203,7 +205,8 @@ function DecisionsCard({ devices, now, name, t, lang }: { devices: Device[]; now
   );
 }
 
-function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
+function SignalRow({ signal, lang }: { signal: Signal } & Props) {
+  const t = useT();
   return (
     <tr data-signal={signal.name ?? signal.role}>
       <td>
@@ -227,7 +230,8 @@ function SignalRow({ signal, t, lang }: { signal: Signal } & Props) {
 }
 
 /** SIG-05 on this screen: every signal with its entity, its age and its state. */
-function SignalHealthCard({ view, t, lang }: { view: PollView<Signals> } & Props) {
+function SignalHealthCard({ view, lang }: { view: PollView<Signals> } & Props) {
+  const t = useT();
   const signals = view.kind === 'live' ? view.data : null;
   return (
     <section class="card" aria-labelledby="health-title">
@@ -235,7 +239,7 @@ function SignalHealthCard({ view, t, lang }: { view: PollView<Signals> } & Props
         <h2 id="health-title">{t['log.signals.title']}</h2>
         <p class="sub">{t['log.signals.lead']}</p>
       </header>
-      <PollStatus view={view} evaluatedAt={signals?.snapshotAt ?? null} now={signals?.generatedAt} lang={lang} t={t} />
+      <PollStatus view={view} evaluatedAt={signals?.snapshotAt ?? null} now={signals?.generatedAt} lang={lang} />
       {signals !== null && signals.signals.length === 0 && <p>{t.noSignals}</p>}
       {signals !== null && signals.signals.length > 0 && (
         <div class="tablewrap">
@@ -249,7 +253,7 @@ function SignalHealthCard({ view, t, lang }: { view: PollView<Signals> } & Props
             </thead>
             <tbody>
               {signals.signals.map((signal, i) => (
-                <SignalRow key={signal.name ?? `${signal.role}-${i}`} signal={signal} t={t} lang={lang} />
+                <SignalRow key={signal.name ?? `${signal.role}-${i}`} signal={signal} lang={lang} />
               ))}
             </tbody>
           </table>
@@ -274,7 +278,8 @@ export function selfConsumption(totals: Totals): number | null {
   return Math.min(1, Math.max(0, (totals.generationKwh - totals.pv.exportKwh) / totals.generationKwh));
 }
 
-function BreakerTrips({ statistics, totals, elapsedS, t, lang }: { statistics: Statistics | null; totals: Totals | null; elapsedS: number } & Props) {
+function BreakerTrips({ statistics, totals, elapsedS, lang }: { statistics: Statistics | null; totals: Totals | null; elapsedS: number } & Props) {
+  const t = useT();
   if (statistics === null || totals === null) return <dd data-metric="breaker-trips">{NO_VALUE}</dd>;
   if (!statistics.voltageMeasured) {
     return (
@@ -302,7 +307,8 @@ function BreakerTrips({ statistics, totals, elapsedS, t, lang }: { statistics: S
  * The local day's summary: energy per device, self-consumption, sheds, the value delivered, the
  * savings (not available without a tariff) and, permanently, the breaker trips the add-on can see.
  */
-function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Props) {
+function DailySummaryCard({ view, lang }: { view: PollView<Statistics> } & Props) {
+  const t = useT();
   const statistics = view.kind === 'live' ? view.data : null;
   // Only the sums of the local day that contains the add-on's `at` count: the first answer (no
   // range asked yet) and an answer from before midnight are not today's.
@@ -331,7 +337,7 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
           </p>
         )}
       </header>
-      <PollStatus view={view} evaluatedAt={statistics?.integratedTo ?? null} now={statistics?.at} lang={lang} t={t} />
+      <PollStatus view={view} evaluatedAt={statistics?.integratedTo ?? null} now={statistics?.at} lang={lang} />
       {statistics !== null && range === null && <p class="updated">{t['log.summary.waiting']}</p>}
       {file !== null && file.status === 'reset_corrupt' && (
         <p class="sub" role="status">
@@ -346,7 +352,7 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
       )}
       <dl class="status log-summary">
         <dt>{t['log.summary.breakerTrips']}</dt>
-        <BreakerTrips statistics={statistics} totals={totals} elapsedS={elapsedS} t={t} lang={lang} />
+        <BreakerTrips statistics={statistics} totals={totals} elapsedS={elapsedS} lang={lang} />
         {statistics !== null && totals !== null && (
           <>
             <dt>{t['log.summary.outages']}</dt>
@@ -412,7 +418,7 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
               <span class="sub">{t['log.summary.savingsHint']}</span>
             </>
           ) : (
-            <SavingsBody total={savings.savings.today} savings={savings.savings} currency={savings.currency} t={t} lang={lang} zone={browserZone()} />
+            <SavingsBody total={savings.savings.today} savings={savings.savings} currency={savings.currency} lang={lang} zone={browserZone()} />
           )}
         </dd>
       </dl>
@@ -421,7 +427,6 @@ function DailySummaryCard({ view, t, lang }: { view: PollView<Statistics> } & Pr
 }
 
 export function DecisionLog({ lang }: { lang: Lang }) {
-  const t = messages[lang];
   const signals = usePoll(fetchSignals, SIGNALS_REFRESH_INTERVAL_MS, SIGNALS_REQUEST_TIMEOUT_MS);
   // The local day is known only from the add-on's own clock (data time in development replay): the
   // first answer gives it, and from then on only that day's buckets are asked for, again at midnight.
@@ -445,10 +450,10 @@ export function DecisionLog({ lang }: { lang: Lang }) {
 
   return (
     <>
-      <DecisionsCard devices={devices.current} now={now} name={name} t={t} lang={lang} />
+      <DecisionsCard devices={devices.current} now={now} name={name} lang={lang} />
       <div class="log-grid">
-        <SignalHealthCard view={signals} t={t} lang={lang} />
-        <DailySummaryCard view={statistics} t={t} lang={lang} />
+        <SignalHealthCard view={signals} lang={lang} />
+        <DailySummaryCard view={statistics} lang={lang} />
       </div>
     </>
   );

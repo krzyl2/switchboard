@@ -4,8 +4,9 @@ import { parseNumber } from './parseNumber';
 import { firstOnPage, focusField, TOPOLOGIES, topologyPhases } from './SetupMeter';
 import type { PhaseValues, ReserveExplanation, ReservePhase } from './api/setup';
 import type { PhaseName } from './api/signals';
+import { assertNever } from './assertNever';
 import { formatAge, formatAmps, formatFixed, formatInterval, formatKw, formatNumber } from './format';
-import { fill, type Lang, type Messages } from './i18n';
+import { fill, useT, type Lang, type Messages } from './i18n';
 import { fieldId, issuesOfStep } from './setupDraft';
 import { StateLabel } from './ui';
 import type { StepProps } from './useSetup';
@@ -44,7 +45,8 @@ function fieldLabel(field: string, t: Messages): string {
  * recomputes the numbers shortly after every change; "Check and continue" moves on only when no
  * step-2 field is refused.
  */
-export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
+export function SetupConnection({ setup, lang, goTo }: StepProps) {
+  const t = useT();
   const connection = setup.draft.connection;
   const topology = connection.topology;
   const phases = topologyPhases(topology);
@@ -195,7 +197,7 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
                   value={value ?? ''}
                   onInput={(event) => setReserve(phase, parseNumber((event.currentTarget as HTMLInputElement).value) ?? null)}
                 />
-                <MinimumLine value={value} report={reserve?.perPhase.find((p) => p.phase === phase)} shown={reserve !== null} t={t} lang={lang} />
+                <MinimumLine value={value} report={reserve?.perPhase.find((p) => p.phase === phase)} shown={reserve !== null} lang={lang} />
               </div>
             );
           })}
@@ -211,7 +213,6 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
             ratingA={connection.breakerRatingA}
             uneven={new Set(phases.map((p) => reserveOf(connection.reserveW, p))).size > 1}
             busy={recalculating}
-            t={t}
             lang={lang}
           />
         ) : (
@@ -225,7 +226,7 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
         )}
       </div>
 
-      <SetupIssues issues={setup.issuesOf('connection')} t={t} />
+      <SetupIssues issues={setup.issuesOf('connection')} />
       {check.kind === 'refused' && (
         <p class="note" role="alert" data-refused={check.field}>
           <StateLabel tone="crit" label={fill(t['setupConnection.check.refused'], { field: fieldLabel(check.field, t) })} />
@@ -247,7 +248,8 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
 }
 
 /** The minimum safe reserve beside one phase's reserve, with the refresh it was derived from (SIG-07). */
-function MinimumLine({ value, report, shown, t, lang }: { value: number | null; report: ReservePhase | undefined; shown: boolean; t: Messages; lang: Lang }) {
+function MinimumLine({ value, report, shown, lang }: { value: number | null; report: ReservePhase | undefined; shown: boolean; lang: Lang }) {
+  const t = useT();
   if (value === null) return <span class="sub">{t['setupConnection.reserve.empty']}</span>;
   if (!shown) return null;
   if (report === undefined) return <span class="sub">{t['setupConnection.reserve.noMinimum']}</span>;
@@ -271,7 +273,8 @@ function MinimumLine({ value, report, shown, t, lang }: { value: number | null; 
  * reserve, then the reference step. Where it lands on the breaker curve decides the sentence: under
  * the rating, tolerated for a while with a reduction planned, or a shed (the reserve is too small).
  */
-function Arithmetic({ explanation: e, ratingA, uneven, busy, t, lang }: { explanation: ReserveExplanation; ratingA: number; uneven: boolean; busy: boolean; t: Messages; lang: Lang }) {
+function Arithmetic({ explanation: e, ratingA, uneven, busy, lang }: { explanation: ReserveExplanation; ratingA: number; uneven: boolean; busy: boolean; lang: Lang }) {
+  const t = useT();
   let band: string;
   switch (e.reaction) {
     case 'may_add':
@@ -286,6 +289,8 @@ function Arithmetic({ explanation: e, ratingA, uneven, busy, t, lang }: { explan
     case 'shed_all_on_phase':
       band = t['setupConnection.math.shed'];
       break;
+    default:
+      return assertNever(e.reaction);
   }
   return (
     <div class="note sc-math" data-reaction={e.reaction} aria-busy={busy ? 'true' : undefined}>
