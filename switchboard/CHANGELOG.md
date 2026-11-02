@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.4
+
+### Fixed
+
+- The image build context includes `.editorconfig`, so the image is built with the same analyzer settings as the local build. 0.12.2 and 0.12.3 never got an image; 0.12.4 ships everything listed under them.
+
 ## 0.12.3
 
 ### Fixed
