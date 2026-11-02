@@ -1,10 +1,9 @@
-using System.Collections.Immutable;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Ev;
 using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
+using Switchboard.Application.Reports;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
@@ -200,24 +199,14 @@ public sealed record GoalDto(
     public string? Cause { get; init; }
 }
 
-internal static partial class PlanEndpoint
+internal static class PlanEndpoint
 {
     public static IEndpointRouteBuilder MapPlanApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/plan", (
-            [FromServices] ISignalDiagnosticsSource diagnostics,
-            [FromServices] SignalClock clock,
-            [FromServices] GoalTracker goals,
-            [FromServices] LoadProfileFeed loadProfile,
-            [FromServices] PlanHolder plans,
-            [FromServices] IEvSnapshotSource ev) =>
+        endpoints.MapGet("/plan", ([FromServices] ISignalDiagnosticsSource diagnostics, [FromServices] PlanReader plan) =>
         {
-            var now = clock.Time.GetUtcNow();
             var current = diagnostics.Current;
-            var sources = current.Configuration?.Configuration is { Planner: not null } configuration
-                ? PlanSourceMapper.Map(configuration, current.Snapshot.Forecast, loadProfile.Current, clock.Time.LocalTimeZone, now)
-                : null;
-            return TypedResults.Json(Build(current.Configuration, goals.Evaluate(now), sources, current.Snapshot.Forecast, plans.Current, ev.Current));
+            return TypedResults.Json(Response(plan.Read(current.Configuration, current.Snapshot.Forecast)));
         });
         return endpoints;
     }
@@ -226,55 +215,41 @@ internal static partial class PlanEndpoint
     /// <param name="forecast">The forecast signals of the latest store cycle, for the PV forecast's state and age.</param>
     /// <param name="state">What the planner service holds (the last adopted plan, its status, the last solve); null or empty without a planner.</param>
     /// <param name="ev">The EV module's published snapshot; its assessment code is the <c>cause</c> of the module's goals.</param>
-    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board, PlanInputSources? sources = null, ForecastInputs? forecast = null, PlanState? state = null, EvPublished? ev = null)
+    internal static PlanResponse Build(ConfigurationResult? result, GoalBoard board, PlanInputSources? sources = null, ForecastInputs? forecast = null, PlanState? state = null, EvPublished? ev = null) =>
+        Response(PlanReport.Compose(result, board, sources, forecast, state, ev));
+
+    /// <summary>The report as the API words it: enums as snake_case text, times and numbers as they are.</summary>
+    private static PlanResponse Response(PlanReport report)
     {
-        var cause = ev?.Snapshot is { } evSnapshot ? EvAssessmentCodes.Text(evSnapshot.Composition.Code) : null;
-        var planner = result?.Configuration?.Planner;
-        var parameters = result?.Configuration?.Control.Planner;
-        var plan = planner is not null ? state?.Plan : null;
-        var status = planner is null || state is null ? PlanStatus.Absent : state.StatusAt(board.At);
-
-        // With a plan the slots and the inputs shown are the ones it was computed on, so that the entries and the slots agree; without one they are the
-        // slots as they stand now (slice 3).
-        var planInputs = plan?.Inputs ?? (planner is not null && sources is not null && parameters is not null
-            ? PlanInputs.Build(board.At, board.At + parameters.Horizon, null, parameters.Forecast(), sources)
-            : null);
-        var devices = new SortedDictionary<string, List<GoalDto>>(StringComparer.Ordinal);
-        foreach (var goal in board.Goals)
-        {
-            Of(devices, goal.Request.Device.Value).Add(Applied(goal, plan, status, CauseOf(ev?.Snapshot, goal.Request.Revision, cause)));
-        }
-
-        foreach (var inactive in board.Inactive)
-        {
-            Of(devices, inactive.Device.Value).Add(Inactive(inactive, cause));
-        }
-
+        var planInputs = report.Inputs;
+        var plan = report.Plan;
+        var state = report.State;
+        var planner = report.Planner;
         return new PlanResponse(
-            board.At,
+            report.At,
             planner is not null,
             planner is { } p ? ApiText.Snake(p.Dispatch) : null,
-            ApiText.Snake(status),
+            ApiText.Snake(report.Status),
             new PlanInputsDto(
-                planInputs is null ? null : PvForecast(planInputs, parameters!, forecast?.ForRole(SignalRole.PvForecast) ?? forecast?.ForRole(SignalRole.PvForecastToday), board.At),
+                planInputs is null ? null : PvForecast(planInputs, report.Parameters!, report.PvForecast, report.At),
                 planInputs is null ? null : new LoadForecastDto(ApiText.Snake(planInputs.LoadBasis), planInputs.LoadDaysFilled),
                 planInputs is null ? null : new PlanPricesDto(ApiText.Snake(planInputs.ImportPriceBasis), planInputs.ImportCurveCoversUntil),
-                board.Goals.Length,
-                [.. board.Inactive.Select(i => new GoalInactiveDto(i.Device.Value, ApiText.Snake(i.Reason), ApiText.Snake(i.Input)))]),
-            [.. devices.Select(d => Device(d.Key, d.Value, plan))],
-            [.. board.Superseded.Select(r => Applied(new Goal(r, GoalStatus.OnTrack), null, PlanStatus.Absent) with { Status = "superseded", Device = r.Device.Value })],
-            Notes(planInputs, plan, state, planner is null ? [] : board.Inactive),
-            Issues(result))
+                report.GoalsActive,
+                [.. report.GoalsInactive.Select(i => new GoalInactiveDto(i.Device.Value, ApiText.Snake(i.Reason), ApiText.Snake(i.Input)))]),
+            [.. report.Devices.Select(Device)],
+            [.. report.Superseded.Select(r => Applied(new PlanReportGoal(new Goal(r, GoalStatus.OnTrack), null, null, null)) with { Status = "superseded", Device = r.Device.Value })],
+            [.. report.Notes.Select(n => ApiText.Snake(n))],
+            report.Issues)
         {
             Slots = planInputs is null ? [] : [.. planInputs.Slots.Select(Slot)],
             Id = plan?.Id,
             ComputedAt = plan?.ComputedAt,
             ValidUntil = plan is not null && state is not null ? plan.ComputedAt + state.PlanMaxAge : null,
             HorizonEnd = plan?.HorizonEnd,
-            SlotMinutes = parameters is null || planner is null ? null : parameters.Slot.TotalMinutes,
+            SlotMinutes = report.Parameters is null || planner is null ? null : report.Parameters.Slot.TotalMinutes,
             ConfigRevision = plan?.ConfigRevision,
             Suspended = planner is not null && state is { Suspended: true },
-            Cost = plan is null ? null : new PlanCostDto(plan.Cost.Planned, plan.Cost.ReferenceV2, plan.Cost.ReferenceAsap, result?.Configuration?.Economics?.Currency),
+            Cost = plan is null ? null : new PlanCostDto(plan.Cost.Planned, plan.Cost.ReferenceV2, plan.Cost.ReferenceAsap, report.Currency),
             LastSolve = planner is null ? null : Solve(state?.LastSolve),
         };
     }
@@ -284,15 +259,12 @@ internal static partial class PlanEndpoint
             ? null
             : new SolveDto(report.At, report.Duration.TotalMilliseconds, ApiText.Snake(report.Result), report.Reason, [.. report.Violations.Select(v => ApiText.Snake(v.Code)).Distinct()]);
 
-    /// <summary>The input notes, the plan's own (a goal at risk, a shortfall) and the service's (a held solve), once each in the order of the list.</summary>
-    private static IReadOnlyList<string> Notes(PlanInputs? inputs, PlanSnapshot? plan, PlanState? state, ImmutableArray<InactiveGoal> inactive) =>
-        [.. (plan?.Notes ?? inputs?.Notes ?? []).Concat(plan is null ? [] : state?.Notes ?? []).Concat(inactive.Any(i => i.Reason is GoalInactiveReason.InputStale or GoalInactiveReason.InputUnavailable) ? [PlanNote.GoalInputStale] : []).Distinct().Order().Select(n => ApiText.Snake(n))];
-
-    private static PlanDeviceDto Device(string name, List<GoalDto> goals, PlanSnapshot? plan)
+    private static PlanDeviceDto Device(PlanReportDevice device)
     {
-        var planned = plan?.Device(DeviceName.Parse(name));
+        var planned = device.Planned;
         var first = planned?.Goals.FirstOrDefault();
-        return new PlanDeviceDto(name, goals.FirstOrDefault(), goals)
+        var goals = device.Goals.Select(g => g.Goal is not null ? Applied(g) : Inactive(g)).ToList();
+        return new PlanDeviceDto(device.Device, goals.FirstOrDefault(), goals)
         {
             Entries = planned is null ? [] : [.. planned.Entries.Select(e => new PlanEntryDto(e.Start, e.End, ApiText.Snake(e.Want), e.Class is { } entryClass ? EnergySourceText.Plan(entryClass) : null, e.EnergyKwh, e.MaxPowerW))],
             ShortfallKwh = planned is null ? null : planned.Goals.Sum(g => g.ShortfallKwh),
@@ -311,44 +283,12 @@ internal static partial class PlanEndpoint
     private static PlanSlotDto Slot(PlanInputSlot s) =>
         new(s.Slot.Start, s.Slot.End, s.Zone, s.Import?.PerKwh, s.Export?.PerKwh, s.PvKwh, s.BaseKwh, s.SurplusKwh);
 
-    private static List<GoalDto> Of(SortedDictionary<string, List<GoalDto>> devices, string device)
-    {
-        if (!devices.TryGetValue(device, out var list))
-        {
-            list = [];
-            devices[device] = list;
-        }
-
-        return list;
-    }
-
-    /// <summary>
-    /// Why the module wants this very goal: its own kind says (trip, weekly full charge, surplus cap, floor); a goal the snapshot does not list (an inactive one)
-    /// or a PV-only mode falls back to the assessment's primary code.
-    /// </summary>
-    private static string? CauseOf(EvSnapshot? snapshot, long revision, string? fallback)
-    {
-        if (snapshot is null || snapshot.Composition.Code == EvAssessmentCode.PvOnly)
-        {
-            return fallback;
-        }
-
-        var offer = snapshot.Composition.Goals.FirstOrDefault(g => g.Request.Revision == revision);
-        return offer?.Kind switch
-        {
-            EvGoalKind.Trip => EvAssessmentCodes.Text(EvAssessmentCode.TripDeadline),
-            EvGoalKind.WeeklyFull => EvAssessmentCodes.Text(EvAssessmentCode.WeeklyFull),
-            EvGoalKind.Cap => EvAssessmentCodes.Text(EvAssessmentCode.Surplus),
-            EvGoalKind.Floor => EvAssessmentCodes.Text(GoalMath.IsMet(offer.Request.RemainingKwh) ? EvAssessmentCode.FloorHold : EvAssessmentCode.CheapZone),
-            _ => fallback,
-        };
-    }
-
     /// <summary>A goal as shown; the status is the plan's (at risk, infeasible) while a fresh plan has judged the goal, else the goal model's.</summary>
-    private static GoalDto Applied(Goal goal, PlanSnapshot? plan, PlanStatus status, string? cause = null)
+    private static GoalDto Applied(PlanReportGoal entry)
     {
+        var goal = entry.Goal!;
         var r = goal.Request;
-        var judged = status == PlanStatus.Fresh ? plan?.Device(r.Device)?.Goals.FirstOrDefault(g => g.Ref.Revision == r.Revision && g.Deadline == r.Deadline) : null;
+        var judged = entry.Judged;
         return new GoalDto(
             ApiText.Snake(r.Kind),
             r.Hard,
@@ -372,12 +312,14 @@ internal static partial class PlanEndpoint
             ShortfallKwh = judged?.ShortfallKwh,
             LatestGridStart = judged?.LatestGridStart,
             Urgent = judged?.Urgent,
-            Cause = r.Origin == GoalOrigin.Module ? cause : null,
+            Cause = entry.Cause,
         };
     }
 
-    private static GoalDto Inactive(InactiveGoal goal, string? cause = null) =>
-        new(
+    private static GoalDto Inactive(PlanReportGoal entry)
+    {
+        var goal = entry.Inactive!;
+        return new GoalDto(
             ApiText.Snake(goal.Kind),
             goal.Hard,
             ApiText.Snake(goal.Origin),
@@ -396,14 +338,7 @@ internal static partial class PlanEndpoint
             null,
             null)
         {
-            Cause = goal.Origin == GoalOrigin.Module ? cause : null,
+            Cause = entry.Cause,
         };
-
-    private static IReadOnlyList<ConfigurationIssue> Issues(ConfigurationResult? result) =>
-        result is null
-            ? []
-            : [.. result.Errors.Concat(result.Warnings).Where(i => PlanPath().IsMatch(i.Path))];
-
-    [GeneratedRegex("^(planner([.\\[]|$)|devices\\[\\d+\\]\\.goal([.\\[]|$))", RegexOptions.CultureInvariant)]
-    private static partial Regex PlanPath();
+    }
 }

@@ -372,7 +372,7 @@ internal static class SetupEndpoint
                 return JsonRequired("{\"draft\": {...}, \"device\": {\"index\": 0}} or {\"draft\": {...}, \"testLoad\": {\"stateEntity\": \"...\", \"phase\": \"L1\", \"ratedPowerW\": 2000}}");
             }
 
-            var (watch, issues) = SelfTestRequest(draft, body, setup.CurrentControl(), defaults.SelfTest.Classifier);
+            var (watch, issues) = SelfTestWatch.Of(draft, new SelfTestSubject(body.Device?.Index, body.TestLoad?.StateEntity, body.TestLoad?.Phase, body.TestLoad?.RatedPowerW), setup.CurrentControl(), defaults.SelfTest.Classifier);
             if (watch is null)
             {
                 return Json(new SetupRefusalDto("invalid", [.. issues.Select(Issue)], null), StatusCodes.Status422UnprocessableEntity);
@@ -565,49 +565,11 @@ internal static class SetupEndpoint
         [.. (view.Judgement?.Observations ?? []).Select(Observation)],
         view.AbortReason is { } reason ? Snake(reason) : null);
 
-    internal static EvidenceResponse Evidence(PhaseEvidenceStore evidence, SignalDiagnostics diagnostics, SetupDefaults defaults)
-    {
-        var configuration = diagnostics.Configuration?.Configuration;
-        if (configuration is null)
-        {
-            return new EvidenceResponse([]);
-        }
+    internal static EvidenceResponse Evidence(PhaseEvidenceStore evidence, SignalDiagnostics diagnostics, SetupDefaults defaults) =>
+        Evidence(PhaseEvidenceReport.Judge(evidence, diagnostics.Configuration, defaults));
 
-        var phases = configuration.Connection.Phases;
-        var powerTerms = Terms(configuration, phases, SignalRole.PhasePower);
-        var currentTerms = Terms(configuration, phases, SignalRole.PhaseCurrent);
-        return new EvidenceResponse([.. configuration.Devices
-            .Where(d => d.Type == DeviceType.OnOff && d.Stages.Length == 1 && d.Stages[0].Phases.Length == 1)
-            .Select(d =>
-            {
-                var stage = d.Stages[0];
-                var judgement = PhaseEvidence.Judge(
-                    evidence.For(stage.StateEntity),
-                    stage.Phases[0],
-                    stage.RatedPower?.Value,
-                    stage.RatedCurrent.Value,
-                    powerTerms,
-                    currentTerms,
-                    defaults.SelfTest.Classifier);
-                return new DeviceEvidenceDto(d.Id.Value, stage.StateEntity.Value, stage.Phases[0].ToString(), [.. judgement.Observations.Select(Observation)], Summary(judgement.Summary));
-            })]);
-    }
-
-    private static ImmutableDictionary<Phase, MeterTerm>? Terms(SwitchboardConfiguration configuration, IEnumerable<Phase> phases, SignalRole role)
-    {
-        var builder = ImmutableDictionary.CreateBuilder<Phase, MeterTerm>();
-        foreach (var phase in phases)
-        {
-            if (configuration.Signals.FirstOrDefault(s => s.Role == role && s.Phase == phase) is not { } signal)
-            {
-                return null;
-            }
-
-            builder[phase] = new MeterTerm(signal.Entity, signal.Unit ?? string.Empty, MeterValues.SignName(signal.Sign));
-        }
-
-        return builder.ToImmutable();
-    }
+    private static EvidenceResponse Evidence(IReadOnlyList<DeviceEvidence> devices) =>
+        new([.. devices.Select(d => new DeviceEvidenceDto(d.Device, d.StateEntity, d.Phase.ToString(), [.. d.Judgement.Observations.Select(Observation)], Summary(d.Judgement.Summary)))]);
 
     private static ObservationDto Observation(JudgedObservation judged) => new(
         judged.Observation.At,
@@ -629,96 +591,6 @@ internal static class SetupEndpoint
         summary.Confirmed,
         summary.Mismatched,
         summary.Inconclusive);
-
-    /// <summary>The watch a self-test request describes, from the draft's meter rows; or why it cannot be watched.</summary>
-    private static (Application.Setup.SelfTest.SelfTestRequest? Watch, ImmutableArray<SetupIssue> Issues) SelfTestRequest(SetupDraft draft, SelfTestStartRequest body, ControlParameters control, PhaseStepParameters parameters)
-    {
-        var profile = SetupValidator.Profile(draft.Connection, control.Connection.DefaultReserve);
-        var phases = profile?.Phases ?? [Phase.L1, Phase.L2, Phase.L3];
-        var power = SetupValidator.MeterTerms(draft, phases, power: true);
-        var current = power is null ? SetupValidator.MeterTerms(draft, phases, power: false) : null;
-        if (power is null && current is null)
-        {
-            return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, "meter", "Map the meter of every phase (current or power, with unit and sign) before the self-test.")]);
-        }
-
-        string? stateText;
-        string? phaseText;
-        double? rating;
-        double? ratedCurrent;
-        double? ratedPower;
-        string field;
-        if (body.Device is { } device)
-        {
-            field = $"devices[{device.Index.ToString(CultureInfo.InvariantCulture)}]";
-            if (device.Index < 0 || device.Index >= draft.Devices.Count)
-            {
-                return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, "devices", $"There is no device {device.Index} in the draft.")]);
-            }
-
-            var d = draft.Devices[device.Index];
-            if (d.Kind != DeviceType.OnOff || d.Phase is not ("L1" or "L2" or "L3"))
-            {
-                return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, $"{field}.phase", "The self-test watches an on/off device on one phase (a charger or a three-phase device cannot be judged this way).")]);
-            }
-
-            stateText = d.StateEntity ?? d.Actuator;
-            phaseText = d.Phase;
-            rating = power is not null ? d.RatedPowerW : d.RatedCurrentA;
-            ratedCurrent = d.RatedCurrentA ?? (d.RatedPowerW is { } w && profile is not null ? w / profile.Voltage.Value : null);
-            ratedPower = d.RatedPowerW ?? (d.RatedCurrentA is { } a && profile is not null ? a * profile.Voltage.Value : null);
-        }
-        else
-        {
-            var load = body.TestLoad!;
-            field = "testLoad";
-            stateText = load.StateEntity;
-            phaseText = load.Phase;
-            rating = load.RatedPowerW is { } watts && power is null && profile is not null ? watts / profile.Voltage.Value : load.RatedPowerW;
-            ratedPower = load.RatedPowerW;
-            ratedCurrent = load.RatedPowerW is { } loadWatts && profile is not null ? loadWatts / profile.Voltage.Value : null;
-        }
-
-        if (!EntityId.TryParse(stateText, out var state))
-        {
-            return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, $"{field}.{(body.Device is null ? "stateEntity" : "actuator")}", "The switched entity is required.")]);
-        }
-
-        if (!Enum.TryParse<Phase>(phaseText, out var phase) || !phases.Contains(phase))
-        {
-            return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, $"{field}.phase", "The device's phase (L1, L2 or L3) is required.")]);
-        }
-
-        if (rating is not > 0)
-        {
-            return (null, [SetupIssue.Error(SetupIssueCodes.RequiredField, $"{field}.{(power is not null ? "ratedPowerW" : "ratedCurrentA")}", "The rating is required: the step is judged against it.")]);
-        }
-
-        var terms = power ?? current!;
-        var kind = power is not null ? SignalKind.Power : SignalKind.Current;
-
-        // The draft's other devices and draws: one of them changing in the window is not this device's step.
-        var (switches, draws) = SelfTestIsolation.Of(
-            draft,
-            body.Device?.Index,
-            state.Value,
-            ratedCurrent ?? (power is null ? rating.Value : 0),
-            ratedPower ?? (power is not null ? rating.Value : 0),
-            control,
-            parameters);
-        return (new Application.Setup.SelfTest.SelfTestRequest(
-            state.Value,
-            phase,
-            rating.Value,
-            power is not null ? "W" : "A",
-            power is null && draft.Meter.CurrentSign == "unsigned",
-            terms,
-            control.Signals.DefaultSigma.GetValueOrDefault(kind))
-        {
-            OtherSwitches = switches,
-            OtherDraws = draws,
-        }, []);
-    }
 
     private static string Snake<TEnum>(TEnum value)
         where TEnum : struct, Enum => ApiText.Snake(value);

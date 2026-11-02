@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Ev;
+using Switchboard.Application.Reports;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
@@ -157,16 +157,11 @@ public sealed record EvParametersDto(
     bool Spread,
     double SnapshotMaxAgeS);
 
-internal static partial class EvEndpoint
+internal static class EvEndpoint
 {
     public static IEndpointRouteBuilder MapEvApi(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/ev", (
-            [FromServices] ISignalDiagnosticsSource diagnostics,
-            [FromServices] IEvInputSource inputs,
-            [FromServices] IEvSnapshotSource snapshots,
-            [FromServices] IEvControl control,
-            [FromServices] SignalClock clock) => TypedResults.Json(Build(diagnostics.Current.Configuration, clock.Time.GetUtcNow(), inputs.Current.Inputs, clock.Time.LocalTimeZone, snapshots.Current, control.Manual)));
+        endpoints.MapGet("/ev", ([FromServices] ISignalDiagnosticsSource diagnostics, [FromServices] EvReader ev) => TypedResults.Json(Response(ev.Read(diagnostics.Current.Configuration))));
 
         // The user's controls (EV-09). Same protection as POST api/goals: ingress only, a JSON body (a cross-site form cannot send one), a bounded strict body.
         // They change only the add-on's own state; no entity is written.
@@ -201,13 +196,7 @@ internal static partial class EvEndpoint
                 return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send {} or an object with only targetPct (percent) and durationMinutes (minutes), both numbers.");
             }
 
-            // A duration too long for a TimeSpan is still a positive one: it is refused by the horizon check (deadline_beyond_horizon), not called "not above zero".
-            TimeSpan? duration = minutes switch
-            {
-                null => null,
-                { } m when double.IsFinite(m) && m > 0 => m <= TimeSpan.MaxValue.TotalMinutes / 2 ? TimeSpan.FromMinutes(m) : TimeSpan.MaxValue / 2,
-                _ => TimeSpan.Zero,
-            };
+            var duration = ChargeNowDuration.FromMinutes(minutes);
             switch (control.StartChargeNow(target, duration))
             {
                 case EvControlResult.NotConfigured:
@@ -293,26 +282,25 @@ internal static partial class EvEndpoint
     /// <param name="inputs">The EV inputs of the latest store cycle; null builds the answer from the configuration alone.</param>
     /// <param name="zone">The add-on's zone, the one the calendar's naive local times are read in; null leaves the zone out.</param>
     /// <param name="published">The module's latest snapshot; null (or nothing computed yet) leaves the assessment out.</param>
-    internal static EvResponse Build(ConfigurationResult? result, DateTimeOffset now, EvInputs? inputs = null, TimeZoneInfo? zone = null, EvPublished? published = null, EvManual? manual = null)
+    internal static EvResponse Build(ConfigurationResult? result, DateTimeOffset now, EvInputs? inputs = null, TimeZoneInfo? zone = null, EvPublished? published = null, EvManual? manual = null) =>
+        Response(EvReport.Compose(result, now, inputs, zone, published, manual));
+
+    /// <summary>The report as the API words it: enums as snake_case text, durations in seconds.</summary>
+    private static EvResponse Response(EvReport report)
     {
-        var configuration = result?.Configuration;
+        var configuration = report.Configuration;
         var ev = configuration?.Ev;
-        var issues = Issues(result);
+        var now = report.At;
         EvInputsDto? inputsDto = null;
         EvTripsDto? trips = null;
-        if (ev is not null && inputs is not null)
+        if (report.Inputs is { } inputs && report.Trips is { } assessment)
         {
             inputsDto = Inputs(inputs, now);
-            var assessment = TripParser.Assess(inputs.CalendarEvent, now, configuration!.Control.Ev.MaxTripKm);
             trips = new EvTripsDto(
                 assessment.Next is { } next ? new EvTripDto(next.Title, next.Start, next.Km) : null,
                 [.. assessment.Unparsed.Select(u => new EvUnparsedDto(u.Title, u.Start, ApiText.Snake(u.Reason), u.Km))],
                 [.. assessment.Warnings.Select(w => new EvTripWarningDto(ApiText.Snake(w.Kind), w.Title, w.Start))],
                 inputs.CalendarZoneName);
-            if (zone is not null && ZoneDisagrees(inputs.CalendarZoneName, zone, inputs.CalendarEvent?.Start ?? now))
-            {
-                issues = [.. issues, ZoneIssue(inputs.CalendarZoneName!, zone)];
-            }
         }
 
         return new EvResponse(
@@ -331,36 +319,26 @@ internal static partial class EvEndpoint
                     ev.Plugged is null ? null : ev.PluggedStates,
                     ev.Calendar?.Value),
             configuration is null ? null : Parameters(configuration.Control.Ev),
-            issues,
-            zone?.Id,
+            report.Issues,
+            report.AddOnZone,
             inputsDto,
             trips,
-            ev is null ? null : Assessment(published, now),
-            ev is null || manual is null ? null : Manual(manual, now));
+            report.Assessment is { } assessed ? Assessment(assessed) : null,
+            report.Manual is { } manual ? Manual(manual) : null);
     }
 
-    private static EvManualDto Manual(EvManual manual, DateTimeOffset now) =>
+    private static EvManualDto Manual(EvManualReport manual) =>
         new(
             ApiText.Snake(manual.Mode),
-            manual.ChargeNow is { } running && now < running.ExpiresAt
+            manual.Running is { } running
                 ? new EvChargeNowDto(true, running.TargetPercent, running.ExpiresAt)
                 : new EvChargeNowDto(false, null, null));
 
-    private static EvAssessmentDto? Assessment(EvPublished? published, DateTimeOffset now)
+    private static EvAssessmentDto Assessment(EvAssessmentReport report)
     {
-        if (published is null)
-        {
-            return null;
-        }
-
-        if (published.Failed)
+        if (report.Snapshot is not { } snapshot)
         {
             return new EvAssessmentDto(true, null, [], null, null, true, null, null, null, null, null, null, []);
-        }
-
-        if (published.Snapshot is not { } snapshot)
-        {
-            return null;
         }
 
         var composition = snapshot.Composition;
@@ -370,7 +348,7 @@ internal static partial class EvEndpoint
             [.. composition.Notes.Select(EvAssessmentCodes.Text)],
             snapshot.ComputedAt,
             snapshot.ValidUntil,
-            now > snapshot.ValidUntil,
+            report.Expired,
             ApiText.Snake(snapshot.Mode),
             snapshot.SocPercent,
             snapshot.SocGap is { } gap ? ApiText.Snake(gap) : null,
@@ -399,34 +377,8 @@ internal static partial class EvEndpoint
             read.ReadAt is { } at ? Math.Round((now - at).TotalSeconds, 3) : null,
             read.MaxAge?.TotalSeconds);
 
-    /// <summary>
-    /// True when the calendar entity states a zone of its own that gives a different offset from the add-on's at <paramref name="at"/>. Two names of one zone
-    /// (an IANA id and a Windows id) agree; a name this host does not know is a disagreement, because the times cannot be shown to be right.
-    /// </summary>
-    internal static bool ZoneDisagrees(string? stated, TimeZoneInfo addOn, DateTimeOffset at)
-    {
-        if (string.IsNullOrWhiteSpace(stated) || string.Equals(stated, addOn.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(stated).GetUtcOffset(at) != addOn.GetUtcOffset(at);
-        }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            return true;
-        }
-    }
-
-    private static ConfigurationIssue ZoneIssue(string stated, TimeZoneInfo addOn) =>
-        new(
-            ConfigurationIssueCodes.EvCalendarZoneMismatch,
-            "ev.calendar",
-            null,
-            null,
-            $"The calendar entity says its times are in '{stated}', the add-on reads them in '{addOn.Id}'; a trip would start at the wrong hour. Set the add-on's time zone to the calendar's.");
+    /// <summary>The calendar zone check lives in <see cref="EvReport.ZoneDisagrees"/>; this is the seam the endpoint tests call.</summary>
+    internal static bool ZoneDisagrees(string? stated, TimeZoneInfo addOn, DateTimeOffset at) => EvReport.ZoneDisagrees(stated, addOn, at);
 
     private static EvParametersDto Parameters(EvParameters p) =>
         new(
@@ -453,12 +405,4 @@ internal static partial class EvEndpoint
             p.ChargeNow.Duration.TotalSeconds,
             p.Spread,
             p.SnapshotMaxAge.TotalSeconds);
-
-    private static IReadOnlyList<ConfigurationIssue> Issues(ConfigurationResult? result) =>
-        result is null
-            ? []
-            : [.. result.Errors.Concat(result.Warnings).Where(i => EvPath().IsMatch(i.Path))];
-
-    [GeneratedRegex(@"^(ev|control\.ev)([.\[]|$)", RegexOptions.CultureInvariant)]
-    private static partial Regex EvPath();
 }

@@ -16,6 +16,7 @@ using Switchboard.Application.Modes;
 using Switchboard.Application.Options;
 using Switchboard.Application.Planning;
 using Switchboard.Application.Presentation;
+using Switchboard.Application.Reports;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Devices;
@@ -339,6 +340,7 @@ public static class SwitchboardServices
         // The planner (PLAN-10 to 12): its own loop and holder, reading the signal layer and the goal model, publishing a plan that nothing reads yet. Idle
         // without a planner: section. It names no effector, command port, override or guard type: the one thing it asks of the guard is IPlannerSuspension.
         services.AddSingleton<PlanHolder>();
+        services.AddSingleton<PlanReader>();
         services.AddSingleton<DiagnosticsPlannerSource>();
         services.AddSingleton<IPlannerSource>(sp => sp.GetRequiredService<DiagnosticsPlannerSource>());
         services.AddSingleton<IPlannerSuspension, PlannerSuspension>();
@@ -376,6 +378,7 @@ public static class SwitchboardServices
         services.AddSingleton<EvControl>();
         services.AddSingleton<IEvControl>(sp => sp.GetRequiredService<EvControl>());
         services.AddSingleton<EvSnapshotKeeper>();
+        services.AddSingleton<EvReader>();
         services.AddSingleton<IEvSnapshotSource>(sp => sp.GetRequiredService<EvSnapshotKeeper>());
         services.AddSingleton<IGoalSource>(sp =>
         {
