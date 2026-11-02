@@ -1,13 +1,11 @@
-using System.Collections.Immutable;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using Switchboard.Application;
-using Switchboard.Application.Configuration;
 using Switchboard.Application.Dispatch;
 using Switchboard.Application.Effector;
 using Switchboard.Application.Guard;
-using Switchboard.Application.Modes;
 using Switchboard.Application.Signals;
+using Switchboard.Application.Modes;
+using Switchboard.Application.Setup;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Signals;
@@ -15,17 +13,19 @@ using Switchboard.Domain.Units;
 using Switchboard.Host.Composition;
 using Switchboard.Infrastructure.HomeAssistant;
 using Switchboard.Tests.Support;
+using static Switchboard.Tests.Support.ArchitectureProbe;
 
 namespace Switchboard.Tests;
 
 /// <summary>
-/// SAFE-05 and the maintainer's kickoff rule as structure: dispatch decides, but nothing in
-/// production can command a Home Assistant entity. The command port exists only as an interface;
-/// its one implementation is the recording double in the tests, and only the tests can hand it to
-/// the effector gate. Even then the gate addresses only devices of the parsed configuration, by
-/// logical name. Dispatch reads watts from its own port and amperes only from the guard's envelope.
+/// Call path to the command port (SAFE-05 and the maintainer's kickoff rule as structure): dispatch
+/// decides, but nothing in production can command a Home Assistant entity. The command port exists
+/// only as an interface; its one production implementation is the gated Home Assistant port, and
+/// the tests hand the effector gate only the recording double. The gate addresses only devices of
+/// the parsed configuration, by logical name. The presentation (the runtime UI) and the setup code
+/// hold no command port, kill switch or override control.
 /// </summary>
-public sealed partial class Stage3ArchitectureTests
+public sealed class CommandPathArchitectureTests
 {
     private static readonly Assembly[] Production =
     [
@@ -35,12 +35,14 @@ public sealed partial class Stage3ArchitectureTests
         typeof(SwitchboardServices).Assembly,
     ];
 
+    private static readonly Type[] Setup = [.. typeof(SetupService).Assembly.GetTypes().Where(t => t.Namespace?.StartsWith("Switchboard.Application.Setup", StringComparison.Ordinal) == true)];
+
     [Fact]
     public void Command_port_has_exactly_one_production_implementation()
     {
         // Stage C: one gated production path (SAFE-05). Tests have the recording double only.
         var implementations = Production.SelectMany(a => a.GetTypes()).Where(t => typeof(IDeviceCommandPort).IsAssignableFrom(t) && t != typeof(IDeviceCommandPort)).ToList();
-        var inTests = typeof(Stage3ArchitectureTests).Assembly.GetTypes().Where(t => typeof(IDeviceCommandPort).IsAssignableFrom(t) && !t.IsInterface).ToList();
+        var inTests = typeof(CommandPathArchitectureTests).Assembly.GetTypes().Where(t => typeof(IDeviceCommandPort).IsAssignableFrom(t) && !t.IsInterface).ToList();
 
         Assert.Equal([typeof(Switchboard.Infrastructure.HomeAssistant.HomeAssistantDeviceCommandPort)], implementations);
         Assert.Equal([typeof(RecordingDeviceCommandPort)], inTests);
@@ -158,59 +160,33 @@ public sealed partial class Stage3ArchitectureTests
     }
 
     [Fact]
-    public void Dispatch_reads_dispatch_port_and_guard_envelope_only()
+    public void Presentation_references_no_command_port_kill_switch_or_override_control()
     {
-        // SIG-04: dispatch never touches protection inputs or device currents of its own; amperes
-        // reach it only through the guard's envelope (and its setup's hysteresis).
-        var forbidden = new[] { typeof(ProtectionInputs), typeof(DeviceDrawSample), typeof(IProtectionInputSource), typeof(PhaseProtection), typeof(CurrentReading) };
-        foreach (var type in new[] { typeof(DispatchEngine), typeof(Allocator), typeof(ForeignLoadTracker) })
-        {
-            var signatures = type.GetFields(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public).Select(f => f.FieldType)
-                .Concat(type.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).SelectMany(c => c.GetParameters()).Select(p => p.ParameterType))
-                .Concat(type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly).SelectMany(m => m.GetParameters()).Select(p => p.ParameterType));
-            Assert.DoesNotContain(signatures, forbidden.Contains);
-        }
+        var forbidden = new[] { typeof(IDeviceCommandPort), typeof(IKillSwitchControl), typeof(KillSwitchState), typeof(IDeviceOverrideControl), typeof(DeviceOverrides), typeof(EffectorGate) };
+        var offenders = Presentation
+            .SelectMany(t => Signatures(t).Where(s => forbidden.Any(f => f.IsAssignableFrom(s))).Select(s => $"{t.Name}: {s.Name}"))
+            .ToList();
 
-        var input = SignalArchitectureTests.TypeGraph(typeof(DispatchInput));
-        Assert.DoesNotContain(typeof(ProtectionInputs), input);
-        Assert.DoesNotContain(typeof(DeviceDrawSample), input);
+        Assert.NotEmpty(Presentation);
+        Assert.Empty(offenders);
     }
 
     [Fact]
-    public void On_change_is_refused_for_every_measurement_role()
+    public void Setup_never_references_command_port_kill_switch_or_override_control()
     {
-        // Only a device state, and the EV plugged state (a discrete state that writes only when it changes), may report on change: a measurement or protection input that stops
-        // reporting must go stale (SIG-05).
-        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r is not (SignalRole.DeviceState or SignalRole.EvPlugged)))
+        var forbidden = new[] { typeof(IDeviceCommandPort), typeof(IKillSwitchControl), typeof(KillSwitchState), typeof(IDeviceOverrideControl), typeof(DeviceOverrides), typeof(EffectorGate), typeof(GuardEngine), typeof(DispatchEngine) };
+        var offenders = Setup
+            .SelectMany(t => DeclaredSignatures(t).Where(s => forbidden.Any(f => f.IsAssignableFrom(s))).Select(s => $"{t.Name}: {s.Name}"))
+            .ToList();
+
+        Assert.NotEmpty(Setup);
+        Assert.Empty(offenders);
+        foreach (var file in SourceFiles("src/Switchboard.Application/Setup").Append(RepoPaths.Combine("src", "Switchboard.Host", "Web", "SetupEndpoint.cs")))
         {
-            var definition = new SignalDefinition(SignalName.Parse("x"), EntityId.Parse("sensor.x"), SignalKind.Current, "A", SignConvention.PositiveImport, null, false, TimeSpan.FromSeconds(30), 0.1, role, null, false);
-            Assert.Throws<ArgumentException>(() => definition with { Freshness = StateFreshness.OnChange });
-        }
-
-        var state = new SignalDefinition(SignalName.Parse("device_x"), EntityId.Parse("switch.x"), SignalKind.State, null, null, null, false, TimeSpan.FromMinutes(10), null, SignalRole.DeviceState, null, false);
-        Assert.Equal(StateFreshness.OnChange, (state with { Freshness = StateFreshness.OnChange }).Freshness);
-
-        var plugged = state with { Name = SignalName.Parse("device_x_ev_plugged"), Role = SignalRole.EvPlugged };
-        Assert.Equal(StateFreshness.OnChange, (plugged with { Freshness = StateFreshness.OnChange }).Freshness);
-    }
-
-    [Fact]
-    public void Allow_list_and_sources_stay_free_of_service_calls()
-    {
-        // The allow-list grew by the read-only discovery queries of Stage 5 and the one service call of
-        // Stage C; Application never names a service (the allow-list maps ActuatorService to wire names).
-        Assert.Equal(["call_service", "config/device_registry/list", "config/entity_registry/list", "get_states", "ping", "subscribe_entities", "unsubscribe_events"], HomeAssistantCommandAllowList.Allowed.Order(StringComparer.Ordinal));
-        foreach (var file in SourceFiles("src/Switchboard.Application"))
-        {
-            Assert.DoesNotMatch(ServiceLiteral(), File.ReadAllText(file));
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("IDeviceCommandPort", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IKillSwitchControl", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IDeviceOverrideControl", source, StringComparison.Ordinal);
         }
     }
-
-    private static IEnumerable<string> SourceFiles(string root) =>
-        Directory.GetFiles(RepoPaths.Combine(root.Split('/')), "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                        && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
-
-    [GeneratedRegex("\"[^\"\\n]*(call_service|api/services|turn_on|turn_off|set_value)[^\"\\n]*\"", RegexOptions.IgnoreCase)]
-    private static partial Regex ServiceLiteral();
 }

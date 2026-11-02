@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Switchboard.Application;
+using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Signals;
 using Switchboard.Domain.Units;
@@ -90,7 +91,7 @@ public sealed partial class SignalArchitectureTests
         // DeviceName and GroupName are leaves: their text matches ^[a-z][a-z0-9_]{0,39}$ and can
         // never hold a '.', so neither can be an entity ID (GuardArchitectureTests proves the pattern).
         // OptionText (0.7.1, a select stop's option) is a leaf for another reason: it is compared and
-        // logged only, and no command carries it (Stage3ArchitectureTests pins DeviceCommand), so even
+        // logged only, and no command carries it (CommandPathArchitectureTests pins DeviceCommand), so even
         // an option that looked like an entity ID could never address one.
         foreach (var root in new[] { typeof(ProtectionInputs), typeof(DispatchInputs) })
         {
@@ -235,6 +236,24 @@ public sealed partial class SignalArchitectureTests
         {
             yield return argument;
         }
+    }
+
+    [Fact]
+    public void On_change_is_refused_for_every_measurement_role()
+    {
+        // Only a device state, and the EV plugged state (a discrete state that writes only when it changes), may report on change: a measurement or protection input that stops
+        // reporting must go stale (SIG-05).
+        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r is not (SignalRole.DeviceState or SignalRole.EvPlugged)))
+        {
+            var definition = new SignalDefinition(SignalName.Parse("x"), EntityId.Parse("sensor.x"), SignalKind.Current, "A", SignConvention.PositiveImport, null, false, TimeSpan.FromSeconds(30), 0.1, role, null, false);
+            Assert.Throws<ArgumentException>(() => definition with { Freshness = StateFreshness.OnChange });
+        }
+
+        var state = new SignalDefinition(SignalName.Parse("device_x"), EntityId.Parse("switch.x"), SignalKind.State, null, null, null, false, TimeSpan.FromMinutes(10), null, SignalRole.DeviceState, null, false);
+        Assert.Equal(StateFreshness.OnChange, (state with { Freshness = StateFreshness.OnChange }).Freshness);
+
+        var plugged = state with { Name = SignalName.Parse("device_x_ev_plugged"), Role = SignalRole.EvPlugged };
+        Assert.Equal(StateFreshness.OnChange, (plugged with { Freshness = StateFreshness.OnChange }).Freshness);
     }
 
     [GeneratedRegex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")]
