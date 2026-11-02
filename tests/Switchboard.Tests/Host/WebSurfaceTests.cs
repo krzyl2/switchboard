@@ -120,7 +120,7 @@ public sealed class WebSurfaceTests
         Assert.Equal(
             ["version", "mode", "homeAssistant", "mqtt", "healthy"],
             json.RootElement.EnumerateObject().Select(p => p.Name));
-        Assert.Equal("0.12.4", json.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.12.5", json.RootElement.GetProperty("version").GetString());
         Assert.Equal("shadow", json.RootElement.GetProperty("mode").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("homeAssistant").GetString());
         Assert.Equal("disconnected", json.RootElement.GetProperty("mqtt").GetString());

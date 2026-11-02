@@ -241,9 +241,9 @@ public sealed partial class SignalArchitectureTests
     [Fact]
     public void On_change_is_refused_for_every_measurement_role()
     {
-        // Only a device state, and the EV plugged state (a discrete state that writes only when it changes), may report on change: a measurement or protection input that stops
-        // reporting must go stale (SIG-05).
-        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r is not (SignalRole.DeviceState or SignalRole.EvPlugged)))
+        // Only a device state, the EV plugged state and the EV trip calendar (discrete states that write only when they change) may report on change: a measurement or
+        // protection input that stops reporting must go stale (SIG-05).
+        foreach (var role in Enum.GetValues<SignalRole>().Where(r => r is not (SignalRole.DeviceState or SignalRole.EvPlugged or SignalRole.EvCalendar)))
         {
             var definition = new SignalDefinition(SignalName.Parse("x"), EntityId.Parse("sensor.x"), SignalKind.Current, "A", SignConvention.PositiveImport, null, false, TimeSpan.FromSeconds(30), 0.1, role, null, false);
             Assert.Throws<ArgumentException>(() => definition with { Freshness = StateFreshness.OnChange });
@@ -254,6 +254,9 @@ public sealed partial class SignalArchitectureTests
 
         var plugged = state with { Name = SignalName.Parse("device_x_ev_plugged"), Role = SignalRole.EvPlugged };
         Assert.Equal(StateFreshness.OnChange, (plugged with { Freshness = StateFreshness.OnChange }).Freshness);
+
+        var calendar = state with { Name = SignalName.Parse("device_x_ev_calendar"), Role = SignalRole.EvCalendar };
+        Assert.Equal(StateFreshness.OnChange, (calendar with { Freshness = StateFreshness.OnChange }).Freshness);
     }
 
     [GeneratedRegex("\"(?:[^\"\\\\\\n]|\\\\.)*\"")]

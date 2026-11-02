@@ -211,6 +211,22 @@ public sealed class EvSignalsTests
     }
 
     [Fact]
+    public void A_calendar_without_a_max_age_reports_on_change_and_stays_fresh_while_it_is_available()
+    {
+        // Why: live 2026-11-02. calendar.kursy showed Thursday's trip, but its last_reported stood at 30.10 because a calendar entity writes only when an event
+        // starts, ends or changes; judged by a 24 h age the trip was ignored. Without max_age the calendar is fresh for as long as it is available.
+        var store = Store(EvBlock.Replace("calendar: { entity: calendar.kursy, max_age: 24h }", "calendar: { entity: calendar.kursy }", StringComparison.Ordinal));
+        var name = Ev(store).Calendar!.Value.Value;
+        PushCalendar(store, Departure(store));
+
+        store.Advance(TimeSpan.FromDays(3));
+        Assert.Equal(SignalState.Fresh, store.Reading(name).State);
+
+        PushCalendar(store, null, state: "unavailable");
+        Assert.NotEqual(SignalState.Fresh, store.Reading(name).State);
+    }
+
+    [Fact]
     public void The_plugged_state_is_fresh_for_as_long_as_it_is_available_because_it_reports_on_change()
     {
         // Why: a car that has been plugged in for a week reports nothing for a week. Judging it by age would call a plugged car unknown every night.

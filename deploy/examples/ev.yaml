@@ -33,7 +33,8 @@ ev:
   #   state_reports: on_change   # default: fresh while available, no age limit; "age" with max_age judges it by age instead
   # calendar:                 # the calendar whose current or next event is the next trip
   #   entity: calendar.trips
-  #   max_age: 24h            # optional; default control.signals.max_age_limit (a calendar entity re-reports rarely)
+  #   state_reports: on_change   # default without max_age: a calendar entity writes only when an event starts, ends or changes, so it is fresh while available
+  #   max_age: 24h            # optional; declaring it judges the calendar by age instead (default control.signals.max_age_limit)
   #
   # A trip is an event whose description contains "km: 42" (case-insensitive, comma or dot as the decimal sign, the first one counts).
   # All-day events, events without km: and a km: above control.ev.max_trip_km are ignored and listed at GET api/ev. The calendar entity

@@ -71,6 +71,22 @@ public sealed class EvSignalConfigurationTests
     }
 
     [Fact]
+    public void A_calendar_reports_on_change_unless_it_declares_a_max_age_and_both_at_once_are_refused()
+    {
+        // Why: a calendar entity writes only when an event starts, ends or changes (live: silent from 30.10 with Thursday's trip on it), so on change is the default;
+        // a file that declares max_age keeps the age rule it was written for; on_change beside a max_age would ignore the age silently.
+        var onChange = Signal(Parse("  calendar: { entity: calendar.kursy }\n"), SignalRole.EvCalendar);
+        var byAge = Signal(Parse("  calendar: { entity: calendar.kursy, max_age: 12h }\n"), SignalRole.EvCalendar);
+        var explicitAge = Signal(Parse("  calendar: { entity: calendar.kursy, state_reports: age }\n"), SignalRole.EvCalendar);
+        var both = Parse("  calendar: { entity: calendar.kursy, state_reports: on_change, max_age: 12h }\n");
+
+        Assert.Equal(StateFreshness.OnChange, onChange.Freshness);
+        Assert.Equal((StateFreshness.Age, TimeSpan.FromHours(12)), (byAge.Freshness, byAge.MaxAge));
+        Assert.Equal((StateFreshness.Age, TimeSpan.FromHours(24)), (explicitAge.Freshness, explicitAge.MaxAge));
+        Assert.Contains(both.Errors, e => e.Code == ConfigurationIssueCodes.KeyNotAllowed && e.Path == "ev.calendar.max_age");
+    }
+
+    [Fact]
     public void A_max_age_above_the_signal_limit_is_an_error_for_every_block()
     {
         var result = Parse("  range: { entity: sensor.car_range, max_age: 30h }\n  calendar: { entity: calendar.kursy, max_age: 30h }\n");
@@ -170,8 +186,9 @@ public sealed class EvSignalConfigurationTests
     [Fact]
     public void On_change_is_refused_for_the_other_new_roles()
     {
-        // Why: only the plugged state is a discrete state that writes on change; a range or a calendar that stops reporting must go stale.
-        foreach (var role in new[] { SignalRole.EvSoc, SignalRole.EvRange, SignalRole.EvCalendar })
+        // Why: the SoC and the range are measurements; one that stops reporting must go stale. The plugged state and the calendar (DECISIONS 2026-11-02) are discrete
+        // states that write only on change; a dead calendar integration shows as unavailable, which is not fresh either way.
+        foreach (var role in new[] { SignalRole.EvSoc, SignalRole.EvRange })
         {
             var signal = Signal(Parse("  range: { entity: sensor.car_range }\n  calendar: { entity: calendar.kursy }\n"), role);
             Assert.Throws<ArgumentException>(() => signal with { Freshness = StateFreshness.OnChange });

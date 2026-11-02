@@ -28,7 +28,7 @@ internal static partial class EvSectionParser
     private static readonly string[] SocKeys = ["entity", "max_age"];
     private static readonly string[] RangeKeys = ["entity", "unit", "max_age"];
     private static readonly string[] PluggedKeys = ["entity", "states", "state_reports", "max_age"];
-    private static readonly string[] CalendarKeys = ["entity", "max_age"];
+    private static readonly string[] CalendarKeys = ["entity", "state_reports", "max_age"];
 
     // A car's SoC is a sensor, or a helper that mirrors it; never an actuator-like entity.
     private static readonly ImmutableArray<string> SocDomains = ["sensor", "input_number", "number"];
@@ -482,15 +482,40 @@ internal static partial class EvSectionParser
             return null;
         }
 
-        var (maxAge, maxAgePath) = ReadMaxAge(read, control?.Signals.MaxAgeLimit, control, issues);
-        if (issues.Errors.Count > errorsBefore || maxAge is null || device is null)
+        // A calendar entity writes its state only when it changes (an event starts, ends or is edited), so a quiet day is no outage: it reports on change unless a
+        // max_age is declared, which keeps the age rule of files written before state_reports existed.
+        var declaredAge = ConfigRead.Optional(read.Block, "max_age");
+        var reports = declaredAge is null ? StateFreshness.OnChange : StateFreshness.Age;
+        var reportsPath = ConfigRead.Join(read.Path, "state_reports");
+        if (ConfigRead.Optional(read.Block, "state_reports") is { } reportsNode && ConfigRead.Choice(reportsNode, reportsPath, issues, ConfigSpelling.StateReports) is { } declared)
+        {
+            reports = declared;
+        }
+
+        (TimeSpan? MaxAge, string Path) maxAge;
+        if (reports == StateFreshness.OnChange)
+        {
+            if (declaredAge is not null)
+            {
+                issues.Error(ConfigurationIssueCodes.KeyNotAllowed, ConfigRead.Join(read.Path, "max_age"), declaredAge, "max_age does not apply to state_reports: on_change (freshness then comes from availability); remove one of them.");
+            }
+
+            maxAge = (control?.Signals.MaxAgeLimit, ConfigRead.Join(read.Path, "max_age"));
+        }
+        else
+        {
+            maxAge = ReadMaxAge(read, control?.Signals.MaxAgeLimit, control, issues);
+        }
+
+        if (issues.Errors.Count > errorsBefore || maxAge.MaxAge is null || device is null)
         {
             return null;
         }
 
-        return new SignalDefinition(Signal(device.Id, "calendar"), read.Entity, SignalKind.CalendarEvent, null, null, null, false, maxAge.Value, null, SignalRole.EvCalendar, null, false, read.Path)
+        return new SignalDefinition(Signal(device.Id, "calendar"), read.Entity, SignalKind.CalendarEvent, null, null, null, false, maxAge.MaxAge.Value, null, SignalRole.EvCalendar, null, false, read.Path)
         {
-            MaxAgeKey = maxAgePath,
+            MaxAgeKey = maxAge.Path,
+            Freshness = reports,
         };
     }
 

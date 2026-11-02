@@ -26,6 +26,5 @@ ev:
     states: [Charging, "Wait for car", Complete]  # only "Complete" is confirmed on the live HA; verify "Charging" and "Wait for car" while the car charges (Idle = nothing plugged)
     state_reports: on_change
   calendar:
-    entity: calendar.kursy       # a trip: description contains "km: 18"; Google refreshes in HA about every 10-15 minutes
-    max_age: 24h
+    entity: calendar.kursy       # a trip: description contains "km: 18"; no max_age: a calendar entity writes only when an event starts, ends or changes (state_reports: on_change)
   # cheap_zone: offpeak          # optional; without it the lowest price in economics counts as cheap

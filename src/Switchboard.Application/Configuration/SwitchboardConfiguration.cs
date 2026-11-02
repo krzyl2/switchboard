@@ -39,14 +39,14 @@ public sealed record SignalDefinition(
     private readonly StateFreshness _freshness;
 
     /// <summary>
-    /// Age (the default) or on-change. On-change is refused for anything but a device state and the EV plugged state (a discrete state
-    /// that reports only when it changes): a measurement or protection input that stops reporting must go stale (SIG-05).
+    /// Age (the default) or on-change. On-change is refused for anything but a device state, the EV plugged state and the EV trip calendar
+    /// (discrete states that report only when they change): a measurement or protection input that stops reporting must go stale (SIG-05).
     /// </summary>
     public StateFreshness Freshness
     {
         get => _freshness;
-        init => _freshness = value == StateFreshness.OnChange && Role is not (SignalRole.DeviceState or SignalRole.EvPlugged)
-            ? throw new ArgumentException($"Signal {Name} has role {Role}: only a device state or the EV plugged state may report on change.", nameof(value))
+        init => _freshness = value == StateFreshness.OnChange && Role is not (SignalRole.DeviceState or SignalRole.EvPlugged or SignalRole.EvCalendar)
+            ? throw new ArgumentException($"Signal {Name} has role {Role}: only a device state, the EV plugged state or the EV calendar may report on change.", nameof(value))
             : value;
     }
 

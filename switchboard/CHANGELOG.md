@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.5
+
+### Fixed
+
+- The EV trip calendar reports on change unless it declares `max_age` (`ev.calendar.state_reports: on_change|age`): a calendar entity writes only when an event starts, ends or changes, so a quiet calendar no longer reads as unavailable and its next trip is planned for. A file with `max_age` keeps the age rule.
+
 ## 0.12.4
 
 ### Fixed
