@@ -18,7 +18,7 @@ namespace Switchboard.Host.Hosting;
 /// order: it evaluates the shutdown safe state (every controlled device off, SAFE-01) and, while
 /// commands may leave, sends it before the command path, MQTT and the Home Assistant link stop
 /// (bounded by HomeAssistant:ShutdownCommandWait), then writes the decision log and state.json, all
-/// within Persistence:ShutdownTimeout plus that wait; StopAsync only ends the writers. A state.json that could not be trusted starts with control locked off and the kill
+/// within Persistence:ShutdownTimeout plus that wait; StopAsync ends the writers and writes state.json once more (the API answers until then). A state.json that could not be trusted starts with control locked off and the kill
 /// switch on until the user confirms. A guard loop that fails stops the whole add-on: a process that
 /// keeps serving a frozen status, with the health entity ON, would look protected while nothing is
 /// evaluated; stopping turns the health entity OFF and the Supervisor restarts the add-on.
@@ -48,7 +48,6 @@ internal sealed class GuardService(
     private readonly CancellationTokenSource _writersStop = new();
     private Task _guard = Task.CompletedTask;
     private Task _writers = Task.CompletedTask;
-    private CancellationTokenSource? _deadline;
     private string? _devices;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -118,8 +117,8 @@ internal sealed class GuardService(
     public async Task StoppingAsync(CancellationToken cancellationToken)
     {
         var limit = StopLimit;
-        _deadline = new CancellationTokenSource(limit, time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_deadline.Token, cancellationToken);
+        using var deadline = new CancellationTokenSource(limit, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, cancellationToken);
         try
         {
             // The loop first, so the shutdown step runs alone.
@@ -151,7 +150,7 @@ internal sealed class GuardService(
             await state.FlushAsync(linked.Token).ConfigureAwait(false);
             logger.LogInformation("Guard stopped: shutdown safe state recorded, decision log and state.json written");
         }
-        catch (OperationCanceledException) when (_deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("The guard's stop did not complete within {Timeout}; the next start treats this stop as not clean", limit);
         }
@@ -159,23 +158,22 @@ internal sealed class GuardService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // The deadline started in StoppingAsync: the writers' wait is inside the same limit.
-        _deadline ??= new CancellationTokenSource(StopLimit, time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_deadline.Token, cancellationToken);
+        // Its own budget: the other services' stops between StoppingAsync and here must not use it up.
+        using var deadline = new CancellationTokenSource(options.Value.ShutdownTimeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, cancellationToken);
         status.Published -= OnPublished;
         await _writersStop.CancelAsync().ConfigureAwait(false);
         try
         {
             // Both writers end at their next await; one stuck in a write is left to the process exit.
             await _writers.WaitAsync(linked.Token).ConfigureAwait(false);
+            // The web server keeps answering between StoppingAsync and here: a change accepted after the
+            // flush there (control switch, kill switch, override, goals) is written now.
+            await state.FlushAsync(linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
             logger.LogWarning("A persistence writer was still busy when the guard stopped");
-        }
-        finally
-        {
-            _deadline.Dispose();
         }
     }
 
