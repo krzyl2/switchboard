@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.3
+
+### Fixed
+
+- The add-on image builds again: the image build now reads the same analyzer settings as the local build. 0.12.2 never got an image; 0.12.3 ships everything listed under 0.12.2.
+
 ## 0.12.2
 
 ### Added
