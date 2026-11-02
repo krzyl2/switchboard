@@ -1,5 +1,6 @@
 import { parseDecision, type Decision, type DecisionKind } from './decisions';
 import { bool, count, field, list, nullable, object, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/decisions/history (src/Switchboard.Host/Web/DecisionHistoryEndpoint.cs,
 // MODE-04): the decision log over its whole retention, newest first, read from the daily files.
@@ -48,11 +49,5 @@ export async function fetchDecisionHistory(signal: AbortSignal, query: DecisionH
   if (query.limit !== undefined) parameters.set('limit', String(query.limit));
   if (query.cursor !== undefined) parameters.set('cursor', query.cursor);
   const search = parameters.toString();
-  const response = await fetch(search === '' ? 'api/decisions/history' : `api/decisions/history?${search}`, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`Decision history request failed with HTTP ${response.status}.`);
-  return parseDecisionHistory(await response.json());
+  return parseDecisionHistory(await getJson(search === '' ? 'api/decisions/history' : `api/decisions/history?${search}`, signal, 'Decision history'));
 }

@@ -1,6 +1,7 @@
 import { STATE_FILE_STATUSES } from './guard';
 import type { StateFileStatus } from './guard';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/statistics (src/Switchboard.Host/Web/StatisticsEndpoint.cs): energy integrated
 // per UTC bucket on the add-on's signal clock (never read from the Recorder), the last hour's sums
@@ -205,7 +206,5 @@ export function parseStatistics(raw: unknown): Statistics {
 /** GET api/statistics, optionally only the buckets of [from, to) (UTC instants the page computes from its local day). */
 export async function fetchStatistics(signal: AbortSignal, range?: { from: Date; to: Date }): Promise<Statistics> {
   const query = range === undefined ? '' : `?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`;
-  const response = await fetch(STATISTICS_URL + query, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Statistics request failed with HTTP ${response.status}.`);
-  return parseStatistics(await response.json());
+  return parseStatistics(await getJson(STATISTICS_URL + query, signal, 'Statistics'));
 }

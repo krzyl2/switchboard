@@ -447,10 +447,10 @@ export function SignalsPage({ lang }: { lang: Lang }) {
   }
   return (
     <>
-      <SourceBanner signals={view.signals} t={t} />
-      <Overview signals={view.signals} t={t} lang={lang} />
-      <PhasesTable phases={view.signals.phases} generatedAt={view.signals.generatedAt} t={t} lang={lang} />
-      <SignalsTable signals={view.signals} updatedAt={view.updatedAt} t={t} lang={lang} />
+      <SourceBanner signals={view.data} t={t} />
+      <Overview signals={view.data} t={t} lang={lang} />
+      <PhasesTable phases={view.data.phases} generatedAt={view.data.generatedAt} t={t} lang={lang} />
+      <SignalsTable signals={view.data} updatedAt={view.updatedAt} t={t} lang={lang} />
     </>
   );
 }

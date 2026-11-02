@@ -1,5 +1,6 @@
 import { bool, field, instant, number, object, oneOf, text } from './strict';
 import { GOAL_KINDS, type GoalKind } from './plan';
+import { request } from './http';
 
 // Contract of POST api/goals and DELETE api/goals/{device} (src/Switchboard.Host/Web/GoalsEndpoint.cs,
 // PLAN-19): the "want now" action of the device card. It stores or cancels a manual goal in the add-on's
@@ -80,19 +81,14 @@ const GOALS_URL = 'api/goals';
 
 /** POST api/goals. Throws a GoalError with the add-on's refusal code. */
 export async function postGoal(want: WantNow, signal?: AbortSignal): Promise<StoredGoal> {
-  const response = await fetch(GOALS_URL, {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device: want.device, kind: want.kind, target: want.target, deadline: want.deadline.toISOString(), hard: want.hard }),
-  });
+  const body = { device: want.device, kind: want.kind, target: want.target, deadline: want.deadline.toISOString(), hard: want.hard };
+  const response = await request(GOALS_URL, { method: 'POST', body, signal });
   if (!response.ok) throw new GoalError(await refusal(response));
   return parseStoredGoal(await response.json());
 }
 
 /** DELETE api/goals/{device}: cancels the device's manual goal. */
 export async function deleteGoal(device: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`${GOALS_URL}/${encodeURIComponent(device)}`, { method: 'DELETE', signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  const response = await request(`${GOALS_URL}/${encodeURIComponent(device)}`, { method: 'DELETE', signal });
   if (!response.ok) throw new GoalError(await refusal(response));
 }

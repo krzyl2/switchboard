@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SetupIssues } from './SetupIssues';
-import { firstOnPage, focusField, parseNumber, TOPOLOGIES, topologyPhases } from './SetupMeter';
+import { parseNumber } from './parseNumber';
+import { firstOnPage, focusField, TOPOLOGIES, topologyPhases } from './SetupMeter';
 import type { PhaseValues, ReserveExplanation, ReservePhase } from './api/setup';
 import type { PhaseName } from './api/signals';
 import { formatAge, formatAmps, formatFixed, formatInterval, formatKw, formatNumber } from './format';
@@ -170,7 +171,7 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
             min="0"
             step="any"
             value={connection.voltageV ?? ''}
-            onInput={(event) => setup.set('connection.voltageV', parseNumber((event.currentTarget as HTMLInputElement).value))}
+            onInput={(event) => setup.set('connection.voltageV', parseNumber((event.currentTarget as HTMLInputElement).value) ?? null)}
           />
           <span class="sub">{t['setupConnection.voltage.hint']}</span>
         </div>
@@ -192,7 +193,7 @@ export function SetupConnection({ setup, t, lang, goTo }: StepProps) {
                   min="0"
                   step="any"
                   value={value ?? ''}
-                  onInput={(event) => setReserve(phase, parseNumber((event.currentTarget as HTMLInputElement).value))}
+                  onInput={(event) => setReserve(phase, parseNumber((event.currentTarget as HTMLInputElement).value) ?? null)}
                 />
                 <MinimumLine value={value} report={reserve?.perPhase.find((p) => p.phase === phase)} shown={reserve !== null} t={t} lang={lang} />
               </div>

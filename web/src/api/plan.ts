@@ -1,6 +1,7 @@
 import { SIGNAL_STATES } from './signals';
 import type { SignalState } from './signals';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/plan (src/Switchboard.Host/Web/PlanEndpoint.cs, 15-PLANNER "API"): whether a planner
 // is configured and how far its plan may reach, the plan the planner service holds (slots, an entry per
@@ -404,7 +405,5 @@ export function parsePlan(raw: unknown): Plan {
 }
 
 export async function fetchPlan(signal: AbortSignal): Promise<Plan> {
-  const response = await fetch(PLAN_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Plan request failed with HTTP ${response.status}.`);
-  return parsePlan(await response.json());
+  return parsePlan(await getJson(PLAN_URL, signal, 'Plan'));
 }

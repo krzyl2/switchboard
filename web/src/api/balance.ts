@@ -1,4 +1,5 @@
 import { instant, bool, field, nullable, number, object, oneOf } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/balance (src/Switchboard.Host/Web/BalanceEndpoint.cs): the balance of the
 // running local hour (BAL-01) and what the allowance rule made of it in the last dispatch step
@@ -68,7 +69,5 @@ export function parseBalance(raw: unknown): HourlyBalance {
 }
 
 export async function fetchBalance(signal: AbortSignal): Promise<HourlyBalance> {
-  const response = await fetch(BALANCE_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Balance request failed with HTTP ${response.status}.`);
-  return parseBalance(await response.json());
+  return parseBalance(await getJson(BALANCE_URL, signal, 'Balance'));
 }

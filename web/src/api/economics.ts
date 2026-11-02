@@ -1,6 +1,7 @@
 import { SIGNAL_DETAILS, SIGNAL_STATES } from './signals';
 import type { SignalDetail, SignalState } from './signals';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/economics (src/Switchboard.Host/Web/EconomicsEndpoint.cs): the tariff in force
 // now, the settlement as configured, per device the value now and its sources, and the savings
@@ -302,7 +303,5 @@ export function parseEconomics(raw: unknown): Economics {
 }
 
 export async function fetchEconomics(signal: AbortSignal): Promise<Economics> {
-  const response = await fetch(ECONOMICS_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Economics request failed with HTTP ${response.status}.`);
-  return parseEconomics(await response.json());
+  return parseEconomics(await getJson(ECONOMICS_URL, signal, 'Economics'));
 }

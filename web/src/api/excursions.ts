@@ -5,6 +5,7 @@ import type { PhaseName } from './signals';
 import { parsePresentationFile } from './statistics';
 import type { PresentationFile } from './statistics';
 import { bool, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/excursions (src/Switchboard.Host/Web/ExcursionsEndpoint.cs): per phase the
 // last (or ongoing) and the worst excursion above the reserve threshold within the retention
@@ -114,7 +115,5 @@ export function parseExcursions(raw: unknown): Excursions {
 }
 
 export async function fetchExcursions(signal: AbortSignal): Promise<Excursions> {
-  const response = await fetch(EXCURSIONS_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Excursions request failed with HTTP ${response.status}.`);
-  return parseExcursions(await response.json());
+  return parseExcursions(await getJson(EXCURSIONS_URL, signal, 'Excursions'));
 }

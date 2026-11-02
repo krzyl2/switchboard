@@ -25,6 +25,7 @@ import type { DeviceType } from './guard';
 import { PHASES } from './signals';
 import type { PhaseName } from './signals';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
+import { getJson, request } from './http';
 
 // Contract of GET api/dispatch and of the answer to POST api/devices/{id}/override
 // (src/Switchboard.Host/Web/DispatchEndpoint.cs). Every closed list mirrors a backend enum;
@@ -312,15 +313,7 @@ export function parseDispatch(raw: unknown): DispatchStatus {
 }
 
 export async function fetchDispatch(signal: AbortSignal): Promise<DispatchStatus> {
-  const response = await fetch(DISPATCH_URL, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`Dispatch request failed with HTTP ${response.status}.`);
-  }
-  return parseDispatch(await response.json());
+  return parseDispatch(await getJson(DISPATCH_URL, signal, 'Dispatch'));
 }
 
 /** Why an override was not accepted, from the HTTP status the add-on answers with. */
@@ -339,13 +332,7 @@ export class OverrideError extends Error {
  * came late (the override holds in memory either way).
  */
 export async function postOverride(device: string, mode: OverrideMode, signal: AbortSignal): Promise<DispatchStatus> {
-  const response = await fetch(`api/devices/${encodeURIComponent(device)}/override`, {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  });
+  const response = await request(`api/devices/${encodeURIComponent(device)}/override`, { method: 'POST', body: { mode }, signal });
   if (!response.ok) {
     const refusal: OverrideRefusal =
       response.status === 404

@@ -1,6 +1,7 @@
 import { PHASES, type PhaseName } from './signals';
 import { TIER_REACTIONS, type TierReaction } from './decisions';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text, type Json } from './strict';
+import { getJson, request } from './http';
 
 // Contract of the setup wizard's API (src/Switchboard.Host/Web/SetupEndpoint.cs, Stage 5). Every
 // answer is parsed strictly: a key that is missing or an enum value the page does not know makes the
@@ -806,20 +807,8 @@ export function parseEvidence(raw: unknown): DeviceEvidence[] {
 // ---------------------------------------------------------------------------------------------
 // Requests. Every POST is application/json: a cross-site form cannot send one without a preflight.
 
-async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`${url} failed with HTTP ${response.status}.`);
-  return response.json();
-}
-
-async function postJson(url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+function postJson(url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  return request(url, { method: 'POST', body, signal });
 }
 
 /** Thrown when Home Assistant cannot be reached (HTTP 503 with its code). */
@@ -830,7 +819,7 @@ export class DiscoveryUnavailable extends Error {
 }
 
 export async function fetchDiscovery(signal: AbortSignal, refresh = false): Promise<Discovery> {
-  const response = await fetch(refresh ? 'api/setup/discovery?refresh=true' : 'api/setup/discovery', { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  const response = await request(refresh ? 'api/setup/discovery?refresh=true' : 'api/setup/discovery', { signal });
   if (response.status === 503) {
     const body = object(await response.json(), 'payload');
     throw new DiscoveryUnavailable(text(field(body, 'code', 'payload'), 'code'));
@@ -842,15 +831,15 @@ export async function fetchDiscovery(signal: AbortSignal, refresh = false): Prom
 export async function fetchReadouts(signal: AbortSignal, entities: readonly string[]): Promise<Readouts> {
   const query = new URLSearchParams();
   for (const entity of entities) query.append('entity', entity);
-  return parseReadouts(await getJson(`api/setup/readouts?${query.toString()}`, signal));
+  return parseReadouts(await getJson(`api/setup/readouts?${query.toString()}`, signal, 'Readouts'));
 }
 
 export async function fetchDraft(signal: AbortSignal): Promise<DraftView> {
-  return parseDraftView(await getJson('api/setup/draft', signal));
+  return parseDraftView(await getJson('api/setup/draft', signal, 'Draft'));
 }
 
 export async function fetchTemplates(signal: AbortSignal): Promise<{ templates: Template[]; prefillVoltageV: number }> {
-  return parseTemplates(await getJson('api/setup/templates', signal));
+  return parseTemplates(await getJson('api/setup/templates', signal, 'Templates'));
 }
 
 export async function validateDraft(draft: SetupDraft, baseRevision: string | null, signal?: AbortSignal): Promise<Validation> {
@@ -882,16 +871,16 @@ export async function startSelfTest(draft: SetupDraft, target: SelfTestTarget, s
 }
 
 export async function fetchSelfTest(signal: AbortSignal, id: string): Promise<SelfTest> {
-  return parseSelfTest(await getJson(`api/setup/self-test/${encodeURIComponent(id)}`, signal));
+  return parseSelfTest(await getJson(`api/setup/self-test/${encodeURIComponent(id)}`, signal, 'Self-test'));
 }
 
 export async function cancelSelfTest(id: string): Promise<void> {
-  const response = await fetch(`api/setup/self-test/${encodeURIComponent(id)}`, { method: 'DELETE', cache: 'no-store' });
+  const response = await request(`api/setup/self-test/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!response.ok && response.status !== 404) throw new Error(`Cancelling the self-test failed with HTTP ${response.status}.`);
 }
 
 export async function fetchEvidence(signal: AbortSignal): Promise<DeviceEvidence[]> {
-  return parseEvidence(await getJson('api/setup/evidence', signal));
+  return parseEvidence(await getJson('api/setup/evidence', signal, 'Evidence'));
 }
 
 /** The draft as an empty clean install starts it (nothing mapped, nothing acknowledged). */
@@ -1004,34 +993,28 @@ export function parseActiveTest(raw: unknown): ActiveTest {
 
 export async function fetchActiveTestPreconditions(device: string, stage: number, signal?: AbortSignal): Promise<ActiveTestPreconditions> {
   const query = new URLSearchParams({ device, stage: String(stage) });
-  const response = await fetch(`api/setup/active-test/preconditions?${query.toString()}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  const response = await request(`api/setup/active-test/preconditions?${query.toString()}`, { signal });
   if (!response.ok) throw new Error(`Active self-test preconditions failed with HTTP ${response.status}.`);
   return parseActiveTestPreconditions(await response.json());
 }
 
 /** POST api/setup/active-test as JSON (a cross-site form cannot send it without a preflight). */
 export async function startActiveTest(device: string, stage: number, signal?: AbortSignal): Promise<ActiveTestStart> {
-  const response = await fetch('api/setup/active-test', {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device, stage }),
-  });
+  const response = await request('api/setup/active-test', { method: 'POST', body: { device, stage }, signal });
   if (response.status === 202) return { kind: 'started', ...parseActiveTestStarted(await response.json()) };
   if (response.status === 409) return { kind: 'refused', refusals: parseActiveTestRefused(await response.json()) };
   throw new Error(`Starting the active self-test failed with HTTP ${response.status}.`);
 }
 
 export async function fetchActiveTest(id: string, signal?: AbortSignal): Promise<ActiveTest> {
-  const response = await fetch(`api/setup/active-test/${encodeURIComponent(id)}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+  const response = await request(`api/setup/active-test/${encodeURIComponent(id)}`, { signal });
   if (!response.ok) throw new Error(`Active self-test request failed with HTTP ${response.status}.`);
   return parseActiveTest(await response.json());
 }
 
 /** DELETE api/setup/active-test/{id}: the test switches its stage off again and ends as cancelled. */
 export async function cancelActiveTest(id: string, signal?: AbortSignal): Promise<boolean> {
-  const response = await fetch(`api/setup/active-test/${encodeURIComponent(id)}`, { method: 'DELETE', signal, cache: 'no-store' });
+  const response = await request(`api/setup/active-test/${encodeURIComponent(id)}`, { method: 'DELETE', signal });
   if (response.status === 204) return true;
   if (response.status === 404) return false;
   throw new Error(`Cancelling the active self-test failed with HTTP ${response.status}.`);

@@ -1,6 +1,7 @@
 import { CONTROL_SWITCH_SOURCES, parseLevel, type ControlSwitchSource, type Level } from './decisions';
 import { parseMode, type Mode } from './mode';
 import { bool, count, fail, field, instant, list, nullable, object, oneOf, text } from './strict';
+import { getJson, httpError, request } from './http';
 
 // Contract of GET and POST api/control and POST api/control/confirm
 // (src/Switchboard.Host/Web/ControlEndpoint.cs, MODE-02): the global "control allowed" switch,
@@ -109,24 +110,16 @@ export function parseControl(raw: unknown): Control {
 const CONTROL_URL = 'api/control';
 
 export async function fetchControl(signal: AbortSignal): Promise<Control> {
-  const response = await fetch(CONTROL_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Control request failed with HTTP ${response.status}.`);
-  return parseControl(await response.json());
+  return parseControl(await getJson(CONTROL_URL, signal, 'Control'));
 }
 
 export type ControlChange = { kind: 'applied'; control: Control } | { kind: 'refused'; code: string };
 
 async function post(url: string, body: unknown, signal?: AbortSignal): Promise<ControlChange> {
-  const response = await fetch(url, {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const response = await request(url, { method: 'POST', body, signal });
   if (response.ok) return { kind: 'applied', control: parseControl(await response.json()) };
   if (response.status === 409) return { kind: 'refused', code: text(field(object(await response.json(), 'payload'), 'code', 'payload'), 'code') };
-  throw new Error(`Control request failed with HTTP ${response.status}.`);
+  throw httpError('Control', response);
 }
 
 /**

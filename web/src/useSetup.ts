@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'preact/hooks';
+import { withTimeout as withRequestTimeout } from './api/http';
 import {
   emptyDraft,
   fetchDraft,
@@ -87,9 +88,7 @@ export interface SetupState {
 }
 
 function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SETUP_REQUEST_TIMEOUT_MS);
-  return run(controller.signal).finally(() => clearTimeout(timeout));
+  return withRequestTimeout(run, SETUP_REQUEST_TIMEOUT_MS);
 }
 
 /**

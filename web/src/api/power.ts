@@ -5,6 +5,7 @@ import type { DispatchInvalidReason } from './dispatch';
 import { FLOW_DIRECTIONS, PHASES } from './signals';
 import type { FlowDirection, PhaseName } from './signals';
 import { bool, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/power (src/Switchboard.Host/Web/PowerEndpoint.cs): the power picture of the
 // last control step for the dashboard and the flow view. Every closed list mirrors a backend enum;
@@ -283,7 +284,5 @@ export function parsePower(raw: unknown): Power {
 }
 
 export async function fetchPower(signal: AbortSignal): Promise<Power> {
-  const response = await fetch(POWER_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Power request failed with HTTP ${response.status}.`);
-  return parsePower(await response.json());
+  return parsePower(await getJson(POWER_URL, signal, 'Power'));
 }

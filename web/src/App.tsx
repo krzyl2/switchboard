@@ -79,7 +79,7 @@ function StatusPage({ lang }: { lang: Lang }) {
     <>
       <section class="card">
         {view.kind === 'loading' && <p>{t.loading}</p>}
-        {view.kind === 'live' && <StatusList status={view.status} updatedAt={view.updatedAt} t={t} lang={lang} />}
+        {view.kind === 'live' && <StatusList status={view.data} updatedAt={view.updatedAt} t={t} lang={lang} />}
         {view.kind === 'unavailable' && (
           <div role="alert">
             <p class="unavailable">

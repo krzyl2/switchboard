@@ -1,6 +1,7 @@
 import { FLOW_DIRECTIONS, PHASES, PROTECTION_INVALID_REASONS } from './signals';
 import type { FlowDirection, PhaseName, ProtectionInvalidReason } from './signals';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
+import { getJson } from './http';
 
 // Contract of a decision as GET api/decisions and GET api/guard write it
 // (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason code lists 2 to 8). Every closed list mirrors a backend enum;
@@ -548,11 +549,5 @@ export async function fetchDecisions(signal: AbortSignal, query: DecisionQuery =
   if (query.before !== undefined) parameters.set('before', query.before);
   if (query.limit !== undefined) parameters.set('limit', String(query.limit));
   const search = parameters.toString();
-  const response = await fetch(search === '' ? 'api/decisions' : `api/decisions?${search}`, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`Decisions request failed with HTTP ${response.status}.`);
-  return parseDecisionsPage(await response.json());
+  return parseDecisionsPage(await getJson(search === '' ? 'api/decisions' : `api/decisions?${search}`, signal, 'Decisions'));
 }

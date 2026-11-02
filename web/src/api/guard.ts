@@ -21,6 +21,7 @@ import type {
 import { CHARACTERISTICS, FLOW_DIRECTIONS, PHASES, PROTECTION_INVALID_REASONS } from './signals';
 import type { Characteristic, FlowDirection, PhaseName, ProtectionInvalidReason } from './signals';
 import { bool, count, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/guard (src/Switchboard.Host/Web/GuardEndpoint.cs). Every closed list mirrors a
 // backend enum; GuardSpaContractTests (tests/Switchboard.Tests) compares them, and compares the keys
@@ -328,13 +329,5 @@ export function parseGuard(raw: unknown): GuardStatus {
 }
 
 export async function fetchGuard(signal: AbortSignal): Promise<GuardStatus> {
-  const response = await fetch(GUARD_URL, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`Guard request failed with HTTP ${response.status}.`);
-  }
-  return parseGuard(await response.json());
+  return parseGuard(await getJson(GUARD_URL, signal, 'Guard'));
 }

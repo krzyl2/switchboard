@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback } from 'preact/hooks';
 import { deleteGoal, GoalError, postGoal, type GoalRefusal, type WantNow } from './api/goals';
+import { withTimeout } from './api/http';
 import { fetchPlan, type Plan } from './api/plan';
 import { GOAL_REQUEST_TIMEOUT_MS, PLAN_REFRESH_INTERVAL_MS, PLAN_REQUEST_TIMEOUT_MS } from './config';
-import type { PollView } from './usePoll';
+import { usePollControl, type PollView } from './usePoll';
 
 export interface PlanControl {
   view: PollView<Plan>;
@@ -13,64 +14,24 @@ export interface PlanControl {
 }
 
 /**
- * Polls GET api/plan the way usePoll does (one request at a time, the next scheduled after the previous settles, a failed or unparseable
- * answer withdraws every value) and adds the manual goal: after "want now" or a cancel the plan is read again at once instead of waiting
+ * GET api/plan plus the manual goal: after "want now" or a cancel the plan is read again at once instead of waiting
  * for the next poll, so the row shows what the add-on now holds. The plan itself changes later, when the planner has looked again.
  */
 export function usePlan(): PlanControl {
-  const [view, setView] = useState<PollView<Plan>>({ kind: 'loading' });
-  const disposed = useRef(false);
-  const poll = useRef<() => void>(() => undefined);
+  const { view, refresh } = usePollControl(fetchPlan, PLAN_REFRESH_INTERVAL_MS, PLAN_REQUEST_TIMEOUT_MS);
 
-  useEffect(() => {
-    disposed.current = false;
-    let lastSuccessAt: Date | null = null;
-    let nextPoll: ReturnType<typeof setTimeout> | undefined;
-    let inFlight: AbortController | undefined;
-
-    const run = async () => {
-      clearTimeout(nextPoll);
-      inFlight?.abort();
-      const controller = new AbortController();
-      inFlight = controller;
-      const timeout = setTimeout(() => controller.abort(), PLAN_REQUEST_TIMEOUT_MS);
+  const send = useCallback(
+    async (request: (signal: AbortSignal) => Promise<unknown>): Promise<GoalRefusal | null> => {
       try {
-        const data = await fetchPlan(controller.signal);
-        if (disposed.current || inFlight !== controller) return;
-        lastSuccessAt = new Date();
-        setView({ kind: 'live', data, updatedAt: lastSuccessAt });
-      } catch {
-        if (disposed.current || inFlight !== controller) return;
-        setView({ kind: 'unavailable', lastSuccessAt });
-      } finally {
-        clearTimeout(timeout);
+        await withTimeout(request, GOAL_REQUEST_TIMEOUT_MS);
+        refresh();
+        return null;
+      } catch (error) {
+        return error instanceof GoalError ? error.refusal : 'failed';
       }
-      if (inFlight === controller) nextPoll = setTimeout(run, PLAN_REFRESH_INTERVAL_MS);
-    };
-
-    poll.current = () => void run();
-    void run();
-
-    return () => {
-      disposed.current = true;
-      clearTimeout(nextPoll);
-      inFlight?.abort();
-    };
-  }, []);
-
-  const send = useCallback(async (request: (signal: AbortSignal) => Promise<unknown>): Promise<GoalRefusal | null> => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GOAL_REQUEST_TIMEOUT_MS);
-    try {
-      await request(controller.signal);
-      if (!disposed.current) poll.current();
-      return null;
-    } catch (error) {
-      return error instanceof GoalError ? error.refusal : 'failed';
-    } finally {
-      clearTimeout(timeout);
-    }
-  }, []);
+    },
+    [refresh],
+  );
 
   const want = useCallback((goal: WantNow) => send((signal) => postGoal(goal, signal)), [send]);
   const cancel = useCallback((device: string) => send((signal) => deleteGoal(device, signal)), [send]);

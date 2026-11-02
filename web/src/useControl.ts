@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { confirmState, fetchControl, setControlAllowed, type Control, type ControlChange } from './api/control';
+import { withTimeout } from './api/http';
 import { fetchMode, type Mode } from './api/mode';
 import {
   CONTROL_CHANGE_TIMEOUT_MS,
@@ -33,12 +34,6 @@ function useNewest<T>(view: PollView<T>, pushed: { data: T; at: number } | null)
     () => (pushed === null || pushed.at < seenAt ? view : { kind: 'live', data: pushed.data, updatedAt: new Date(pushed.at) }),
     [view, pushed, seenAt],
   );
-}
-
-function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return run(controller.signal).finally(() => clearTimeout(timeout));
 }
 
 export type ControlNotice = { kind: 'refused'; code: string } | { kind: 'failed' } | null;

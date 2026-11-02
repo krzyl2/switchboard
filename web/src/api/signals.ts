@@ -1,4 +1,5 @@
 import { array, bool, count, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/signals (src/Switchboard.Host/Web/SignalsEndpoint.cs). Every closed list below
 // mirrors a backend enum or code list; SignalsSpaContractTests (tests/Switchboard.Tests) compares
@@ -513,13 +514,5 @@ export function parseSignals(raw: unknown): Signals {
 }
 
 export async function fetchSignals(signal: AbortSignal): Promise<Signals> {
-  const response = await fetch(SIGNALS_URL, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`Signals request failed with HTTP ${response.status}.`);
-  }
-  return parseSignals(await response.json());
+  return parseSignals(await getJson(SIGNALS_URL, signal, 'Signals'));
 }

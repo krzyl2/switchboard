@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Excursion, ExcursionDecision, Excursions, PhaseExcursions } from './api/excursions';
 import type { DeviceConfig, Devices } from './api/devices';
 import { parseGuard } from './api/guard';
+import { request, withTimeout } from './api/http';
 import type { Breaker, BudgetTrend, DeviceGuardState, GuardDevice, GuardPhase, GuardStatus, PhaseGuardState, Tier } from './api/guard';
 import { MARKER_RADIUS, REDUCING_ACTIONS, excursionChart, type ExcursionGeometry } from './excursionChart';
 import { formatAge, formatAmps, formatFixed, formatInterval, formatNumber, formatQuantity } from './format';
@@ -67,13 +68,7 @@ class KillSwitchError extends Error {
  * still an applied change (null): an unreadable guard view is usually why the state was unknown.
  */
 async function postKillSwitch(engaged: boolean, signal: AbortSignal): Promise<GuardStatus | null> {
-  const response = await fetch(KILL_SWITCH_URL, {
-    method: 'POST',
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ engaged }),
-  });
+  const response = await request(KILL_SWITCH_URL, { method: 'POST', body: { engaged }, signal });
   if (!response.ok) throw new KillSwitchError(response.status === 503 ? 'late' : 'failed');
   try {
     return parseGuard(await response.json());
@@ -707,17 +702,14 @@ export function KillSwitchCard({ killSwitch, onAnswer, t, lang }: { killSwitch: 
     setAsking(false);
     setSaving(true);
     setOutcome(null);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), KILL_SWITCH_REQUEST_TIMEOUT_MS);
     try {
-      const answer = await postKillSwitch(engage, controller.signal);
+      const answer = await withTimeout((signal) => postKillSwitch(engage, signal), KILL_SWITCH_REQUEST_TIMEOUT_MS);
       if (answer !== null) onAnswer?.(answer);
       // The confirmation names the engage only: a release applied while the state is unknown shows at the next poll.
       if (engage && !knownNow.current) setOutcome('engaged');
     } catch (error) {
       setOutcome(error instanceof KillSwitchError ? error.refusal : 'failed');
     } finally {
-      clearTimeout(timeout);
       setSaving(false);
     }
   };
@@ -791,7 +783,7 @@ export function Limits({ lang }: { lang: Lang }) {
   const names = namesOf(devices);
   const props = { t, lang };
 
-  const guard = view.kind !== 'live' ? null : answer !== null && answer.at.getTime() >= view.guard.at.getTime() ? answer : view.guard;
+  const guard = view.kind !== 'live' ? null : answer !== null && answer.at.getTime() >= view.data.at.getTime() ? answer : view.data;
   const breaker = guard?.breaker ?? null;
 
   return (

@@ -1,3 +1,5 @@
+import { getJson } from './http';
+
 export type ConnectionState = 'connected' | 'connecting' | 'disconnected';
 export type Mode = 'shadow' | 'active';
 
@@ -48,13 +50,5 @@ export function parseStatus(raw: unknown): Status {
 }
 
 export async function fetchStatus(signal: AbortSignal): Promise<Status> {
-  const response = await fetch(STATUS_URL, {
-    signal,
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`Status request failed with HTTP ${response.status}.`);
-  }
-  return parseStatus(await response.json());
+  return parseStatus(await getJson(STATUS_URL, signal, 'Status'));
 }

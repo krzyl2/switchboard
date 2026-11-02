@@ -1,6 +1,7 @@
 import { EV_CAUSES, type EvCause } from './plan';
 import { SIGNAL_DETAILS, SIGNAL_STATES, type SignalDetail, type SignalState } from './signals';
 import { bool, fail, field, instant, list, nullable, number, object, oneOf, text } from './strict';
+import { getJson, request } from './http';
 
 // Contract of GET api/ev (src/Switchboard.Host/Web/EvEndpoint.cs, docs/EV.md EV-01, EV-02, EV-07, EV-10): whether an ev: section is in force, the
 // car's inputs and how fresh each one is, the next trip the calendar names and the events it ignored, and what the module offers now and why
@@ -340,9 +341,7 @@ export function parseEv(raw: unknown): Ev {
 const EV_URL = 'api/ev';
 
 export async function fetchEv(signal: AbortSignal): Promise<Ev> {
-  const response = await fetch(EV_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`EV request failed with HTTP ${response.status}.`);
-  return parseEv(await response.json());
+  return parseEv(await getJson(EV_URL, signal, 'EV'));
 }
 
 export class EvError extends Error {
@@ -370,13 +369,7 @@ async function refusalOf(response: Response): Promise<EvRefusal> {
 }
 
 async function send(url: string, method: 'POST' | 'DELETE', body: unknown, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(url, {
-    method,
-    signal,
-    cache: 'no-store',
-    headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const response = await request(url, { method, body, signal });
   if (!response.ok) throw new EvError(await refusalOf(response));
 }
 

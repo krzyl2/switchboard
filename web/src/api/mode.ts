@@ -1,5 +1,6 @@
 import { MODE_CONDITIONS, MODE_NOTES, OPERATING_MODES, type ModeCondition, type ModeNote, type OperatingMode } from './decisions';
 import { bool, fail, field, list, object, oneOf } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/mode (src/Switchboard.Host/Web/ModeEndpoint.cs, MODE-02): the add-on option
 // is the ceiling; commands need it active, the global control switch on (api/control), a valid
@@ -35,7 +36,5 @@ export function parseMode(raw: unknown, path = 'payload'): Mode {
 }
 
 export async function fetchMode(signal: AbortSignal): Promise<Mode> {
-  const response = await fetch('api/mode', { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Mode request failed with HTTP ${response.status}.`);
-  return parseMode(await response.json());
+  return parseMode(await getJson('api/mode', signal, 'Mode'));
 }

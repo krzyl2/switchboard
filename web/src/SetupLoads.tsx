@@ -24,12 +24,14 @@ import {
   type StepSummary,
   type Template,
 } from './api/setup';
+import { withTimeout } from './api/http';
 import { PHASES } from './api/signals';
 import { SETUP_REQUEST_TIMEOUT_MS, SETUP_SELF_TEST_REFRESH_INTERVAL_MS, SETUP_SELF_TEST_REQUEST_TIMEOUT_MS } from './config';
 import { EntityPicker, matchesFilter, type PickerFilter } from './EntityPicker';
 import { formatAge, formatInterval, formatNumber, formatQuantity } from './format';
 import { fill, type Lang, type Messages } from './i18n';
 import { localClock } from './localTime';
+import { parseNumber } from './parseNumber';
 import { ReadoutLine } from './Readout';
 import { SetupIssues, issueText } from './SetupIssues';
 import { fieldId, newDevice, stepOfField, type StepName } from './setupDraft';
@@ -121,14 +123,6 @@ export const POWER_SENSOR: PickerFilter = { domains: ['sensor'], deviceClasses: 
 
 // ---------------------------------------------------------------------------------------------
 // Small form parts.
-
-/** A number typed as text (a comma is a decimal separator too); empty clears the field. */
-function parseNumber(text: string): number | null | undefined {
-  const trimmed = text.trim().replace(',', '.');
-  if (trimmed === '') return null;
-  const value = Number(trimmed);
-  return Number.isFinite(value) ? value : undefined;
-}
 
 /**
  * A numeric field that keeps what the user is typing ("0," on the way to "0,35") and commits the
@@ -507,12 +501,6 @@ function storeWatch(entity: string | null, id: string | null): void {
   }
 }
 
-function withTimeout<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  return run(controller.signal).finally(() => clearTimeout(timeout));
-}
-
 // ---------------------------------------------------------------------------------------------
 // The automatic (active) phase self-test of one relay device (CONN-05, maintainer survey
 // 2026-10-25). The add-on decides everything: whether it may start (control active, headroom on
@@ -743,7 +731,7 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
     if (pollId === null) return;
     const timer = setTimeout(
       () => {
-        void withTimeout(SETUP_SELF_TEST_REQUEST_TIMEOUT_MS, (signal) => fetchActiveTest(pollId, signal))
+        void withTimeout((signal) => fetchActiveTest(pollId, signal), SETUP_SELF_TEST_REQUEST_TIMEOUT_MS)
           .then((test) => {
             update({ kind: 'test', id: pollId, test, lost: false });
             if (test.state !== 'running' && !disposed.current) onFinished();
@@ -760,7 +748,7 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
     if (deviceId === null) return;
     update({ kind: 'starting' });
     try {
-      const result = await withTimeout(SETUP_REQUEST_TIMEOUT_MS, (signal) => startActiveTest(deviceId, ACTIVE_TEST_STAGE, signal));
+      const result = await withTimeout((signal) => startActiveTest(deviceId, ACTIVE_TEST_STAGE, signal), SETUP_REQUEST_TIMEOUT_MS);
       update(result.kind === 'started' ? { kind: 'test', id: result.id, test: null, lost: false } : { kind: 'refused', refusals: result.refusals });
     } catch {
       update({ kind: 'failed' });
@@ -768,7 +756,7 @@ function ActivePhaseTest({ setup, device, readouts, onFinished, t, lang }: { set
   };
   const cancel = async (id: string, test: ActiveTest | null) => {
     try {
-      await withTimeout(SETUP_REQUEST_TIMEOUT_MS, (signal) => cancelActiveTest(id, signal));
+      await withTimeout((signal) => cancelActiveTest(id, signal), SETUP_REQUEST_TIMEOUT_MS);
     } catch {
       // Reading the test again shows whether it stopped.
     }
@@ -903,7 +891,7 @@ function PhaseSelfTest({
     if (activeId === null) return;
     const timer = setTimeout(
       () => {
-        void withTimeout(SETUP_SELF_TEST_REQUEST_TIMEOUT_MS, (signal) => fetchSelfTest(signal, activeId))
+        void withTimeout((signal) => fetchSelfTest(signal, activeId), SETUP_SELF_TEST_REQUEST_TIMEOUT_MS)
           .then((test) => {
             update({ kind: 'active', id: activeId, test, lost: false });
             if (test.status !== 'watching' && !disposed.current) onFinished();
@@ -918,7 +906,7 @@ function PhaseSelfTest({
   const start = async () => {
     update({ kind: 'starting' });
     try {
-      const result = await withTimeout(SETUP_REQUEST_TIMEOUT_MS, (signal) => startSelfTest(setup.draft, { device: { index } }, signal));
+      const result = await withTimeout((signal) => startSelfTest(setup.draft, { device: { index } }, signal), SETUP_REQUEST_TIMEOUT_MS);
       if (result.kind === 'started') update({ kind: 'active', id: result.id, test: null, lost: false });
       else if (result.kind === 'busy') update({ kind: 'busy', id: result.id });
       else update({ kind: 'refused', issues: result.issues });

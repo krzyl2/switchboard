@@ -3,6 +3,7 @@ import type { DeviceType } from './guard';
 import { PHASES } from './signals';
 import type { PhaseName } from './signals';
 import { bool, fail, field, instant, list, nullable, number, object, oneOf, positive, text } from './strict';
+import { getJson } from './http';
 
 // Contract of GET api/devices (src/Switchboard.Host/Web/DevicesEndpoint.cs): every declared device as
 // the configuration declares it, for the device card. Entity IDs come from the configuration layer
@@ -136,9 +137,7 @@ export function parseDevices(raw: unknown): Devices {
 }
 
 export async function fetchDevices(signal: AbortSignal): Promise<Devices> {
-  const response = await fetch(DEVICES_URL, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Devices request failed with HTTP ${response.status}.`);
-  return parseDevices(await response.json());
+  return parseDevices(await getJson(DEVICES_URL, signal, 'Devices'));
 }
 
 /** The name a person reads: the display name when one is declared, else the id. */

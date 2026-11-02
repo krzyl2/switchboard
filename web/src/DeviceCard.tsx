@@ -16,7 +16,7 @@ import { levelText, reasonSentence } from './reasons';
 import { Age, PollStatus, StateBadge, StateLabel, type Tone } from './ui';
 import { useDevices } from './useDevices';
 import { useEconomics } from './useEconomics';
-import { useDispatch, type DispatchView } from './useDispatch';
+import { useDispatch } from './useDispatch';
 import type { PollView } from './usePoll';
 import { useEv } from './useEv';
 import { usePlan, type PlanControl } from './usePlan';
@@ -475,10 +475,6 @@ function OverrideControl({ device, state, setOverride, t, lang }: { device: Devi
   );
 }
 
-function asPoll(view: DispatchView): PollView<DispatchStatus> {
-  return view.kind === 'live' ? { kind: 'live', data: view.dispatch, updatedAt: view.updatedAt } : view;
-}
-
 function StateCard({
   device,
   view,
@@ -486,9 +482,9 @@ function StateCard({
   power,
   setOverride,
   ...props
-}: { device: DeviceConfig; view: DispatchView; state: DispatchDevice | null; power: PollView<Power>; setOverride: SetOverride } & Props) {
+}: { device: DeviceConfig; view: PollView<DispatchStatus>; state: DispatchDevice | null; power: PollView<Power>; setOverride: SetOverride } & Props) {
   const { t, lang } = props;
-  const status = view.kind === 'live' ? view.dispatch : null;
+  const status = view.kind === 'live' ? view.data : null;
   return (
     <section class="card" aria-labelledby="device-state-title">
       <header class="cardhead">
@@ -498,7 +494,7 @@ function StateCard({
           <StateBadge tone="warn" label={fill(t['device.badge.override'], { mode: t[`override.${state.override.mode}`] })} />
         )}
       </header>
-      <PollStatus view={asPoll(view)} lang={lang} t={t} />
+      <PollStatus view={view} lang={lang} t={t} />
       {status !== null && (
         <>
           {!status.commandPath && <p class="sub">{t['device.state.shadow']}</p>}
@@ -571,7 +567,7 @@ function HistoryRow({ entry, setpoint, at, t, lang }: { entry: HistoryEntry; set
 }
 
 /** The command verification table (UI-12, DISP-07): the main diagnostic for "why isn't it running". */
-function HistoryCard({ device, view, state, ...props }: { device: DeviceConfig; view: DispatchView; state: DispatchDevice | null } & Props) {
+function HistoryCard({ device, view, state, ...props }: { device: DeviceConfig; view: PollView<DispatchStatus>; state: DispatchDevice | null } & Props) {
   const { t, lang } = props;
   const history = state?.history ?? [];
   return (
@@ -602,7 +598,7 @@ function HistoryCard({ device, view, state, ...props }: { device: DeviceConfig; 
             </thead>
             <tbody>
               {history.map((entry, i) => (
-                <HistoryRow key={`${entry.at.getTime()}-${i}`} entry={entry} setpoint={isSetpoint(device)} at={view.dispatch.at} {...props} />
+                <HistoryRow key={`${entry.at.getTime()}-${i}`} entry={entry} setpoint={isSetpoint(device)} at={view.data.at} {...props} />
               ))}
             </tbody>
           </table>
@@ -622,7 +618,7 @@ function DeviceDetail({ device, ...props }: { device: DeviceConfig } & Props) {
   const plan = usePlan();
   const evView = useEv().view;
   const ev = evView.kind === 'live' ? evView.data : null;
-  const state = dispatch.view.kind === 'live' ? (dispatch.view.dispatch.devices.find((d) => d.id === device.id) ?? null) : null;
+  const state = dispatch.view.kind === 'live' ? (dispatch.view.data.devices.find((d) => d.id === device.id) ?? null) : null;
   return (
     <>
       <div class="dc-grid">

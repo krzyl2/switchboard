@@ -19,13 +19,15 @@ import {
   type SignalDraft,
   type StepSummary,
 } from './api/setup';
+import { readJson, request, withTimeout } from './api/http';
 import { PHASES, type PhaseName } from './api/signals';
 import { SETUP_REQUEST_TIMEOUT_MS, SETUP_SELF_TEST_REFRESH_INTERVAL_MS, SETUP_SELF_TEST_REQUEST_TIMEOUT_MS } from './config';
 import { formatCountdown, formatInterval, formatNumber, formatPercent } from './format';
 import { fill, type Lang, type Messages } from './i18n';
+import { parseNumber } from './parseNumber';
 import { fieldId, getIn, issuesOfStep } from './setupDraft';
 import { PollStatus, StateBadge, StateLabel, Timestamp, type Tone } from './ui';
-import type { PollView } from './usePoll';
+import { usePollControl, type PollView } from './usePoll';
 import { useReadouts } from './useReadouts';
 import type { SetupState, StepProps } from './useSetup';
 import './setupMeter.css';
@@ -115,12 +117,6 @@ function unitOf(entity: DiscoveredEntity | undefined, quantity: Quantity, curren
   if (entity?.unit !== null && entity?.unit !== undefined && units.includes(entity.unit)) return entity.unit;
   // A quantity with a single unit (V) has nothing to choose.
   return current ?? (units.length === 1 ? units[0]! : null);
-}
-
-/** A number typed into a field; empty or not a number clears it. */
-export function parseNumber(text: string): number | null {
-  const value = Number(text.replace(',', '.'));
-  return text.trim() === '' || !Number.isFinite(value) ? null : value;
 }
 
 /** The label of a step-1 field, for the sentence that says what to fix (UI-05). */
@@ -224,10 +220,12 @@ function storeSession(id: string | null): void {
 
 /** One session, or null when the add-on no longer has it (404: restarted, or replaced). */
 async function readSession(id: string, signal: AbortSignal): Promise<SelfTest | null> {
-  const response = await fetch(`api/setup/self-test/${encodeURIComponent(id)}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`The self-test failed with HTTP ${response.status}.`);
-  return parseSelfTest(await response.json());
+  const response = await request(`api/setup/self-test/${encodeURIComponent(id)}`, { signal });
+  if (response.status === 404) {
+    storeSession(null);
+    return null;
+  }
+  return parseSelfTest(await readJson(response, 'The self-test'));
 }
 
 type SessionView = { kind: 'none' } | { kind: 'lost' } | PollView<SelfTest>;
@@ -241,59 +239,24 @@ interface SelfTestSession {
 
 function useSelfTestSession(): SelfTestSession {
   const [id, setId] = useState<string | null>(storedSession);
-  const [generation, setGeneration] = useState(0);
-  const [view, setView] = useState<SessionView>(id === null ? { kind: 'none' } : { kind: 'loading' });
-  useEffect(() => {
-    if (id === null) {
-      setView({ kind: 'none' });
-      return;
-    }
-    let disposed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    let inFlight: AbortController | undefined;
-    let lastSuccessAt: Date | null = null;
-    const poll = async () => {
-      const controller = new AbortController();
-      inFlight = controller;
-      const timeout = setTimeout(() => controller.abort(), SETUP_SELF_TEST_REQUEST_TIMEOUT_MS);
-      let again = true;
-      try {
-        const session = await readSession(id, controller.signal);
-        if (disposed) return;
-        if (session === null) {
-          storeSession(null);
-          setView({ kind: 'lost' });
-          again = false;
-        } else {
-          lastSuccessAt = new Date();
-          setView({ kind: 'live', data: session, updatedAt: lastSuccessAt });
-          again = session.status === 'watching';
-        }
-      } catch {
-        // A failed poll withdraws the session view (a frozen "watching" would read as a calm one); the next poll retries.
-        if (disposed) return;
-        setView({ kind: 'unavailable', lastSuccessAt });
-      } finally {
-        clearTimeout(timeout);
-      }
-      if (again) next = setTimeout(poll, SETUP_SELF_TEST_REFRESH_INTERVAL_MS);
-    };
-    void poll();
-    return () => {
-      disposed = true;
-      clearTimeout(next);
-      inFlight?.abort();
-    };
-  }, [id, generation]);
+  // A failed poll withdraws the session view (a frozen "watching" would read as a calm one); the next poll retries.
+  // A session that is no longer watching, or gone, ends the polling until a refresh.
+  const { view: polled, refresh } = usePollControl<SelfTest | null>(
+    (signal) => readSession(id ?? '', signal),
+    SETUP_SELF_TEST_REFRESH_INTERVAL_MS,
+    SETUP_SELF_TEST_REQUEST_TIMEOUT_MS,
+    { key: id ?? '', enabled: id !== null, continueWhile: (session) => session !== null && session.status === 'watching' },
+  );
+  const view: SessionView =
+    id === null ? { kind: 'none' } : polled.kind !== 'live' ? polled : polled.data === null ? { kind: 'lost' } : { kind: 'live', data: polled.data, updatedAt: polled.updatedAt };
   return {
     view,
     follow: (next) => {
       storeSession(next);
-      setView({ kind: 'loading' });
-      setId(next);
-      setGeneration((g) => g + 1);
+      if (next === id) refresh();
+      else setId(next);
     },
-    refresh: () => setGeneration((g) => g + 1),
+    refresh,
   };
 }
 
@@ -432,7 +395,7 @@ export function SetupMeter({ setup, t, lang, goTo }: StepProps) {
                 min="0"
                 step="any"
                 value={draft.connection.breakerRatingA ?? ''}
-                onInput={(event) => setup.set('connection.breakerRatingA', parseNumber((event.currentTarget as HTMLInputElement).value))}
+                onInput={(event) => setup.set('connection.breakerRatingA', parseNumber((event.currentTarget as HTMLInputElement).value) ?? null)}
               />
               <span class="sub">{t['setupMeter.breaker.hint']}</span>
             </div>
@@ -998,10 +961,8 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
       ? { device: { index: Number(chosen.slice('device:'.length)) } }
       : // A missing part goes as null: the add-on judges the request and names the field to fill.
         ({ testLoad: { stateEntity: testLoad.stateEntity, phase: testLoad.phase === '' ? null : testLoad.phase, ratedPowerW: testLoad.ratedPowerW } } as unknown as SelfTestTarget);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SETUP_REQUEST_TIMEOUT_MS);
     try {
-      const result = await startSelfTest(setup.draft, target, controller.signal);
+      const result = await withTimeout((signal) => startSelfTest(setup.draft, target, signal), SETUP_REQUEST_TIMEOUT_MS);
       if (result.kind === 'refused') setRefusal(result.issues);
       else {
         if (result.kind === 'busy') setNotice('busy');
@@ -1010,7 +971,6 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
     } catch {
       setNotice('failed');
     } finally {
-      clearTimeout(timeout);
       setStarting(false);
     }
   };
@@ -1081,7 +1041,7 @@ function SelfTestPanel({ setup, t, lang, entities, devices, chosen, onChoose, te
               min="0"
               step="any"
               value={testLoad.ratedPowerW ?? ''}
-              onInput={(event) => onTestLoad({ ratedPowerW: parseNumber((event.currentTarget as HTMLInputElement).value) })}
+              onInput={(event) => onTestLoad({ ratedPowerW: parseNumber((event.currentTarget as HTMLInputElement).value) ?? null })}
             />
             <span class="sub">{t['setupMeter.selfTest.loadHint']}</span>
           </div>
