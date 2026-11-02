@@ -197,7 +197,7 @@ public static class EvComposer
             if (fullRequested || WeeklyFullWanted(input))
             {
                 var target = fullRequested ? Math.Max(p.WeeklyFull.TargetPercent, 100) : p.WeeklyFull.TargetPercent;
-                weeklyReached = soc >= target - GoalMath.MetEpsilonKwh;
+                weeklyReached = GoalMath.IsMet(TargetSocRule.EnergyToDrawKwh(soc, target, input.CapacityKwh, p.LossFraction));
                 candidates.Add(new Candidate(EvGoalKind.WeeklyFull, target, midnight, false, cheapSources, false, TimeSpan.Zero, p.Spread, null));
             }
 

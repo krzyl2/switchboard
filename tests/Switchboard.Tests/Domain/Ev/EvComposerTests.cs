@@ -135,6 +135,14 @@ public sealed class EvComposerTests
     }
 
     [Fact]
+    public void The_weekly_target_is_reached_by_the_same_kwh_epsilon_that_meets_every_other_goal()
+    {
+        // Why: the epsilon is a kWh quantity; the SoC is percent. A residue of 3e-9 points is 6e-10 kWh drawn (18 kWh, 10 % loss): the goal is met, so LastFullAt must be recorded.
+        Assert.True(EvComposer.Compose(Input(Saturday, 100 - 3e-9)).WeeklyFullReached);
+        Assert.False(EvComposer.Compose(Input(Saturday, 100 - 1e-6)).WeeklyFullReached);
+    }
+
+    [Fact]
     public void A_weekday_without_a_trip_charges_the_floor_from_the_cheap_zone_and_the_rest_from_surplus()
     {
         // Why: below the floor the cheapest zone tops up to 25 %; above it only PV, up to the 90 % cap. 5 + 65 points = 70 points = 13.86 kWh in all.
