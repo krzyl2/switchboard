@@ -189,7 +189,7 @@ public sealed partial class PlannerArchitectureTests
             .ToList();
 
         var offenders = files
-            .SelectMany(f => File.ReadAllLines(f).Select((line, i) => (File: Path.GetFileName(f), Line: i + 1, Code: LineComment().Replace(line, string.Empty))))
+            .SelectMany(f => File.ReadAllLines(f).Select((line, i) => (File: Path.GetFileName(f), Line: i + 1, Code: StripComments(line))))
             .Where(x => ManualScale().IsMatch(x.Code))
             .Select(x => $"{x.File}:{x.Line}")
             .ToList();
@@ -198,11 +198,30 @@ public sealed partial class PlannerArchitectureTests
         Assert.Empty(offenders);
     }
 
-    [GeneratedRegex(@"//.*$|""[^""]*""")]
+    /// <summary>Drops comments only. String text stays, so arithmetic inside an interpolation hole is still seen.</summary>
+    private static string StripComments(string line) => LineComment().Replace(line, string.Empty);
+
+    [GeneratedRegex(@"//.*$|/\*.*?\*/", RegexOptions.CultureInvariant)]
     private static partial Regex LineComment();
 
-    [GeneratedRegex(@"[/*]\s*(1000|3600)(\.0)?(?![0-9.])|(?<![0-9.])(1000|3600)(\.0)?\s*[/*]", RegexOptions.CultureInvariant)]
+    // 1000, 1_000, 1e3, 0.001, 1e-3, 3600 (optionally with .0 or a d/f/m suffix) next to a * or /.
+    [GeneratedRegex(@"[/*]\s*(1000|1_000|1[eE]3|1[eE]\+3|0\.001|1[eE]-3|3600)(\.0+)?[dfmDFM]?(?![0-9._])|(?<![0-9._])(1000|1_000|1[eE]3|1[eE]\+3|0\.001|1[eE]-3|3600)(\.0+)?[dfmDFM]?\s*[/*]", RegexOptions.CultureInvariant)]
     private static partial Regex ManualScale();
+
+    [Fact]
+    public void The_manual_scale_check_sees_plain_interpolated_and_alternative_spellings()
+    {
+        // Why: the check is only worth anything if it cannot be dodged by a string, a 1e3 or a digit separator.
+        foreach (var code in new[] { "var k = x / 1000;", "var s = $\"limit {w / 1000 * h:0.###} kWh\";", "var k = x * 1e3;", "var k = x * 0.001;", "var k = x / 1_000;", "var k = 3600 * h;", "var k = x/1000.0;" })
+        {
+            Assert.True(ManualScale().IsMatch(StripComments(code)), code);
+        }
+
+        foreach (var code in new[] { "var k = x / 10000;", "// x / 1000", "/* x * 1000 */ var k = x;", "var k = x * 0.0015;", "var n = 21000;" })
+        {
+            Assert.False(ManualScale().IsMatch(StripComments(code)), code);
+        }
+    }
 
     private static IEnumerable<Type> MemberTypes(MemberInfo member) => member switch
     {
