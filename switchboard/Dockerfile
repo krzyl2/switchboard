@@ -37,7 +37,7 @@ ARG BUILD_VERSION
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
 WORKDIR /src
-COPY Switchboard.slnx global.json Directory.Build.props Directory.Packages.props BannedSymbols.txt ./
+COPY Switchboard.slnx global.json Directory.Build.props Directory.Packages.props BannedSymbols.txt .editorconfig ./
 COPY src/ ./src/
 # The SPA build output must be in wwwroot before publish: the Web SDK's static web assets
 # pipeline snapshots wwwroot at publish time.
