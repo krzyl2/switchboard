@@ -8,7 +8,7 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Default for local builds; the image build overrides it with -p:Version=<x>. -->
-    <Version>0.12.1</Version>
+    <Version>0.12.2</Version>
     <!-- No git metadata in the version: the UI and MQTT sw_version show the plain release number. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>

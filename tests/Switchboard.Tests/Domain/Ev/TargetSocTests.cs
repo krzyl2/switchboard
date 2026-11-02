@@ -114,7 +114,7 @@ public sealed class TargetSocTests
         {
             var at = T0.AddHours(i + 1);
             var range = i % 2 == 0 ? 68 : 74; // 0.2118 and 0.1946 kWh/km
-            learned = KwhPerKmLearner.Learn(learned, new EvConsumptionObservation(80, at, range, at, false), CapacityKwh, Defaults.Learn).State;
+            learned = KwhPerKmLearner.Learn(learned, new EvConsumptionObservation(80, at, range, at, false), CapacityKwh, 0, Defaults.Learn).State;
             var consumption = KwhPerKmLearner.Current(learned, Defaults.FallbackKwhPerKm, Defaults.Learn);
             var fresh = Trip(45, consumption);
             moved |= Math.Abs(fresh.Percent - frozen.Target.Percent) > 0.1;

@@ -223,3 +223,10 @@ A manual hard SoC goal for the EV device in the existing manual goal store (`Man
 - The engine clears an expired or orphaned charge-now by reading the manual goal inside the atomic state update, so a charge-now that begins during a computation (goal first, then state) is never cleared on a goal that did not exist yet.
 - An unknown plugged state (signal configured but stale) does not block the start of a charge-now; only an explicit "not plugged" does. The goal then ends on a later explicit unplug, never on an unknown state.
 - A requested `full_charge` stays in force until the SoC estimate reaches 100 %: a car that tops out at 99 % or is unplugged keeps the mode until it is changed by hand (known, to be reviewed after the shadow week).
+
+## 12. As built: hybrid threshold, held floor, power bands (2026-11-02)
+
+- `ev.hybrid_threshold` (optional, default 0): SoC at which the electric range is zero. kWh/km = `(SoC - threshold) x capacity / range`; samples learned with another threshold are dropped. Maintainer: 25.
+- `control.ev.floor` is the SoC held from the cheapest zone, not the hybrid threshold. Beside a trip the floor is due at the trip's ready moment, escalates like the trip and takes the first points; the trip asks only above it. Without a usable ready moment the trip carries the whole way (S5 rule). Maintainer: 80.
+- `control.ev.power_bands` (default `[]`): `{ hours, max_power_w }` ceilings of grid charging, as `GoalRequest.PowerCaps` on every module goal; kept only when the goal still places as much at no higher cost. Maintainer: 21:00-24:00 2000 W, 00:00-07:00 3000 W.
+- Details and reasons: `DECISIONS.md` 2026-11-02.

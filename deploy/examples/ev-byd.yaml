@@ -13,6 +13,7 @@
 ev:
   device: ev_charger
   capacity_kwh: 18
+  hybrid_threshold: 25           # the car shows 0 electric km at 25 % (it runs as a hybrid below); kWh/km is learned from the energy above it
   soc:
     entity: sensor.byd_seal_5_dm_i_poziom_baterii
     max_age: 12h                 # the car reports every few hours while it sleeps (live: up to about 5 h); SoC and range arrive in the same refresh

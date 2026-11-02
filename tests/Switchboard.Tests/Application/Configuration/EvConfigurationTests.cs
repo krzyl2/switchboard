@@ -102,6 +102,47 @@ public sealed class EvConfigurationTests
     }
 
     [Fact]
+    public void The_hybrid_threshold_is_optional_and_a_threshold_of_100_leaves_no_electric_range_so_it_is_refused()
+    {
+        // Why: a car without a hybrid buffer must load unchanged (0: the whole battery drives it); the maintainer's PHEV has 0 km at 25 %. 100 % would divide
+        // by an electric range that never exists.
+        Assert.Equal(0, TestConfigurations.Valid(Document()).Configuration!.Ev!.HybridThresholdPercent);
+        Assert.Equal(25, TestConfigurations.Valid(Document(ev: Ev + "  hybrid_threshold: 25\n")).Configuration!.Ev!.HybridThresholdPercent);
+        Assert.Contains(Parse(Ev + "  hybrid_threshold: 100\n").Errors, e => e.Path == "ev.hybrid_threshold");
+        Assert.Contains(Parse(Ev + "  hybrid_threshold: -1\n").Errors, e => e.Path == "ev.hybrid_threshold");
+    }
+
+    [Fact]
+    public void Power_bands_are_off_by_default_and_read_as_local_hours_with_a_ceiling_in_watts()
+    {
+        // Why: an installation that never wrote power_bands must plan as before; the maintainer's night is 2 kW until midnight and 3 kW after it.
+        Assert.Empty(TestConfigurations.Valid(Document()).Configuration!.Control.Ev.PowerBands);
+
+        var bands = TestConfigurations.Valid(Document(control: "  ev:\n    power_bands:\n      - { hours: \"21:00-24:00\", max_power_w: 2000 }\n      - { hours: \"00:00-07:00\", max_power_w: 3000 }\n"))
+            .Configuration!.Control.Ev.PowerBands;
+
+        Assert.Equal(2, bands.Length);
+        Assert.Equal("21:00-24:00", bands[0].Hours.ToString());
+        Assert.Equal(2000, bands[0].MaxPowerW);
+        Assert.Equal("00:00-07:00", bands[1].Hours.ToString());
+        Assert.Equal(3000, bands[1].MaxPowerW);
+    }
+
+    [Theory]
+    [InlineData("{ hours: \"21:00\", max_power_w: 2000 }", "control.ev.power_bands[0].hours")]
+    [InlineData("{ hours: \"21:00-21:00\", max_power_w: 2000 }", "control.ev.power_bands[0].hours")]
+    [InlineData("{ hours: \"21:00-24:00\", max_power_w: 0 }", "control.ev.power_bands[0].max_power_w")]
+    [InlineData("{ hours: \"21:00-24:00\" }", "control.ev.power_bands[0].max_power_w")]
+    [InlineData("{ hours: \"21:00-24:00\", max_power_w: 2000, amps: 8 }", "control.ev.power_bands[0]")]
+    public void A_power_band_that_cannot_be_read_is_an_error_at_its_key(string band, string path)
+    {
+        // Why: a band that silently falls away would let the charger run at full power in hours the user capped.
+        var result = Parse(control: "  ev:\n    power_bands:\n      - " + band + "\n");
+
+        Assert.Contains(result.Errors, e => e.Path.StartsWith(path, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void A_cheap_zone_of_the_zoned_tariff_is_kept()
     {
         Assert.Equal("peak", TestConfigurations.Valid(Document(ev: Ev + "  cheap_zone: peak\n")).Configuration!.Ev!.CheapZone);

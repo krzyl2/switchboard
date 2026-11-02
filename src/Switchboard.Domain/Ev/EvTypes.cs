@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 
 namespace Switchboard.Domain.Ev;
@@ -17,6 +18,7 @@ namespace Switchboard.Domain.Ev;
 /// <param name="Plugged">The logical name of the plugged-state signal; null when the section declares none (EV-02).</param>
 /// <param name="PluggedStates">The states of the plugged signal that mean the car is plugged in (compared without regard to case); empty without a plugged signal.</param>
 /// <param name="Calendar">The logical name of the calendar signal whose current or next event is the next trip; null when the section declares none (EV-02).</param>
+/// <param name="HybridThresholdPercent">The SoC at which the car's electric range reaches zero (a PHEV runs as a hybrid below it); 0 for a car whose whole battery drives it. Consumption is learned from the energy above it.</param>
 public sealed record EvDefinition(
     DeviceName Device,
     double CapacityKwh,
@@ -25,13 +27,14 @@ public sealed record EvDefinition(
     SignalName? Range = null,
     SignalName? Plugged = null,
     ImmutableArray<string> PluggedStates = default,
-    SignalName? Calendar = null);
+    SignalName? Calendar = null,
+    double HybridThresholdPercent = 0);
 
 /// <summary>
 /// The EV module's parameters (<c>ev:</c> in control-defaults, docs/EV.md section 6 S1). Every value comes from configuration; none is a
 /// literal in code. Bound and range-checked in S1, read by nothing before the module exists (S3 onwards).
 /// </summary>
-/// <param name="FloorPercent">SoC held from the cheapest zone when no trip is planned.</param>
+/// <param name="FloorPercent">SoC held from the cheapest zone: below it the car charges in the earliest cheap hours (with a trip ahead, before the departure). Not the hybrid threshold.</param>
 /// <param name="FloorAfterPercent">SoC that must remain after a trip.</param>
 /// <param name="ReservePoints">Extra percentage points on top of the trip's SoC and the floor after it.</param>
 /// <param name="CapPercent">Ceiling of surplus-only charging.</param>
@@ -47,6 +50,7 @@ public sealed record EvDefinition(
 /// <param name="ChargeNow">The manual "charge now" action.</param>
 /// <param name="Spread">Spread a charge evenly over a long window instead of running at the ceiling.</param>
 /// <param name="SnapshotMaxAge">The module's offer is computed beside the control loop and published as a snapshot; one older than this is no offer at all (its goals are reported as failed, never the old ones).</param>
+/// <param name="PowerBands">Ceilings of grid charging by local hours, used only while the charge still fits its window under them; empty: none.</param>
 public sealed record EvParameters(
     double FloorPercent,
     double FloorAfterPercent,
@@ -63,14 +67,20 @@ public sealed record EvParameters(
     double TargetChangeThresholdPoints,
     EvChargeNowParameters ChargeNow,
     bool Spread,
-    TimeSpan SnapshotMaxAge);
+    TimeSpan SnapshotMaxAge,
+    ImmutableArray<EvPowerBand> PowerBands = default);
+
+/// <summary>A ceiling of grid charging during local hours (<c>control.ev.power_bands</c>).</summary>
+/// <param name="Hours">The local hours, end exclusive; a start after the end wraps past midnight.</param>
+/// <param name="MaxPowerW">The most the charger may draw from the grid in them.</param>
+public sealed record EvPowerBand(HoursRange Hours, double MaxPowerW);
 
 /// <param name="Days">Local weekdays on which one full charge a week is allowed (a holiday counts as a weekend day in a later slice); empty disables it.</param>
 /// <param name="TargetPercent">The SoC of the full charge.</param>
 public sealed record EvWeeklyFullParameters(ImmutableArray<DayOfWeek> Days, double TargetPercent);
 
 /// <param name="Smoothing">Weight of a new sample in the smoothed consumption (0 to 1).</param>
-/// <param name="MinSoc">A pair is used only at or above this SoC (the buffer at the bottom is not representative).</param>
+/// <param name="MinSoc">A pair is used only at or above this SoC, and only above the car's hybrid threshold (the buffer at the bottom is not representative).</param>
 /// <param name="MinKwhPerKm">Plausibility bound: a sample below this is rejected.</param>
 /// <param name="MaxKwhPerKm">Plausibility bound: a sample above this is rejected.</param>
 /// <param name="MaxSamples">How many samples are kept (bounds the size of the state file); at most <see cref="MaxSamplesLimit"/>, what ev.json can hold.</param>

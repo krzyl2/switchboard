@@ -24,7 +24,7 @@ internal static partial class EvSectionParser
     /// <summary>The longest battery the section accepts; a schema bound against a typo (18 vs 180), not a control parameter.</summary>
     private const double MaxCapacityKwh = 500;
 
-    private static readonly string[] SectionKeys = ["device", "capacity_kwh", "soc", "range", "plugged", "calendar", "cheap_zone"];
+    private static readonly string[] SectionKeys = ["device", "capacity_kwh", "hybrid_threshold", "soc", "range", "plugged", "calendar", "cheap_zone"];
     private static readonly string[] SocKeys = ["entity", "max_age"];
     private static readonly string[] RangeKeys = ["entity", "unit", "max_age"];
     private static readonly string[] PluggedKeys = ["entity", "states", "state_reports", "max_age"];
@@ -76,6 +76,11 @@ internal static partial class EvSectionParser
         var capacity = ConfigRead.Required(mapping, "capacity_kwh", Key, issues) is { } capacityNode
             ? ConfigRead.Number(capacityNode, ConfigRead.Join(Key, "capacity_kwh"), issues, new Range(0, MaxCapacityKwh, MinExclusive: true))
             : null;
+
+        // Optional: a car without a hybrid buffer drives on the whole battery. 100 would leave no electric range at all.
+        var hybridThreshold = ConfigRead.Optional(mapping, "hybrid_threshold") is { } thresholdNode
+            ? ConfigRead.Number(thresholdNode, ConfigRead.Join(Key, "hybrid_threshold"), issues, new Range(0, 100, MaxExclusive: true))
+            : 0;
         var soc = ReadSoc(mapping, device, devices, signals, control, issues);
         var created = soc is { } socRead ? ImmutableArray.Create(socRead.Definition) : [];
         var range = ReadRange(mapping, device, devices, signals.AddRange(created), control, issues);
@@ -86,7 +91,7 @@ internal static partial class EvSectionParser
         created = calendar is null ? created : created.Add(calendar);
         var cheapZone = ReadCheapZone(mapping, economics, issues);
 
-        if (issues.Errors.Count > errorsBefore || device is null || capacity is null || soc is null)
+        if (issues.Errors.Count > errorsBefore || device is null || capacity is null || soc is null || hybridThreshold is null)
         {
             return (null, []);
         }
@@ -137,7 +142,8 @@ internal static partial class EvSectionParser
             range?.Name,
             plugged?.Definition.Name,
             plugged?.States ?? [],
-            calendar?.Name);
+            calendar?.Name,
+            hybridThreshold.Value);
         return (definition, created);
     }
 

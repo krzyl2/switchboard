@@ -558,8 +558,9 @@ public sealed class EvGoalSourceFailureTableTests
     {
         // Why: protection outranks everything. What the module hands over has no power, current or setpoint in it: only an amount of energy, a target, a deadline and
         // the classes it may come from. The guard's limits and the dispatch envelope cap the charger whatever is asked (the architecture tests hold the rest).
+        // The one exception is PowerCaps (control.ev.power_bands): a ceiling that can only lower the slot's ceiling, never raise it (PlannerPowerCapTests holds that).
         string[] forbidden = ["Power", "Current", "Amp", "Setpoint", "Watt", "Command", "Override"];
-        var members = typeof(EvGoalOffer).GetProperties().Concat(typeof(GoalRequest).GetProperties()).Select(p => p.Name).ToList();
+        var members = typeof(EvGoalOffer).GetProperties().Concat(typeof(GoalRequest).GetProperties()).Select(p => p.Name).Where(n => n != nameof(GoalRequest.PowerCaps)).ToList();
 
         Assert.DoesNotContain(members, m => forbidden.Any(f => m.Contains(f, StringComparison.OrdinalIgnoreCase)));
         var rig = new EvRig();

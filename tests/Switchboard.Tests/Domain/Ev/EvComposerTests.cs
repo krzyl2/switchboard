@@ -175,17 +175,92 @@ public sealed class EvComposerTests
     }
 
     [Fact]
-    public void Below_the_floor_the_trip_carries_the_whole_way_from_the_soc_and_there_is_no_floor_goal()
+    public void Below_the_floor_beside_a_trip_the_floor_is_due_when_the_car_must_be_ready_and_takes_the_first_points()
     {
-        // Why: the floor has no deadline. Offered beside the trip it would own the first 15 points of the energy, and the planner could place them after the
-        // departure: the car leaves short while the plan calls the trip fine. At SoC 10 % and 20 km the trip target is above the floor, so the trip alone is asked
-        // for the whole way from 10 %.
-        var trip = new Trip("t", Local(2026, 10, 31, 6), 20);
-        var c = EvComposer.Compose(Input(Friday, 10, trip));
+        // Why: the floor is held, not reached on the eve of the trip (2026-11-02: floor 80 % and a Thursday trip charged nothing on Monday night). Due at the
+        // ready moment it is planned before the trip, in the earliest cheap hours; the trip asks only for the points above it, so nothing is asked twice (B2).
+        // Those first points were the trip's, so the floor escalates like the trip when the cheap zone cannot deliver them in time.
+        var start = Local(2026, 10, 31, 6);
+        var c = EvComposer.Compose(Input(Friday, 10, new Trip("t", start, 20)));
+
+        var floor = c.Goals.Single(g => g.Kind == EvGoalKind.Floor).Request;
+        var trip = c.Goals.Single(g => g.Kind == EvGoalKind.Trip).Request;
+        Assert.Equal(start - TimeSpan.FromMinutes(30), floor.Deadline);
+        Assert.True(floor.Hard);
+        Assert.True(floor.Escalate);
+        Assert.Equal([new ZoneId("offpeak")], floor.Sources!.Zones);
+        Assert.Equal(15 / 100.0 * 18 * 1.10, floor.RemainingKwh, 9);
+        Assert.Equal((((SocTarget)trip.Target).TargetPercent - 25) / 100 * 18 * 1.10, trip.RemainingKwh, 9);
+        Assert.Equal(EvAssessmentCode.TripDeadline, c.Code);
+    }
+
+    [Fact]
+    public void A_floor_at_or_above_the_trip_target_carries_the_whole_charge_and_the_trip_asks_nothing()
+    {
+        // Why: the maintainer's case. Floor 80 % lifts the trip target to 80 % (max of floor and trip need); with the tie the floor takes the points, so the charge
+        // runs tonight in the cheap zone instead of on the eve of the trip.
+        var p = Defaults with { FloorPercent = 80 };
+        var start = Local(2026, 11, 5, 14, 25);
+        var c = EvComposer.Compose(Input(Local(2026, 11, 2, 19, 30), 33, new Trip("Odbiór dzieci", start, 18), p: p));
+
+        var floor = c.Goals.Single(g => g.Kind == EvGoalKind.Floor).Request;
+        Assert.Equal(47 / 100.0 * 18 * 1.10, floor.RemainingKwh, 9);
+        Assert.Equal(start - TimeSpan.FromMinutes(30), floor.Deadline);
+        Assert.DoesNotContain(c.Goals, g => g.Kind == EvGoalKind.Trip);
+        Assert.Equal(47 / 100.0 * 18 * 1.10, c.Goals.Where(g => g.Kind != EvGoalKind.Cap).Sum(g => g.Request.RemainingKwh), 9);
+    }
+
+    [Fact]
+    public void Without_a_ready_margin_the_floor_would_share_the_trips_deadline_so_the_trip_carries_the_whole_way_as_before()
+    {
+        // Why: B8. Two module goals at one deadline merge into the trip and the floor's points would vanish; a deadline-less floor beside the trip could be placed
+        // after the departure. Either way the car would leave short, so the trip alone is asked for the whole way from the SoC.
+        var p = Defaults with { ReadyMargin = TimeSpan.Zero };
+        var c = EvComposer.Compose(Input(Friday, 10, new Trip("t", Local(2026, 10, 31, 6), 20), p: p));
 
         var goal = c.Goals.Single(g => g.Kind == EvGoalKind.Trip);
         Assert.Equal((((SocTarget)goal.Request.Target).TargetPercent - 10) / 100 * 18 * 1.10, goal.Request.RemainingKwh, 9);
         Assert.DoesNotContain(c.Goals, g => g.Kind == EvGoalKind.Floor);
+    }
+
+    [Fact]
+    public void Inside_the_ready_margin_the_floor_has_no_deadline_left_so_the_trip_carries_the_whole_way()
+    {
+        // Why: a floor due in the past is a missed hard goal, which runs in every zone from now; the trip already escalates on its own deadline.
+        var start = Local(2026, 10, 30, 10, 20);
+        var c = EvComposer.Compose(Input(Friday, 10, new Trip("t", start, 20)));
+
+        Assert.DoesNotContain(c.Goals, g => g.Kind == EvGoalKind.Floor);
+        Assert.Contains(c.Goals, g => g.Kind == EvGoalKind.Trip);
+    }
+
+    [Fact]
+    public void Power_bands_become_local_instants_on_every_goal_and_keep_their_hours_on_the_25_hour_night()
+    {
+        // Why: the bands are wall-clock hours. On 2026-10-25 the clock goes back at 03:00, so 00:00-07:00 lasts 8 hours; a band computed in UTC would end at 06:00.
+        var p = Defaults with
+        {
+            PowerBands = [new EvPowerBand(new HoursRange(21 * 60, 24 * 60), 2000), new EvPowerBand(new HoursRange(0, 7 * 60), 3000)],
+        };
+        var now = Local(2026, 10, 24, 19);
+
+        var c = EvComposer.Compose(Input(now, 20, p: p) with { PlanHorizon = TimeSpan.FromHours(48) });
+
+        Assert.All(c.Goals, g => Assert.False(g.Request.PowerCaps.IsDefaultOrEmpty));
+        var caps = c.Goals[0].Request.PowerCaps;
+        Assert.Contains(new PowerCap(Local(2026, 10, 24, 21), Local(2026, 10, 25, 0), 2000), caps);
+        var night = Assert.Single(caps, cap => cap.From == Local(2026, 10, 25, 0));
+        Assert.Equal(TimeSpan.FromHours(8), night.To - night.From);
+        Assert.Equal(3000, night.MaxW);
+        Assert.DoesNotContain(caps, cap => cap.To <= now);
+        Assert.Contains(caps, cap => cap.From == Local(2026, 10, 26, 21));
+    }
+
+    [Fact]
+    public void Without_power_bands_no_goal_carries_a_cap()
+    {
+        // Why: the default; every plan without bands must stay exactly as it was.
+        Assert.All(EvComposer.Compose(Input(Friday, 20)).Goals, g => Assert.True(g.Request.PowerCaps.IsDefaultOrEmpty));
     }
 
     [Fact]

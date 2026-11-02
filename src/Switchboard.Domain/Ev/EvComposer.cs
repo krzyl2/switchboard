@@ -20,7 +20,7 @@ public enum EvGoalKind
     /// <summary>The surplus cap: soft, due at the next local midnight, PV only, stops when met.</summary>
     Cap,
 
-    /// <summary>The floor: hard, no deadline, the cheapest zone only, no escalation.</summary>
+    /// <summary>The floor: hard, the cheapest zone, placed in the earliest cheap hours. Without a trip no deadline and no escalation; beside a trip due when the car must be ready, escalating like the trip.</summary>
     Floor,
 }
 
@@ -96,6 +96,9 @@ public sealed record EvComposerInput
     public bool ForecastMissing { get; init; }
 
     public bool DispatchOff { get; init; }
+
+    /// <summary>How far the plan looks ahead (<c>planner.horizon</c>): the power bands are stated as instants that far.</summary>
+    public TimeSpan PlanHorizon { get; init; }
 }
 
 /// <summary>
@@ -104,7 +107,7 @@ public sealed record EvComposerInput
 /// <item>Needs are incremental (B2): goals are absolute SoC targets against the same SoC, so each goal is asked only for the part above the goals with a
 /// lower target; the sum is exactly (highest target - SoC) x capacity x (1 + loss), never more. The cap is not offered at all when a trip or weekly goal asks
 /// for at least as much, so a soft PV-only goal never owns energy a hard goal is due.</item>
-/// <item>Deadlines are unique (B8): the trip is its start, the weekly and cap goals the next local midnight, the floor none. Goals that meet at one deadline
+/// <item>Deadlines are unique (B8): the trip is its start, the weekly and cap goals the next local midnight, the floor the trip's ready moment (none without a trip). Goals that meet at one deadline
 /// merge into the one that ranks first (trip, weekly, cap): a soft one merges its need into a soft winner and is dropped under the trip.</item>
 /// <item>The revision names only what the goal is (B3): never the target, the SoC or the deadline of a daily goal.</item>
 /// <item>A trip is offered only while its start is ahead (B4); the margin is the goal's, the deadline the trip start (B2b).</item>
@@ -207,16 +210,26 @@ public static class EvComposer
                 candidates.Add(CapCandidate(p, midnight));
             }
 
-            // The floor has no deadline: under a trip that asks for at least as much it would take the first points of the trip's energy and the planner would
-            // place them after the departure (the car leaves short), so the trip carries the whole way from the SoC.
-            if (!candidates.Any(c => c.Kind == EvGoalKind.Trip && c.TargetPercent >= p.FloorPercent))
+            // The floor is held, not reached on the eve of a trip: beside a trip it is due when the car must be ready (start less ready margin), so the planner
+            // places it first, in the earliest cheap hours, and the trip asks only for the points above it. Those points were the trip's, so the floor escalates
+            // like the trip when the cheap zone cannot deliver them before the departure. Without such a deadline (no ready margin, a ready moment already
+            // passed, or one that meets another goal's deadline and would merge into it) a deadline-less floor could be placed after the departure, so the
+            // trip carries the whole way from the SoC as before.
+            var tripGoal = candidates.FirstOrDefault(c => c.Kind == EvGoalKind.Trip);
+            var floorDue = tripGoal?.Deadline - tripGoal?.Margin;
+            if (tripGoal is not null && floorDue is { } due && due > input.Now && !candidates.Any(c => c.Deadline == due))
+            {
+                candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, due, true, cheapSources, true, TimeSpan.Zero, false, null));
+            }
+            else if (!candidates.Any(c => c.Kind == EvGoalKind.Trip && c.TargetPercent >= p.FloorPercent))
             {
                 candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, null, true, cheapSources, false, TimeSpan.Zero, false, null));
             }
         }
 
-        // Incremental needs: ascending by target, a tie going to the goal that ranks first (it takes the increment, the others get zero).
-        var ordered = candidates.OrderBy(c => c.TargetPercent).ThenBy(c => c.Kind).ToList();
+        // Incremental needs: ascending by target, the floor first among equals (it is held before anything else is due), then a tie goes to the goal that ranks
+        // first (it takes the increment, the others get zero).
+        var ordered = candidates.OrderBy(c => c.TargetPercent).ThenBy(c => c.Kind == EvGoalKind.Floor ? 0 : 1).ThenBy(c => c.Kind).ToList();
         var basePercent = soc;
         foreach (var c in ordered)
         {
@@ -247,9 +260,10 @@ public static class EvComposer
             emitted.Add(kept.OrderByDescending(c => c.TargetPercent).ThenBy(c => c.Kind).First());
         }
 
+        var caps = PowerCaps(input);
         var goals = emitted
             .OrderBy(c => c.Deadline is null ? 1 : 0).ThenBy(c => c.Deadline).ThenBy(c => c.Kind)
-            .Select(c => ToOffer(c, input, soc))
+            .Select(c => ToOffer(c, input, soc, caps))
             .ToImmutableArray();
         return new EvComposition(code, notes.ToImmutable(), goals, frozen, weeklyReached);
     }
@@ -276,7 +290,38 @@ public static class EvComposer
             : EvAssessmentCode.FloorHold;
     }
 
-    private static EvGoalOffer ToOffer(Candidate c, EvComposerInput input, double soc)
+    /// <summary>
+    /// <c>control.ev.power_bands</c> as instants: every band on every local date from yesterday (an evening band may still run past midnight) to the day after
+    /// the plan's horizon ends, each edge a local wall-clock time (a 23- or 25-hour day keeps its bands at their hours). Bands that ended before now are left out.
+    /// </summary>
+    private static ImmutableArray<PowerCap> PowerCaps(EvComposerInput input)
+    {
+        var bands = input.Parameters.PowerBands;
+        if (bands.IsDefaultOrEmpty)
+        {
+            return [];
+        }
+
+        var first = TimeZoneInfo.ConvertTime(input.Now, input.Zone).Date.AddDays(-1);
+        var last = TimeZoneInfo.ConvertTime(input.Now + input.PlanHorizon, input.Zone).Date.AddDays(1);
+        var caps = ImmutableArray.CreateBuilder<PowerCap>();
+        for (var date = first; date <= last; date = date.AddDays(1))
+        {
+            foreach (var band in bands)
+            {
+                var from = LocalTime.At(date.AddMinutes(band.Hours.StartMinute), input.Zone);
+                var to = LocalTime.At((band.Hours.Wraps ? date.AddDays(1) : date).AddMinutes(band.Hours.EndMinute), input.Zone);
+                if (to > input.Now && to > from)
+                {
+                    caps.Add(new PowerCap(from, to, band.MaxPowerW));
+                }
+            }
+        }
+
+        return caps.ToImmutable();
+    }
+
+    private static EvGoalOffer ToOffer(Candidate c, EvComposerInput input, double soc, ImmutableArray<PowerCap> caps)
     {
         var request = new GoalRequest(
             input.Device,
@@ -289,7 +334,8 @@ public static class EvComposer
             c.Escalate,
             GoalOnMet.Stop,
             GoalOrigin.Module,
-            Revision(c, input));
+            Revision(c, input),
+            PowerCaps: caps);
         // Only the cap is quiet (B12: a PV-only goal a cloudy evening cannot fill); a weekly full charge left short is a real shortfall.
         return new EvGoalOffer(c.Kind, request, c.Spread, QuietShortfall: c.Kind == EvGoalKind.Cap);
     }

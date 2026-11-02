@@ -21,7 +21,8 @@ internal static class SpreadPass
             return;
         }
 
-        var grid = w.Allocs.Where(a => a.Source is not EnergySource.Surplus && !a.Urgent && a.CapW is null).ToList();
+        // Right after the fill: every non-urgent grid placement is the fill's (a capped fill carries its slot's cap, which bounds the spread there too).
+        var grid = w.Allocs.Where(a => a.Source is not EnergySource.Surplus && !a.Urgent).ToList();
         if (grid.Count == 0)
         {
             return;
@@ -59,7 +60,8 @@ internal static class SpreadPass
         w.Allocs = [.. w.Allocs.Where(a => !minePool.Contains(a))];
 
         var capacity = window.ToDictionary(t => t, t => ledger.Room(ctx, device, cells[t]));
-        double Held(double powerW) => window.Sum(t => Math.Min((new Watts(powerW).ToKilowatts() * cells[t].Available).Value, capacity[t]));
+        double SlotPower(double powerW, int t) => w.Capped && w.CapsW is { } caps ? Math.Min(powerW, caps[t]) : powerW;
+        double Held(double powerW) => window.Sum(t => Math.Min((new Watts(SlotPower(powerW, t)).ToKilowatts() * cells[t].Available).Value, capacity[t]));
 
         if (Held(ceilingW) < energy - Planner.Tolerance)
         {
@@ -98,13 +100,14 @@ internal static class SpreadPass
                 break;
             }
 
-            var take = Math.Min(remaining, Math.Min((new Watts(power).ToKilowatts() * cells[t].Available).Value, capacity[t]));
+            var slotPower = SlotPower(power, t);
+            var take = Math.Min(remaining, Math.Min((new Watts(slotPower).ToKilowatts() * cells[t].Available).Value, capacity[t]));
             if (take <= Planner.Tolerance || (take < minFill - Planner.Tolerance && take < remaining - Planner.Tolerance))
             {
                 continue;
             }
 
-            ledger.Commit(device, cells[t], take, placed, urgent: false, power);
+            ledger.Commit(device, cells[t], take, placed, urgent: false, slotPower);
             remaining -= take;
         }
 

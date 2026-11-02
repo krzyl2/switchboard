@@ -39,6 +39,9 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
     private static readonly string[] RootKeysWithFull = [.. RootKeys, "last_full_at"];
     private static readonly string[] ChargeNowKeys = ["started_at", "target_percent", "expires_at"];
     private static readonly string[] LearnedKeys = ["smoothed", "samples"];
+
+    // Optional, written only when above zero: a schema 1 file without it was learned with no hybrid threshold, so no schema bump.
+    private static readonly string[] LearnedKeysWithThreshold = [.. LearnedKeys, "hybrid_threshold"];
     private static readonly string[] SampleKeys = ["at", "value"];
     private static readonly string[] TripKeys = ["trip_key", "target_percent", "trip_soc_percent", "exceeds_electric_range", "clamped", "frozen_at"];
 
@@ -86,6 +89,11 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
             }
 
             writer.WriteEndArray();
+            if (state.Learned.HybridThresholdPercent > 0)
+            {
+                writer.WriteNumber("hybrid_threshold", state.Learned.HybridThresholdPercent);
+            }
+
             writer.WriteEndObject();
 
             if (state.LastTrip is { } trip)
@@ -154,7 +162,8 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
         }
 
         var smoothed = state.Learned.Smoothed is { } value && IsConsumption(value) ? value : (double?)null;
-        var learned = smoothed is null ? KwhPerKmState.Empty : new KwhPerKmState(smoothed, samples);
+        var threshold = state.Learned.HybridThresholdPercent is var t && double.IsFinite(t) && t is >= 0 and < 100 ? t : 0;
+        var learned = (smoothed is null ? KwhPerKmState.Empty : new KwhPerKmState(smoothed, samples)) with { HybridThresholdPercent = threshold };
 
         var now = state.ChargeNow;
         EvChargeNow? chargeNow = now is not null && double.IsFinite(now.TargetPercent) && now.ExpiresAt > now.StartedAt
@@ -190,8 +199,13 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
 
     private static KwhPerKmState Learned(JsonElement element)
     {
-        var keys = Keys(element, "kwh_per_km", LearnedKeys);
+        var keys = Keys(element, "kwh_per_km", element.ValueKind == JsonValueKind.Object && element.TryGetProperty("hybrid_threshold", out _) ? LearnedKeysWithThreshold : LearnedKeys);
         double? smoothed = keys["smoothed"].ValueKind == JsonValueKind.Null ? null : Consumption(keys["smoothed"], "kwh_per_km.smoothed");
+        var threshold = keys.TryGetValue("hybrid_threshold", out var thresholdElement)
+            ? Number(thresholdElement, "kwh_per_km.hybrid_threshold") is var value && value is >= 0 and < 100
+                ? value
+                : throw new InvalidPresentationFileException("kwh_per_km.hybrid_threshold is not a percentage below 100")
+            : 0;
         var items = Array(keys["samples"], "kwh_per_km.samples", MaxSamplesOnRead);
         var samples = ImmutableArray.CreateBuilder<KwhPerKmSample>(items.Count);
         for (var i = 0; i < items.Count; i++)
@@ -207,7 +221,7 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
             throw new InvalidPresentationFileException("kwh_per_km has samples but no smoothed value");
         }
 
-        return new KwhPerKmState(smoothed, samples.ToImmutable());
+        return new KwhPerKmState(smoothed, samples.ToImmutable(), threshold);
     }
 
     private static EvLastTrip Trip(JsonElement element)

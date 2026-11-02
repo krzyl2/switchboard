@@ -66,12 +66,28 @@ public sealed class EvStateFileTests : IDisposable
     public void The_learned_value_still_steers_the_plan_after_a_restart()
     {
         // Why: the point of persisting. After a restart the consumption is the learned one, not the fallback.
-        var learned = KwhPerKmLearner.Learn(KwhPerKmState.Empty, new EvConsumptionObservation(60, T0, 36, T0, false), CapacityKwh, Defaults.Learn).State;
+        var learned = KwhPerKmLearner.Learn(KwhPerKmState.Empty, new EvConsumptionObservation(60, T0, 36, T0, false), CapacityKwh, 0, Defaults.Learn).State;
         File().Save(EvState.Default with { Learned = learned });
 
         var after = File().Load().State!;
 
         Assert.Equal(0.30, KwhPerKmLearner.Current(after.Learned, Defaults.FallbackKwhPerKm, Defaults.Learn), 9);
+    }
+
+    [Fact]
+    public void The_hybrid_threshold_of_the_samples_survives_a_restart_and_a_file_without_it_was_learned_with_none()
+    {
+        // Why: the engine drops samples whose threshold differs from the configured one. A lost threshold would drop good samples at every restart; a file
+        // written before the key existed (the live 0.36 kWh/km) must read as threshold 0, so the configured 25 drops it once.
+        var learned = KwhPerKmLearner.Learn(KwhPerKmState.Empty, new EvConsumptionObservation(33, T0, 11, T0, false), CapacityKwh, 25, Defaults.Learn).State;
+        File().Save(EvState.Default with { Learned = learned });
+
+        var after = File().Load().State!.Learned;
+
+        Assert.Equal(25, after.HybridThresholdPercent);
+        Assert.Equal(learned.Smoothed, after.Smoothed);
+        Assert.Equal(0, LoadText(Valid).State!.Learned.HybridThresholdPercent);
+        Assert.Null(LoadText(Valid.Replace("\"samples\":", "\"hybrid_threshold\":100,\"samples\":", StringComparison.Ordinal)).State);
     }
 
     [Fact]

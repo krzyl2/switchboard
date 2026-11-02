@@ -101,7 +101,7 @@ public sealed class PlanDispatchGateTests
     [InlineData(PlannerDispatchMode.Full)]
     public void Defer_stops_a_device_running_on_the_zone_alone_with_plan_deferred_where_v2_keeps_it(PlannerDispatchMode mode)
     {
-        // Why: 0.12.1, live: the plan said defer for every slot (the goal is a PV-only cap, the trip needs nothing) and the charger went on buying 4 kW from the
+        // Why: release fe9e1f1, live: the plan said defer for every slot (the goal is a PV-only cap, the trip needs nothing) and the charger went on buying 4 kW from the
         // off-peak zone, so the cap was not a cap. Defer now ends a run that holds on the zone class alone, the way a zone's end does, through the same lockouts.
         var v2 = Play(Car("pv_and_zone:offpeak"), Night, [], PlannerDispatchMode.Off, Entry(PlanWant.Defer), wh: 100, export: 0);
         Assert.False(v2.Stopped());

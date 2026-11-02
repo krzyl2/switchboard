@@ -84,8 +84,9 @@ internal sealed class CapacityLedger
     /// <summary>
     /// Fills the cells in the order given, each up to its room, until <paramref name="need"/> is placed. A device on runs at least its minimum for at least its
     /// minimum run: a cell that cannot hold that is skipped. The one exception is the last residual of a goal, which dispatch's min_on rounds up on its own.
+    /// With <paramref name="capsW"/> a grid cell holds at most its slot's cap over the cell's hours, and the placement carries that cap as its ceiling.
     /// </summary>
-    public void Fill(PlanContext ctx, PlanDevice device, List<Cell> cells, double need, List<Alloc> into, bool urgent)
+    public void Fill(PlanContext ctx, PlanDevice device, List<Cell> cells, double need, List<Alloc> into, bool urgent, double[]? capsW = null)
     {
         var minFill = (new Watts(device.MinW) * device.MinRun).Value;
         foreach (var cell in cells)
@@ -97,6 +98,12 @@ internal sealed class CapacityLedger
 
             ctx.Cancel.ThrowIfCancellationRequested();
             var take = Math.Min(need, Room(ctx, device, cell));
+            double? capW = capsW is not null && cell.Source is not EnergySource.Surplus && double.IsFinite(capsW[cell.Slot]) ? capsW[cell.Slot] : null;
+            if (capW is { } cap)
+            {
+                take = Math.Min(take, (new Watts(cap) * cell.Available).Value);
+            }
+
             if (take <= Planner.Tolerance)
             {
                 continue;
@@ -107,7 +114,7 @@ internal sealed class CapacityLedger
                 continue;
             }
 
-            Commit(device, cell, take, into, urgent);
+            Commit(device, cell, take, into, urgent, capW);
             need -= take;
         }
     }

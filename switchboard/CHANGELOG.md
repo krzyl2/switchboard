@@ -2,6 +2,21 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.2
+
+### Added
+
+- `ev.hybrid_threshold`: the SoC at which the car's electric range is zero; kWh/km is learned from the energy above it, and a value learned without it is dropped once.
+- `control.ev.power_bands`: grid-charging ceilings by local hours (e.g. 2 kW until midnight, 3 kW after), kept only while the charge still fits its window under them.
+
+### Changed
+
+- Beside a trip the EV floor is due when the car must be ready and charges first, in the earliest cheap hours; the trip asks only for the points above it.
+
+### Fixed
+
+- From the architecture review: a dispatch failure no longer stops protection, the kill switch can always be engaged from the panel, MQTT cannot allow control or release the kill switch unless the add-on option says so, and a late switch notification no longer overwrites a newer one.
+
 ## 0.12.1
 
 ### Fixed

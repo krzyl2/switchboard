@@ -1,7 +1,11 @@
+using System.Collections.Immutable;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Economics;
 
 namespace Switchboard.Domain.Goals;
+
+/// <summary>The most a goal's grid energy may be drawn at from <paramref name="From"/> to <paramref name="To"/> (end exclusive), in watts.</summary>
+public readonly record struct PowerCap(DateTimeOffset From, DateTimeOffset To, double MaxW);
 
 /// <summary>
 /// What one source asks for, at one moment (15-PLANNER, Goal sources): a device wants an amount of energy by a deadline. The
@@ -14,6 +18,7 @@ namespace Switchboard.Domain.Goals;
 /// <param name="Revision">The goal's fingerprint, see <see cref="GoalSpec.Revision"/>.</param>
 /// <param name="Spread">The plan finishes this goal as late as its window allows and spreads the energy evenly over the window (the lowest power that holds it) instead of running at the device's ceiling; only a module goal asks for it.</param>
 /// <param name="QuietShortfall">Energy this goal leaves unplaced does not raise the plan's <c>goal_shortfall</c> note (a PV-only cap that a cloudy evening cannot fill).</param>
+/// <param name="PowerCaps">Ceilings of the goal's grid energy in given intervals, kept only while the goal places as much at no higher cost under them; default or empty: none.</param>
 public sealed record GoalRequest(
     DeviceName Device,
     GoalTarget Target,
@@ -27,7 +32,8 @@ public sealed record GoalRequest(
     GoalOrigin Origin,
     long Revision,
     bool Spread = false,
-    bool QuietShortfall = false)
+    bool QuietShortfall = false,
+    ImmutableArray<PowerCap> PowerCaps = default)
 {
     public GoalKind Kind => Target.Kind;
 

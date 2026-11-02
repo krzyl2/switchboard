@@ -80,6 +80,11 @@ public sealed class LatestStateWriterTests
         var calls = 0;
         var written = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
+
+        // The burst lands before the loop reads: a running loop may take the first wake-up at once, and a wake-up after that is rightly a second write.
+        writer.Wake();
+        writer.Wake();
+        writer.Wake();
         var loop = writer.RunAsync(
             token => writer.WriteAsync(
                 () =>
@@ -92,9 +97,6 @@ public sealed class LatestStateWriterTests
             retry: null,
             cts.Token);
 
-        writer.Wake();
-        writer.Wake();
-        writer.Wake();
         await written.Task.WaitAsync(TimeSpan.FromSeconds(10), RealClock.Provider, TestContext.Current.CancellationToken);
         await cts.CancelAsync();
         await loop;

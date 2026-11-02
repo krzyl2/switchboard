@@ -75,12 +75,20 @@ public sealed class EvEngine(
         var step = SocEstimator.Step(_estimator, reading, charger.Energy, now, ev.CapacityKwh, p);
         _estimator = step.State;
 
-        var learned = state.Learned;
+        // A changed hybrid threshold drops what was learned with the old one at once, so the planner never plans with it again.
+        var learned = KwhPerKmLearner.Align(state.Learned, ev.HybridThresholdPercent);
+        if (learned != state.Learned)
+        {
+            state = state with { Learned = learned };
+            dirty = true;
+        }
+
         var charging = plugged != false && !(charger.Energy.Fresh && charger.Watts <= 0);
         var outcome = KwhPerKmLearner.Learn(
             learned,
             new EvConsumptionObservation(ev1.SocPercent, ev1.Soc.ReadAt, ev1.RangeKm, ev1.Range.ReadAt, charging),
             ev.CapacityKwh,
+            ev.HybridThresholdPercent,
             p.Learn);
         if (outcome.Accepted is not null)
         {
@@ -115,6 +123,7 @@ public sealed class EvEngine(
             RangeUnusable = ev1.Range.Configured && ev1.RangeKm is not > 0,
             ForecastMissing = planner is not null && plans.Current.Notes.Contains(PlanNote.PvForecastMissing),
             DispatchOff = planner is null || planner.Dispatch == PlannerDispatchMode.Off,
+            PlanHorizon = configuration.Control.Planner.Horizon,
         });
 
         if (composition.Frozen is { } frozen && (state.LastTrip is null || EvLastTrip.From(frozen) != state.LastTrip))

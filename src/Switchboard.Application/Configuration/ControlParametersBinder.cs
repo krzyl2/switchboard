@@ -490,9 +490,61 @@ internal static class ControlParametersBinder
                 chargeNow.Number("target", new Range(0, 100, MinExclusive: true)) ?? 0,
                 chargeNow.PositiveDuration("duration") ?? TimeSpan.Zero),
             ev.Boolean("spread") ?? false,
-            ev.PositiveDuration("snapshot_max_age") ?? TimeSpan.Zero);
+            ev.PositiveDuration("snapshot_max_age") ?? TimeSpan.Zero,
+            BindPowerBands(ev, issues));
 
         return parameters;
+    }
+
+    // Schema bound, not a control parameter: no household charger draws more than this; a larger number is a typo (kW written as W x 1000).
+    private const double MaxPowerBandW = 100_000;
+
+    /// <summary><c>ev.power_bands</c>: a required list (empty switches it off) of <c>{ hours: "HH:MM-HH:MM", max_power_w: W }</c>.</summary>
+    private static ImmutableArray<EvPowerBand> BindPowerBands(Section ev, ConfigIssues issues)
+    {
+        if (ev.Node("power_bands") is not { } node)
+        {
+            return [];
+        }
+
+        var path = ConfigRead.Join(ev.Path, "power_bands");
+        if (node is not ConfigSequence sequence)
+        {
+            issues.Error(ConfigurationIssueCodes.WrongType, path, node, "Expected a list of { hours, max_power_w } (an empty list switches the bands off).");
+            return [];
+        }
+
+        var bands = ImmutableArray.CreateBuilder<EvPowerBand>();
+        for (var i = 0; i < sequence.Items.Length; i++)
+        {
+            var bandPath = $"{path}[{i.ToString(CultureInfo.InvariantCulture)}]";
+            var band = new Section(sequence.Items[i], bandPath, issues);
+            band.CheckKeys(["hours", "max_power_w"]);
+            HoursRange? hours = null;
+            if (band.Node("hours") is { } hoursNode && ConfigRead.String(hoursNode, ConfigRead.Join(bandPath, "hours"), issues) is { } text)
+            {
+                if (HoursRange.TryParse(text, out var range))
+                {
+                    hours = range;
+                }
+                else
+                {
+                    issues.Error(
+                        ConfigurationIssueCodes.InvalidValue,
+                        ConfigRead.Join(bandPath, "hours"),
+                        hoursNode,
+                        "Expected a range HH:MM-HH:MM (end exclusive, 24:00 allowed, a start after the end wraps past midnight).");
+                }
+            }
+
+            var maxPower = band.Number("max_power_w", new Range(0, MaxPowerBandW, MinExclusive: true));
+            if (hours is { } h && maxPower is { } w)
+            {
+                bands.Add(new EvPowerBand(h, w));
+            }
+        }
+
+        return bands.ToImmutable();
     }
 
     // Schema bounds, not control parameters: a half-life beyond ten years is a typo (and a 14-day default is nowhere near it).

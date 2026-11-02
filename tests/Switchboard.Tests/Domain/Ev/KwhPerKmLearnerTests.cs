@@ -17,7 +17,7 @@ public sealed class KwhPerKmLearnerTests
         new(soc, at ?? T0, range, rangeAt ?? at ?? T0, charging);
 
     private static LearnOutcome Run(KwhPerKmState state, EvConsumptionObservation observation, EvLearnParameters? learn = null) =>
-        KwhPerKmLearner.Learn(state, observation, CapacityKwh, learn ?? Learn);
+        KwhPerKmLearner.Learn(state, observation, CapacityKwh, 0, learn ?? Learn);
 
     [Fact]
     public void The_first_sample_is_energy_in_the_battery_over_the_electric_range()
@@ -184,6 +184,40 @@ public sealed class KwhPerKmLearnerTests
         Assert.Null(Run(KwhPerKmState.Empty, Valid(soc: 100, range: 30)).Rejection);
         Assert.Equal(EvSampleRejection.Implausible, Run(KwhPerKmState.Empty, Valid(soc: 50, range: 75.001)).Rejection);
         Assert.Equal(EvSampleRejection.Implausible, Run(KwhPerKmState.Empty, Valid(soc: 100, range: 29.99)).Rejection);
+    }
+
+    [Fact]
+    public void Above_a_hybrid_threshold_only_the_energy_over_it_drives_the_electric_range()
+    {
+        // Why: the maintainer's PHEV shows 0 electric km at 25 %. Live 2026-11-02: 33 % and 11 km. Dividing the whole 33 % by 11 km gave 0.54 kWh/km and a trip
+        // target of 76 % for 18 km; the 8 points above the threshold give 0.13 kWh/km, close to the car's own 0.151 average.
+        var outcome = KwhPerKmLearner.Learn(KwhPerKmState.Empty, Valid(soc: 33, range: 11), CapacityKwh, 25, Learn);
+
+        Assert.Null(outcome.Rejection);
+        Assert.Equal(0.08 * 18 / 11, outcome.Accepted!.Value, 9);
+        Assert.Equal(25, outcome.State.HybridThresholdPercent);
+    }
+
+    [Fact]
+    public void At_or_under_the_hybrid_threshold_a_pair_is_no_sample()
+    {
+        // Why: at the threshold there is no energy for electric km; a 0 kWh/km sample would only be refused as implausible, which hides why.
+        Assert.Equal(EvSampleRejection.SocBelowMinimum, KwhPerKmLearner.Learn(KwhPerKmState.Empty, Valid(soc: 25, range: 1), CapacityKwh, 25, Learn).Rejection);
+    }
+
+    [Fact]
+    public void Samples_learned_with_another_threshold_are_dropped_and_the_same_threshold_keeps_them()
+    {
+        // Why: the 0.36 kWh/km learned live without a threshold measures another quantity; kept, it would keep inflating trip targets after the fix.
+        var old = Run(KwhPerKmState.Empty, Valid()).State;
+
+        var aligned = KwhPerKmLearner.Align(old, 25);
+
+        Assert.Null(aligned.Smoothed);
+        Assert.Empty(aligned.Samples);
+        Assert.Equal(25, aligned.HybridThresholdPercent);
+        Assert.Same(old, KwhPerKmLearner.Align(old, 0));
+        Assert.Equal(Defaults.FallbackKwhPerKm, KwhPerKmLearner.Current(aligned, Defaults.FallbackKwhPerKm, Learn));
     }
 
     [Fact]

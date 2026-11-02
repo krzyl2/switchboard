@@ -69,6 +69,12 @@ internal sealed class GoalWork
 
     public List<Alloc> Allocs { get; set; } = [];
 
+    /// <summary>The request's power caps per slot (watts, on the device's step; +infinity where none applies); null when the request has none.</summary>
+    public double[]? CapsW { get; private set; }
+
+    /// <summary>The placement in progress keeps to <see cref="CapsW"/> on grid cells.</summary>
+    public bool Capped { get; set; }
+
     public bool Hard => Request.Hard;
 
     public double Need => Request.RemainingKwh;
@@ -121,6 +127,8 @@ internal sealed class GoalWork
         {
             return w;
         }
+
+        w.CapsW = SlotCaps(ctx, request, device);
 
         var ceilingW = ctx.CeilingW(device);
         var beyondHorizon = cutoff > horizon;
@@ -187,4 +195,43 @@ internal sealed class GoalWork
     }
 
     private bool Has(GoalState flag) => (_state & flag) != 0;
+
+    /// <summary>
+    /// Per slot the lowest cap of the intervals that overlap it (a slot cut by a band edge takes the stricter one), rounded down to the device's step so the plan
+    /// budgets what dispatch will set; a cap below the device's minimum leaves it no power there. Null when no cap touches the grid.
+    /// </summary>
+    private static double[]? SlotCaps(PlanContext ctx, GoalRequest request, PlanDevice device)
+    {
+        if (request.PowerCaps.IsDefaultOrEmpty)
+        {
+            return null;
+        }
+
+        var caps = new double[ctx.Count];
+        var any = false;
+        for (var t = 0; t < ctx.Count; t++)
+        {
+            var slot = ctx.Slots[t].Slot;
+            var cap = double.PositiveInfinity;
+            foreach (var c in request.PowerCaps)
+            {
+                if (c.From < slot.End && c.To > slot.Start && double.IsFinite(c.MaxW))
+                {
+                    cap = Math.Min(cap, Math.Max(0, c.MaxW));
+                }
+            }
+
+            if (double.IsFinite(cap))
+            {
+                any = true;
+                cap = cap < device.MinW ? 0
+                    : device.StepW is { } step && step > 0 ? device.MinW + (Math.Floor(((cap - device.MinW) / step) + 1e-9) * step)
+                    : cap;
+            }
+
+            caps[t] = cap;
+        }
+
+        return any ? caps : null;
+    }
 }
