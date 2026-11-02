@@ -9,6 +9,7 @@
 !Directory.Build.props
 !Directory.Packages.props
 !BannedSymbols.txt
+!.editorconfig
 !src/
 !web/
 !switchboard/rootfs/
