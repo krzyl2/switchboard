@@ -187,6 +187,8 @@ Every decision carries one. The list is closed and versioned; the UI renders a h
 
 **Version 8** (2026-11-01, architecture review, `UPGRADE.md` P0 item 1): added `dispatch_fault` (dispatch failed with an error and entered its fault, section 3: protection keeps running, dispatch changes nothing until it evaluates again). A system-scope `stop_increases` record of origin dispatch, written once when the fault begins; its end is a log line, not a decision. Versions 1–7 had no code: the error stopped the add-on. The log reads versions 8 to 2; a line of an older version naming `dispatch_fault` is not a decision, and a line of version 7 keeps its `plan` block.
 
+**Version 9** (2026-11-03, live decision log review): added `power_band` (a start or increase refused, or a run lowered, because the device's power band for this local hour caps what it may take from the grid, `control.ev.power_bands`, and no plan entry sets its ceiling; surplus no other device draws comes on top of the band). Versions 1–8 had no ceiling outside the plan, whose own one is `plan_slot_target`.
+
 ```
 guard_tier_exceeded         guard_budget_low          guard_stale_signal
 reserve_threshold           headroom_insufficient     lockout_min_on
@@ -200,7 +202,7 @@ mode_active                 command_failed            command_not_sent
 zone_allowed                source_not_allowed        value_below_cost
 surplus_available           surplus_low               plan_deferred
 goal_deadline_urgent        plan_discharge            soc_floor
-soc_ceiling                 dispatch_fault
+soc_ceiling                 dispatch_fault            power_band
 ```
 
 ## 7. Default parameters

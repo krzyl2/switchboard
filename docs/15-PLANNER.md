@@ -79,6 +79,8 @@ The plan never raises `MaxAllowed` above the guard's cap and never bypasses a ga
 
 ### When the plan is missing, stale or wrong: exactly v2
 
+One named exception (2026-11-03): a device's power bands (`control.ev.power_bands`) cap its grid power whenever no plan entry sets its ceiling, so v2 here means v2 under the band; a file without bands is v2 byte for byte (`DECISIONS.md`).
+
 | Condition | Detection | Dispatch does |
 |---|---|---|
 | No `planner:` section, or `planner.dispatch: off` | configuration | v2, byte for byte (digest test, PLAN-14) |

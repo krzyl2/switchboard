@@ -285,6 +285,7 @@ ev:
   spread: true
   # Ceilings of grid charging by local hours, e.g. [{ hours: "21:00-24:00", max_power_w: 2000 }, { hours: "00:00-07:00", max_power_w: 3000 }].
   # A goal keeps them only while its charge still fits its window under them; otherwise it runs as without them. Never an urgent goal or "charge now".
+  # Dispatch keeps the charger to them whenever no plan entry sets its ceiling (no plan, a stale or changing one, planner.dispatch off); surplus comes on top.
   # Rounded down to the charger's current step. Empty: none.
   power_bands: []
   # The module's offer is computed beside the control loop; one older than this is dropped. Starting value with no origin (a few dispatch cycles).

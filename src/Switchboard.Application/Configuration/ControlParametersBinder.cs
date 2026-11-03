@@ -4,6 +4,7 @@ using Switchboard.Application.Signals;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Connection;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Guard;
@@ -500,7 +501,7 @@ internal static class ControlParametersBinder
     private const double MaxPowerBandW = 100_000;
 
     /// <summary><c>ev.power_bands</c>: a required list (empty switches it off) of <c>{ hours: "HH:MM-HH:MM", max_power_w: W }</c>.</summary>
-    private static ImmutableArray<EvPowerBand> BindPowerBands(Section ev, ConfigIssues issues)
+    private static ImmutableArray<PowerBand> BindPowerBands(Section ev, ConfigIssues issues)
     {
         if (ev.Node("power_bands") is not { } node)
         {
@@ -514,7 +515,7 @@ internal static class ControlParametersBinder
             return [];
         }
 
-        var bands = ImmutableArray.CreateBuilder<EvPowerBand>();
+        var bands = ImmutableArray.CreateBuilder<PowerBand>();
         for (var i = 0; i < sequence.Items.Length; i++)
         {
             var bandPath = $"{path}[{i.ToString(CultureInfo.InvariantCulture)}]";
@@ -540,7 +541,7 @@ internal static class ControlParametersBinder
             var maxPower = band.Number("max_power_w", new Range(0, MaxPowerBandW, MinExclusive: true));
             if (hours is { } h && maxPower is { } w)
             {
-                bands.Add(new EvPowerBand(h, w));
+                bands.Add(new PowerBand(h, w));
             }
         }
 

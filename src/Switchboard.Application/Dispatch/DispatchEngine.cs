@@ -45,6 +45,7 @@ public sealed partial class DispatchEngine
     private readonly BalanceTracker _balanceTracker = new();
     private readonly EconomicsTracker _economicsTracker;
     private readonly PlanReader _planReader;
+    private readonly TimeProvider _time;
     private ImmutableArray<DispatchWish> _wishes = [];
     private ImmutableArray<DeviceDispatchState> _states = [];
     private ImmutableArray<DevicePhasePower> _devicePowers = [];
@@ -52,11 +53,12 @@ public sealed partial class DispatchEngine
     private long _overrideVersion;
     private DateTimeOffset? _lastNow;
 
-    /// <param name="time">Only its <see cref="TimeProvider.LocalTimeZone"/> is read, for the tariff zones: the engine never reads the time itself, every call is handed <c>now</c>.</param>
-    /// <param name="plan">The plan, as dispatch may read it (15-PLANNER); null, or a view whose mode is off, is exactly the v2 dispatch.</param>
+    /// <param name="time">Only its <see cref="TimeProvider.LocalTimeZone"/> is read, for the tariff zones and the power bands: the engine never reads the time itself, every call is handed <c>now</c>.</param>
+    /// <param name="plan">The plan, as dispatch may read it (15-PLANNER); null, or a view whose mode is off, is the v2 dispatch (a device's power band still caps it).</param>
     public DispatchEngine(TimeProvider time, IPlanView? plan = null)
     {
         ArgumentNullException.ThrowIfNull(time);
+        _time = time;
         _economicsTracker = new EconomicsTracker(time);
         _planReader = new PlanReader(plan);
     }
@@ -293,9 +295,9 @@ public sealed partial class DispatchEngine
                 plan.MaxAllowed = Math.Min(Math.Max(0, lockedMin), capIndex);
             }
 
-            if (plan.Entry is { } entry && plan.Mode == OverrideMode.Auto && !plan.Excluded)
+            if (plan.Mode == OverrideMode.Auto && !plan.Excluded)
             {
-                NarrowByPlan(plan, entry, setup);
+                NarrowByCeilings(plan, setup, now);
             }
 
             plan.MinAllowed = Math.Min(plan.MinAllowed, plan.MaxAllowed);
@@ -409,7 +411,7 @@ public sealed partial class DispatchEngine
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
                     : reduction ? reserve
-                    : plan.PlanStop is { } planStop ? planStop
+                    : plan.CeilingStop is { } ceilingStop ? ceilingStop
                     : plan.BalanceStop is { } balanceStop ? balanceStop
                     : preempted || allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
                     : reserve;
@@ -428,7 +430,7 @@ public sealed partial class DispatchEngine
             {
                 reason = origin == DecisionOrigin.Override ? ReasonCode.ManualOverride
                     : plan.Excluded ? ReasonCode.DeviceUnresponsive
-                    : plan.PlanRefusal is { } planRefusal && allocation.Uncapped > plan.BasisIndex ? planRefusal
+                    : plan.CeilingRefusal is { } ceilingRefusal && allocation.Uncapped > plan.BasisIndex ? ceilingRefusal
                     : plan.BalanceReason is { } withheld && !plan.BalanceAllows && allocation.Uncapped > plan.BasisIndex ? withheld
                     : allocation.Limit == AllocationLimit.None ? ReasonCode.HeadroomAvailable
                     : allocation.Limit == AllocationLimit.Rank ? ReasonCode.ValueRankBelowCutoff
@@ -479,7 +481,7 @@ public sealed partial class DispatchEngine
     private static ReasonCode PendingReason(Plan plan, Guard.GuardEvaluation guard, DeviceState state, DispatchSetup setup) =>
         plan.Excluded ? ReasonCode.DeviceUnresponsive
         : !plan.DataValid ? ReasonCode.GuardStaleSignal
-        : plan.GuardAllows && plan.PlanRefusal is { } planned ? planned
+        : plan.GuardAllows && plan.CeilingRefusal is { } planned ? planned
         : plan.GuardAllows && plan.BalanceReason is { } withheld && !plan.BalanceAllows ? withheld
         : !plan.GuardAllows ? plan.Constraints.Any(k => guard.Envelope.For(k) is { BudgetLow: true }) ? ReasonCode.GuardBudgetLow : plan.ForeignActive ? ReasonCode.ForeignLoad : ReasonCode.HeadroomInsufficient
         : plan.OwnWindow ? ReasonCode.SettlingWindowOpen
@@ -699,11 +701,11 @@ public sealed partial class DispatchEngine
         /// <summary>The plan's entry for the device in this step (a valid, fresh one; null leaves the device to v2).</summary>
         public Planning.PlanEntryView? Entry { get; init; }
 
-        /// <summary>Why the plan keeps the device from rising (goal_met, plan_slot_target); null while it does not.</summary>
-        public ReasonCode? PlanRefusal { get; set; }
+        /// <summary>Why a ceiling outside the guard keeps the device from rising: the plan's (goal_met, plan_slot_target) or the power band's (power_band); null while none does.</summary>
+        public ReasonCode? CeilingRefusal { get; set; }
 
-        /// <summary>Why the plan asks the device to come down (goal_met, plan_slot_target); null while it does not.</summary>
-        public ReasonCode? PlanStop { get; set; }
+        /// <summary>Why such a ceiling asks the device to come down (goal_met, plan_slot_target, power_band); null while none does.</summary>
+        public ReasonCode? CeilingStop { get; set; }
 
         /// <summary>The plan keeps the device running on its class (full mode: a grid slot of a goal device, or an urgent hard goal), so the allowance gate does not stop it for the price or the sources.</summary>
         public bool PlanKeeps { get; set; }

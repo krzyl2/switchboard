@@ -43,10 +43,10 @@ public sealed partial class EconomicsBackwardCompatibilityTests(DispatchSyntheti
     {
         foreach (var decision in decisions)
         {
-            // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes) and 8 (dispatch_fault) changed that one
+            // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes), 8 (dispatch_fault) and 9 (power_band) changed that one
             // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows. The
             // phase trigger (2026-11-03) is the same kind of addition: it records what a guard reaction followed and decides nothing, so it is left out too.
-            var line = DecisionJson.Serialize(decision).Replace("\"codes\":8", "\"codes\":6", StringComparison.Ordinal);
+            var line = DecisionJson.Serialize(decision).Replace("\"codes\":9", "\"codes\":6", StringComparison.Ordinal);
             text.Append(TriggerBlock().Replace(line, string.Empty)).Append('\n');
         }
 

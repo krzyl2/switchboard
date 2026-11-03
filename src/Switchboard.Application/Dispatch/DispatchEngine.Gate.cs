@@ -117,9 +117,7 @@ public sealed partial class DispatchEngine
             load = baseLoad;
         }
 
-        var surplus = economics is { Setup.Settlement.Id: SettlementModelId.NetBilling }
-            ? new SurplusView(null, _balanceTracker.NetFree, TimeSpan.Zero)
-            : new SurplusView(view?.BalanceWh, view?.Free, view?.UntilNext ?? TimeSpan.Zero);
+        var surplus = Surplus(view);
 
         for (var i = gated.Count - 1; i >= 0; i--)
         {
@@ -290,6 +288,12 @@ public sealed partial class DispatchEngine
         plan.MaxAllowed = capped;
         return true;
     }
+
+    /// <summary>The surplus of this step as the allowance gate judges it: the net billing window's free power, else the hourly balance's view.</summary>
+    private SurplusView Surplus(BalanceView? view) =>
+        _economicsTracker.Context is { Setup.Settlement.Id: SettlementModelId.NetBilling }
+            ? new SurplusView(null, _balanceTracker.NetFree, TimeSpan.Zero)
+            : new SurplusView(view?.BalanceWh, view?.Free, view?.UntilNext ?? TimeSpan.Zero);
 
     /// <summary>Asks a running device to come down one stage; false when a min_on lockout keeps it where it is.</summary>
     private static bool LowerOneStage(Plan plan, ReasonCode reason)

@@ -106,7 +106,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PlannerListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -449,7 +449,7 @@ public static class DecisionJson
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
             Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
             Economics = d.TryGetProperty("economics", out var economics) && economics.ValueKind != JsonValueKind.Null ? Economics(economics) : null,
-            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes is ReasonCodes.ListVersion or ReasonCodes.PlannerListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
+            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes is ReasonCodes.ListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
         };
     }
 

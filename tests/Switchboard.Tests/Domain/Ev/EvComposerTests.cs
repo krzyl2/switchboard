@@ -1,4 +1,5 @@
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
@@ -240,7 +241,7 @@ public sealed class EvComposerTests
         // Why: the bands are wall-clock hours. On 2026-10-25 the clock goes back at 03:00, so 00:00-07:00 lasts 8 hours; a band computed in UTC would end at 06:00.
         var p = Defaults with
         {
-            PowerBands = [new EvPowerBand(new HoursRange(21 * 60, 24 * 60), 2000), new EvPowerBand(new HoursRange(0, 7 * 60), 3000)],
+            PowerBands = [new PowerBand(new HoursRange(21 * 60, 24 * 60), 2000), new PowerBand(new HoursRange(0, 7 * 60), 3000)],
         };
         var now = Local(2026, 10, 24, 19);
 

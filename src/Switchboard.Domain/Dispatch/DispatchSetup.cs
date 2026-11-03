@@ -100,5 +100,8 @@ public sealed record DispatchSetup(
     /// <summary>The economics (prices, sources, settlement model, parameters); null without an <c>economics:</c> section, and then dispatch is exactly the 0.9 one.</summary>
     public EconomicsSetup? Economics { get; init; }
 
+    /// <summary>Per device the ceilings of its grid power by local hours (the EV charger's <c>control.ev.power_bands</c>); a device without bands is not here.</summary>
+    public ImmutableDictionary<DeviceName, ImmutableArray<PowerBand>> PowerBands { get; init; } = ImmutableDictionary<DeviceName, ImmutableArray<PowerBand>>.Empty;
+
     public DispatchDevice? Device(DeviceName name) => Devices.FirstOrDefault(d => d.Id == name);
 }

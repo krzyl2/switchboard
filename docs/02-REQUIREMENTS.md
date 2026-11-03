@@ -167,5 +167,5 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 - [ ] **EV-08**: Every EV failure-table row (`EV.md` section 9) has a named test
 - [ ] **EV-09**: Manual mode and charge now: `ev.json`, `POST api/ev/mode`, `POST api/ev/charge-now`, MQTT select/number/button with `MqttTopicGuard` extension, expiry; never a write to an entity the user has not declared as an actuator
 - [ ] **EV-10**: UI: EV card in `#/plan`, EV row on the device card, unparsed events, controls; en and pl, 375 px, both themes, entity IDs in monospace
-- [ ] **EV-11**: Without `ev:`, or at `planner.dispatch: off`, dispatch decisions are byte for byte v2 (digests); at `narrow` a subset of v2
+- [ ] **EV-11**: Without `ev:`, or at `planner.dispatch: off`, dispatch decisions are byte for byte v2 (digests), except that `control.ev.power_bands` cap the charger's grid power (2026-11-03); at `narrow` a subset of v2
 - [ ] **EV-12**: Live shadow week: assessment vs plan vs real charging, one trip checked by hand; then `narrow`, later `full` with consent

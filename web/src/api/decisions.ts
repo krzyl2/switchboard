@@ -8,7 +8,7 @@ import { getJson } from './http';
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
-/** The closed reason-code list, version 8 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent, version 6 the five economic codes (zone_allowed to surplus_low), version 7 the five planner codes (plan_deferred to soc_ceiling), version 8 dispatch_fault. */
+/** The closed reason-code list, version 9 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent, version 6 the five economic codes (zone_allowed to surplus_low), version 7 the five planner codes (plan_deferred to soc_ceiling), version 8 dispatch_fault, version 9 power_band. */
 export const REASON_CODES = [
   'guard_tier_exceeded',
   'guard_budget_low',
@@ -48,6 +48,7 @@ export const REASON_CODES = [
   'soc_floor',
   'soc_ceiling',
   'dispatch_fault',
+  'power_band',
 ] as const;
 /** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
 export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;

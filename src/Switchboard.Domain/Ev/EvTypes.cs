@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
 
@@ -68,12 +69,7 @@ public sealed record EvParameters(
     EvChargeNowParameters ChargeNow,
     bool Spread,
     TimeSpan SnapshotMaxAge,
-    ImmutableArray<EvPowerBand> PowerBands = default);
-
-/// <summary>A ceiling of grid charging during local hours (<c>control.ev.power_bands</c>).</summary>
-/// <param name="Hours">The local hours, end exclusive; a start after the end wraps past midnight.</param>
-/// <param name="MaxPowerW">The most the charger may draw from the grid in them.</param>
-public sealed record EvPowerBand(HoursRange Hours, double MaxPowerW);
+    ImmutableArray<PowerBand> PowerBands = default);
 
 /// <param name="Days">Local weekdays on which one full charge a week is allowed (a holiday counts as a weekend day in a later slice); empty disables it.</param>
 /// <param name="TargetPercent">The SoC of the full charge.</param>

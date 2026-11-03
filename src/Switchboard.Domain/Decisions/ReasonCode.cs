@@ -4,7 +4,7 @@ using System.Text;
 namespace Switchboard.Domain.Decisions;
 
 /// <summary>
-/// The closed, versioned list of reason codes (04 §6, version 8). Every decision carries exactly
+/// The closed, versioned list of reason codes (04 §6, version 9). Every decision carries exactly
 /// one; the UI renders a sentence per code. The first member is 1, so <c>default</c> is not a code
 /// and is refused wherever a decision is built. A new version only appends, so the numeric value of
 /// every earlier code stays where it was.
@@ -87,14 +87,20 @@ public enum ReasonCode
 
     /// <summary>Version 8: dispatch failed with an error in this step and entered its fault: protection keeps running and holds, sheds and stops as always, dispatch changes nothing until it evaluates again (recorded once per fault, not once per step). Versions 1 to 7 had no code: the error stopped the add-on.</summary>
     DispatchFault,
+
+    /// <summary>Version 9: a start or increase refused, or a run lowered, because the device's power band for this local hour caps what it may take from the grid (<c>control.ev.power_bands</c>) and no plan entry sets its ceiling. Versions 1 to 8 had no such ceiling outside the plan (the plan used plan_slot_target).</summary>
+    PowerBand,
 }
 
 public static class ReasonCodes
 {
     /// <summary>The version of the list in 04 §6; written with every logged decision.</summary>
-    public const int ListVersion = 8;
+    public const int ListVersion = 9;
 
-    /// <summary>The version before the dispatch fault (the planner, codes plan_deferred … soc_ceiling): its lines stay readable for the log's retention.</summary>
+    /// <summary>The version before the power band (dispatch_fault): its lines stay readable for the log's retention.</summary>
+    public const int DispatchFaultListVersion = 8;
+
+    /// <summary>The version before that (the planner, codes plan_deferred … soc_ceiling): its lines stay readable too.</summary>
     public const int PlannerListVersion = 7;
 
     /// <summary>The version before that (2.0 economics, codes zone_allowed … surplus_low): its lines stay readable too.</summary>
@@ -120,12 +126,13 @@ public static class ReasonCodes
     /// Whether a code belongs to a list version: version 3 appended foreign_load and change_limit and
     /// version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent and
     /// version 6 the five economic codes (zone_allowed … surplus_low), version 7 the five planner codes
-    /// (plan_deferred … soc_ceiling) and version 8 dispatch_fault, so a line of an older version that carries one of them is not a decision of that version.
+    /// (plan_deferred … soc_ceiling), version 8 dispatch_fault and version 9 power_band, so a line of an older version that carries one of them is not a decision of that version.
     /// </summary>
     public static bool InVersion(ReasonCode code, int version) =>
         IsDefined(code) && version switch
         {
             ListVersion => true,
+            DispatchFaultListVersion => code < ReasonCode.PowerBand,
             PlannerListVersion => code < ReasonCode.DispatchFault,
             EconomicsListVersion => code < ReasonCode.PlanDeferred,
             PreviousListVersion => code < ReasonCode.ZoneAllowed,
@@ -140,7 +147,7 @@ public static class ReasonCodes
     {
         if (!IsDefined(code))
         {
-            throw new ArgumentOutOfRangeException(nameof(code), code, "Not a reason code of list version 8.");
+            throw new ArgumentOutOfRangeException(nameof(code), code, "Not a reason code of list version 9.");
         }
 
         var text = code.ToString();

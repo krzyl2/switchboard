@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Hashing;
@@ -260,7 +261,9 @@ public static class EvComposer
             emitted.Add(kept.OrderByDescending(c => c.TargetPercent).ThenBy(c => c.Kind).First());
         }
 
-        var caps = PowerCaps(input);
+        var caps = PowerBands.Windows(input.Parameters.PowerBands, input.Now, input.Now + input.PlanHorizon, input.Zone)
+            .Select(w => new PowerCap(w.From, w.To, w.MaxW))
+            .ToImmutableArray();
         var goals = emitted
             .OrderBy(c => c.Deadline is null ? 1 : 0).ThenBy(c => c.Deadline).ThenBy(c => c.Kind)
             .Select(c => ToOffer(c, input, soc, caps))
@@ -288,37 +291,6 @@ public static class EvComposer
             : needs.TryGetValue(EvGoalKind.Floor, out var floor) && !GoalMath.IsMet(floor) ? EvAssessmentCode.CheapZone
             : needs.TryGetValue(EvGoalKind.Cap, out var cap) && !GoalMath.IsMet(cap) ? EvAssessmentCode.Surplus
             : EvAssessmentCode.FloorHold;
-    }
-
-    /// <summary>
-    /// <c>control.ev.power_bands</c> as instants: every band on every local date from yesterday (an evening band may still run past midnight) to the day after
-    /// the plan's horizon ends, each edge a local wall-clock time (a 23- or 25-hour day keeps its bands at their hours). Bands that ended before now are left out.
-    /// </summary>
-    private static ImmutableArray<PowerCap> PowerCaps(EvComposerInput input)
-    {
-        var bands = input.Parameters.PowerBands;
-        if (bands.IsDefaultOrEmpty)
-        {
-            return [];
-        }
-
-        var first = TimeZoneInfo.ConvertTime(input.Now, input.Zone).Date.AddDays(-1);
-        var last = TimeZoneInfo.ConvertTime(input.Now + input.PlanHorizon, input.Zone).Date.AddDays(1);
-        var caps = ImmutableArray.CreateBuilder<PowerCap>();
-        for (var date = first; date <= last; date = date.AddDays(1))
-        {
-            foreach (var band in bands)
-            {
-                var from = LocalTime.At(date.AddMinutes(band.Hours.StartMinute), input.Zone);
-                var to = LocalTime.At((band.Hours.Wraps ? date.AddDays(1) : date).AddMinutes(band.Hours.EndMinute), input.Zone);
-                if (to > input.Now && to > from)
-                {
-                    caps.Add(new PowerCap(from, to, band.MaxPowerW));
-                }
-            }
-        }
-
-        return caps.ToImmutable();
     }
 
     private static EvGoalOffer ToOffer(Candidate c, EvComposerInput input, double soc, ImmutableArray<PowerCap> caps)

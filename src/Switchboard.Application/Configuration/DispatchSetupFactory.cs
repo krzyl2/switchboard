@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Balance;
+using Switchboard.Domain.Devices;
 using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Signals;
@@ -61,6 +62,9 @@ public static class DispatchSetupFactory
         {
             Balance = new HourlyBalanceSetup(control.HourlyBalance, voltage),
             Economics = Economics(configuration),
+            PowerBands = configuration.Ev is { } ev && !control.Ev.PowerBands.IsDefaultOrEmpty
+                ? ImmutableDictionary<DeviceName, ImmutableArray<PowerBand>>.Empty.Add(ev.Device, control.Ev.PowerBands)
+                : ImmutableDictionary<DeviceName, ImmutableArray<PowerBand>>.Empty,
         };
     }
 
