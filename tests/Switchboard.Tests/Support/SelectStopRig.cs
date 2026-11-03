@@ -111,6 +111,9 @@ internal sealed class SelectStopRig
     /// <summary>What the car would take at most (A).</summary>
     public double CarWants { get; set; } = 10;
 
+    /// <summary>The device takes what was sent late (a slow integration): it reports its old state until the lag ends, then follows everything sent.</summary>
+    public bool Lagging { get; set; }
+
     /// <summary>The device ignores what is sent (a lost link, a broken integration).</summary>
     public bool Frozen { get; set; }
 
@@ -198,6 +201,12 @@ internal sealed class SelectStopRig
     /// <summary>The device takes what was sent (unless frozen).</summary>
     public void Follow()
     {
+        if (Lagging)
+        {
+            // Nothing is lost: what was sent shows at the first follow after the lag.
+            return;
+        }
+
         foreach (var (_, call, _) in Path.Calls.Skip(_followed))
         {
             if (Frozen)

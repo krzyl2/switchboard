@@ -26,7 +26,11 @@ internal sealed class TransitionObserver
 
         var previous = state.LastReported;
         state.LastReported = reported;
-        if (state.Baselines.SelfStarted is not null && DeviceLevels.IsOff(device, reported))
+
+        // A start of Switchboard's is over once the device reports off, except while its command still has time to show (reaction time plus the
+        // confirm timeout after the acknowledgement): an off then is the device not having moved yet, as a select reports its new option a moment late.
+        var commandShowing = state.Commands.ConfirmBy is { } confirmBy && context.Now < confirmBy;
+        if (state.Baselines.SelfStarted is not null && DeviceLevels.IsOff(device, reported) && !commandShowing)
         {
             state.Baselines.SelfStarted = null;
         }

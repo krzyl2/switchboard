@@ -290,6 +290,53 @@ public sealed class SelectStopTests
     }
 
     [Fact]
+    public void A_self_started_charger_whose_state_still_reads_off_after_the_ack_stays_self_started()
+    {
+        // Why: 2026-11-03 03:49. The go-e acknowledged the start but its select reported the old "force off" for a few seconds more; that stale report
+        // erased "Switchboard started it", so the guard's reduction 25 s later took a restore baseline of 18 A, and api/control listed the charger as left
+        // reduced long after dispatch had switched it off. The lag of a start is not someone switching the charger off, and a device Switchboard started
+        // has no user's level to give back.
+        var rig = StartedWithLag();
+
+        Assert.NotNull(rig.Ledger.SelfStarted);
+        rig.Hold(22, TimeSpan.FromMinutes(1));
+        Assert.Contains(rig.Harness.Recorder.Decisions, d => d.Device?.Value == "ev_charger" && d.Origin == DecisionOrigin.Guard && d.Action is DecisionAction.ReduceToMinimum or DecisionAction.SwitchOff);
+        Assert.Null(rig.Ledger.Baseline);
+    }
+
+    [Fact]
+    public void A_device_switched_off_after_its_start_is_no_longer_self_started()
+    {
+        // Why: once the started charger has really gone off (here by force_off), the start is over; the next start is judged afresh.
+        var rig = StartedWithLag();
+
+        rig.Harness.Loop.Overrides.Set(DeviceName.Parse("ev_charger"), OverrideMode.ForceOff, OverrideSource.Api);
+        rig.Hold(2, TimeSpan.FromSeconds(90));
+
+        Assert.Equal(["0", "1"], rig.SelectOptions);
+        Assert.Null(rig.Ledger.SelfStarted);
+    }
+
+    /// <summary>The user's stopped charger started by dispatch, with the select still reporting the stop for one poll after the start was acknowledged; then running.</summary>
+    private static SelectStopRig StartedWithLag()
+    {
+        var rig = new SelectStopRig(start: "headroom", option: "1").Begin();
+        for (var i = 0; i < 60 && !rig.SelectOptions.Contains("0"); i++)
+        {
+            rig.Poll(2);
+        }
+
+        Assert.Equal(["0"], rig.SelectOptions);
+        rig.Lagging = true;
+        rig.Poll(2);
+        Assert.Equal("1", rig.Option);
+        rig.Lagging = false;
+        rig.Hold(2, TimeSpan.FromSeconds(30));
+        Assert.Equal("0", rig.Option);
+        return rig;
+    }
+
+    [Fact]
     public void Removed_select_device_gets_final_stop_only_when_switchboard_started_it()
     {
         // start: headroom and the user had it stopped: dispatch starts it ("0"), so Switchboard owes
