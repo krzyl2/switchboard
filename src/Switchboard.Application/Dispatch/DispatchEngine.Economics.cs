@@ -14,7 +14,7 @@ namespace Switchboard.Application.Dispatch;
 public sealed partial class DispatchEngine
 {
     /// <summary>
-    /// Why a running device with sources should come down one stage, or null while it stays (14-ECONOMICS: a stop needs neither
+    /// Why a running device with sources should come down, or null while it stays (14-ECONOMICS: a stop needs neither
     /// class to hold; the zone class is never stopped by the balance). The surplus class stops on the settlement rule as in 0.9;
     /// an unknown balance stops only a device Switchboard started; a value that no longer covers the forgone export stops it too.
     /// </summary>
@@ -37,8 +37,8 @@ public sealed partial class DispatchEngine
     /// <summary>
     /// A plan entry of <c>defer</c> also brings a running device down when it runs on the active zone (a device whose sources do not open the zone now is left to <see cref="StopReason"/>) and the surplus does not hold it: the plan places its energy in a later slot, so buying
     /// it from the zone now is what the plan is there to avoid (15-PLANNER). The surplus class is not the plan's to refuse: a device the surplus rule still holds
-    /// (settlement says start or hold and the value covers the forgone export) keeps running. It is the stop a zone's end makes, one stage a step
-    /// through <see cref="LowerOneStage"/>, so min_on, persistence and the guard act as for any other stop; without an entry (mode off, no valid plan) nothing here runs.
+    /// (settlement says start or hold and the value covers the forgone export) keeps running. It is the stop a zone's end makes, as deep as
+    /// <see cref="StopTarget"/> says (a setpoint device straight down), so min_on, persistence and the guard act as for any other stop; without an entry (mode off, no valid plan) nothing here runs.
     /// </summary>
     private ReasonCode? DeferStop(EconomicsContext economics, DeviceEcon device, SurplusView surplus, double? load, Plan plan)
     {

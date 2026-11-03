@@ -152,7 +152,7 @@ internal sealed class PlanReader(IPlanView? plan)
 }
 
 /// <summary>What the plan lets the allowance gate do for a device with an entry (see the allowance gate of the dispatch engine).</summary>
-/// <param name="Defers">A zone-class start or increase is refused, and a device already running on the zone (which the surplus does not hold) is brought down one stage a step (plan_deferred).</param>
+/// <param name="Defers">A zone-class start or increase is refused, and a device already running on the zone (which the surplus does not hold) is brought down (plan_deferred): a relay one stage a step, a setpoint device straight down.</param>
 /// <param name="Opens">Full mode only: the reason of the one class the plan adds, for a grid slot of a goal device (plan_slot_target) or an urgent hard goal (goal_deadline_urgent); null when none.</param>
 internal readonly record struct PlanGate(bool Defers, ReasonCode? Opens)
 {

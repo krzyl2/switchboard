@@ -32,7 +32,7 @@ public sealed partial class DispatchEngine
     /// value covers the import price, and for a start not too close to the zone's end). A running device is kept while either holds;
     /// a device on the zone class is not stopped by the balance, one on surplus is stopped by the settlement rule as in 0.9.</item>
     /// </list>
-    /// Stops come first, lowest order key first: each running device whose allowance is gone is lowered one stage and the load comes
+    /// Stops come first, lowest order key first: each running device whose allowance is gone is lowered (<see cref="StopTarget"/>: one stage, or a setpoint device straight down) and the load comes
     /// down by it. Starts then walk the devices in start order, so what is left goes to the most valuable device that could take it:
     /// a device is a candidate only if the allocation shows it could rise now (guard permission and phase headroom), and the load of
     /// each start is added before the next device is judged, whichever class allowed it (one meter: a zone start lowers the surplus
@@ -127,27 +127,29 @@ public sealed partial class DispatchEngine
                 continue;
             }
 
-            ReasonCode? stop = null;
-            if (kind == GateKind.Balance)
+            // The allowance's answer with the device at a level (the rest of the load as it is): why it should come down from there, or null while that level is allowed.
+            ReasonCode? StopAt(int level)
             {
-                if (HourlyBalanceRule.Decide(view!.BalanceWh, view.Free, new Watts(load!.Value), Watts.Zero, view.UntilNext, parameters) == BalanceWant.Stop)
+                var at = load - (PlannedPower(plan, plan.BasisIndex, config) - PlannedPower(plan, level, config));
+                if (kind == GateKind.Balance)
                 {
-                    stop = ReasonCode.BalanceProjectionLow;
+                    return HourlyBalanceRule.Decide(view!.BalanceWh, view.Free, new Watts(at!.Value), Watts.Zero, view.UntilNext, parameters) == BalanceWant.Stop
+                        ? ReasonCode.BalanceProjectionLow
+                        : null;
                 }
-            }
-            else if (!plan.PlanKeeps)
-            {
-                stop = StopReason(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan, input)
-                    ?? DeferStop(economics!, economics!.Device(plan.Device.Id)!, surplus, load, plan);
+
+                var device = economics!.Device(plan.Device.Id)!;
+                return plan.PlanKeeps ? null : StopReason(economics, device, surplus, at, plan, input) ?? DeferStop(economics, device, surplus, at, plan);
             }
 
-            if (stop is not { } reason)
+            if (StopAt(plan.BasisIndex) is not { } reason)
             {
                 continue;
             }
 
-            var shed = PlannedPower(plan, plan.BasisIndex, config) - PlannedPower(plan, plan.BasisIndex - 1, config);
-            if (LowerOneStage(plan, reason))
+            var target = StopTarget(plan, StopAt);
+            var shed = PlannedPower(plan, plan.BasisIndex, config) - PlannedPower(plan, Math.Max(plan.MinAllowed, target), config);
+            if (Lower(plan, reason, target))
             {
                 load -= shed;
                 changed = true;
@@ -296,9 +298,12 @@ public sealed partial class DispatchEngine
             : new SurplusView(view?.BalanceWh, view?.Free, view?.UntilNext ?? TimeSpan.Zero);
 
     /// <summary>Asks a running device to come down one stage; false when a min_on lockout keeps it where it is.</summary>
-    private static bool LowerOneStage(Plan plan, ReasonCode reason)
+    private static bool LowerOneStage(Plan plan, ReasonCode reason) => Lower(plan, reason, plan.BasisIndex - 1);
+
+    /// <summary>Asks a running device to come down to a level, never below what a min_on lockout holds on; false when that lowers nothing.</summary>
+    private static bool Lower(Plan plan, ReasonCode reason, int index)
     {
-        var lowered = Math.Max(plan.MinAllowed, plan.BasisIndex - 1);
+        var lowered = Math.Max(plan.MinAllowed, index);
         if (lowered >= plan.BasisIndex)
         {
             return false;
@@ -307,6 +312,25 @@ public sealed partial class DispatchEngine
         plan.MaxAllowed = Math.Min(plan.MaxAllowed, lowered);
         plan.BalanceStop = reason;
         return true;
+    }
+
+    /// <summary>
+    /// Where an economic stop takes a running device in this step. A relay comes down one stage, as every relay does (contactor wear, the shutdown avalanche
+    /// of 07-PITFALLS). A setpoint device goes straight down, to off or to what a min_on lockout holds, when the same rule still says stop with it at its lowest
+    /// on-level: its allowance is gone rather than short (the zone ended, the plan deferred it), and an ampere a cycle down only buys energy at the price that
+    /// ended it. Where the rule would carry that lowest level (surplus tracking, a balance credit), it comes down one stage and is judged again.
+    /// </summary>
+    /// <param name="stopAt">The rule's answer with the device at a level.</param>
+    private static int StopTarget(Plan plan, Func<int, ReasonCode?> stopAt)
+    {
+        var oneStage = plan.BasisIndex - 1;
+        if (plan.Device.Spec is not SetpointSpec spec)
+        {
+            return oneStage;
+        }
+
+        var lowestOn = DeviceLevels.IsOff(spec, plan.Levels[0]) ? 1 : 0;
+        return lowestOn < oneStage && stopAt(lowestOn) is not null ? 0 : oneStage;
     }
 
     /// <summary>

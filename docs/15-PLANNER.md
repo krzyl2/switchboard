@@ -363,7 +363,7 @@ Version 6 is in the tree, so these are **version 7**; the list only appends and 
 |---|---|---|
 | `plan_slot_target` (existing) | a start by the plan's own class, or an increase refused or a decrease because the slot's power ceiling or energy budget is reached | `headroom_available` / `headroom_insufficient` |
 | `goal_met` (existing) | a start or increase refused or a stop because the device's goal is met and `on_met` is `stop` | `headroom_insufficient` |
-| `plan_deferred` (new) | a start or increase refused, or (0.12.1) a run on the zone class alone brought down one stage a step through min_on and persistence, because the plan places the device's energy in a later slot (zone class only; a run the surplus rule still holds stays) | `headroom_insufficient` (or the v6 permitted code, which v6 would have used) |
+| `plan_deferred` (new) | a start or increase refused, or (0.12.1) a run on the zone class alone brought down through min_on and persistence (a relay one stage a step, a setpoint device straight down since 2026-11-03), because the plan places the device's energy in a later slot (zone class only; a run the surplus rule still holds stays) | `headroom_insufficient` (or the v6 permitted code, which v6 would have used) |
 | `goal_deadline_urgent` (new) | a start or increase permitted beyond the device's sources because a hard goal would otherwise miss its deadline | `headroom_available` |
 | `plan_discharge` (new) | a storage discharge permitted because the plan's slot calls for it | `headroom_available` |
 | `soc_floor` (new) | a discharge refused or ended because the state of charge is at its floor | `headroom_insufficient` |

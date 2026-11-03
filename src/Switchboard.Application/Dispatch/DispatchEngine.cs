@@ -695,7 +695,7 @@ public sealed partial class DispatchEngine
         /// <summary>Why the allowance gate withheld an increase (balance_projection_low, balance_unknown, source_not_allowed, value_below_cost, surplus_low).</summary>
         public ReasonCode? BalanceReason { get; set; }
 
-        /// <summary>The allowance gate asked the device to come down one stage (balance_projection_low, balance_unknown, value_below_cost, surplus_low).</summary>
+        /// <summary>The allowance gate asked the device to come down (balance_projection_low, balance_unknown, value_below_cost, surplus_low, plan_deferred).</summary>
         public ReasonCode? BalanceStop { get; set; }
 
         /// <summary>The plan's entry for the device in this step (a valid, fresh one; null leaves the device to v2).</summary>

@@ -142,6 +142,10 @@ else:
 
 Why this matters beyond data quality: a water-heater element whose thermostat has opened draws nothing when commanded on. Without verification the system believes it is dumping 1.5 kW into the tank and makes every subsequent decision on a false premise. With verification it learns the tank is hot.
 
+### Economic stops of a setpoint device
+
+An allowance stop (hourly balance, sources, price, a plan deferral) takes a relay down one stage per step, as every relay change is limited (07-PITFALLS: shutdown avalanche, contactor wear). A setpoint device is asked the same rule again with its load at its lowest on-level: if that still stops, its allowance is gone rather than short (the zone ended, the plan deferred it) and it goes straight down, to off or to the level a min_on lockout holds; otherwise it comes down one stage and the next step judges again (surplus tracking, a balance credit). Persistence and the reason codes are unchanged (2026-11-03, live: the off-peak zone ended at 07:00 and 16:00 and the charger came down an ampere per 30 s, six minutes at the peak price).
+
 ### Simultaneous increases
 
 Default: one increase per settling window. With two simultaneous increases and a missing power rise, the mismatch cannot be attributed to a device. Decreases are unlimited — attribution does not matter when the direction is safe.
