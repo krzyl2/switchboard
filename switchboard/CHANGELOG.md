@@ -2,6 +2,16 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.12.6
+
+### Fixed
+
+- The EV SoC estimate survives a gap in the power picture (a main-meter outage) while the charger is reported off, so the EV goals stay active; `api/ev` reports since when a SoC gap has lasted (`socGapSince`).
+- A start the phase current already shows is no longer counted again while its settling window waits for the phase power, so a charger start no longer causes a false reduction; a guard reaction records the estimate it followed (`trigger`).
+- `control.ev.power_bands` cap the charger's grid power whenever no plan entry sets its ceiling (no or stale plan, a restart, `planner.dispatch: off`); surplus comes on top and an override is not capped. New reason code `power_band` (list version 9).
+- At the end of its zone or a plan deferral, a charger the allowance cannot carry at its lowest level stops in one step instead of an ampere every 30 s.
+- A charger Switchboard started stays its own while the start still has time to show, so a guard reduction right after it no longer leaves it listed as left reduced.
+
 ## 0.12.5
 
 ### Fixed
