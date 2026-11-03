@@ -6,6 +6,7 @@ using Switchboard.Application.Goals;
 using Switchboard.Application.Planning;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
 using Switchboard.Domain.Planning;
@@ -22,7 +23,8 @@ namespace Switchboard.Tests.Application.Ev;
 /// in the add-on, minus the guard: a real signal store feeds the EV inputs, the engine computes beside the control loop, and the goal source answers what the
 /// guard's step would see. Index (row of the table: test):
 /// <list type="number">
-/// <item>SoC stale or unavailable: <see cref="Row01_soc_stale_goals_are_inactive_never_the_last_value"/>, <see cref="Row01_without_charger_data_a_plugged_car_loses_the_estimate_at_once"/></item>
+/// <item>SoC stale or unavailable: <see cref="Row01_soc_stale_goals_are_inactive_never_the_last_value"/>, <see cref="Row01_without_charger_data_a_plugged_car_loses_the_estimate_at_once"/>,
+/// <see cref="Row01_a_power_picture_gap_while_the_charger_reports_off_keeps_the_estimate"/>, <see cref="Row01_a_gap_whose_start_or_end_finds_the_charger_on_is_a_gap"/></item>
 /// <item>Range stale, 0 or unknown: <see cref="Row02_range_zero_uses_the_fallback_and_rejects_the_sample"/>, <see cref="Row02_a_usable_pair_is_learned_and_saved"/></item>
 /// <item>Calendar unavailable: <see cref="Row03_calendar_unavailable_keeps_the_last_trip_until_its_start"/></item>
 /// <item>Calendar not updated for long: <see cref="Row04_a_calendar_older_than_its_max_age_is_unavailable_and_the_trip_stands"/></item>
@@ -114,6 +116,54 @@ public sealed class EvGoalSourceFailureTableTests
         rig.ChargerWatts = 0;
         rig.PushPlugged();
         Assert.Equal(40, rig.Tick().SocPercent);
+    }
+
+    [Fact]
+    public void Row01_a_power_picture_gap_while_the_charger_reports_off_keeps_the_estimate()
+    {
+        // Why: the 2026-11-03 night. The main meter went invalid for three minutes while the plugged car's charger was held off by its stop actuator; the gap
+        // was counted as hidden energy, the estimate died until the sleeping car next reported a changed value, and the trip and floor goals went inactive
+        // for hours. A charger reported off at both ends of the gap delivers nothing, so there is nothing to have missed.
+        var rig = new EvRig(charger: EvRig.ChargerWithStop);
+        rig.PlugInCar(40);
+        rig.ChargerReported = DeviceLevels.Off(rig.ChargerSpec);
+        Assert.Equal(40, rig.Tick().SocPercent);
+
+        rig.ChargerWatts = null;
+        for (var minute = 0; minute < 3; minute++)
+        {
+            rig.Advance(TimeSpan.FromMinutes(1));
+            Assert.Equal(40, rig.Tick().SocPercent);
+        }
+
+        rig.ChargerWatts = 0;
+        rig.Advance(TimeSpan.FromMinutes(1));
+        var snapshot = rig.Tick();
+        Assert.Equal(40, snapshot.SocPercent);
+        Assert.Null(snapshot.SocGap);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Row01_a_gap_whose_start_or_end_finds_the_charger_on_is_a_gap(bool onBefore, bool onDuring)
+    {
+        // Why: the conservative side of the rule above. A charger on at either end of the gap may have charged during it, and the car's next changed reading is
+        // the only truth that can say how much.
+        var rig = new EvRig(charger: EvRig.ChargerWithStop);
+        rig.PlugInCar(40);
+        var spec = rig.ChargerSpec;
+        rig.ChargerReported = onBefore ? DeviceLevels.Max(spec) : DeviceLevels.Off(spec);
+        Assert.Equal(40, rig.Tick().SocPercent);
+
+        rig.ChargerWatts = null;
+        rig.ChargerReported = onDuring ? DeviceLevels.Max(spec) : DeviceLevels.Off(spec);
+        rig.Advance(TimeSpan.FromMinutes(1));
+
+        var snapshot = rig.Tick();
+        Assert.Null(snapshot.SocPercent);
+        Assert.Equal(SocEstimateGap.ChargerStale, snapshot.SocGap);
+        Assert.Equal(rig.Now, snapshot.SocGapSince);
     }
 
     // ---- 2 ----

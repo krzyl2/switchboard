@@ -134,6 +134,8 @@ export interface EvAssessment {
   mode: EvMode | null;
   socPercent: number | null;
   socGap: EvSocGap | null;
+  /** When that gap began (too_old, charger_stale); null for any other gap and with an estimate. */
+  socGapSince: Date | null;
   kwhPerKm: number | null;
   nextTrip: EvTrip | null;
   lastFullAt: Date | null;
@@ -290,6 +292,7 @@ function assessment(raw: unknown, path: string): EvAssessment {
     mode: nullable(field(r, 'mode', path), `${path}.mode`, (v, p) => oneOf(EV_MODES, v, p)),
     socPercent: nullable(field(r, 'socPercent', path), `${path}.socPercent`, number),
     socGap: nullable(field(r, 'socGap', path), `${path}.socGap`, (v, p) => oneOf(EV_SOC_GAPS, v, p)),
+    socGapSince: nullable(field(r, 'socGapSince', path), `${path}.socGapSince`, instant),
     kwhPerKm: nullable(field(r, 'kwhPerKm', path), `${path}.kwhPerKm`, number),
     nextTrip: nullable(field(r, 'nextTrip', path), `${path}.nextTrip`, trip),
     lastFullAt: nullable(field(r, 'lastFullAt', path), `${path}.lastFullAt`, instant),

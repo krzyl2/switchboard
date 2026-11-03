@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Switchboard.Application.Configuration;
@@ -11,8 +12,11 @@ using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Application.State;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Ev;
+using Switchboard.Domain.Guard;
 using Switchboard.Domain.Signals;
+using Switchboard.Domain.Units;
 
 namespace Switchboard.Tests.Support;
 
@@ -25,6 +29,9 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
 {
     public const string Charger =
         "  - id: ev_charger\n    type: modulating\n    actuator: number.charger_current\n    phase: L1\n    min: 6\n    max: 16\n    step: 1\n    value_per_kwh: 2.03\n    sources: pv_and_zone:offpeak\n";
+
+    /// <summary>The charger as the live go-e is declared: a force-state select stops it, so it can report off (the plain one is at its floor at the least).</summary>
+    public const string ChargerWithStop = Charger + "    stop_actuator: select.charger_force\n    stop_option: \"1\"\n    resume_option: \"0\"\n    state_reports: on_change\n";
 
     private const string Tariff = """
         economics:
@@ -62,9 +69,9 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
     private readonly IPresentationStore<EvState>? _store;
     private readonly Func<IEvInputSource> _inputs;
 
-    public EvRig(string planner = "planner:\n  dispatch: off\n", string ev = EvBlock, IPresentationStore<EvState>? store = null, EvState? initial = null, Func<IEvInputSource>? inputs = null, string extraDevices = "")
+    public EvRig(string planner = "planner:\n  dispatch: off\n", string ev = EvBlock, IPresentationStore<EvState>? store = null, EvState? initial = null, Func<IEvInputSource>? inputs = null, string extraDevices = "", string charger = Charger)
     {
-        H = new StoreHarness(TestDevices.Document(Charger + extraDevices, extra: Tariff + "\n" + planner + "\n" + ev, defaultStart: "headroom"));
+        H = new StoreHarness(TestDevices.Document(charger + extraDevices, extra: Tariff + "\n" + planner + "\n" + ev, defaultStart: "headroom"));
         H.Time.SetLocalTimeZone(Warsaw);
         _store = store;
         _initial = () => initial;
@@ -138,6 +145,12 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
 
     /// <summary>The charger's power the guard would publish each cycle; null means no usable power picture (a stale draw).</summary>
     public double? ChargerWatts { get; set; } = 0;
+
+    /// <summary>The charger's level as the guard's step reports it from its state signals; null means no step, so its state is unknown.</summary>
+    public DeviceLevel? ChargerReported { get; set; }
+
+    /// <summary>The charger as the guard knows it, for levels such as <see cref="DeviceLevels.Off"/>.</summary>
+    public DeviceSpec ChargerSpec => ProtectionSetupFactory.Build(Configuration).Device(DeviceName.Parse("ev_charger"))!;
 
     public EvState? Saved { get; private set; }
 
@@ -226,7 +239,7 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
     EvInputView IEvInputSource.Current => new(H.Configuration, EvInputs.From(H.Snapshot(), Configuration.Ev!));
 
     // IPresentationSource
-    public GuardStep? LastStep => null;
+    public GuardStep? LastStep => ChargerReported is { } level ? ReportedStep(level) : null;
 
     public PowerView? Power => ChargerWatts is { } watts ? TestSteps.View(Now, 0, 0, ("ev_charger", watts, PowerSource.Measured)) : null;
 
@@ -235,6 +248,27 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
     public ExcursionsSnapshot Excursions => throw new NotSupportedException();
 
     public PresentationFileReport Report => throw new NotSupportedException();
+
+    // The step the guard would publish now, reduced to what the EV module reads from it: the declared setup and the charger's reported level.
+    private GuardStep ReportedStep(DeviceLevel level)
+    {
+        var charger = new DeviceLoad(
+            DeviceName.Parse("ev_charger"),
+            level,
+            ImmutableDictionary<Phase, Amperes>.Empty,
+            ImmutableDictionary<ConstraintKey, Amperes>.Empty,
+            ImmutableDictionary<ConstraintKey, Amperes>.Empty,
+            ImmutableDictionary<int, StageLimit>.Empty,
+            ChargerWatts is not null,
+            ImmutableDictionary<Phase, DateTimeOffset>.Empty);
+        var evaluation = new GuardEvaluation(Now, GuardStatus.Initial(Now, TestModes.Shadow), [], [], null, 0)
+        {
+            Envelope = new DispatchEnvelope([], [charger]),
+            Setup = ProtectionSetupFactory.Build(Configuration),
+            ConfigurationValid = true,
+        };
+        return new GuardStep(evaluation, [], GuardMemory.Fresh);
+    }
 
     // IPresentationStore<EvState>
     public PresentationLoad<EvState> Load()

@@ -12,6 +12,7 @@ namespace Switchboard.Application.Ev;
 /// <param name="Composition">The goals, the primary assessment code and the notes.</param>
 /// <param name="SocPercent">The SoC estimate the goals were made with; null when there is none.</param>
 /// <param name="SocGap">Why there is no estimate.</param>
+/// <param name="SocGapSince">When that gap began, for a gap that has a time (too_old, charger_stale); null otherwise.</param>
 /// <param name="KwhPerKm">The consumption the target was computed with (learned, else the fallback).</param>
 /// <param name="NextTrip">The trip the goals are made for (a trip whose start has passed is never here).</param>
 /// <param name="PluggedUnavailable">A plugged signal is declared but has no usable value (an unplugged car is not this: nothing is reserved for it, an unreadable state leaves the goal inactive).</param>
@@ -24,6 +25,7 @@ public sealed record EvSnapshot(
     EvComposition Composition,
     double? SocPercent,
     SocEstimateGap? SocGap,
+    DateTimeOffset? SocGapSince,
     double KwhPerKm,
     Trip? NextTrip,
     EvMode Mode,

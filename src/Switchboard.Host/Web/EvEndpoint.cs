@@ -64,6 +64,7 @@ public sealed record EvOfferedGoalDto(string Kind, double TargetPercent, double 
 /// <param name="Notes">Conditions on top of the reason: calendar unavailable, range unusable, forecast missing, no planner dispatch.</param>
 /// <param name="Mode">auto, pv_only or full_charge.</param>
 /// <param name="SocGap">Why there is no SoC estimate (no_reading, too_old, drift_exceeded, charger_stale, invalid_capacity).</param>
+/// <param name="SocGapSince">When that gap began (too_old, charger_stale); null for any other gap and with an estimate.</param>
 /// <param name="KwhPerKm">The consumption the target was computed with.</param>
 public sealed record EvAssessmentDto(
     bool Failed,
@@ -75,6 +76,7 @@ public sealed record EvAssessmentDto(
     string? Mode,
     double? SocPercent,
     string? SocGap,
+    DateTimeOffset? SocGapSince,
     double? KwhPerKm,
     EvTripDto? NextTrip,
     DateTimeOffset? LastFullAt,
@@ -338,7 +340,7 @@ internal static class EvEndpoint
     {
         if (report.Snapshot is not { } snapshot)
         {
-            return new EvAssessmentDto(true, null, [], null, null, true, null, null, null, null, null, null, []);
+            return new EvAssessmentDto(true, null, [], null, null, true, null, null, null, null, null, null, null, []);
         }
 
         var composition = snapshot.Composition;
@@ -352,6 +354,7 @@ internal static class EvEndpoint
             ApiText.Snake(snapshot.Mode),
             snapshot.SocPercent,
             snapshot.SocGap is { } gap ? ApiText.Snake(gap) : null,
+            snapshot.SocGapSince,
             snapshot.KwhPerKm,
             snapshot.NextTrip is { } trip ? new EvTripDto(trip.Title, trip.Start, trip.Km) : null,
             snapshot.LastFullAt,

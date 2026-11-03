@@ -160,6 +160,7 @@ public sealed class SocEstimatorTests
         Assert.False(step.Estimate.Available);
         Assert.Equal(SocEstimateGap.TooOld, step.Estimate.Gap);
         Assert.Null(step.Estimate.Percent);
+        Assert.Equal(T0 + Defaults.SocMaxAge, step.Estimate.GapSince);
     }
 
     [Fact]
@@ -179,7 +180,7 @@ public sealed class SocEstimatorTests
 
         var changed = Step(repeated.State, T0.AddMinutes(12), new SocReading(52, T0.AddMinutes(12)), new ChargerEnergy(0, true));
         Assert.Equal(52, changed.Estimate.Percent);
-        Assert.False(changed.State.ChargerGap);
+        Assert.Null(changed.State.ChargerGapSince);
     }
 
     [Fact]
@@ -303,7 +304,7 @@ public sealed class SocEstimatorTests
         step = Step(step.State, T0.AddMinutes(20), charger: parked);
 
         Assert.Equal(50, step.Estimate.Percent);
-        Assert.False(step.State.ChargerGap);
+        Assert.Null(step.State.ChargerGapSince);
     }
 
     [Fact]
@@ -314,6 +315,18 @@ public sealed class SocEstimatorTests
 
         Assert.Equal(SocEstimateGap.ChargerStale, step.Estimate.Gap);
         Assert.Equal(SocEstimateGap.ChargerStale, Step(Anchored(), T0.AddMinutes(10), charger: new ChargerEnergy(0, false)).Estimate.Gap);
+    }
+
+    [Fact]
+    public void A_gap_tells_when_it_began()
+    {
+        // Why: a gap is sticky until the car reports a changed value, which a sleeping car may not do for hours; the time it began is what tells the
+        // maintainer which outage cost the estimate (the 2026-11-03 diagnosis had to guess it).
+        var gap = Step(Anchored(), T0.AddMinutes(10), charger: new ChargerEnergy(0, false));
+        var later = Step(gap.State, T0.AddMinutes(20), charger: new ChargerEnergy(0, false));
+
+        Assert.Equal(T0.AddMinutes(10), later.Estimate.GapSince);
+        Assert.Equal(T0.AddMinutes(10), later.State.ChargerGapSince);
     }
 
     [Fact]

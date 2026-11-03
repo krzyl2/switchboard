@@ -5,16 +5,18 @@ public sealed record SocReading(double Percent, DateTimeOffset ReportedAt);
 
 /// <summary>
 /// Energy the charger drew since the previous step, and whether its power data is fresh. Stale data contributes nothing: it is not guessed.
-/// <paramref name="CouldFlow"/> says whether energy could have flowed in this step (the car is plugged, or that is not known): stale charger data
-/// is a gap only then, so an unplugged parked car whose charger entity blips keeps its estimate. The default is the conservative reading.
+/// <paramref name="CouldFlow"/> says whether energy could have flowed in this step (the car is plugged and the charger was not reported off, or either is
+/// not known): stale charger data is a gap only then, so an unplugged parked car whose charger entity blips, or a charger held off while the power
+/// picture is out, keeps its estimate. The default is the conservative reading.
 /// </summary>
 public sealed record ChargerEnergy(double DeltaKwh, bool Fresh, bool CouldFlow = true);
 
 /// <summary>
 /// The estimator's memory: the last value the car <i>changed</i> to, when it reported it, when the car last reported anything (the same value again
-/// included: it ages the estimate), the charger energy drawn since the anchor, and whether charger data went stale since the anchor.
+/// included: it ages the estimate), the charger energy drawn since the anchor, and since when charger data has been missing while energy could flow
+/// (null: no gap since the anchor).
 /// </summary>
-public sealed record SocEstimatorState(double? AnchorPercent, DateTimeOffset? AnchorAt, DateTimeOffset? LastReadingAt, double DrawnKwhSinceAnchor, bool ChargerGap = false)
+public sealed record SocEstimatorState(double? AnchorPercent, DateTimeOffset? AnchorAt, DateTimeOffset? LastReadingAt, double DrawnKwhSinceAnchor, DateTimeOffset? ChargerGapSince = null)
 {
     public static SocEstimatorState Empty { get; } = new(null, null, null, 0);
 }
@@ -46,7 +48,8 @@ public enum SocAnchorEvent
 }
 
 /// <summary>The SoC to plan with, or none. Never the last value held past its welcome.</summary>
-public sealed record SocEstimate(double? Percent, SocEstimateGap? Gap)
+/// <param name="GapSince">When a time-based gap began (too_old: the last report plus <c>soc_max_age</c>; charger_stale: the first step without charger data); null otherwise.</param>
+public sealed record SocEstimate(double? Percent, SocEstimateGap? Gap, DateTimeOffset? GapSince = null)
 {
     public bool Available => Percent is not null;
 }
@@ -102,7 +105,7 @@ public static class SocEstimator
                 drawn += charger.DeltaKwh;
             }
 
-            current = current with { DrawnKwhSinceAnchor = drawn, ChargerGap = current.ChargerGap || (charger.CouldFlow && !charger.Fresh) };
+            current = current with { DrawnKwhSinceAnchor = drawn, ChargerGapSince = current.ChargerGapSince ?? (charger.CouldFlow && !charger.Fresh ? now : null) };
         }
 
         var before = Evaluate(current, now, capacityKwh, parameters);
@@ -146,9 +149,10 @@ public static class SocEstimator
             return new SocEstimate(null, SocEstimateGap.NoReading);
         }
 
-        if (now - (state.LastReadingAt ?? anchoredAt) > p.SocMaxAge)
+        var lastReport = state.LastReadingAt ?? anchoredAt;
+        if (now - lastReport > p.SocMaxAge)
         {
-            return new SocEstimate(null, SocEstimateGap.TooOld);
+            return new SocEstimate(null, SocEstimateGap.TooOld, lastReport + p.SocMaxAge);
         }
 
         if (state.DrawnKwhSinceAnchor > p.DriftLimitKwh)
@@ -156,9 +160,9 @@ public static class SocEstimator
             return new SocEstimate(null, SocEstimateGap.DriftExceeded);
         }
 
-        if (state.ChargerGap)
+        if (state.ChargerGapSince is { } since)
         {
-            return new SocEstimate(null, SocEstimateGap.ChargerStale);
+            return new SocEstimate(null, SocEstimateGap.ChargerStale, since);
         }
 
         var stored = state.DrawnKwhSinceAnchor / (1 + p.LossFraction);

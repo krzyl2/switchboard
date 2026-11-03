@@ -114,6 +114,7 @@
     "mode": "auto",
     "socPercent": 40,
     "socGap": null,
+    "socGapSince": null,
     "kwhPerKm": 0.13333333333333333,
     "nextTrip": {
       "title": "Kurs Warszawa",

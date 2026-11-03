@@ -7,6 +7,7 @@ using Switchboard.Application.Planning;
 using Switchboard.Application.Presentation;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Economics;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Planning;
@@ -36,6 +37,7 @@ public sealed class EvEngine(
     private EvState? _state;
     private SocEstimatorState _estimator = SocEstimatorState.Empty;
     private (DateTimeOffset At, double Watts)? _held;
+    private bool _offBefore;
     private Trip? _lastTrip;
     private bool _saveFailing;
 
@@ -69,7 +71,8 @@ public sealed class EvEngine(
         }
 
         var plugged = !ev1.Plugged.Configured ? true : ev1.IsPlugged;
-        var charger = ChargerStep(presentation.Power, now, ev.Device, plugged != false);
+        var couldFlow = CouldFlow(plugged, ev.Device, now);
+        var charger = ChargerStep(presentation.Power, now, ev.Device, couldFlow);
 
         var reading = ev1.SocPercent is { } percent && ev1.Soc.ReadAt is { } reportedAt ? new SocReading(percent, reportedAt) : null;
         var step = SocEstimator.Step(_estimator, reading, charger.Energy, now, ev.CapacityKwh, p);
@@ -83,7 +86,7 @@ public sealed class EvEngine(
             dirty = true;
         }
 
-        var charging = plugged != false && !(charger.Energy.Fresh && charger.Watts <= 0);
+        var charging = couldFlow && !(charger.Energy.Fresh && charger.Watts <= 0);
         var outcome = KwhPerKmLearner.Learn(
             learned,
             new EvConsumptionObservation(ev1.SocPercent, ev1.Soc.ReadAt, ev1.RangeKm, ev1.Range.ReadAt, charging),
@@ -158,6 +161,7 @@ public sealed class EvEngine(
             composition,
             step.Estimate.Percent,
             step.Estimate.Gap,
+            step.Estimate.GapSince,
             kwhPerKm,
             next,
             state.Mode,
@@ -187,6 +191,22 @@ public sealed class EvEngine(
     /// <summary>The lowest zone price of the tariff unless the section names a zone; zone names are configuration, never code.</summary>
     private static string? CheapZone(EvDefinition ev, EconomicsDefinition? economics) =>
         ev.CheapZone ?? (economics?.Tariff as ZonedPrice)?.Zones.OrderBy(z => z.Price).ThenBy(z => z.Id, StringComparer.Ordinal).Select(z => z.Id).FirstOrDefault();
+
+    /// <summary>
+    /// Whether energy could have flowed into the car since the previous computation: not while it is unplugged, and not while the guard's step reported the
+    /// charger off now and at the previous computation (a charger held off delivers nothing, so a gap in the power picture, such as a meter outage, hides no
+    /// energy). An unknown plugged or charger state, and a step older than the integration gap, could have let energy through.
+    /// </summary>
+    private bool CouldFlow(bool? plugged, DeviceName device, DateTimeOffset now)
+    {
+        var off = presentation.LastStep is { Evaluation: var evaluation } && now - evaluation.At <= _maxGap
+            && evaluation.Setup?.Device(device) is { } spec
+            && evaluation.Envelope.Device(device)?.Reported is { } reported
+            && DeviceLevels.IsOff(spec, reported);
+        var could = plugged != false && !(off && _offBefore);
+        _offBefore = off;
+        return could;
+    }
 
     /// <summary>
     /// The energy the charger drew since the previous step, at the power that step held (as the goal ledger counts), and whether its data is usable. A step
@@ -255,6 +275,7 @@ public sealed class EvEngine(
     {
         _estimator = SocEstimatorState.Empty;
         _held = null;
+        _offBefore = false;
         _lastTrip = null;
     }
 }
