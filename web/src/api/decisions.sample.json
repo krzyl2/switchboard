@@ -38,7 +38,11 @@
           "reserveThresholdA": 14.13,
           "headroomA": -18.87,
           "direction": "import",
-          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+          "reportedAt": "2026-10-24T09:59:56.010+00:00",
+          "trigger": {
+            "effectiveCurrentA": 33.0,
+            "reaction": "shed_one_immediately"
+          }
         },
         "device": {
           "applied": "on",
@@ -94,7 +98,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": -18.87,
           "direction": "import",
-          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+          "reportedAt": "2026-10-24T09:59:56.010+00:00",
+          "trigger": null
         },
         "device": {
           "applied": null,
@@ -150,7 +155,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": -18.87,
           "direction": "import",
-          "reportedAt": "2026-10-24T09:59:56.010+00:00"
+          "reportedAt": "2026-10-24T09:59:56.010+00:00",
+          "trigger": null
         },
         "device": {
           "applied": null,
@@ -202,7 +208,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": null,
           "direction": null,
-          "reportedAt": null
+          "reportedAt": null,
+          "trigger": null
         },
         "device": null,
         "mode": null,
@@ -243,7 +250,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": 45.63,
           "direction": "export",
-          "reportedAt": "2026-10-24T09:57:56.012+00:00"
+          "reportedAt": "2026-10-24T09:57:56.012+00:00",
+          "trigger": null
         },
         "device": null,
         "mode": null,
@@ -284,7 +292,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": 6.13,
           "direction": "import",
-          "reportedAt": "2026-10-24T09:29:56.012+00:00"
+          "reportedAt": "2026-10-24T09:29:56.012+00:00",
+          "trigger": null
         },
         "device": {
           "applied": "off",

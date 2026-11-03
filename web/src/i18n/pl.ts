@@ -397,6 +397,7 @@ export const pl: Messages = {
   commanded: 'Wysłano komendę',
   overrides: 'Ma pierwszeństwo przed',
   budgetShort: 'budżet',
+  estimateDetail: 'szacunek {current}',
   modeCeiling: 'opcja dodatku',
   decisionCannotSwitchOff: 'Tego urządzenia nie da się wyłączyć (nie zadeklarowano stop_actuator); zostaje na minimum.',
   'action.switch_off': 'Wyłączenie',

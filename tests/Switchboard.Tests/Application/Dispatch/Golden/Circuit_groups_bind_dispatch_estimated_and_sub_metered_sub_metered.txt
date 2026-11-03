@@ -138,9 +138,9 @@ dispatches=123 decisions=7
 # 122 2026-10-24T12:15:00.0000000+00:00 hash=A50002F2149D2B34
 -- decisions
 2026-10-24T12:01:00.0000000+00:00 ev_charger SetSetpoint ReserveThreshold commanded=False hash=F6F3F5FF2AA6E6AA
-2026-10-24T12:04:10.0000000+00:00 ev_charger ReduceToMinimum GuardTierExceeded commanded=False hash=44EB792D9E79DEE7
-2026-10-24T12:05:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=CE5CC04E37BB6445
-2026-10-24T12:05:00.0000000+00:00  StopIncreases GuardBudgetLow commanded=False hash=9EC1D91A95CC308F
-2026-10-24T12:07:10.0000000+00:00  SafeStateEntered GuardStaleSignal commanded=False hash=0F95D5AA206F6694
-2026-10-24T12:07:10.0000000+00:00 carport_heater SwitchOff GuardStaleSignal commanded=False hash=8F49FB04503F4DAE
-2026-10-24T12:07:10.0000000+00:00 ev_charger SwitchOff GuardStaleSignal commanded=False hash=740BEA6BEC1F6F26
+2026-10-24T12:04:10.0000000+00:00 ev_charger ReduceToMinimum GuardTierExceeded commanded=False hash=32ADFBD7BBC98747
+2026-10-24T12:05:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=AC242AC09F2EE8D4
+2026-10-24T12:05:00.0000000+00:00  StopIncreases GuardBudgetLow commanded=False hash=80E7222197C84A4F
+2026-10-24T12:07:10.0000000+00:00  SafeStateEntered GuardStaleSignal commanded=False hash=1BB7BD4523E4F024
+2026-10-24T12:07:10.0000000+00:00 carport_heater SwitchOff GuardStaleSignal commanded=False hash=BBF21654D30AA9EA
+2026-10-24T12:07:10.0000000+00:00 ev_charger SwitchOff GuardStaleSignal commanded=False hash=210FC8FB90C8A1F0

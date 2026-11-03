@@ -32,7 +32,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": -18.87,
           "direction": "import",
-          "reportedAt": "2026-10-22T07:41:59+00:00"
+          "reportedAt": "2026-10-22T07:41:59+00:00",
+          "trigger": null
         },
         "device": {
           "applied": "on",
@@ -84,7 +85,8 @@
           "reserveThresholdA": 14.13,
           "headroomA": -18.87,
           "direction": "import",
-          "reportedAt": "2026-10-22T07:40:59+00:00"
+          "reportedAt": "2026-10-22T07:40:59+00:00",
+          "trigger": null
         },
         "device": {
           "applied": "on",

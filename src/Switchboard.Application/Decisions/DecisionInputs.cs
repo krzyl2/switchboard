@@ -31,6 +31,8 @@ public sealed record DecisionInputs(
 /// <see cref="Multiple"/>, <see cref="Band"/> and <see cref="Reaction"/> belong to the measured magnitude.
 /// </summary>
 /// <param name="Headroom">To the reserve threshold, from the measured current.</param>
+/// <param name="Trigger">For a tier or budget reaction only: the estimate the reaction followed and its band's reaction. The estimate counts in-flight
+/// changes and is taken before the reaction's own holds relieve it, so a shed on a phase whose measured band is harmless still says why.</param>
 public sealed record PhaseDecisionInputs(
     Phase Phase,
     bool DataValid,
@@ -45,7 +47,13 @@ public sealed record PhaseDecisionInputs(
     Amperes ReserveThreshold,
     Amperes? Headroom,
     FlowDirection? Direction,
-    DateTimeOffset? ReportedAt);
+    DateTimeOffset? ReportedAt)
+{
+    public ReactionTrigger? Trigger { get; init; }
+}
+
+/// <summary>The estimate a guard reaction followed (measured plus counted in-flight changes, before its holds) and the reaction of its band.</summary>
+public sealed record ReactionTrigger(Amperes EffectiveCurrent, TierReaction Reaction);
 
 /// <summary>The device stage at the decision.</summary>
 /// <param name="ShedRank">Position in the shed order (1 sheds first); null for a no_shed device.</param>

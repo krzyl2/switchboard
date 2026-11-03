@@ -39,11 +39,12 @@ internal sealed class GuardStatusProjector
 
     public DecisionInputs PhaseInputs(ConstraintKey key) => new(PhaseDecision(key), null, null, null, null);
 
-    public DecisionInputs Inputs(DeviceSpec device, int stage, ConstraintKey key)
+    /// <param name="trigger">What a tier or budget reaction followed (see <see cref="PhaseDecisionInputs.Trigger"/>).</param>
+    public DecisionInputs Inputs(DeviceSpec device, int stage, ConstraintKey key, ReactionTrigger? trigger = null)
     {
         var sample = _load.Sample(device.Id, stage);
         return new DecisionInputs(
-            PhaseDecision(key),
+            PhaseDecision(key) with { Trigger = trigger },
             new DeviceDecisionInputs(
                 sample is { Fresh: true } ? sample.Applied : null,
                 sample is { Fresh: true },
@@ -121,7 +122,7 @@ internal sealed class GuardStatusProjector
         var measured = guard.Multiple;
         var band = profile.BandIndex(measured);
         var effective = _load.Effective(key);
-        var effectiveReaction = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
+        var effectiveReaction = profile.ReactionAt(effective.Multiple);
         var toReserve = threshold - effective.Signed;
         var lowBudget = OverloadBudget.IsBelow(budget, Setup.Budget.StopIncreasesBelow);
         var state = profile.Band(band).Reaction == TierReaction.ShedAllOnPhase
@@ -164,7 +165,7 @@ internal sealed class GuardStatusProjector
     {
         var guard = _phases[key];
         var profile = guard.Profile;
-        var effectiveReaction = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
+        var effectiveReaction = profile.ReactionAt(effective.Multiple);
         return !holdsAll
             && guard.Valid
             && !lowBudget
@@ -257,7 +258,7 @@ internal sealed class GuardStatusProjector
             foreach (var key in Setup.ConstraintsOf(device))
             {
                 var groupTerm = _load.Estimated(key);
-                var delta = _load.Delta(view, key.Phase, groupTerm);
+                var delta = _load.Delta(view, key);
                 var basis = groupTerm ? LoadModel.GroupTerm(device, key.Phase, view.Reported, _load.Draw(device.Id, key.Phase)) : contribution[key.Phase];
                 estimate[key] = basis + delta;
                 inFlight[key] = delta;

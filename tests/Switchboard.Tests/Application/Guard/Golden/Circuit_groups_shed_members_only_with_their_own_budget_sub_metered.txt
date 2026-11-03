@@ -37,7 +37,7 @@
 -- evaluations
 # 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=6D541A69B7C6DF54
 # 1 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=True valid=True safe=False/None/ hash=8336A984CBD2E806
-# 2 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=EBDC5A3609B7CDBD
+# 2 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=6136FD090A4E0948
    intent carport_heater stage= Off GuardBudgetLow phase=L1 group=carport over=LockoutMinOn cause=
    limit carport_heater 1=Off
 # 3 2026-10-24T12:00:51.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=7989489E1521A815
@@ -52,7 +52,7 @@
    limit carport_heater 1=Off
 # 8 2026-10-24T12:01:20.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=851B2C4559754F73
    limit carport_heater 1=Off
-# 9 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=D0F1BE5378451833
+# 9 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=50924A16087693B2
    event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
    event Group group=carport phase=L1 StopIncreases GuardBudgetLow cause=
    limit carport_heater 1=Off
@@ -62,19 +62,19 @@
    limit carport_heater 1=Off
 # 12 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=46BFE53C44E19AAF
    limit carport_heater 1=Off
-# 13 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=3B2FC56072A393BB
+# 13 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=55EB8C4646A2DCFC
    event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
    event Group group=carport phase=L1 RequestReduction ReserveThreshold cause=
    limit carport_heater 1=Off
 # 14 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=69293E499C6609C9
    limit carport_heater 1=Off
-# 15 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=7265BB544D2731C5
+# 15 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=ACD34B81DE9AC0A1
    intent carport_heater stage= Off GuardStaleSignal phase=L1 group=carport over= cause=
    intent ev_charger stage= Off GuardStaleSignal phase=L1 group=carport over= cause=
    event Group group=carport phase=L1 SafeStateEntered GuardStaleSignal cause=
    limit carport_heater 1=Off
    limit ev_charger 1=Off
-# 16 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=1871B92FE86EF18A
+# 16 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=51DF0E6D2ECFA399
    event Group group=carport phase=L1 SafeStateExited GuardStaleSignal cause=
    limit carport_heater 1=Off
    limit ev_charger 1=Off
@@ -84,7 +84,7 @@
 # 18 2026-10-24T12:02:20.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=9B2067477D8138AE
    limit carport_heater 1=Off
    limit ev_charger 1=Off
-# 19 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=473F825953D173C4
+# 19 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=9D6B280B30964BE1
    event Group group=carport phase=L1 ReductionRequestCleared HeadroomAvailable cause=
    limit carport_heater 1=Off
    limit ev_charger 1=Off
@@ -220,7 +220,7 @@
 # 63 2026-10-24T12:07:20.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=607EDC6E956B982E
    limit carport_heater 1=Off
    limit ev_charger 1=Off
-# 64 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=F2AC8C205B1D73B8
+# 64 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=A2D48F69CDE65CBF
    intent carport_heater stage= Released HeadroomAvailable phase= group=carport over= cause=
    intent ev_charger stage= Released HeadroomAvailable phase= group=carport over= cause=
    event Group group=carport phase=L1 IncreasesAllowed HeadroomAvailable cause=

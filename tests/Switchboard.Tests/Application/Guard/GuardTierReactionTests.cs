@@ -1,5 +1,6 @@
 using Switchboard.Application.Decisions;
 using Switchboard.Application.Guard;
+using Switchboard.Domain.Connection;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
 using Switchboard.Domain.Signals;
@@ -442,6 +443,40 @@ public sealed class GuardTierReactionTests
         Assert.Contains(entering.Intents, i => i.Device.Value == "heater_l1");
         Assert.Equal(33.75 - 6.6, entering.Status.Phases.Single(p => p.Phase == Phase.L1).EffectiveCurrent!.Value.Value, 9);
         Assert.Equal(33.75 - 6.6, entering.Envelope.For(Switchboard.Domain.Dispatch.ConstraintKey.Main(Phase.L1))!.EstimatedCurrent!.Value.Value, 9);
+    }
+
+    [Fact]
+    public void A_reaction_records_the_estimate_it_followed()
+    {
+        // Why: on 2026-11-03 at 03:49 a shed was recorded with L1 at 0.68 x In, band 0, "may add": the meter's band, while the guard had reacted to the
+        // estimate with a start in flight, and nothing in the record said so. The record keeps the estimate its hold leaves (as the status shows it)
+        // and names the one the reaction followed.
+        var s = new GuardScenario(TestDevices.Document());
+        s.SetState("ev_charger", new SetpointApplied(new Amperes(6)));
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(1));
+
+        var shed = Assert.Single(s.Sample(Phase.L1, 33.75).Intents, i => i.Device.Value == "heater_l1");
+
+        var phase = shed.Inputs.Phase!;
+        Assert.Equal(new ReactionTrigger(new Amperes(33.75), TierReaction.ShedOneImmediately), phase.Trigger);
+        Assert.Equal(33.75 - 6.6, phase.EffectiveCurrent!.Value.Value, 9);
+    }
+
+    [Fact]
+    public void Every_hold_of_one_reaction_records_the_same_estimate()
+    {
+        // Why: a shed of everything on a phase holds device after device; each record must say what the reaction followed, not an estimate the holds
+        // before it in the same evaluation had already lowered.
+        var s = new GuardScenario(TestDevices.Document());
+        s.SetState("ev_charger", new SetpointApplied(new Amperes(16)));
+        s.SampleAll(8, 8, 8);
+        s.RunUntil(T0 + TimeSpan.FromSeconds(1));
+
+        var holds = s.Sample(Phase.L1, 40).Intents.Where(i => i.Phase == Phase.L1).ToList();
+
+        Assert.True(holds.Count >= 2, $"{holds.Count} holds");
+        Assert.All(holds, i => Assert.Equal(new ReactionTrigger(new Amperes(40), TierReaction.ShedAllOnPhase), i.Inputs.Phase!.Trigger));
     }
 
     [Fact]

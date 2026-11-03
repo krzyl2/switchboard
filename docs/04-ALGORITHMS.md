@@ -127,6 +127,8 @@ While open:
 estimate(signal) = last_value_before(t_cmd) + Σ ΔP(all open commands affecting it)
 ```
 
+A command's own change ends on one constraint before the window closes: once that constraint's own measurement (the main phase current, or a circuit group's sub-meter) has reported after `required` (and not after now), it contains the change, and adding it again would double it. The window itself still waits for every balance signal (the phase power of the same meter poll can arrive a moment after the current), and verification is unchanged. A circuit group without a sub-meter has no measurement of its own and counts the change until the window closes; a hold protection makes on the device changes its target and keeps counting as a hold (2026-11-03, live: a charger start at 18 A was counted on top of a current that already showed it, 1.40 × In from 0.68 × In, and protection cut it). A guard reaction's decision records the estimate it followed and its band's reaction (`trigger`), beside the estimate its own hold leaves.
+
 On close, verification:
 
 ```

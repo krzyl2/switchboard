@@ -20,7 +20,7 @@ namespace Switchboard.Tests.Application.Dispatch;
 public sealed class PlannerDispatchDigestTests(DispatchSyntheticReplayRun run) : IClassFixture<DispatchSyntheticReplayRun>
 {
     // The digests of EconomicsBackwardCompatibilityTests (taken at the 0.9 engine; the log line's list version is read as 6 there, see its Add).
-    private const string BalanceWorlds = "B604FE86D71EAF34922B01FACC2909A1DB3EF0DDAF849B48F5EA23D831484135";
+    private const string BalanceWorlds = "4C168E582DFC7382CEDADAD893C9CED3CB64C609A0821304FBFCE3A9C8F4DFC1";
     private const string SyntheticShadow = "37255EAC05B4E55FFF0AB687682A4FB3D1BD60B8D8D7728CB21AC9146B1628CC";
 
     private static readonly string[] DeviceNames = ["heater_l1", "heater_l2", "heater_l3", "pool", "ev_charger"];

@@ -35,14 +35,14 @@
    BudgetMemory
    .Budget
 -- evaluations
-# 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=D984FCEBAC100804
+# 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=AB94841DA6C9A0F8
    intent carport_heater stage= Off GuardTierExceeded phase=L1 group=carport over=LockoutMinOn cause=
    limit carport_heater 1=Off
 # 1 2026-10-24T12:00:01.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=0E3196E802B2608B
    limit carport_heater 1=Off
 # 2 2026-10-24T12:00:15.0000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=3ADA0DD5975B0C20
    limit carport_heater 1=Off
-# 3 2026-10-24T12:00:22.5000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=FAEC7C0D0D6DF548
+# 3 2026-10-24T12:00:22.5000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=A5CDF0C7F5F6FA74
    intent ev_charger stage= AtMinimum GuardBudgetLow phase=L1 group=carport over= cause=
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
@@ -58,7 +58,7 @@
 # 7 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=67F97E6D8B24E916
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
-# 8 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=209FAFAD9FB0DC58
+# 8 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=030A4C8FB4567DE1
    event Group group=carport phase=L1 StopIncreases GuardBudgetLow cause=
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
@@ -71,7 +71,7 @@
 # 11 2026-10-24T12:01:20.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=C17B1499C9C054E2
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
-# 12 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=1A00F5932E7AB206
+# 12 2026-10-24T12:01:30.0000000+00:00 cycle=59761443 boundary=True valid=True safe=False/None/ hash=0F80BB5A55C6CFEA
    event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
@@ -84,7 +84,7 @@
 # 15 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=4416C161039E63AE
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
-# 16 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=F16797DA4F8F1BE2
+# 16 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=2F4FB7A7E9532F97
    event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
@@ -124,7 +124,7 @@
 # 28 2026-10-24T12:02:52.5000021+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=AA9B14848A36831E
    limit carport_heater 1=Off
    limit ev_charger 1=AtMinimum
-# 29 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=3DC18A45EDB37B4D
+# 29 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=41E0DC57192E2BF9
    intent carport_heater stage= Released HeadroomAvailable phase= group=carport over= cause=
    intent ev_charger stage= Released HeadroomAvailable phase= group=carport over= cause=
    event Group group=carport phase=L1 IncreasesAllowed HeadroomAvailable cause=
@@ -160,7 +160,7 @@
 # 59 2026-10-24T12:06:10.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=C870EAD7F071FF2A
 # 60 2026-10-24T12:06:20.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=50B60F0EE28F4D8A
 # 61 2026-10-24T12:06:20.0000000+00:00 cycle=59761452 boundary=False valid=True safe=False/None/ hash=9872568525D0D111
-# 62 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=True valid=True safe=False/None/ hash=2511A242FDE01B5F
+# 62 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=True valid=True safe=False/None/ hash=5F68D07D60360AC5
    intent ev_charger stage= AtMinimum GuardTierExceeded phase=L1 group=carport over= cause=
    limit ev_charger 1=AtMinimum
 # 63 2026-10-24T12:06:30.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=808E0D0AAD39F10B
@@ -171,7 +171,7 @@
    limit ev_charger 1=AtMinimum
 # 66 2026-10-24T12:06:50.0000000+00:00 cycle=59761453 boundary=False valid=True safe=False/None/ hash=61DD739257119DA4
    limit ev_charger 1=AtMinimum
-# 67 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=True valid=True safe=False/None/ hash=E931E641F234088E
+# 67 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=True valid=True safe=False/None/ hash=51F81F49CB56E00F
    intent ev_charger stage= Released HeadroomAvailable phase= group=carport over= cause=
 # 68 2026-10-24T12:07:00.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=8CCA107320A4E2C2
 # 69 2026-10-24T12:07:10.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=35573D3A8FDAFF22

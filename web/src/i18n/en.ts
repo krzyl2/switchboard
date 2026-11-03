@@ -396,6 +396,7 @@ export const en = {
   commanded: 'Commanded',
   overrides: 'Takes precedence over',
   budgetShort: 'budget',
+  estimateDetail: 'estimated {current}',
   modeCeiling: 'add-on option',
   decisionCannotSwitchOff: 'This device cannot be switched off (no stop_actuator declared); it stays at its minimum.',
   'action.switch_off': 'Switch off',

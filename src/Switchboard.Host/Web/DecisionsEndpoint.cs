@@ -117,7 +117,11 @@ public sealed record PhaseInputsDto(
     double ReserveThresholdA,
     double? HeadroomA,
     string? Direction,
-    DateTimeOffset? ReportedAt);
+    DateTimeOffset? ReportedAt,
+    TriggerDto? Trigger);
+
+/// <summary>The estimate a guard reaction followed (measured plus counted in-flight changes, before its holds) and the reaction of its band.</summary>
+public sealed record TriggerDto(double EffectiveCurrentA, string Reaction);
 
 public sealed record DeviceInputsDto(
     string? Applied,
@@ -261,7 +265,8 @@ internal static class DecisionsEndpoint
                     p.ReserveThreshold.Value,
                     p.Headroom?.Value,
                     ApiText.SnakeOrNull(p.Direction),
-                    p.ReportedAt)
+                    p.ReportedAt,
+                    p.Trigger is { } trigger ? new TriggerDto(trigger.EffectiveCurrent.Value, ApiText.Snake(trigger.Reaction)) : null)
                 : null,
             decision.Inputs.Device is { } d
                 ? new DeviceInputsDto(

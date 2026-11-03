@@ -64,6 +64,9 @@ public sealed record BreakerProfile
 
     public TierBand Band(int band) => Tiers.Bands[band];
 
+    /// <summary>The reaction of the band a multiple falls into.</summary>
+    public TierReaction ReactionAt(double multiple) => Band(BandIndex(multiple)).Reaction;
+
     /// <summary>The multiple a band starts above: 0 for the first band, the previous band's up_to otherwise.</summary>
     public double LowerBound(int band) => band == 0 ? 0 : Tiers.Bands[band - 1].UpTo!.Value;
 

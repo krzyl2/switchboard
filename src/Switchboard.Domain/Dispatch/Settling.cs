@@ -27,7 +27,14 @@ public readonly record struct ClosingSignal(ClosingInput Input, Phase Phase, Dat
 /// move has reported after <see cref="Required"/> (= command time + the device's reaction time),
 /// and is closed anyway at <see cref="Timeout"/> (command time + settling.hard_timeout).
 /// </summary>
-public sealed record SettlingWindow(DateTimeOffset CommandedAt, DateTimeOffset Required, DateTimeOffset Timeout);
+public sealed record SettlingWindow(DateTimeOffset CommandedAt, DateTimeOffset Required, DateTimeOffset Timeout)
+{
+    /// <summary>
+    /// A report that shows the command's effect: made after <see cref="Required"/> (the device had its reaction time) and not after
+    /// <paramref name="now"/> (a report stamped ahead of a clock that stepped back proves nothing).
+    /// </summary>
+    public bool Covers(DateTimeOffset? reportedAt, DateTimeOffset now) => reportedAt is { } at && at > Required && at <= now;
+}
 
 public enum SettlingState
 {
@@ -52,7 +59,7 @@ public static class SettlingRule
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(closingSet);
-        var silent = closingSet.Where(s => s.ReportedAt is not { } at || at <= window.Required).ToImmutableArray();
+        var silent = closingSet.Where(s => !window.Covers(s.ReportedAt, now)).ToImmutableArray();
         if (silent.IsEmpty && now >= window.Required)
         {
             return new SettlingOutcome(SettlingState.Closed, []);

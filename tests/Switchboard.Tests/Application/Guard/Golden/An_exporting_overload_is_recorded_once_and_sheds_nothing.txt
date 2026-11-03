@@ -20,7 +20,7 @@
    .GroupBudgets
 -- evaluations
 # 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=1FC86910343B8072
-# 1 2026-10-24T12:00:10.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=5D937C16B9E6C691
+# 1 2026-10-24T12:00:10.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=D58BF75A14FC8897
    event Phase group= phase=L1 CannotReduceExporting GuardTierExceeded cause=
 # 2 2026-10-24T12:00:15.0000001+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=4DE6A33063115C75
 # 3 2026-10-24T12:00:20.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=186DA8BC66F8FD38
@@ -29,7 +29,7 @@
 # 6 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=233324BFC5ACC298
 # 7 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=C22AE15F0ABC1EAD
 # 8 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=BCD087815ED2B75B
-# 9 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=8CFEE2E65E158629
+# 9 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=67F9A730F246CC1B
    event Phase group= phase=L1 StopIncreases GuardBudgetLow cause=
 # 10 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=EBAFB265ECDF3ACA
 # 11 2026-10-24T12:01:10.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=08196F32B19AC932
@@ -40,7 +40,7 @@
 # 16 2026-10-24T12:01:50.0000000+00:00 cycle=59761443 boundary=False valid=True safe=False/None/ hash=8A65DA87766B66C4
 # 17 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=True valid=True safe=False/None/ hash=492BB6B8F752645F
 # 18 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=43ED9CDD504F17CB
-# 19 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=2ACFD81F43F86144
+# 19 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=CA369E02EF956756
    intent heater_l1 stage= Off GuardBudgetLow phase=L1 group= over= cause=
    intent ev_charger stage= AtMinimum GuardBudgetLow phase=L1 group= over= cause=
    limit ev_charger 1=AtMinimum
@@ -63,7 +63,7 @@
 # 25 2026-10-24T12:02:50.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=A706F6EE2906BDCC
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
-# 26 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=FA5086505DF689DF
+# 26 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=73C9DFE395A9B32E
    event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off

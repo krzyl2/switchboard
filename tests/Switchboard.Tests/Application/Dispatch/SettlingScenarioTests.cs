@@ -122,6 +122,64 @@ public sealed class SettlingScenarioTests
     }
 
     [Fact]
+    public void A_started_device_the_meter_current_already_shows_is_not_counted_twice()
+    {
+        // Why: the 2026-11-03 03:49 shed. The phase current reported after the reaction time already carried the started load, but the phase power of the
+        // same meter poll had not arrived, so the window stayed open and the estimate added the start on top of a meter that showed it (1.4 x In from
+        // 0.68 x In): protection cut a load that overloaded nothing. The current's own report ends the change on its constraint; the window still waits.
+        var (s, window) = StartedHeaterWithSilentPower();
+
+        s.RunUntil(window.Required + TimeSpan.FromSeconds(1));
+        s.Sample(Phase.L1, 3 + 6.6);
+
+        Assert.NotNull(s.Ledger("heater_l1")!.Window);
+        Assert.Equal(3 + 6.6, s.Envelope(Phase.L1).EstimatedCurrent!.Value.Value, 9);
+        Assert.Equal(0, s.Envelope(Phase.L1).InFlight.Value);
+    }
+
+    [Fact]
+    public void A_hold_on_a_device_whose_window_the_meter_covers_still_relieves_at_once()
+    {
+        // Why: only the command's own change ends with the meter's report. A hold protection makes in the same evaluation still counts its relief at
+        // once; otherwise the guard would see no effect of its own shed and cut the next device for nothing.
+        var (s, window) = StartedHeaterWithSilentPower();
+        s.RunUntil(window.Required + TimeSpan.FromSeconds(1));
+
+        var shed = s.Sample(Phase.L1, 3 + 6.6 + 26);
+
+        Assert.Contains(shed.Intents, i => i.Device.Value == "heater_l1" && i.Target == GuardTarget.Off);
+        Assert.Equal(3 + 26, shed.Status.Phases.Single(p => p.Phase == Phase.L1).EffectiveCurrent!.Value.Value, 9);
+    }
+
+    [Fact]
+    public void An_estimated_circuit_group_keeps_the_change_until_the_window_closes()
+    {
+        // Why: a circuit group without a sub-meter has no reading of its own (its current is the worst case of its members), so no report can show the
+        // change on it: the start keeps counting there until the window closes, after the main phase's current has already covered it.
+        var grouped = DispatchDevices.Heaters.ReplaceLineEndings("\n").Replace("actuator: switch.heater_1\n", "actuator: switch.heater_1\n    circuit_group: carport\n", StringComparison.Ordinal);
+        var (s, window) = StartedHeaterWithSilentPower(grouped, "circuit_groups:\n  - id: carport\n    breaker_rating_a: 16\n    characteristic: B\n    phases: [L1]\n");
+
+        s.RunUntil(window.Required + TimeSpan.FromSeconds(1));
+        s.Sample(Phase.L1, 3 + 6.6);
+
+        Assert.Equal(0, s.Envelope(Phase.L1).InFlight.Value);
+        Assert.Equal(6.6, s.Last.Envelope.For(new ConstraintKey("carport".ToGroup(), Phase.L1))!.InFlight.Value, 9);
+    }
+
+    /// <summary>The L1 heater commanded on in active mode, reporting on, and the phase power pinned at its report from before the command (it stays silent).</summary>
+    private static (GuardScenario Scenario, SettlingWindow Window) StartedHeaterWithSilentPower(string? devices = null, string extra = "")
+    {
+        var port = new RecordingDeviceCommandPort();
+        var s = DispatchScenario.Create(devices ?? DispatchDevices.Heaters, ["heater_l1"], Fast, mode: DispatchScenario.Active, port: port, extra: extra);
+        s.PollUntil(T0 + Cycle, 3, 3, 3);
+        Assert.Contains("heater_l1 relay 1 on", port.Commands);
+        var window = s.Ledger("heater_l1")!.Window!.Times;
+        s.SetState("heater_l1", new RelayApplied(true));
+        s.SetLoad(Phase.L1, 3 * GuardScenario.Volts, reportedAt: window.CommandedAt);
+        return (s, window);
+    }
+
+    [Fact]
     public void Unresponsive_on_change_relay_is_marked_after_mismatch_limit_excluded_and_retried()
     {
         // A relay that reports only on change ignores every command: it never reports, and the

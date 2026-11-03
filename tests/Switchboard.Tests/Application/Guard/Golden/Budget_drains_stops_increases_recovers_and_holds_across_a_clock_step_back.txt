@@ -56,7 +56,7 @@
 # 4 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=740FD37F60ADEE4C
 # 5 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=E4836627E6550665
 # 6 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=F190CF9056BFC5AD
-# 7 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=C1041575932C8EE0
+# 7 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=0CA000E756C0BAC5
    event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
 # 8 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=4FEE4EA33B770CE0
 # 9 2026-10-24T12:01:10.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=50C1F4E8028D8900
@@ -69,7 +69,7 @@
 # 16 2026-10-24T12:02:00.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=0A7F0C1AA19A4086
 # 17 2026-10-24T12:02:10.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=622D47095DBE058F
 # 18 2026-10-24T12:02:20.0000000+00:00 cycle=59761444 boundary=False valid=True safe=False/None/ hash=4AA4815B5A59141B
-# 19 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=0DF8FE483992BA4C
+# 19 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=True valid=True safe=False/None/ hash=95C9C22E7619E279
    intent heater_l1 stage= Off GuardTierExceeded phase=L1 group= over= cause=
    limit heater_l1 1=Off
 # 20 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=D097EC2C36FDD385
@@ -152,14 +152,14 @@
    limit heater_l1 1=Off
 # 59 2026-10-24T12:07:10.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=3C13E0E44DBA9C4B
    limit heater_l1 1=Off
-# 60 2026-10-24T12:07:15.0000001+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=F19B92C073507023
+# 60 2026-10-24T12:07:15.0000001+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=A399F784E4C9C431
    intent ev_charger stage= AtMinimum GuardBudgetLow phase=L1 group= over= cause=
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
 # 61 2026-10-24T12:07:20.0000000+00:00 cycle=59761454 boundary=False valid=True safe=False/None/ hash=1D38B0E02B188953
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
-# 62 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=37EBB81D754013EE
+# 62 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=CFF118214D1DEAFD
    event Phase group= phase=L1 StopIncreases GuardBudgetLow cause=
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
@@ -256,7 +256,7 @@
 # 93 2026-10-24T11:11:20.0000000+00:00 cycle=59761342 boundary=False valid=True safe=False/None/ hash=584C3C4F810D8687
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
-# 94 2026-10-24T11:11:30.0000000+00:00 cycle=59761343 boundary=True valid=True safe=False/None/ hash=AB92C90639587297
+# 94 2026-10-24T11:11:30.0000000+00:00 cycle=59761343 boundary=True valid=True safe=False/None/ hash=5D62B92EDA4B4635
    event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
@@ -380,7 +380,7 @@
 # 134 2026-10-24T11:16:20.0000000+00:00 cycle=59761352 boundary=False valid=True safe=False/None/ hash=E7C553623328C94C
    limit ev_charger 1=AtMinimum
    limit heater_l1 1=Off
-# 135 2026-10-24T11:16:30.0000000+00:00 cycle=59761353 boundary=True valid=True safe=False/None/ hash=E85FBB36160FE07E
+# 135 2026-10-24T11:16:30.0000000+00:00 cycle=59761353 boundary=True valid=True safe=False/None/ hash=8EC05924C3EDC5A1
    intent ev_charger stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l1 stage= Released HeadroomAvailable phase= group= over= cause=
    event Phase group= phase=L1 IncreasesAllowed HeadroomAvailable cause=

@@ -113,6 +113,12 @@ export function describeDecision(decision: Decision, t: Messages, lang: Lang): D
     if (phase.dataValid && phase.currentA !== null) {
       const parts = [`${phase.phase} ${formatQuantity(phase.currentA, 'A', lang)}`];
       if (phase.multiple !== null) parts.push(`${formatNumber(phase.multiple, lang, 2)} × In`);
+      // What a tier or budget reaction followed when it is not what the meter says: the estimate with the changes in flight can lie in another band.
+      const trigger = phase.trigger;
+      if (trigger !== null && (trigger.reaction !== phase.reaction || Math.abs(trigger.effectiveCurrentA - phase.currentA) >= 0.05)) {
+        const estimate = fill(t.estimateDetail, { current: formatQuantity(trigger.effectiveCurrentA, 'A', lang) });
+        parts.push(`${estimate} (${t[`tierReaction.${trigger.reaction}`]})`);
+      }
       parts.push(`${t.budgetShort} ${formatNumber(phase.budget * 100, lang, 0)}%`);
       details.push(parts.join(' · '));
     } else if (phase.invalidReason !== null) {

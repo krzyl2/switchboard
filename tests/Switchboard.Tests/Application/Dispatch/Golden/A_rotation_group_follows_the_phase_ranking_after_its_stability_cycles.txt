@@ -143,12 +143,12 @@ dispatches=100 decisions=12
 2026-10-24T12:00:30.0000000+00:00 heater_l1 SwitchOn HeadroomAvailable commanded=False hash=C2DEEE0640B0F1EE
 2026-10-24T12:03:10.0000000+00:00  ForeignLoadDetected ForeignLoad commanded=False hash=AA79639FE16B2875
 2026-10-24T12:03:30.0000000+00:00 heater_l2 SwitchOn HeadroomAvailable commanded=False hash=EE95AB249B06AA7E
-2026-10-24T12:04:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=1EA40906DDDA4BD0
+2026-10-24T12:04:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=5DA57FDD77BE1F74
 2026-10-24T12:04:00.0000000+00:00 heater_l1 Deferred ForeignLoad commanded=False hash=5704AF99027DE4BC
 2026-10-24T12:06:30.0000000+00:00 heater_l1 SwitchOff ForeignLoad commanded=False hash=8F0BF422BF49AC37
 2026-10-24T12:06:30.0000000+00:00 heater_l3 SwitchOn HeadroomAvailable commanded=False hash=1C20FC2D7631B570
-2026-10-24T12:07:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=5C9D8262F3352181
-2026-10-24T12:07:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=0126023635A77F6E
+2026-10-24T12:07:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=16F7BE4B2C28D015
+2026-10-24T12:07:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=9E8E3B962BC9223C
 2026-10-24T12:07:00.0000000+00:00 heater_l2 Deferred ReserveThreshold commanded=False hash=95ADDBBD8FEF1458
-2026-10-24T12:09:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=4712A7303783595F
+2026-10-24T12:09:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=4D039FFD1CB02E6D
 2026-10-24T12:09:30.0000000+00:00 heater_l1 SwitchOn HeadroomAvailable commanded=False hash=4DC5272E350A4D2F

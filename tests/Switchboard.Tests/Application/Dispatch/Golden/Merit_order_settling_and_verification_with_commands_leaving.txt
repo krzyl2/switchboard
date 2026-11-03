@@ -291,11 +291,11 @@ dispatches=265 decisions=11
 2026-10-24T12:01:00.0000000+00:00 ev_charger SetSetpoint ReserveThreshold commanded=True hash=DC748068366FAD5D
 2026-10-24T12:01:00.0000000+00:00 heater_l1 SwitchOff ValueRankBelowCutoff commanded=True hash=0ACA0848C756524D
 2026-10-24T12:01:30.0000000+00:00 ev_charger SetSetpoint ReserveThreshold commanded=True hash=56641627442870E3
-2026-10-24T12:03:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=DA8BAB0F63EA689A
-2026-10-24T12:03:00.0000000+00:00 ev_charger ReduceToMinimum GuardTierExceeded commanded=True hash=96AAB4683AB183B3
-2026-10-24T12:05:00.0000000+00:00  StopIncreases GuardBudgetLow commanded=False hash=75C36A7FBC630F61
-2026-10-24T12:07:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=591FBC618A33D837
-2026-10-24T12:12:30.0000000+00:00  IncreasesAllowed HeadroomAvailable commanded=False hash=75F3A78D559E6AAF
-2026-10-24T12:12:30.0000000+00:00 ev_charger Release HeadroomAvailable commanded=False hash=DA31F4F6AC7862B9
-2026-10-24T12:17:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=582C80209AB7CE90
-2026-10-24T12:24:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=9549D4D70C9FB736
+2026-10-24T12:03:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=8B7A92DD16DE5A32
+2026-10-24T12:03:00.0000000+00:00 ev_charger ReduceToMinimum GuardTierExceeded commanded=True hash=0E43A1583D7DB273
+2026-10-24T12:05:00.0000000+00:00  StopIncreases GuardBudgetLow commanded=False hash=ED4A3DBEB05536F2
+2026-10-24T12:07:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=1BECCE067EE8528A
+2026-10-24T12:12:30.0000000+00:00  IncreasesAllowed HeadroomAvailable commanded=False hash=59257023BF60A0D1
+2026-10-24T12:12:30.0000000+00:00 ev_charger Release HeadroomAvailable commanded=False hash=FCA012C8DB89A0AB
+2026-10-24T12:17:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=B8468D669442CD38
+2026-10-24T12:24:30.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=3D6BB22D5C2252C1

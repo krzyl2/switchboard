@@ -87,7 +87,8 @@ internal sealed class LoadEstimator
     /// A device as the load model sees it: its applied state, its target (the ledger's, else the
     /// applied state, with protection's holds applied, including those made earlier in this
     /// evaluation) and whether the change counts: in shadow mode while target and applied state
-    /// differ, in active mode while its command window is open (then measurement rules).
+    /// differ, in active mode while its command window is open (then measurement rules), on each
+    /// constraint as <see cref="CountsOn"/> narrows it.
     /// </summary>
     public DeviceView View(DeviceSpec device)
     {
@@ -116,19 +117,34 @@ internal sealed class LoadEstimator
     }
 
     /// <summary>
-    /// The counted change on a phase. While an active command's window is open it is the change
+    /// Whether the device's change counts on one constraint: as <see cref="DeviceView.Counts"/> says, except that an active command's own change
+    /// (target unchanged by protection) stops counting on a measured constraint once that constraint's reading was reported after the window's
+    /// reaction time. That reading contains the change; the window itself may still wait for another closing input of the same meter poll (the
+    /// phase power reported a moment after the current), and counting the change on top of it then would double it. An estimated circuit group has
+    /// no reading of its own and counts the change until the window closes.
+    /// </summary>
+    public bool CountsOn(DeviceView view, ConstraintKey key) =>
+        view.Counts
+        && !(_active
+            && view.Ledger is { Window: { } window } ledger
+            && view.Target.Equals(ledger.Target)
+            && !Estimated(key)
+            && window.Covers(_phases[key].Reading?.ReportedAt, Now));
+
+    /// <summary>
+    /// The counted change on a constraint. While an active command's window is open it is the change
     /// from the level the command started at, against the contribution captured then: the relay
     /// may report "on" before the meter sees its load, and the estimate must not drop it early.
     /// </summary>
-    public Amperes Delta(DeviceView view, Phase phase, bool groupTerm)
+    public Amperes Delta(DeviceView view, ConstraintKey key)
     {
-        if (!view.Counts)
+        if (!CountsOn(view, key))
         {
             return Amperes.Zero;
         }
 
         var from = _active && view.Ledger is { WindowOpen: true, From: { } started } ledger && view.Target.Equals(ledger.Target) ? started : view.Reported;
-        return LoadModel.InFlightDelta(view.Spec, phase, view.Target, from, Basis(view, phase, groupTerm));
+        return LoadModel.InFlightDelta(view.Spec, key.Phase, view.Target, from, Basis(view, key.Phase, Estimated(key)));
     }
 
     /// <summary>A circuit group without a sub-meter: its current is the worst case of its members.</summary>
@@ -194,11 +210,10 @@ internal sealed class LoadEstimator
             return new EffectiveCurrent(Amperes.Zero, 0, Amperes.Zero);
         }
 
-        var estimated = Estimated(key);
         var delta = Amperes.Zero;
         foreach (var device in DevicesOn(key))
         {
-            delta += Delta(View(device), key.Phase, estimated);
+            delta += Delta(View(device), key);
         }
 
         var rating = guard.Profile.Rating.Value;
@@ -218,7 +233,8 @@ internal sealed class LoadEstimator
         .. DevicesOn(key).Select(d =>
         {
             var view = View(d);
-            ImmutableArray<AppliedState?> applied = view.Counts
+            var counts = CountsOn(view, key);
+            ImmutableArray<AppliedState?> applied = counts
                 ? d is SetpointSpec
                     ? [new SetpointApplied(view.Target is SetpointLevel { Enabled: true } target ? target.Setpoint : Amperes.Zero)]
                     : [.. (view.Target is RelayLevel { Relays.IsDefault: false } targetRelays ? targetRelays.Relays : []).Select(on => (AppliedState?)new RelayApplied(on))]
@@ -227,7 +243,7 @@ internal sealed class LoadEstimator
                     : [.. d.Stages.Select(s => Applied(d.Id, s.Index))];
             // A fresh draw tells a step that relieves nothing (an idle charger at a high
             // setpoint); a device seen at its target is relieved by its in-flight change instead.
-            var draw = !view.Counts && d.HasCurrentDraw(key.Phase) && Draw(d.Id, key.Phase) is { Fresh: true, Current: { } current } ? current : (Amperes?)null;
+            var draw = !counts && d.HasCurrentDraw(key.Phase) && Draw(d.Id, key.Phase) is { Fresh: true, Current: { } current } ? current : (Amperes?)null;
             return new ShedCandidate(d, applied, _lockouts.UnderMinOn(d.Id, Now), LimitsOf(d.Id)) { Draw = draw };
         }),
     ];

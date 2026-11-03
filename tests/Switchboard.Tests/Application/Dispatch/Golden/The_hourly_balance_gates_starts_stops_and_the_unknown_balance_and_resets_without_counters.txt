@@ -286,16 +286,16 @@ dispatches=211 decisions=31
 2026-10-24T12:19:30.0000000+00:00 heater_l1 SwitchOn HeadroomAvailable commanded=False hash=E23513ED37207A43
 2026-10-24T12:21:00.0000000+00:00 heater_l1 SettlingTimedOut SettlingWindowOpen commanded=False hash=46C1FE0428C6311D
 2026-10-24T12:21:10.0000000+00:00  SafeStateEntered SafeState commanded=False hash=E09353AE31E47A12
-2026-10-24T12:21:10.0000000+00:00 heater_l1 SwitchOff SafeState commanded=False hash=547410861F368CC4
-2026-10-24T12:21:10.0000000+00:00 heater_l2 SwitchOff SafeState commanded=False hash=3C81EC6F08C9FC83
-2026-10-24T12:21:10.0000000+00:00 heater_l3 SwitchOff SafeState commanded=False hash=46E270FD0CD8A067
+2026-10-24T12:21:10.0000000+00:00 heater_l1 SwitchOff SafeState commanded=False hash=52E2302F6314DC5B
+2026-10-24T12:21:10.0000000+00:00 heater_l2 SwitchOff SafeState commanded=False hash=FFDED973F1DDCBDB
+2026-10-24T12:21:10.0000000+00:00 heater_l3 SwitchOff SafeState commanded=False hash=79A58F5153A40F0F
 2026-10-24T12:22:10.0000000+00:00  SafeStateExited SafeState commanded=False hash=73B6B20EC709C5D1
 2026-10-24T12:22:10.0000000+00:00 heater_l1 SettlingTimedOut SettlingWindowOpen commanded=False hash=DF9D9F86533B7CE1
 2026-10-24T12:22:10.0000000+00:00 heater_l2 SettlingTimedOut SettlingWindowOpen commanded=False hash=F8DAB77F12F7EC64
 2026-10-24T12:22:10.0000000+00:00 heater_l3 SettlingTimedOut SettlingWindowOpen commanded=False hash=34648EE63963E707
-2026-10-24T12:22:30.0000000+00:00 heater_l1 Release HeadroomAvailable commanded=False hash=BFF05E6F6A06954A
-2026-10-24T12:22:30.0000000+00:00 heater_l2 Release HeadroomAvailable commanded=False hash=F5584A50EB03DD17
-2026-10-24T12:22:30.0000000+00:00 heater_l3 Release HeadroomAvailable commanded=False hash=AA04C899BCEC0289
+2026-10-24T12:22:30.0000000+00:00 heater_l1 Release HeadroomAvailable commanded=False hash=4EB0F73C9D369DEA
+2026-10-24T12:22:30.0000000+00:00 heater_l2 Release HeadroomAvailable commanded=False hash=22B6554085FAFEB2
+2026-10-24T12:22:30.0000000+00:00 heater_l3 Release HeadroomAvailable commanded=False hash=E2BAB6D73172CF92
 2026-10-24T12:22:30.0000000+00:00 heater_l3 Deferred BalanceSurplus commanded=False hash=17A559C63F6F27ED
 2026-10-24T12:23:00.0000000+00:00 heater_l3 SwitchOn BalanceSurplus commanded=False hash=6F303D0A788F87C4
 2026-10-24T12:24:30.0000000+00:00 heater_l2 SwitchOn BalanceSurplus commanded=False hash=A970BD5F2E214BAD

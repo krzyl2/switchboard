@@ -282,25 +282,25 @@ dispatches=216 decisions=26
 2026-10-24T12:03:30.0000000+00:00 heater_l2 SwitchOn HeadroomAvailable commanded=False hash=D476F548ADA4224A
 2026-10-24T12:04:00.0000000+00:00 heater_l1 SwitchOn HeadroomAvailable commanded=False hash=C50C0F98DA63E944
 2026-10-24T12:05:10.0000000+00:00  ForeignLoadDetected ForeignLoad commanded=False hash=F5F989DAB39D3175
-2026-10-24T12:06:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=006C14DD5E43EC8F
+2026-10-24T12:06:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=EF8088DFE3C9B1A3
 2026-10-24T12:06:00.0000000+00:00 heater_l1 Deferred ForeignLoad commanded=False hash=6D03892CB8E3D7AE
 2026-10-24T12:07:10.0000000+00:00  ForeignLoadDetected ForeignLoad commanded=False hash=0C9E9C041D78741D
 2026-10-24T12:07:10.0000000+00:00  ForeignLoadDetected ForeignLoad commanded=False hash=05AB6945AC0BE585
-2026-10-24T12:08:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=9674E08F4BCA24B8
+2026-10-24T12:08:00.0000000+00:00  RequestReduction ReserveThreshold commanded=False hash=87F4AF63839BDCF1
 2026-10-24T12:08:00.0000000+00:00 heater_l2 Deferred ForeignLoad commanded=False hash=2B1884E0431D2DC2
 2026-10-24T12:09:30.0000000+00:00 heater_l2 SwitchOff ForeignLoad commanded=False hash=DA211A5FB5BBEBEB
 2026-10-24T12:10:00.0000000+00:00 heater_l1 SwitchOff ForeignLoad commanded=False hash=F6B5456A66F068DE
-2026-10-24T11:13:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=C3B9253A07524514
-2026-10-24T11:13:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=42C6FF5F27459B9E
+2026-10-24T11:13:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=CF3AE466FF41A3F9
+2026-10-24T11:13:00.0000000+00:00  ReductionRequestCleared HeadroomAvailable commanded=False hash=393C5C62CA1DBFC1
 2026-10-24T11:13:00.0000000+00:00 heater_l2 Deferred HeadroomAvailable commanded=False hash=CE9CD7895943B0E4
 2026-10-24T11:18:40.0000000+00:00  SafeStateEntered SafeState commanded=False hash=D3F7ED0822D77579
-2026-10-24T11:18:40.0000000+00:00 heater_l1 SwitchOff SafeState commanded=False hash=CE18BE3A480684D4
-2026-10-24T11:18:40.0000000+00:00 heater_l2 SwitchOff SafeState commanded=False hash=D6E6446D559ED6FA
-2026-10-24T11:18:40.0000000+00:00 heater_l3 SwitchOff SafeState commanded=False hash=F4AF5150990CE8C1
+2026-10-24T11:18:40.0000000+00:00 heater_l1 SwitchOff SafeState commanded=False hash=05EC44D7BA58EA62
+2026-10-24T11:18:40.0000000+00:00 heater_l2 SwitchOff SafeState commanded=False hash=AED0004FE7136EC4
+2026-10-24T11:18:40.0000000+00:00 heater_l3 SwitchOff SafeState commanded=False hash=4CFC291326CA13C6
 2026-10-24T11:19:40.0000000+00:00  SafeStateExited SafeState commanded=False hash=9207AA9FCFB510D4
 2026-10-24T11:19:40.0000000+00:00 heater_l3 SettlingTimedOut SettlingWindowOpen commanded=False hash=E26E5B788F2B6218
-2026-10-24T11:22:30.0000000+00:00 heater_l1 Release HeadroomAvailable commanded=False hash=4B0C11EF46CC9DE6
-2026-10-24T11:22:30.0000000+00:00 heater_l2 Release HeadroomAvailable commanded=False hash=ECDEB70E04ED4A9F
-2026-10-24T11:22:30.0000000+00:00 heater_l3 Release HeadroomAvailable commanded=False hash=750D50B06B71F81A
+2026-10-24T11:22:30.0000000+00:00 heater_l1 Release HeadroomAvailable commanded=False hash=5B22A3338206D9C4
+2026-10-24T11:22:30.0000000+00:00 heater_l2 Release HeadroomAvailable commanded=False hash=3E7D8503F648FC23
+2026-10-24T11:22:30.0000000+00:00 heater_l3 Release HeadroomAvailable commanded=False hash=702CEF6154CBE4CB
 2026-10-24T11:22:30.0000000+00:00 heater_l3 SwitchOn HeadroomAvailable commanded=False hash=BEC8EE259C2A4C0E
 2026-10-24T11:23:00.0000000+00:00 heater_l2 Deferred HeadroomAvailable commanded=False hash=F0B9DB6636BA9040

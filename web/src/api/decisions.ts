@@ -163,6 +163,13 @@ export interface PhaseInputs {
   headroomA: number | null;
   direction: FlowDirection | null;
   reportedAt: Date | null;
+  /** For a tier or budget reaction: the estimate it followed (in-flight changes counted, before its own holds) and that band's reaction. */
+  trigger: ReactionTrigger | null;
+}
+
+export interface ReactionTrigger {
+  effectiveCurrentA: number;
+  reaction: TierReaction;
 }
 
 /** The device stage at the decision. */
@@ -411,6 +418,14 @@ function dispatchInputs(raw: unknown, path: string): DispatchInputs {
   };
 }
 
+function reactionTrigger(raw: unknown, path: string): ReactionTrigger {
+  const r = object(raw, path);
+  return {
+    effectiveCurrentA: number(field(r, 'effectiveCurrentA', path), `${path}.effectiveCurrentA`),
+    reaction: oneOf(TIER_REACTIONS, field(r, 'reaction', path), `${path}.reaction`),
+  };
+}
+
 function phaseInputs(raw: unknown, path: string): PhaseInputs {
   const r = object(raw, path);
   const n = (key: string) => nullable(field(r, key, path), `${path}.${key}`, number);
@@ -435,6 +450,7 @@ function phaseInputs(raw: unknown, path: string): PhaseInputs {
     headroomA: n('headroomA'),
     direction: nullable(field(r, 'direction', path), `${path}.direction`, (v, p) => oneOf(FLOW_DIRECTIONS, v, p)),
     reportedAt: nullable(field(r, 'reportedAt', path), `${path}.reportedAt`, instant),
+    trigger: nullable(field(r, 'trigger', path), `${path}.trigger`, reactionTrigger),
   };
 }
 

@@ -348,7 +348,7 @@ public sealed class GuardEngine
         var profile = guard.Profile;
         var measured = guard.Multiple;
         var effective = context.Load.Effective(key);
-        var effectiveBand = profile.Band(profile.BandIndex(effective.Multiple)).Reaction;
+        var effectiveBand = profile.ReactionAt(effective.Multiple);
         var budget = guard.Budget(context.Now, setup.Budget.RecoveryTime);
 
         if (atBoundary)
@@ -357,7 +357,7 @@ public sealed class GuardEngine
         }
 
         var demand = Demand.None;
-        if (profile.Band(profile.BandIndex(measured)).Reaction == TierReaction.ShedAllOnPhase)
+        if (profile.ReactionAt(measured) == TierReaction.ShedAllOnPhase)
         {
             // From the measured current, never the estimate: relief that does not materialize must
             // not hide the open band. Idempotent, so no cascade.
@@ -397,7 +397,7 @@ public sealed class GuardEngine
 
         var direction = guard.Reading!.Direction;
         var exporting = direction == FlowDirection.Export;
-        var overloaded = profile.Band(profile.BandIndex(measured)).Reaction >= TierReaction.ReduceOrdinaryCycle
+        var overloaded = profile.ReactionAt(measured) >= TierReaction.ReduceOrdinaryCycle
             || OverloadBudget.IsBelow(budget, setup.Budget.ShedOneBelow);
 
         // One record per exporting excursion: only a confirmed import or the end of the overload
@@ -430,7 +430,7 @@ public sealed class GuardEngine
         {
             if (steps.FirstOrDefault() is { } step && setup.Device(step.Device) is { } device)
             {
-                Hold(context, device, step.Stage, step.Action == ShedAction.SwitchOff ? GuardTarget.Off : GuardTarget.AtMinimum, demand.Reason, key, intents);
+                Hold(context, device, step.Stage, step.Action == ShedAction.SwitchOff ? GuardTarget.Off : GuardTarget.AtMinimum, demand.Reason, key, intents, trigger: new ReactionTrigger(effective.Signed, effectiveBand));
             }
 
             return;
@@ -440,7 +440,7 @@ public sealed class GuardEngine
         foreach (var (name, stage) in steps.Select(s => (s.Device, s.Stage)).Distinct())
         {
             var device = setup.Device(name)!;
-            Hold(context, device, stage, device.CanSwitchOff ? GuardTarget.Off : GuardTarget.AtMinimum, demand.Reason, key, intents);
+            Hold(context, device, stage, device.CanSwitchOff ? GuardTarget.Off : GuardTarget.AtMinimum, demand.Reason, key, intents, trigger: new ReactionTrigger(effective.Signed, effectiveBand));
         }
     }
 
@@ -564,7 +564,8 @@ public sealed class GuardEngine
     /// <summary>Holds a stage at a target; records an intent only when the target or the reason changes, and never relaxes Off to AtMinimum.</summary>
     /// <param name="key">The phase (or circuit-group phase) whose condition produced it; null for kill switch and system-wide safe state.</param>
     /// <param name="cause">The system-wide safe state's cause, for a hold that state made.</param>
-    private void Hold(Context context, DeviceSpec device, int stage, GuardTarget target, ReasonCode reason, ConstraintKey? key, List<GuardIntent> intents, SafeStateCause? cause = null)
+    /// <param name="trigger">For a tier or budget reaction, the estimate it was decided on (before any of its holds relieved it) and that estimate's band reaction.</param>
+    private void Hold(Context context, DeviceSpec device, int stage, GuardTarget target, ReasonCode reason, ConstraintKey? key, List<GuardIntent> intents, SafeStateCause? cause = null, ReactionTrigger? trigger = null)
     {
         var stageKey = new StageKey(device.Id, stage);
         if (!_holds.Hold(stageKey, target, reason, key))
@@ -583,7 +584,7 @@ public sealed class GuardEngine
             key?.Phase,
             IntentUrgency.Protective,
             overridden,
-            context.Project.Inputs(device, stage, key ?? ConstraintKey.Main(device.Phases[0])) with { SafeStateCause = cause })
+            context.Project.Inputs(device, stage, key ?? ConstraintKey.Main(device.Phases[0]), trigger) with { SafeStateCause = cause })
         {
             Group = key?.Group,
         });

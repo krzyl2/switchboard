@@ -158,6 +158,14 @@ public static class DecisionJson
             WriteOptional(writer, "headroom_a", phase.Headroom?.Value);
             WriteOptional(writer, "direction", phase.Direction is { } direction ? Snake(direction) : null);
             WriteOptional(writer, "reported_at", phase.ReportedAt is { } reported ? PresentationJson.Time(reported) : null);
+            if (phase.Trigger is { } trigger)
+            {
+                writer.WriteStartObject("trigger");
+                writer.WriteNumber("effective_current_a", trigger.EffectiveCurrent.Value);
+                writer.WriteString("reaction", Snake(trigger.Reaction));
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 
@@ -559,7 +567,12 @@ public static class DecisionJson
                         new Amperes(Double(p, "reserve_threshold_a")),
                         OptionalAmperes(p, "headroom_a"),
                         OptionalEnum<FlowDirection>(p, "direction"),
-                        OptionalString(p, "reported_at") is { } reported ? ParseTime(reported) : null);
+                        OptionalString(p, "reported_at") is { } reported ? ParseTime(reported) : null)
+                    {
+                        Trigger = p.TryGetProperty("trigger", out var trigger)
+                            ? new ReactionTrigger(new Amperes(Double(trigger, "effective_current_a")), OptionalEnum<TierReaction>(trigger, "reaction") ?? throw new FormatException("inputs.phase.trigger.reaction"))
+                            : null,
+                    };
                     break;
                 case "device" when device is null:
                     var d = property.Value;

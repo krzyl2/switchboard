@@ -45,7 +45,7 @@
 # 3 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=9EDBABA1258A2910
 # 4 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=F1C26A45B9C2FE90
 # 5 2026-10-24T12:00:50.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=FD58FBFA737963F9
-# 6 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=0914D0C0A4A894C4
+# 6 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=CB8E960FCE826DFD
    event Phase group= phase=L1 RequestReduction ReserveThreshold cause=
 # 7 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=1AB0C8E80AD4CC1E
 # 8 2026-10-24T12:01:10.0000000+00:00 cycle=59761442 boundary=False valid=True safe=False/None/ hash=03C64077E6E400B0
@@ -62,7 +62,7 @@
 # 19 2026-10-24T12:02:30.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=8CE6122211749EED
 # 20 2026-10-24T12:02:40.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=872FEAA156B8EFB3
 # 21 2026-10-24T12:02:50.0000000+00:00 cycle=59761445 boundary=False valid=True safe=False/None/ hash=706AB8A42DC23B49
-# 22 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=3D04C336DCEB6C95
+# 22 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=7A65CF78895BD209
    intent heater_l1 stage= Off GuardTierExceeded phase=L1 group= over= cause=
    event Phase group= phase=L2 RequestReduction ReserveThreshold cause=
    limit heater_l1 1=Off
@@ -146,7 +146,7 @@
    limit heater_l1 1=Off
 # 62 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=92D5EF80692E51E9
    limit heater_l1 1=Off
-# 63 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=True valid=True safe=False/None/ hash=C9A9B4A41CC78DAC
+# 63 2026-10-24T12:08:00.0000000+00:00 cycle=59761456 boundary=True valid=True safe=False/None/ hash=72E82811D0AEE557
    intent heater_l1 stage= Released HeadroomAvailable phase= group= over= cause=
    event Phase group= phase=L1 ReductionRequestCleared HeadroomAvailable cause=
    event Phase group= phase=L2 ReductionRequestCleared HeadroomAvailable cause=

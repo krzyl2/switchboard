@@ -68,6 +68,19 @@ describe('describeDecision', () => {
     expect(describeDecision(decision(3), t, 'en').details).toContain('L2: current reading stale');
   });
 
+  it('says what estimate a reaction followed when the meter alone does not explain it', () => {
+    // Why: the 2026-11-03 03:49 shed recorded L1 at 0.68 × In (band 0, may add) and no reason a reader could see; the estimate with the start in flight
+    // was what the guard reacted to. Equal to the meter, the estimate is left out so the usual line stays short.
+    const shed = decision(0, (d) => {
+      d.inputs.phase!.currentA = 17;
+      d.inputs.phase!.multiple = 0.68;
+      d.inputs.phase!.reaction = 'may_add';
+      d.inputs.phase!.trigger = { effectiveCurrentA: 35, reaction: 'shed_one_immediately' };
+    });
+    expect(describeDecision(shed, t, 'en').details).toContain(`L1 17 A · 0.68 × In · estimated 35 A (${t['tierReaction.shed_one_immediately']}) · budget 62%`);
+    expect(describeDecision(decision(0), t, 'en').details.join(' ')).not.toContain('estimated');
+  });
+
   it('describes phase and system events without a command line', () => {
     const safe = describeDecision(decision(3), t, 'en');
     const kill = describeDecision(decision(KILL_SWITCH_ENGAGED), t, 'en');

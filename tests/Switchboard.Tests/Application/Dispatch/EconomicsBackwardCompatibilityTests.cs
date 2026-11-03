@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Switchboard.Application.Balance;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Decisions;
@@ -23,11 +24,11 @@ namespace Switchboard.Tests.Application.Dispatch;
 /// expected digests were taken from the 0.9 dispatch engine (the engine files of the 0.9.0 commit, built in a scratch copy of this tree beside
 /// everything else in it); a change of any of them means a decision of an unchanged configuration moved.
 /// </summary>
-public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayRun run) : IClassFixture<DispatchSyntheticReplayRun>
+public sealed partial class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayRun run) : IClassFixture<DispatchSyntheticReplayRun>
 {
     // Digests of the 0.9 engine (see the class comment). To renew one deliberately, run the test, read the actual value from its message
     // and say in DECISIONS.md which decision of an unchanged configuration moved and why.
-    private const string BalanceWorlds = "B604FE86D71EAF34922B01FACC2909A1DB3EF0DDAF849B48F5EA23D831484135";
+    private const string BalanceWorlds = "4C168E582DFC7382CEDADAD893C9CED3CB64C609A0821304FBFCE3A9C8F4DFC1";
     private const string SyntheticShadow = "37255EAC05B4E55FFF0AB687682A4FB3D1BD60B8D8D7728CB21AC9146B1628CC";
     private const string SyntheticActive = "3F6B22428B022E9A5924EBD9D7AE02AA6A3D1C7C3E44B7DA626CC8E23AF7FE60";
 
@@ -43,8 +44,10 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
         foreach (var decision in decisions)
         {
             // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes) and 8 (dispatch_fault) changed that one
-            // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows.
-            text.Append(DecisionJson.Serialize(decision).Replace("\"codes\":8", "\"codes\":6", StringComparison.Ordinal)).Append('\n');
+            // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows. The
+            // phase trigger (2026-11-03) is the same kind of addition: it records what a guard reaction followed and decides nothing, so it is left out too.
+            var line = DecisionJson.Serialize(decision).Replace("\"codes\":8", "\"codes\":6", StringComparison.Ordinal);
+            text.Append(TriggerBlock().Replace(line, string.Empty)).Append('\n');
         }
 
         if (dispatch is null)
@@ -75,6 +78,9 @@ public sealed class EconomicsBackwardCompatibilityTests(DispatchSyntheticReplayR
             text.Append(CultureInfo.InvariantCulture, $"balance {F(b.BalanceWh)} {F(b.Free?.Value)} {F(b.Load?.Value)} {b.UntilNext.TotalSeconds} {F(b.ProjectionWh)} {F(b.Band?.LoWh)} {F(b.Band?.HiWh)}\n");
         }
     }
+
+    [GeneratedRegex(",\"trigger\":\\{[^{}]*\\}")]
+    private static partial Regex TriggerBlock();
 
     /// <summary>The digest must be the 0.9 one; a mismatch says both in full so it can be inspected or, deliberately, renewed.</summary>
     internal static void Same(string expected, string actual) =>

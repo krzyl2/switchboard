@@ -8,17 +8,22 @@ using Switchboard.Domain.Units;
 
 namespace Switchboard.Application.Effector;
 
-/// <summary>A device's resolved target and whether a settling window it opened is still open.</summary>
-/// <param name="WindowOpen">A command window (ours) is open: in active mode the in-flight change counts only then.</param>
+/// <summary>A device's resolved target and the settling window of ours that is still open for it.</summary>
+/// <param name="Window">The open command window's times; null when none is open. In active mode the in-flight change counts only while it is open, and on a
+/// constraint only until that constraint's own measurement covers it (<see cref="SettlingWindow.Covers"/>).</param>
 /// <param name="From">The applied level the open window's command started from (its estimate is the change from there).</param>
 /// <param name="ContributionAtCommand">The device's contribution per phase when the window opened (the meter has not seen the change yet).</param>
 /// <param name="GroupTermAtCommand">The same for an estimated circuit group's worst-case term.</param>
 public sealed record InFlightEntry(
     DeviceLevel Target,
-    bool WindowOpen,
+    SettlingWindow? Window,
     DeviceLevel? From,
     ImmutableDictionary<Phase, Amperes> ContributionAtCommand,
-    ImmutableDictionary<Phase, Amperes> GroupTermAtCommand);
+    ImmutableDictionary<Phase, Amperes> GroupTermAtCommand)
+{
+    /// <summary>A command window (ours) is open.</summary>
+    public bool WindowOpen => Window is not null;
+}
 
 /// <summary>What the guard reads from the effector's ledger: each device's target and open window (DISP-06).</summary>
 public interface IInFlightView
@@ -164,8 +169,8 @@ public sealed class DeviceTargets : IDispatchLedgerView
     public InFlightEntry? For(DeviceName device) =>
         _devices.TryGetValue(device, out var state) && state.Resolved.Target is { } target
             ? state.Settling.Window is { Kind: WindowKind.Command, Open: true } open
-                ? new InFlightEntry(target, true, open.From, open.ContributionAtCommand, open.GroupTermAtCommand)
-                : new InFlightEntry(target, false, null, ImmutableDictionary<Phase, Amperes>.Empty, ImmutableDictionary<Phase, Amperes>.Empty)
+                ? new InFlightEntry(target, open.Times, open.From, open.ContributionAtCommand, open.GroupTermAtCommand)
+                : new InFlightEntry(target, null, null, ImmutableDictionary<Phase, Amperes>.Empty, ImmutableDictionary<Phase, Amperes>.Empty)
             : null;
 
     public LedgerEntry? Entry(DeviceName device) =>

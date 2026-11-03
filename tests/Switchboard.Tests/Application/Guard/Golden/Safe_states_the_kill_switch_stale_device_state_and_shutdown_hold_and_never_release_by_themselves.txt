@@ -90,7 +90,7 @@
    .GroupBudgets
 -- evaluations
 # 0 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=False/None/ hash=781DB520B500C9CD
-# 1 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=True/Phases/GuardStaleSignal hash=A5062A309116B876
+# 1 2026-10-24T12:00:00.0000000+00:00 cycle=59761440 boundary=False valid=True safe=True/Phases/GuardStaleSignal hash=F29FC1171C5F8094
    intent heater_l2 stage= Off GuardStaleSignal phase=L2 group= over= cause=
    event Phase group= phase=L2 SafeStateEntered GuardStaleSignal cause=
    limit heater_l2 1=Off
@@ -98,7 +98,7 @@
    limit heater_l2 1=Off
 # 3 2026-10-24T12:00:30.0000000+00:00 cycle=59761441 boundary=True valid=True safe=True/Phases/GuardStaleSignal hash=780AE7FF58DA5515
    limit heater_l2 1=Off
-# 4 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=36037A48403F9555
+# 4 2026-10-24T12:00:40.0000000+00:00 cycle=59761441 boundary=False valid=True safe=False/None/ hash=3AEB5FBCBFF7E3BA
    event Phase group= phase=L2 SafeStateExited GuardStaleSignal cause=
    limit heater_l2 1=Off
 # 5 2026-10-24T12:01:00.0000000+00:00 cycle=59761442 boundary=True valid=True safe=False/None/ hash=30BB2128411944F6
@@ -111,11 +111,11 @@
    limit heater_l2 1=Off
 # 9 2026-10-24T12:03:00.0000000+00:00 cycle=59761446 boundary=True valid=True safe=False/None/ hash=23C4133CD88E6563
    limit heater_l2 1=Off
-# 10 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=True valid=True safe=False/None/ hash=D46AD893FB7F8B08
+# 10 2026-10-24T12:03:30.0000000+00:00 cycle=59761447 boundary=True valid=True safe=False/None/ hash=17C6C7B8BA233002
    intent heater_l2 stage= Released HeadroomAvailable phase= group= over= cause=
 # 11 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=True valid=True safe=False/None/ hash=1F001D346E97C1E0
 # 12 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=False valid=True safe=False/None/ hash=FE5BF46C35C2F355
-# 13 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=False valid=True safe=True/All/SafeState hash=9BC3298317356292
+# 13 2026-10-24T12:04:00.0000000+00:00 cycle=59761448 boundary=False valid=True safe=True/All/SafeState hash=00A7B5C50C2FB843
    intent ev_charger stage= Off SafeState phase= group= over= cause=MeterInvalid
    intent heater_l1 stage= Off SafeState phase= group= over= cause=MeterInvalid
    intent heater_l2 stage= Off SafeState phase= group= over= cause=MeterInvalid
@@ -171,13 +171,13 @@
    limit heater_l1 1=Off
    limit heater_l2 1=Off
    limit heater_l3 1=Off
-# 23 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=BCA87D8F59A94C8C
+# 23 2026-10-24T12:07:30.0000000+00:00 cycle=59761455 boundary=True valid=True safe=False/None/ hash=CE7320E0BB440BB6
    intent ev_charger stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l1 stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l2 stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l3 stage= Released HeadroomAvailable phase= group= over= cause=
 # 24 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=E50B50C0530E05FD
-# 25 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=396CDE1A23967752
+# 25 2026-10-24T12:07:50.0000000+00:00 cycle=59761455 boundary=False valid=True safe=False/None/ hash=5350E9FD14DE12C9
    intent ev_charger stage= Off KillSwitch phase= group= over= cause=
    intent heater_l1 stage= Off KillSwitch phase= group= over= cause=
    intent heater_l2 stage= Off KillSwitch phase= group= over= cause=
@@ -238,7 +238,7 @@
    limit heater_l1 1=Off
    limit heater_l2 1=Off
    limit heater_l3 1=Off
-# 36 2026-10-24T12:11:00.0000000+00:00 cycle=59761462 boundary=True valid=True safe=False/None/ hash=7BAF0664447A9515
+# 36 2026-10-24T12:11:00.0000000+00:00 cycle=59761462 boundary=True valid=True safe=False/None/ hash=FF8AFA5EBFF843FA
    intent ev_charger stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l1 stage= Released HeadroomAvailable phase= group= over= cause=
    intent heater_l2 stage= Released HeadroomAvailable phase= group= over= cause=
@@ -246,10 +246,10 @@
 # 37 2026-10-24T12:11:30.0000000+00:00 cycle=59761463 boundary=True valid=True safe=False/None/ hash=AC49D42F7D44FDFF
 # 38 2026-10-24T12:12:00.0000000+00:00 cycle=59761464 boundary=True valid=True safe=False/None/ hash=A72D9691183D7D30
 # 39 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=AB6017F63EB56CA5
-# 40 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=26EFFCFC3E6F3DAC
+# 40 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=4C4399DE3816487E
    intent heater_l3 stage= Off GuardStaleSignal phase= group= over= cause=
    limit heater_l3 1=Off
-# 41 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=False safe=True/All/SafeState hash=E87E59DFAAB84052
+# 41 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=False safe=True/All/SafeState hash=35498DC7E22BDDEC
    intent ev_charger stage= Off SafeState phase= group= over= cause=ConfigurationInvalid
    intent heater_l1 stage= Off SafeState phase= group= over= cause=ConfigurationInvalid
    intent heater_l2 stage= Off SafeState phase= group= over= cause=ConfigurationInvalid
@@ -259,14 +259,14 @@
    limit heater_l1 1=Off
    limit heater_l2 1=Off
    limit heater_l3 1=Off
-# 42 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=9D8D6327DD53B928
+# 42 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=False/None/ hash=0867B46C830A4A33
    intent heater_l3 stage= Off GuardStaleSignal phase= group= over= cause=
    event System group= phase= SafeStateExited SafeState cause=ConfigurationInvalid
    limit ev_charger 1=Off
    limit heater_l1 1=Off
    limit heater_l2 1=Off
    limit heater_l3 1=Off
-# 43 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=True/All/SafeState hash=E996DE1B0A95C46C
+# 43 2026-10-24T12:12:21.0000000+00:00 cycle=59761464 boundary=False valid=True safe=True/All/SafeState hash=C5294F1C22313AA6
    intent heater_l3 stage= Off SafeState phase= group= over= cause=Shutdown
    event System group= phase= SafeStateEntered SafeState cause=Shutdown
    limit ev_charger 1=Off
