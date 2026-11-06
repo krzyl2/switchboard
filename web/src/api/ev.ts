@@ -23,6 +23,7 @@ export const EV_REFUSALS = [
   'bad_request',
   'not_configured',
   'no_charge_now',
+  'no_hold',
   'needs_full_dispatch',
   'not_plugged',
   'soc_unknown',
@@ -62,6 +63,8 @@ export interface EvConfig {
 export interface EvParameters {
   chargeNowTargetPercent: number;
   chargeNowDurationS: number;
+  /** control.ev.hold.duration; null from an add-on before the hold. */
+  holdDurationS: number | null;
 }
 
 export interface EvRead {
@@ -148,9 +151,16 @@ export interface EvChargeNow {
   until: Date | null;
 }
 
+/** "Don't charge now" (2026-11-06): no grid, PV surplus still allowed. */
+export interface EvHold {
+  active: boolean;
+  until: Date | null;
+}
+
 export interface EvManual {
   mode: EvMode;
   chargeNow: EvChargeNow;
+  hold: EvHold;
 }
 
 export interface Ev {
@@ -195,6 +205,8 @@ function parameters(raw: unknown, path: string): EvParameters {
   return {
     chargeNowTargetPercent: number(field(r, 'chargeNowTargetPercent', path), `${path}.chargeNowTargetPercent`),
     chargeNowDurationS: number(field(r, 'chargeNowDurationS', path), `${path}.chargeNowDurationS`),
+    // An answer without the key is an add-on from before the hold.
+    holdDurationS: 'holdDurationS' in r ? number(r.holdDurationS, `${path}.holdDurationS`) : null,
   };
 }
 
@@ -317,6 +329,17 @@ function manual(raw: unknown, path: string): EvManual {
           until: nullable(field(c, 'until', p), `${p}.until`, instant),
         };
       }) ?? { active: false, targetPct: null, until: null },
+    // An answer without the key is an add-on from before the hold: nothing runs.
+    hold:
+      ('hold' in r
+        ? nullable(r.hold, `${path}.hold`, (v, p) => {
+            const h = object(v, p);
+            return {
+              active: bool(field(h, 'active', p), `${p}.active`),
+              until: nullable(field(h, 'until', p), `${p}.until`, instant),
+            };
+          })
+        : null) ?? { active: false, until: null },
   };
 }
 
@@ -398,4 +421,14 @@ export function postChargeNow(request: ChargeNowRequest, signal?: AbortSignal): 
 /** DELETE api/ev/charge-now. */
 export function deleteChargeNow(signal?: AbortSignal): Promise<void> {
   return send(`${EV_URL}/charge-now`, 'DELETE', undefined, signal);
+}
+
+/** POST api/ev/hold: "don't charge now" for the module's own duration (control.ev.hold.duration). */
+export function postHold(signal?: AbortSignal): Promise<void> {
+  return send(`${EV_URL}/hold`, 'POST', {}, signal);
+}
+
+/** DELETE api/ev/hold. */
+export function deleteHold(signal?: AbortSignal): Promise<void> {
+  return send(`${EV_URL}/hold`, 'DELETE', undefined, signal);
 }

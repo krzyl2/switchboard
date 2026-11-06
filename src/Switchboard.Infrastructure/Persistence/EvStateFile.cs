@@ -35,9 +35,10 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
 
     private static readonly string[] RootKeys = ["schema_version", "mode", "charge_now", "kwh_per_km", "last_trip"];
 
-    // Optional, written only when set: a schema 1 file without it stays valid (EV S5), so no schema bump.
-    private static readonly string[] RootKeysWithFull = [.. RootKeys, "last_full_at"];
+    // Optional, written only when set: a schema 1 file without them stays valid (last_full_at: EV S5; hold: 2026-11-06), so no schema bump.
+    private static readonly string[] OptionalRootKeys = ["last_full_at", "hold"];
     private static readonly string[] ChargeNowKeys = ["started_at", "target_percent", "expires_at"];
+    private static readonly string[] HoldKeys = ["started_at", "expires_at"];
     private static readonly string[] LearnedKeys = ["smoothed", "samples"];
 
     // Optional, written only when above zero: a schema 1 file without it was learned with no hybrid threshold, so no schema bump.
@@ -117,6 +118,14 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
                 WriteTime(writer, "last_full_at", full);
             }
 
+            if (state.Hold is { } hold)
+            {
+                writer.WriteStartObject("hold");
+                WriteTime(writer, "started_at", hold.StartedAt);
+                WriteTime(writer, "expires_at", hold.ExpiresAt);
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 
@@ -132,7 +141,8 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
             throw new InvalidPresentationFileException($"schema_version {found} is newer than this version understands ({SchemaVersion})", $".schema{found}");
         }
 
-        var keys = Keys(root, "the document", root.ValueKind == JsonValueKind.Object && root.TryGetProperty("last_full_at", out _) ? RootKeysWithFull : RootKeys);
+        var present = root.ValueKind == JsonValueKind.Object ? OptionalRootKeys.Where(k => root.TryGetProperty(k, out _)) : [];
+        var keys = Keys(root, "the document", [.. RootKeys, .. present]);
         if (Count(keys["schema_version"], "schema_version") != SchemaVersion)
         {
             throw new InvalidPresentationFileException($"schema_version is not {SchemaVersion}");
@@ -143,7 +153,8 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
             keys["charge_now"].ValueKind == JsonValueKind.Null ? null : ChargeNow(keys["charge_now"]),
             Learned(keys["kwh_per_km"]),
             keys["last_trip"].ValueKind == JsonValueKind.Null ? null : Trip(keys["last_trip"]),
-            keys.TryGetValue("last_full_at", out var full) ? Time(full, "last_full_at") : null);
+            keys.TryGetValue("last_full_at", out var full) ? Time(full, "last_full_at") : null,
+            keys.TryGetValue("hold", out var hold) ? Hold(hold) : null);
     }
 
     /// <summary>Nothing useful to drop: Sanitize already bounds the document to far below the cap, and a test holds the worst case under it.</summary>
@@ -180,13 +191,23 @@ public class EvStateFile(DataDirectory dataDirectory, ILogger<EvStateFile> logge
             }
             : null;
 
-        return new EvState(System.Enum.IsDefined(state.Mode) ? state.Mode : EvMode.Auto, chargeNow, learned, lastTrip, state.LastFullAt);
+        var hold = state.Hold is { } h && h.ExpiresAt > h.StartedAt ? h : null;
+
+        return new EvState(System.Enum.IsDefined(state.Mode) ? state.Mode : EvMode.Auto, chargeNow, learned, lastTrip, state.LastFullAt, hold);
     }
 
     private static bool IsConsumption(double value) => double.IsFinite(value) && value > 0 && value <= MaxSaneKwhPerKm;
 
     // Not in the middle of a surrogate pair.
     private static string CutKey(string key) => char.IsHighSurrogate(key[MaxTripKeyLength - 1]) ? key[..(MaxTripKeyLength - 1)] : key[..MaxTripKeyLength];
+
+    private static EvHold Hold(JsonElement element)
+    {
+        var keys = Keys(element, "hold", HoldKeys);
+        var started = Time(keys["started_at"], "hold.started_at")!.Value;
+        var expires = Time(keys["expires_at"], "hold.expires_at")!.Value;
+        return expires > started ? new EvHold(started, expires) : throw new InvalidPresentationFileException("hold ends before it starts");
+    }
 
     private static EvChargeNow ChargeNow(JsonElement element)
     {

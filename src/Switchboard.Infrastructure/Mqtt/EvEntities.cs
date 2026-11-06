@@ -15,26 +15,31 @@ namespace Switchboard.Infrastructure.Mqtt;
 /// <summary>
 /// The EV module's manual controls as MQTT entities (EV-09), only while the valid configuration holds an <c>ev:</c> section: <c>select.switchboard_ev_mode</c>
 /// (auto, pv_only, full_charge), <c>number.switchboard_ev_charge_now_target</c> (the SoC the next charge-now runs to, percent) and
-/// <c>button.switchboard_ev_charge_now</c>. A command is exactly one of the select's options, a number in (0, 100] or the button's <c>PRESS</c>; anything else is
-/// ignored. They change only the add-on's own state through <see cref="IEvControl"/> (the same door as the web API): "Off" is not offered, it is the device's own
-/// override select. While no valid configuration is known the entities announced earlier are kept (nothing is retracted), and without an <c>ev:</c> section they
-/// are retracted like any entity no longer declared.
-/// Unless the add-on option <c>mqtt_enabling_commands</c> is on, MQTT may only set the mode to <c>pv_only</c> and set the number: <c>auto</c> and
-/// <c>full_charge</c> can charge from the grid and the button starts a grid charge at once, so each is refused, logged, and the select is set back to the
-/// mode in force.
+/// <c>select.switchboard_ev_command</c> (2026-11-06, replaces the charge-now button): <c>charge_now</c> charges now from any zone within the protection limits,
+/// <c>hold</c> takes the grid away (PV surplus still charges), <c>auto</c> ends either; each command also ends by itself (target, unplug, its duration), and
+/// the select then shows <c>auto</c> again. A command is exactly one of a select's options or a number in (0, 100]; anything else is ignored. They change only
+/// the add-on's own state through <see cref="IEvControl"/> (the same door as the web API): "Off" is the device's own override select. While no valid
+/// configuration is known the entities announced earlier are kept (nothing is retracted), and without an <c>ev:</c> section they are retracted like any entity
+/// no longer declared.
+/// Unless the add-on option <c>mqtt_enabling_commands</c> is on, MQTT may only do what takes the grid away: the mode <c>pv_only</c>, the number, the command
+/// <c>hold</c>, and <c>auto</c> while it only ends a charge-now. The modes <c>auto</c> and <c>full_charge</c>, <c>charge_now</c>, and <c>auto</c> ending a hold
+/// can charge from the grid, so each is refused, logged, and the select is set back to what is in force.
 /// </summary>
 public sealed class EvEntities : IMqttEntitySource
 {
     public const string ModeObjectId = "ev_mode";
     public const string TargetObjectId = "ev_charge_now_target";
-    public const string ChargeNowObjectId = "ev_charge_now";
+    public const string CommandObjectId = "ev_command";
+
+    public const string CommandAuto = "auto";
+    public const string CommandChargeNow = "charge_now";
+    public const string CommandHold = "hold";
 
     private const string Select = "select";
     private const string Number = "number";
-    private const string Button = "button";
-    private const string PressPayload = "PRESS";
 
     private static readonly string[] ModeOptions = [.. Enum.GetValues<EvMode>().Select(m => JsonNamingPolicy.SnakeCaseLower.ConvertName(m.ToString()))];
+    private static readonly string[] CommandOptions = [CommandAuto, CommandChargeNow, CommandHold];
 
     private readonly IEvControl _control;
     private readonly MqttOptions _mqtt;
@@ -43,7 +48,7 @@ public sealed class EvEntities : IMqttEntitySource
     private readonly bool _enablingCommands;
     private double? _target;
 
-    /// <param name="enablingCommands">The add-on option <c>mqtt_enabling_commands</c>: whether a mode other than <c>pv_only</c> and the button are taken from MQTT.</param>
+    /// <param name="enablingCommands">The add-on option <c>mqtt_enabling_commands</c>: whether a mode other than <c>pv_only</c>, <c>charge_now</c> and the end of a hold are taken from MQTT.</param>
     public EvEntities(IEvControl control, IOptions<MqttOptions> mqtt, AppVersion version, ILogger<EvEntities> logger, bool enablingCommands = false)
     {
         ArgumentNullException.ThrowIfNull(control);
@@ -63,7 +68,7 @@ public sealed class EvEntities : IMqttEntitySource
 
     /// <summary>The command topic of each of the three entities: the one place the topic guard and this source agree on.</summary>
     public static IReadOnlyList<string> Topics(string baseTopic) =>
-        [GuardEntities.CommandTopic(baseTopic, ModeObjectId), GuardEntities.CommandTopic(baseTopic, TargetObjectId), GuardEntities.CommandTopic(baseTopic, ChargeNowObjectId)];
+        [GuardEntities.CommandTopic(baseTopic, ModeObjectId), GuardEntities.CommandTopic(baseTopic, TargetObjectId), GuardEntities.CommandTopic(baseTopic, CommandObjectId)];
 
     public MqttEntitySet Current()
     {
@@ -107,18 +112,22 @@ public sealed class EvEntities : IMqttEntitySource
                     target is { } percent ? percent.ToString("0.##", CultureInfo.InvariantCulture) : GuardEntities.Unknown,
                     null),
                 new MqttEntity(
-                    Button,
-                    ChargeNowObjectId,
-                    Config(Button, ChargeNowObjectId, "EV charge now", state: false, new()
+                    Select,
+                    CommandObjectId,
+                    Config(Select, CommandObjectId, "EV command", state: true, new()
                     {
-                        ["command_topic"] = GuardEntities.CommandTopic(_mqtt.BaseTopic, ChargeNowObjectId),
-                        ["payload_press"] = PressPayload,
+                        ["command_topic"] = GuardEntities.CommandTopic(_mqtt.BaseTopic, CommandObjectId),
+                        ["options"] = CommandOptions,
+                        ["optimistic"] = false,
                         ["retain"] = false,
                     }),
-                    GuardEntities.Unknown,
+                    Command(_control.Manual),
                     null)),
             true);
     }
+
+    /// <summary>What the command select shows: the command in force, <c>auto</c> when none runs.</summary>
+    internal static string Command(EvManual manual) => manual.ChargeNow is not null ? CommandChargeNow : manual.Hold is not null ? CommandHold : CommandAuto;
 
     public void HandleCommand(string topic, string payload)
     {
@@ -157,34 +166,59 @@ public sealed class EvEntities : IMqttEntitySource
         }
         else if (string.Equals(topic, topics[2], StringComparison.Ordinal))
         {
-            if (payload != PressPayload)
-            {
-                _logger.LogWarning("Ignored an EV charge-now command that is not {Payload}", PressPayload);
-                return;
-            }
+            Command(payload);
+        }
+    }
 
-            if (!_enablingCommands)
-            {
-                RefuseEnabling("EV charge now");
-                return;
-            }
+    private void Command(string payload)
+    {
+        var manual = _control.Manual;
+        EvControlResult result;
+        switch (payload)
+        {
+            case CommandChargeNow:
+                if (!_enablingCommands)
+                {
+                    RefuseEnabling("EV charge now");
+                    return;
+                }
 
-            var result = _control.StartChargeNow(Target(), null);
-            if (result is not (EvControlResult.Done or EvControlResult.Unchanged))
-            {
-                _logger.LogWarning("EV charge now was refused: {Result}", result);
-            }
+                result = _control.StartChargeNow(Target(), null);
+                break;
+            case CommandHold:
+                result = _control.StartHold(null);
+                break;
+            case CommandAuto:
+                if (manual.Hold is not null && !_enablingCommands)
+                {
+                    RefuseEnabling("the end of an EV hold");
+                    return;
+                }
+
+                result = manual.ChargeNow is not null ? _control.CancelChargeNow() : manual.Hold is not null ? _control.CancelHold() : EvControlResult.Unchanged;
+                break;
+            default:
+                _logger.LogWarning("Ignored an EV command that is not one of {Options}", string.Join(", ", CommandOptions));
+                return;
+        }
+
+        if (result is not (EvControlResult.Done or EvControlResult.Unchanged))
+        {
+            _logger.LogWarning("EV command {Command} was refused: {Result}", payload, result);
+
+            // The select is not optimistic: publish again so Home Assistant shows what is in force, not the refused option.
+            Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 
     // Nothing changes; the link publishes the states again, so Home Assistant's select shows the mode in force.
     private void RefuseEnabling(string command)
     {
-        _logger.LogWarning("Ignored {Command} from MQTT: the add-on option {Option} is off, so of the EV controls MQTT can only set the mode to pv_only and the charge-now target", command, AddonOptionsResolver.MqttEnablingCommandsKey);
+        _logger.LogWarning("Ignored {Command} from MQTT: the add-on option {Option} is off, so of the EV controls MQTT can only take the grid away (mode pv_only, command hold, the end of a charge-now) and set the charge-now target", command, AddonOptionsResolver.MqttEnablingCommandsKey);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    // What the number shows and the button uses: the last value set, else the configured default.
+    // What the number shows and charge_now uses: the last value set, else the configured default.
     private double? Target() => _target ?? _control.DefaultChargeNowTargetPercent;
 
     private string Config(string component, string objectId, string name, bool state, Dictionary<string, object?> extra)

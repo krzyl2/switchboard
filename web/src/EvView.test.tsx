@@ -332,9 +332,9 @@ describe('EV card: the manual control (S6)', () => {
     await openPlan();
     const form = card().querySelector('[data-form="ev-charge-now"]') as HTMLElement;
     expect(form.querySelector('[data-ev="charge-needs-full"]')).toBeNull();
-    // The placeholders are the add-on's own defaults (control.ev.charge_now): 90 % for 12 hours.
+    // The placeholders are the add-on's own defaults (control.ev.charge_now): 100 % for 12 hours.
     const [target, hours] = [...form.querySelectorAll('input')] as HTMLInputElement[];
-    expect(target!.placeholder).toBe('90');
+    expect(target!.placeholder).toBe('100');
     expect(hours!.placeholder).toBe('12');
 
     fireEvent.input(target!, { target: { value: '80' } });
@@ -346,6 +346,35 @@ describe('EV card: the manual control (S6)', () => {
 
     expect(writes).toEqual([{ url: 'api/ev/charge-now', method: 'POST', body: { targetPct: 80, durationMinutes: 90 } }]);
     expect(card().querySelector('[data-ev="message"]')!.textContent).toBe('Started.');
+  });
+
+  it('turns grid charging off for the configured time and back on, at any planner.dispatch', async () => {
+    // 2026-11-06: "do not charge now" only takes the grid away, so unlike "charge now" it needs no full dispatch; the add-on's answer says until when.
+    evAnswer = changed(ev, (p) => {
+      p.manual = MANUAL_IDLE;
+      p.config.plannerDispatch = 'narrow';
+    });
+    await openPlan();
+    const form = card().querySelector('[data-form="ev-hold"]') as HTMLElement;
+    expect(form.querySelector('[data-ev="hold-inactive"]')!.textContent).toContain('3 h');
+
+    // What the add-on holds once it took the request; the page shows it after reading the answer again.
+    evAnswer = changed(ev, (p) => {
+      p.manual = { ...MANUAL_IDLE, hold: { active: true, until: '2026-10-23T14:00:00+00:00' } };
+      p.config.plannerDispatch = 'narrow';
+    });
+    await act(async () => {
+      fireEvent.click(form.querySelector('button')!);
+    });
+    await advance();
+    expect(writes).toEqual([{ url: 'api/ev/hold', method: 'POST', body: {} }]);
+    expect(card().querySelector('[data-ev="hold-active"]')).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(card().querySelector('[data-form="ev-hold"] button')!);
+    });
+    await advance();
+    expect(writes.at(-1)).toMatchObject({ url: 'api/ev/hold', method: 'DELETE' });
   });
 
   it('sends nothing but the empty request when the fields are left to the defaults', async () => {

@@ -21,7 +21,7 @@ public enum EvGoalKind
     /// <summary>The surplus cap: soft, due at the next local midnight, PV only, stops when met.</summary>
     Cap,
 
-    /// <summary>The floor: hard, the cheapest zone, placed in the earliest cheap hours. Without a trip no deadline and no escalation; beside a trip due when the car must be ready, escalating like the trip.</summary>
+    /// <summary>The floor (the reserve): hard, PV and the cheapest zone, due at the next local <c>floor_by</c> without escalation, so the window's forecast PV is placed first and the rest in the earliest cheap hours; beside a trip ready before that, due when the car must be ready and escalating like the trip.</summary>
     Floor,
 }
 
@@ -35,7 +35,7 @@ public sealed record EvGoalOffer(EvGoalKind Kind, GoalRequest Request, bool Spre
 /// <param name="Notes">Conditions on top of it (calendar unavailable, range unusable, forecast missing, no planner dispatch).</param>
 /// <param name="Goals">The goals offered, with unique deadlines and incremental needs; empty when the module wants nothing.</param>
 /// <param name="Frozen">The trip target frozen for the next trip (pass it back next time); null without a trip.</param>
-/// <param name="WeeklyFullReached">The SoC is at the weekly full target on a day that counts: the caller records <c>LastFullAt</c>.</param>
+/// <param name="WeeklyFullReached">The SoC reached the weekly full target for the first time this local week, on any day (or a requested full charge reached its own): the caller records <c>LastFullAt</c>.</param>
 public sealed record EvComposition(
     EvAssessmentCode Code,
     ImmutableArray<EvAssessmentCode> Notes,
@@ -59,6 +59,9 @@ public sealed record EvComposerInput
 
     public required EvMode Mode { get; init; }
 
+    /// <summary>A "don't charge now" is running (2026-11-06): the module offers what <see cref="EvMode.PvOnly"/> offers, PV surplus and no grid, until it ends.</summary>
+    public bool Hold { get; init; }
+
     /// <summary>A manual goal exists for the device: the module offers nothing (B8).</summary>
     public bool ManualGoalActive { get; init; }
 
@@ -67,6 +70,9 @@ public sealed record EvComposerInput
 
     /// <summary>The SoC estimate; null when there is none (stale, drifted, no reading): no goals, never the last value.</summary>
     public required double? SocPercent { get; init; }
+
+    /// <summary>The estimate the floor alone may plan with (<see cref="SocEstimate.FloorPercent"/>): while <see cref="SocPercent"/> is null only for its age, the floor is the one goal offered.</summary>
+    public double? FloorSocPercent { get; init; }
 
     /// <summary>The consumption to plan with: learned, else the fallback.</summary>
     public required double KwhPerKm { get; init; }
@@ -108,7 +114,7 @@ public sealed record EvComposerInput
 /// <item>Needs are incremental (B2): goals are absolute SoC targets against the same SoC, so each goal is asked only for the part above the goals with a
 /// lower target; the sum is exactly (highest target - SoC) x capacity x (1 + loss), never more. The cap is not offered at all when a trip or weekly goal asks
 /// for at least as much, so a soft PV-only goal never owns energy a hard goal is due.</item>
-/// <item>Deadlines are unique (B8): the trip is its start, the weekly and cap goals the next local midnight, the floor the trip's ready moment (none without a trip). Goals that meet at one deadline
+/// <item>Deadlines are unique (B8): the trip is its start, the weekly and cap goals the next local midnight, the floor the next local <c>floor_by</c> (never midnight) or the trip's ready moment when that comes first. Goals that meet at one deadline
 /// merge into the one that ranks first (trip, weekly, cap): a soft one merges its need into a soft winner and is dropped under the trip.</item>
 /// <item>The revision names only what the goal is (B3): never the target, the SoC or the deadline of a daily goal.</item>
 /// <item>A trip is offered only while its start is ahead (B4); the margin is the goal's, the deadline the trip start (B2b).</item>
@@ -168,7 +174,12 @@ public static class EvComposer
             return Nothing(EvAssessmentCode.NotPlugged);
         }
 
-        if (input.SocPercent is not { } rawSoc || !double.IsFinite(rawSoc) || input.CapacityKwh <= 0 || !double.IsFinite(input.CapacityKwh))
+        // A "don't charge now" is PV only for its time (2026-11-06): surplus may still charge, the grid may not.
+        var pvOnly = input.Mode == EvMode.PvOnly || input.Hold;
+
+        // Only the age of the estimate keeps the floor from planning (2026-11-06): it may use the older value, and it is then the one goal offered.
+        var aged = input.SocPercent is null && !pvOnly && input.FloorSocPercent is not null;
+        if ((aged ? input.FloorSocPercent : input.SocPercent) is not { } rawSoc || !double.IsFinite(rawSoc) || input.CapacityKwh <= 0 || !double.IsFinite(input.CapacityKwh))
         {
             return Nothing(EvAssessmentCode.SocStale);
         }
@@ -176,13 +187,25 @@ public static class EvComposer
         var soc = Math.Clamp(rawSoc, 0, 100);
         var fullRequested = input.FullChargeRequested || input.Mode == EvMode.FullCharge;
         var midnight = NextLocalMidnight(input.Now, input.Zone);
+        var floorBy = NextLocal(p.FloorBy, input.Now, input.Zone);
         var cheap = input.CheapZone;
         var cheapSources = cheap is null ? SourceSet.PvOnly : SourceSet.PvAnd([new ZoneId(cheap)]);
         var candidates = new List<Candidate>();
         FrozenTarget? frozen = input.Frozen;
-        var weeklyReached = false;
 
-        if (input.Mode == EvMode.PvOnly)
+        // The weekly full charge counts on any day (2026-11-06): the first time in a local week the estimate reaches its target, whatever the day; a requested
+        // full charge counts when it reaches its own target, so the mode can end. An aged estimate records nothing.
+        var fullTarget = fullRequested ? Math.Max(p.WeeklyFull.TargetPercent, 100) : p.WeeklyFull.TargetPercent;
+        var weeklyReached = !aged
+            && (fullRequested || (!p.WeeklyFull.Days.IsDefaultOrEmpty && p.WeeklyFull.TargetPercent > 0 && !FullThisWeek(input)))
+            && GoalMath.IsMet(TargetSocRule.EnergyToDrawKwh(soc, fullTarget, input.CapacityKwh, p.LossFraction));
+
+        if (aged)
+        {
+            notes.Add(EvAssessmentCode.SocStale);
+            candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, floorBy, true, cheapSources, false, TimeSpan.Zero, false, null));
+        }
+        else if (pvOnly)
         {
             candidates.Add(CapCandidate(p, midnight));
         }
@@ -200,9 +223,7 @@ public static class EvComposer
 
             if (fullRequested || WeeklyFullWanted(input))
             {
-                var target = fullRequested ? Math.Max(p.WeeklyFull.TargetPercent, 100) : p.WeeklyFull.TargetPercent;
-                weeklyReached = GoalMath.IsMet(TargetSocRule.EnergyToDrawKwh(soc, target, input.CapacityKwh, p.LossFraction));
-                candidates.Add(new Candidate(EvGoalKind.WeeklyFull, target, midnight, false, cheapSources, false, TimeSpan.Zero, p.Spread, null));
+                candidates.Add(new Candidate(EvGoalKind.WeeklyFull, fullTarget, midnight, false, cheapSources, false, TimeSpan.Zero, p.Spread, null));
             }
 
             // The cap is omitted when a trip or weekly goal asks for at least as much (EV.md B2): a soft PV-only goal must not own energy a hard goal is due.
@@ -211,20 +232,18 @@ public static class EvComposer
                 candidates.Add(CapCandidate(p, midnight));
             }
 
-            // The floor is held, not reached on the eve of a trip: beside a trip it is due when the car must be ready (start less ready margin), so the planner
-            // places it first, in the earliest cheap hours, and the trip asks only for the points above it. Those points were the trip's, so the floor escalates
-            // like the trip when the cheap zone cannot deliver them before the departure. Without such a deadline (no ready margin, a ready moment already
-            // passed, or one that meets another goal's deadline and would merge into it) a deadline-less floor could be placed after the departure, so the
-            // trip carries the whole way from the SoC as before.
+            // The floor is the reserve, due at the next floor_by (2026-11-06): the planner places the window's forecast PV first and the rest in the earliest
+            // cheap hours, so the night charges only what the sun is not expected to bring. A trip ready before that moves it there (start less ready margin),
+            // so the floor takes the first points and the trip asks only for the points above it; those points were the trip's, so the floor then escalates
+            // like the trip. A ready moment already passed, or one that meets another goal's deadline and would merge into it, leaves no floor deadline before
+            // the departure, so the trip carries the whole way from the SoC.
             var tripGoal = candidates.FirstOrDefault(c => c.Kind == EvGoalKind.Trip);
-            var floorDue = tripGoal?.Deadline - tripGoal?.Margin;
-            if (tripGoal is not null && floorDue is { } due && due > input.Now && !candidates.Any(c => c.Deadline == due))
+            var ready = tripGoal?.Deadline - tripGoal?.Margin;
+            var beforeTrip = ready is { } readyAt && readyAt < floorBy;
+            var floorDue = beforeTrip ? ready!.Value : floorBy;
+            if (floorDue > input.Now && !candidates.Any(c => c.Deadline == floorDue))
             {
-                candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, due, true, cheapSources, true, TimeSpan.Zero, false, null));
-            }
-            else if (!candidates.Any(c => c.Kind == EvGoalKind.Trip && c.TargetPercent >= p.FloorPercent))
-            {
-                candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, null, true, cheapSources, false, TimeSpan.Zero, false, null));
+                candidates.Add(new Candidate(EvGoalKind.Floor, p.FloorPercent, floorDue, true, cheapSources, beforeTrip, TimeSpan.Zero, false, null));
             }
         }
 
@@ -239,7 +258,7 @@ public static class EvComposer
         }
 
         var needs = candidates.ToDictionary(c => c.Kind, c => c.NeedKwh);
-        var code = AssessmentCode(input.Mode, needs);
+        var code = AssessmentCode(pvOnly ? EvMode.PvOnly : input.Mode, needs);
 
         // Unique deadlines: merge at one deadline into the winner (trip, weekly, cap order).
         var kept = new List<Candidate>();
@@ -347,16 +366,20 @@ public static class EvComposer
             return false;
         }
 
-        if (input.LastFullAt is { } last)
+        return !FullThisWeek(input);
+    }
+
+    /// <summary>A full charge was recorded in the current local week.</summary>
+    private static bool FullThisWeek(EvComposerInput input)
+    {
+        if (input.LastFullAt is not { } last)
         {
-            var lastDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(last, input.Zone).DateTime);
-            if (WeekStart(lastDate) == WeekStart(today))
-            {
-                return false;
-            }
+            return false;
         }
 
-        return true;
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(input.Now, input.Zone).DateTime);
+        var lastDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(last, input.Zone).DateTime);
+        return WeekStart(lastDate) == WeekStart(today);
     }
 
     // Monday of the local week: "once a week" is the calendar week of the add-on's zone.
@@ -383,5 +406,23 @@ public static class EvComposer
     {
         ArgumentNullException.ThrowIfNull(zone);
         return LocalTime.At(TimeZoneInfo.ConvertTime(now, zone).Date.AddDays(1), zone);
+    }
+
+    /// <summary>The next occurrence of a local time of day strictly after <paramref name="now"/> (a missing time moves past the gap, a repeated one is the first).</summary>
+    public static DateTimeOffset NextLocal(TimeOnly at, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        var date = TimeZoneInfo.ConvertTime(now, zone).Date;
+        for (var day = 0; day < 3; day++)
+        {
+            var candidate = LocalTime.At(date.AddDays(day) + at.ToTimeSpan(), zone);
+            if (candidate > now)
+            {
+                return candidate;
+            }
+        }
+
+        // Unreachable: three consecutive local days always hold an instant after now.
+        return LocalTime.At(date.AddDays(3) + at.ToTimeSpan(), zone);
     }
 }

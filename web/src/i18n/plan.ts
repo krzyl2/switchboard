@@ -201,6 +201,7 @@ const en = {
   'plan.goal.superseded': 'Not applied: a goal {source} ({target}) for the same deadline is set aside by the goal above.',
   'plan.goal.notFresh': 'The plan is not fresh: only the goal model\'s own status is shown.',
   'plan.goal.preview': 'planner.dispatch is off: a goal changes the plan shown here, not what the device does.',
+  'plan.goal.evControls': 'The car is controlled by hand with “Charge now” and “Do not charge now” on the day plan (or select.switchboard_ev_command in Home Assistant).',
 
   'plan.wish.title': 'Want now',
   'plan.wish.kind': 'Ask for',
@@ -429,6 +430,7 @@ export const plan: { en: typeof en; pl: Record<keyof typeof en, string> } = {
     'plan.goal.superseded': 'Nie zastosowano: cel {source} ({target}) na ten sam termin został odsunięty przez cel powyżej.',
     'plan.goal.notFresh': 'Plan nie jest aktualny: pokazano tylko własny status modelu celu.',
     'plan.goal.preview': 'planner.dispatch jest wyłączone (off): cel zmienia plan pokazany tutaj, nie to, co robi urządzenie.',
+    'plan.goal.evControls': 'Autem steruje się ręcznie przez „Ładuj teraz” i „Nie ładuj teraz” w planie doby (albo select.switchboard_ev_command w Home Assistant).',
 
     'plan.wish.title': 'Chcę teraz',
     'plan.wish.kind': 'Zażądaj',

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { App } from './App';
 import devices from './api/devices.sample.json';
 import dispatch from './api/dispatch.sample.json';
+import evSample from './api/ev.sample.json';
 import plan from './api/plan.sample.json';
 import power from './api/power.sample.json';
 import { advance, respond } from './screens.test-support';
@@ -15,6 +16,7 @@ let fetchMock: Mock<typeof fetch>;
 let posted: unknown[];
 let deleted: string[];
 let planAnswer: unknown;
+let evAnswer: unknown;
 let goalAnswer: () => Promise<Response>;
 
 const stored = { device: 'ev_charger', kind: 'energy', target: 8, deadline: '2026-10-27T05:30:00Z', hard: true, since: '2026-10-26T17:02:00Z', deliveredKwh: 0, created: true };
@@ -25,6 +27,7 @@ beforeEach(() => {
   posted = [];
   deleted = [];
   planAnswer = plan;
+  evAnswer = null;
   goalAnswer = () => respond(stored);
   fetchMock = vi.fn<typeof fetch>();
   fetchMock.mockImplementation((input, init) => {
@@ -38,6 +41,7 @@ beforeEach(() => {
       return goalAnswer();
     }
     const samples: Record<string, unknown> = { 'api/devices': devices, 'api/dispatch': dispatch, 'api/power': power, 'api/plan': planAnswer };
+    if (evAnswer !== null) samples['api/ev'] = evAnswer;
     return url in samples ? respond(structuredClone(samples[url])) : respond({}, 404);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -116,6 +120,16 @@ describe('device card: the goal row', () => {
     expect(goal.querySelector('[data-goal="pills"]')!.textContent).toBe('zgodnie z planemtwardy terminz przypisanej encji');
     expect(goal.querySelector('[data-goal-row="preview"]')!.textContent).toContain('planner.dispatch jest wyłączone (off)');
     expect(within(goal).getByRole('form', { name: 'Chcę teraz' })).toBeTruthy();
+  });
+
+  it('offers no "want now" on the EV module\'s charger and points to the EV controls instead', async () => {
+    // 2026-11-06: one manual path for the car ("charge now", "do not charge now"); a want-now goal on it would be a second, with other rules.
+    evAnswer = evSample;
+    await open('ev_charger');
+    const goal = goalField();
+
+    expect(within(goal).queryByRole('form', { name: 'Want now' })).toBeNull();
+    expect(goal.querySelector('[data-goal-row="ev-controls"]')!.textContent).toContain('select.switchboard_ev_command');
   });
 
   it('shows an urgent goal with its shortfall and the latest grid start', async () => {

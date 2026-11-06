@@ -65,15 +65,15 @@ public sealed class EvSpaContractTests
     [Fact]
     public void Spa_refusal_codes_are_the_ones_the_endpoint_sends()
     {
-        // Why: each refusal of POST api/ev/mode and api/ev/charge-now is worded in the SPA by the code in the body; a code the SPA does not list would show as
-        // a generic failure, and one it lists that is never sent is dead text. EV.md section 11 names ten.
+        // Why: each refusal of POST api/ev/mode, api/ev/charge-now and api/ev/hold is worded in the SPA by the code in the body; a code the SPA does not list
+        // would show as a generic failure, and one it lists that is never sent is dead text. EV.md section 11 names ten; the hold (2026-11-06) adds no_hold.
         var sent = new[]
         {
-            EvEndpoint.BadRequest, EvEndpoint.NotConfigured, EvEndpoint.NoChargeNow, EvEndpoint.NeedsFullDispatch, EvEndpoint.NotPlugged, EvEndpoint.SocUnknown,
-            EvEndpoint.AlreadyAtTarget, EvEndpoint.TargetOutOfRange, EvEndpoint.DurationOutOfRange, EvEndpoint.DeadlineBeyondHorizon,
+            EvEndpoint.BadRequest, EvEndpoint.NotConfigured, EvEndpoint.NoChargeNow, EvEndpoint.NoHold, EvEndpoint.NeedsFullDispatch, EvEndpoint.NotPlugged,
+            EvEndpoint.SocUnknown, EvEndpoint.AlreadyAtTarget, EvEndpoint.TargetOutOfRange, EvEndpoint.DurationOutOfRange, EvEndpoint.DeadlineBeyondHorizon,
         };
 
-        Assert.Equal(10, sent.Length);
+        Assert.Equal(11, sent.Length);
         Assert.Equal([.. sent.Order(StringComparer.Ordinal)], Spa(Contract, "EV_REFUSALS"));
     }
 

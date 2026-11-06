@@ -319,7 +319,7 @@ function Economics({ device, economics, state, plan, ev, lang }: { device: Devic
           {device.noShed && <span class="sub">{t['device.noShed']}</span>}
         </Field>
         <Field name={t['device.goal']}>
-          <GoalRow device={device.id} control={plan} lang={lang} />
+          <GoalRow device={device.id} control={plan} evDevice={isEvDevice(ev, device.id)} lang={lang} />
         </Field>
         {isEvDevice(ev, device.id) && (
           <Field name={t['ev.device.field']}>

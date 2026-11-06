@@ -260,7 +260,17 @@ function Controls({ ev, control, lang }: { ev: Ev; control: EvControl } & Ctx) {
     else refused(refusal);
   };
 
+  const holdNow = async (on: boolean) => {
+    setSaving(true);
+    setMessage(null);
+    const refusal = await (on ? control.hold() : control.cancelHold());
+    setSaving(false);
+    if (refusal === null) setMessage({ tone: 'ok', text: on ? t['ev.hold.started'] : t['ev.hold.stopped'] });
+    else refused(refusal);
+  };
+
   const now = manual.chargeNow;
+  const hold = manual.hold;
   return (
     <div data-ev="controls">
       <h3 class="plan-h3">{t['ev.control.title']}</h3>
@@ -327,6 +337,30 @@ function Controls({ ev, control, lang }: { ev: Ev; control: EvControl } & Ctx) {
         </span>
         <span class="sub">{t['ev.charge.note']}</span>
       </form>
+      <div class="plan-wish" data-form="ev-hold">
+        <strong>{t['ev.hold.title']}</strong>
+        {hold.active ? (
+          <span class="sub" data-ev="hold-active">
+            {fill(t['ev.hold.active'], { time: hold.until === null ? '' : dayTime(hold.until, ev.at, lang, zone) })}
+          </span>
+        ) : (
+          <span class="sub" data-ev="hold-inactive">
+            {defaults === null || defaults.holdDurationS === null ? t['ev.hold.inactive'] : fill(t['ev.hold.inactiveFor'], { hours: formatNumber(defaults.holdDurationS / 3600, lang, 1) })}
+          </span>
+        )}
+        <span class="plan-actions">
+          {hold.active ? (
+            <button type="button" disabled={saving} onClick={() => void holdNow(false)}>
+              {t['ev.hold.cancel']}
+            </button>
+          ) : (
+            <button type="button" disabled={saving} onClick={() => void holdNow(true)}>
+              {t['ev.hold.submit']}
+            </button>
+          )}
+        </span>
+        <span class="sub">{t['ev.hold.note']}</span>
+      </div>
       {message !== null && (
         <p class="sub" role="status" data-tone={message.tone} data-ev="message">
           {saving ? t['ev.control.saving'] : message.text}

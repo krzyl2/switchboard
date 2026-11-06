@@ -19,6 +19,7 @@ public readonly record struct PowerCap(DateTimeOffset From, DateTimeOffset To, d
 /// <param name="Spread">The plan finishes this goal as late as its window allows and spreads the energy evenly over the window (the lowest power that holds it) instead of running at the device's ceiling; only a module goal asks for it.</param>
 /// <param name="QuietShortfall">Energy this goal leaves unplaced does not raise the plan's <c>goal_shortfall</c> note (a PV-only cap that a cloudy evening cannot fill).</param>
 /// <param name="PowerCaps">Ceilings of the goal's grid energy in given intervals, kept only while the goal places as much at no higher cost under them; default or empty: none.</param>
+/// <param name="Asap">The plan places this goal's energy in the earliest slots its sources allow, whatever they cost (a manual "charge now"), instead of the cheapest.</param>
 public sealed record GoalRequest(
     DeviceName Device,
     GoalTarget Target,
@@ -33,7 +34,8 @@ public sealed record GoalRequest(
     long Revision,
     bool Spread = false,
     bool QuietShortfall = false,
-    ImmutableArray<PowerCap> PowerCaps = default)
+    ImmutableArray<PowerCap> PowerCaps = default,
+    bool Asap = false)
 {
     public GoalKind Kind => Target.Kind;
 

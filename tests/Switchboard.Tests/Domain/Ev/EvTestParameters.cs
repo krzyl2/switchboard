@@ -14,8 +14,8 @@ internal static class EvTestParameters
 
     public static EvParameters Defaults { get; } = new(
         FloorPercent: 25,
-        FloorAfterPercent: 25,
-        ReservePoints: 15,
+        FloorBy: new TimeOnly(15, 0),
+        TripMarginPoints: 10,
         CapPercent: 90,
         WeeklyFull: new EvWeeklyFullParameters([DayOfWeek.Saturday, DayOfWeek.Sunday], 100),
         ReadyMargin: TimeSpan.FromMinutes(30),
@@ -24,9 +24,11 @@ internal static class EvTestParameters
         Learn: new EvLearnParameters(Smoothing: 0.2, MinSoc: 20, MinKwhPerKm: 0.12, MaxKwhPerKm: 0.60, MaxSamples: 50, PairTolerance: TimeSpan.FromSeconds(60)),
         MaxTripKm: 500,
         SocMaxAge: TimeSpan.FromHours(6),
+        FloorSocMaxAge: TimeSpan.FromHours(12),
         DriftLimitKwh: 1.5,
         TargetChangeThresholdPoints: 3,
-        ChargeNow: new EvChargeNowParameters(90, TimeSpan.FromHours(12)),
+        ChargeNow: new EvChargeNowParameters(100, TimeSpan.FromHours(12)),
+        Hold: new EvHoldParameters(TimeSpan.FromHours(3)),
         Spread: true,
         SnapshotMaxAge: TimeSpan.FromMinutes(2));
 }

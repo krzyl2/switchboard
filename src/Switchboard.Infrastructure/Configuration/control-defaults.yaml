@@ -236,13 +236,14 @@ planner:
 ev:
   # Parameters of the EV module (docs/EV.md, docs/12-EV-MODULE.md). Bound and checked, read by nothing before the module exists. Every one is a
   # starting value with no origin unless it says so; review after the shadow week. SoC values are percent of capacity.
-  # SoC held from the cheapest zone: below it the car charges in the earliest cheap hours (with a trip ahead, before the departure).
-  # Not the PHEV's hybrid threshold (that is ev.hybrid_threshold, a property of the car).
+  # The reserve: the SoC the car is brought to by the next floor_by, from PV and the cheapest zone. The planner takes the forecast PV of that
+  # window first and the rest in the earliest cheap hours, so a sunny forecast leaves the night empty and a dull one charges it. With a trip
+  # ready earlier, due then. It stays in the car after a trip. Not the PHEV's hybrid threshold (that is ev.hybrid_threshold, a property of the car).
   floor: 25
-  # SoC that must remain after a trip.
-  floor_after: 25
-  # Percentage points on top of trip SoC and floor_after (target = trip SoC + floor_after + reserve).
-  reserve: 15
+  # Local time of day the floor is due at: after the day's PV (maintainer, 2026-11-06).
+  floor_by: "15:00"
+  # Percentage points on top of the floor and the trip's SoC (target = floor + trip SoC + trip_margin). Maintainer, 2026-11-06.
+  trip_margin: 10
   # Ceiling of surplus-only charging.
   cap: 90
   weekly_full:
@@ -272,15 +273,21 @@ ev:
   max_trip_km: 500
   # Beyond this the SoC estimate is not trusted and the goals are inactive.
   soc_max_age: 6h
+  # The floor alone may plan with an estimate up to this old (only the age is relaxed): the car reports every few hours while it sleeps.
+  # Maintainer, 2026-11-06.
+  floor_soc_max_age: 12h
   # Energy that may flow into the car unseen by the SoC (air conditioning) before the estimate is dropped.
   drift_limit_kwh: 1.5
   # A frozen trip target is recomputed only when it moves by more than this many percentage points.
   target_change_threshold: 3
   charge_now:
-    # SoC "charge now" runs to when the request names none.
-    target: 90
+    # SoC "charge now" runs to when the request names none (maintainer, 2026-11-06).
+    target: 100
     # A "charge now" that has not reached its target ends after this long.
     duration: 12h
+  hold:
+    # "Don't charge now" (no grid, PV surplus still allowed) ends after this long, or earlier on unplug or when cancelled. Maintainer, 2026-11-06.
+    duration: 3h
   # Spread a charge evenly over a long window instead of running at the ceiling.
   spread: true
   # Ceilings of grid charging by local hours, e.g. [{ hours: "21:00-24:00", max_power_w: 2000 }, { hours: "00:00-07:00", max_power_w: 3000 }].

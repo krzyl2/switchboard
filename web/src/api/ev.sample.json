@@ -18,8 +18,8 @@
   },
   "parameters": {
     "floorPercent": 25,
-    "floorAfterPercent": 25,
-    "reservePoints": 15,
+    "floorBy": "15:00",
+    "tripMarginPoints": 10,
     "capPercent": 90,
     "weeklyFullDays": [
       "saturday",
@@ -37,10 +37,12 @@
     "learnPairToleranceS": 60,
     "maxTripKm": 500,
     "socMaxAgeS": 21600,
+    "floorSocMaxAgeS": 43200,
     "driftLimitKwh": 1.5,
     "targetChangeThresholdPoints": 3,
-    "chargeNowTargetPercent": 90,
+    "chargeNowTargetPercent": 100,
     "chargeNowDurationS": 43200,
+    "holdDurationS": 10800,
     "spread": true,
     "snapshotMaxAgeS": 120
   },
@@ -149,6 +151,10 @@
       "active": true,
       "targetPct": 80,
       "until": "2026-10-23T14:00:00.005+00:00"
+    },
+    "hold": {
+      "active": false,
+      "until": null
     }
   }
 }

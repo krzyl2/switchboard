@@ -49,9 +49,13 @@ public enum SocAnchorEvent
 
 /// <summary>The SoC to plan with, or none. Never the last value held past its welcome.</summary>
 /// <param name="GapSince">When a time-based gap began (too_old: the last report plus <c>soc_max_age</c>; charger_stale: the first step without charger data); null otherwise.</param>
-public sealed record SocEstimate(double? Percent, SocEstimateGap? Gap, DateTimeOffset? GapSince = null)
+/// <param name="AgedPercent">With a too_old gap only: the value the estimate would have, while the last report is within <c>floor_soc_max_age</c> and nothing else (drift, a charger gap) drops it; null otherwise.</param>
+public sealed record SocEstimate(double? Percent, SocEstimateGap? Gap, DateTimeOffset? GapSince = null, double? AgedPercent = null)
 {
     public bool Available => Percent is not null;
+
+    /// <summary>The value the floor may plan with: the estimate, or the aged value when only its age is past <c>soc_max_age</c> (2026-11-06).</summary>
+    public double? FloorPercent => Percent ?? AgedPercent;
 }
 
 public sealed record SocStep(SocEstimatorState State, SocEstimate Estimate, SocAnchorEvent Event);
@@ -68,7 +72,8 @@ public sealed record SocStep(SocEstimatorState State, SocEstimate Estimate, SocA
 /// therefore dropped (a few minutes of charging at most; the reading is the truth, and the drift limit covers the rest).</item>
 /// <item>Time: a report time in the future is read as now. Stored times are capped at now each step, so a clock that steps back cannot freeze the
 /// estimator. The only reading ignored for its time is one reported <i>before</i> the last accepted report (delivered out of order).</item>
-/// <item>The estimate is dropped, never held, once the last report is older than <c>soc_max_age</c> or more than <c>drift_limit_kwh</c> was drawn.</item>
+/// <item>The estimate is dropped, never held, once the last report is older than <c>soc_max_age</c> or more than <c>drift_limit_kwh</c> was drawn. Only the age has
+/// a second, longer limit for the floor: up to <c>floor_soc_max_age</c> the value is kept beside the gap as <see cref="SocEstimate.AgedPercent"/>.</item>
 /// </list>
 /// Pure; the caller keeps the state.
 /// </summary>
@@ -150,9 +155,13 @@ public static class SocEstimator
         }
 
         var lastReport = state.LastReadingAt ?? anchoredAt;
-        if (now - lastReport > p.SocMaxAge)
+        var stored = state.DrawnKwhSinceAnchor / (1 + p.LossFraction);
+        var value = Math.Min(100, anchor + stored / capacityKwh * 100);
+        var age = now - lastReport;
+        if (age > p.SocMaxAge)
         {
-            return new SocEstimate(null, SocEstimateGap.TooOld, lastReport + p.SocMaxAge);
+            var aged = age <= p.FloorSocMaxAge && state.DrawnKwhSinceAnchor <= p.DriftLimitKwh && state.ChargerGapSince is null ? value : (double?)null;
+            return new SocEstimate(null, SocEstimateGap.TooOld, lastReport + p.SocMaxAge, aged);
         }
 
         if (state.DrawnKwhSinceAnchor > p.DriftLimitKwh)
@@ -165,7 +174,6 @@ public static class SocEstimator
             return new SocEstimate(null, SocEstimateGap.ChargerStale, since);
         }
 
-        var stored = state.DrawnKwhSinceAnchor / (1 + p.LossFraction);
-        return new SocEstimate(Math.Min(100, anchor + stored / capacityKwh * 100), null);
+        return new SocEstimate(value, null);
     }
 }

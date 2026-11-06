@@ -1,5 +1,5 @@
 import { useCallback } from 'preact/hooks';
-import { deleteChargeNow, EvError, fetchEv, postChargeNow, postEvMode, type ChargeNowRequest, type Ev, type EvMode, type EvRefusal } from './api/ev';
+import { deleteChargeNow, deleteHold, EvError, fetchEv, postChargeNow, postEvMode, postHold, type ChargeNowRequest, type Ev, type EvMode, type EvRefusal } from './api/ev';
 import { withTimeout } from './api/http';
 import { EV_CHANGE_TIMEOUT_MS, EV_REFRESH_INTERVAL_MS, EV_REQUEST_TIMEOUT_MS } from './config';
 import { usePollControl, type PollView } from './usePoll';
@@ -10,6 +10,8 @@ export interface EvControl {
   setMode: (mode: EvMode) => Promise<EvRefusal | null>;
   chargeNow: (request: ChargeNowRequest) => Promise<EvRefusal | null>;
   cancelChargeNow: () => Promise<EvRefusal | null>;
+  hold: () => Promise<EvRefusal | null>;
+  cancelHold: () => Promise<EvRefusal | null>;
 }
 
 /**
@@ -35,6 +37,8 @@ export function useEv(): EvControl {
   const setMode = useCallback((mode: EvMode) => send((signal) => postEvMode(mode, signal)), [send]);
   const chargeNow = useCallback((request: ChargeNowRequest) => send((signal) => postChargeNow(request, signal)), [send]);
   const cancelChargeNow = useCallback(() => send((signal) => deleteChargeNow(signal)), [send]);
+  const hold = useCallback(() => send((signal) => postHold(signal)), [send]);
+  const cancelHold = useCallback(() => send((signal) => deleteHold(signal)), [send]);
 
-  return { view, setMode, chargeNow, cancelChargeNow };
+  return { view, setMode, chargeNow, cancelChargeNow, hold, cancelHold };
 }

@@ -55,24 +55,36 @@ public sealed class EvGoalSourceFailureTableTests
     [Fact]
     public void Row01_soc_stale_goals_are_inactive_never_the_last_value()
     {
-        // Why: B10. The estimate between readings is allowed only while the car's last report is younger than ev.soc_max_age; one second past it a goal stated from
-        // the old value would plan energy for a battery nobody has seen for hours, so the goal is inactive and the car is v2 again.
+        // Why: B10. The estimate between readings is allowed only while the car's last report is younger than ev.soc_max_age; past it a trip, the weekly charge
+        // or the cap stated from the old value would plan energy for a battery nobody has seen for hours. Only the floor may go on with the aged value up to
+        // ev.floor_soc_max_age (2026-11-06: the car reports every few hours while it sleeps, and a night without the reserve goal charged nothing); past that
+        // the goal is inactive too.
         var rig = new EvRig();
         rig.PlugInCar(40);
         Assert.NotEmpty(rig.TickAndOffer().Requests);
 
-        var maxAge = rig.Configuration.Control.Ev.SocMaxAge;
-        var steps = (int)(maxAge.TotalMinutes) - 1;
-        for (var i = 0; i < steps; i++)
+        var ev = rig.Configuration.Control.Ev;
+        void TickFor(TimeSpan span)
         {
-            rig.Advance(TimeSpan.FromMinutes(1));
-            rig.PushPlugged();
-            rig.Tick();
+            for (var i = 0; i < (int)span.TotalMinutes; i++)
+            {
+                rig.Advance(TimeSpan.FromMinutes(1));
+                rig.PushPlugged();
+                rig.Tick();
+            }
         }
 
+        TickFor(ev.SocMaxAge - TimeSpan.FromMinutes(1));
         Assert.NotEmpty(rig.Offer().Requests);
 
         rig.Advance(TimeSpan.FromMinutes(2));
+        var aged = rig.TickAndOffer();
+
+        var floor = Assert.Single(aged.Requests);
+        Assert.Equal(ev.FloorPercent, ((SocTarget)floor.Target).TargetPercent);
+        Assert.Contains(EvAssessmentCode.SocStale, rig.Keeper.Current.Snapshot!.Composition.Notes);
+
+        TickFor(ev.FloorSocMaxAge - ev.SocMaxAge);
         var offer = rig.TickAndOffer();
 
         Assert.Empty(offer.Requests);

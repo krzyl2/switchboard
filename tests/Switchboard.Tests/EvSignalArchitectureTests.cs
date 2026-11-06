@@ -105,13 +105,13 @@ public sealed partial class EvSignalArchitectureTests
     [Fact]
     public void The_ev_api_writes_only_the_modules_own_state_and_never_through_a_command_path()
     {
-        // Why: EV-01/02 are read-only; S6 (EV-09) adds exactly three writes, the mode and the charge-now, which change the add-on's own state (ev.json, a manual goal)
-        // and nothing else. Any other verb or route here would be a new command path, and the endpoint names no type that sends a command.
+        // Why: EV-01/02 are read-only; S6 (EV-09) adds the mode and the charge-now, and 2026-11-06 the hold ("don't charge now"), which change the add-on's own
+        // state (ev.json, a manual goal) and nothing else. Any other verb or route here would be a new command path, and the endpoint names no type that sends a command.
         var endpoint = File.ReadAllText(RepoPaths.Combine("src", "Switchboard.Host", "Web", "EvEndpoint.cs"));
         var writes = System.Text.RegularExpressions.Regex.Matches(endpoint, @"Map(Post|Put|Delete|Patch)\(""([^""]+)""").Select(m => $"{m.Groups[1].Value} {m.Groups[2].Value}").Order().ToList();
 
         Assert.Contains("MapGet(\"/ev\"", endpoint, StringComparison.Ordinal);
-        Assert.Equal(["Delete /ev/charge-now", "Post /ev/charge-now", "Post /ev/mode"], writes);
+        Assert.Equal(["Delete /ev/charge-now", "Delete /ev/hold", "Post /ev/charge-now", "Post /ev/hold", "Post /ev/mode"], writes);
         Assert.DoesNotMatch(Commanding(), endpoint);
     }
 

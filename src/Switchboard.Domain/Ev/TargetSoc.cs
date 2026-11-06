@@ -12,7 +12,8 @@ public sealed record FrozenTarget(string TripKey, TargetSoc Target, DateTimeOffs
 
 /// <summary>
 /// The target SoC rule (EV-05). With trip_soc = km x kWh/km / capacity x 100:
-/// <c>target = clamp(max(floor, trip_soc + floor_after + reserve), 100)</c>. A trip of 50 points needs 90 %, one of 60 points needs 100 %.
+/// <c>target = clamp(floor + trip_soc + trip_margin, 100)</c>: the reserve (the floor) stays in the car after the trip. With the floor at 25 and the
+/// margin at 10, a trip of 50 points needs 85 % and one of 65 points needs 100 %.
 /// The trip target overrides the surplus cap. Charging losses do not change the target (it is a state of charge); they scale the energy that
 /// must be drawn, see <see cref="EnergyToDrawKwh"/>. The ready margin is not part of the target: it is the planner goal's margin (the deadline
 /// stays the trip start).
@@ -43,7 +44,7 @@ public static class TargetSocRule
         // Rounded to a billionth of a point: 54 km x 0.20 / 18 is 60.00000000000001 in floating point, and that noise must not make the spec's
         // "60 % needs 100 %" row look clamped, or a trip of exactly a full battery look longer than the range.
         var trip = Math.Round(tripKm * kwhPerKm / capacityKwh * 100, NoiseDigits);
-        var wanted = Math.Max(p.FloorPercent, trip + p.FloorAfterPercent + p.ReservePoints);
+        var wanted = p.FloorPercent + trip + p.TripMarginPoints;
         return new TargetSoc(Math.Min(100, wanted), trip, trip > 100, wanted > 100);
     }
 

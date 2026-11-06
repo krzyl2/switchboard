@@ -211,6 +211,27 @@ public sealed class EvStateFileTests : IDisposable
     }
 
     [Fact]
+    public void A_hold_survives_a_restart_with_the_last_full_charge_and_a_file_without_it_reads_as_none()
+    {
+        // Why: 2026-11-06. A restart in the middle of a "don't charge now" must not give the grid back; the field is optional, so a schema 1 file written before
+        // it existed still loads, with or without last_full_at beside it (no schema bump, no set-aside).
+        var hold = new EvHold(T0, T0.AddHours(3));
+        File().Save(Sample() with { Hold = hold, LastFullAt = T0.AddDays(-1) });
+        var loaded = File().Load().State!;
+        Assert.Equal((hold, (DateTimeOffset?)T0.AddDays(-1)), (loaded.Hold, loaded.LastFullAt));
+
+        File().Save(Sample() with { Hold = hold });
+        Assert.Equal(hold, File().Load().State!.Hold);
+
+        var old = LoadText(Valid);
+        Assert.Equal(StateFileStatus.Loaded, old.Status);
+        Assert.Null(old.State!.Hold);
+
+        File().Save(Sample());
+        Assert.DoesNotContain("hold", System.IO.File.ReadAllText(FilePath));
+    }
+
+    [Fact]
     public void The_worst_honest_document_fits_the_size_cap_with_room_to_spare()
     {
         // Why: the trim path is gone because it cannot be reached; this is the proof. 200 samples with full-length numbers and times, a trip key of 200 characters

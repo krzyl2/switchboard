@@ -4,7 +4,7 @@ using static Switchboard.Tests.Domain.Ev.EvTestParameters;
 namespace Switchboard.Tests.Domain.Ev;
 
 /// <summary>
-/// EV-05: the target SoC of a trip. Formula: target = min(100, max(floor, trip_soc + floor_after + reserve)), trip_soc = km x kWh/km / capacity x 100.
+/// EV-05: the target SoC of a trip. Formula (2026-11-06): target = min(100, floor + trip_soc + trip_margin), trip_soc = km x kWh/km / capacity x 100.
 /// Why it matters: a target too low strands the maintainer on fuel; one that drifts with every learned sample makes the plan flap (B3).
 /// </summary>
 public sealed class TargetSocTests
@@ -13,38 +13,41 @@ public sealed class TargetSocTests
     private static TargetSoc Trip(double km, double kwhPerKm = 0.20, EvParameters? p = null) => TargetSocRule.ForTrip(km, kwhPerKm, CapacityKwh, p ?? Defaults);
 
     [Theory]
-    [InlineData(45, 90)] // 50 points + 25 + 15 (the maintainer's table: 50 % needs 90 %)
-    [InlineData(54, 100)] // 60 points + 40 (60 % needs 100 %)
-    [InlineData(27, 70)] // 30 points + 40
-    [InlineData(49.5, 95)] // 55 points + 40
-    [InlineData(0, 40)] // no distance still leaves 25 + 15 on the floor
-    [InlineData(9, 50)] // 10 points + 40
-    public void The_target_is_the_trip_plus_the_floor_after_it_plus_the_reserve(double km, double expected)
+    [InlineData(45, 85)] // 50 points + floor 25 + margin 10
+    [InlineData(54, 95)] // 60 points + 35
+    [InlineData(58.5, 100)] // 65 points + 35: exactly full
+    [InlineData(27, 65)] // 30 points + 35
+    [InlineData(0, 35)] // no distance still leaves the reserve and the margin
+    [InlineData(9, 45)] // 10 points + 35
+    public void The_target_is_the_reserve_plus_the_trip_plus_the_margin(double km, double expected)
     {
         Assert.Equal(expected, Trip(km).Percent, 9);
     }
 
     [Fact]
-    public void The_floor_wins_when_it_is_above_what_the_trip_asks()
+    public void The_reserve_is_still_in_the_car_after_the_trip()
     {
-        // Why: max(floor, ...): a high configured floor must hold even for a short trip.
-        Assert.Equal(60, Trip(9, p: Defaults with { FloorPercent = 60 }).Percent, 9);
-        Assert.Equal(50, Trip(9, p: Defaults with { FloorPercent = 30 }).Percent, 9);
+        // Why: 2026-11-06, the floor is the reserve "just in case"; a trip must not eat it. The maintainer's live case: floor 50, 18 km at 0.145
+        // kWh/km on 18 kWh is 14.5 points, so 50 + 14.5 + 10 = 74.5 %; the old max(floor, trip + 25 + 15) gave 54.5 % and left 40 % after the trip.
+        var target = TargetSocRule.ForTrip(18, 0.145, CapacityKwh, Defaults with { FloorPercent = 50 });
+
+        Assert.Equal(74.5, target.Percent, 9);
+        Assert.Equal(50, target.Percent - target.TripSocPercent - Defaults.TripMarginPoints, 9);
     }
 
     [Fact]
     public void Each_term_comes_from_configuration()
     {
-        // Why: floor_after and reserve are not literals; changing either moves the target by exactly that much.
-        Assert.Equal(80, Trip(45, p: Defaults with { ReservePoints = 5 }).Percent, 9);
-        Assert.Equal(80, Trip(45, p: Defaults with { FloorAfterPercent = 15 }).Percent, 9);
+        // Why: the floor and the margin are not literals; changing either moves the target by exactly that much.
+        Assert.Equal(80, Trip(45, p: Defaults with { TripMarginPoints = 5 }).Percent, 9);
+        Assert.Equal(95, Trip(45, p: Defaults with { FloorPercent = 35 }).Percent, 9);
     }
 
     [Fact]
     public void The_target_follows_the_learned_consumption()
     {
-        // Why: 45 km at 0.30 is 75 points and asks for everything; the same trip at 0.20 asks for 90. The learner's value must reach the target.
-        Assert.Equal(90, Trip(45, 0.20).Percent, 9);
+        // Why: 45 km at 0.30 is 75 points and asks for everything; the same trip at 0.20 asks for 85. The learner's value must reach the target.
+        Assert.Equal(85, Trip(45, 0.20).Percent, 9);
         Assert.Equal(100, Trip(45, 0.30).Percent, 9);
     }
 
@@ -52,13 +55,13 @@ public sealed class TargetSocTests
     public void A_trip_overrides_the_surplus_cap()
     {
         // Why: the 90 % cap is for charging without a trip; 100 % for a long one is not clipped by it.
-        Assert.Equal(100, Trip(54, p: Defaults with { CapPercent = 80 }).Percent, 9);
+        Assert.Equal(100, Trip(58.5, p: Defaults with { CapPercent = 80 }).Percent, 9);
     }
 
     [Fact]
     public void A_trip_that_asks_for_more_than_full_is_clamped_and_flagged()
     {
-        // Why: 85 km uses 94 points; with the floor and reserve that is 134 %, so 100 % and Clamped, but the trip still fits the battery.
+        // Why: 85 km uses 94 points; with the floor and the margin that is 129 %, so 100 % and Clamped, but the trip still fits the battery.
         var fits = Trip(85);
         Assert.Equal(100, fits.Percent);
         Assert.True(fits.Clamped);
@@ -144,13 +147,13 @@ public sealed class TargetSocTests
     public void The_target_is_recomputed_only_beyond_the_threshold()
     {
         // Why: exactly the threshold (3 points) keeps the frozen target, anything more takes the fresh one and says when.
-        var frozen = TargetSocRule.Freeze(null, "trip-1", Trip(45), T0, Defaults); // 90 %
-        var exactly = Trip(45) with { Percent = 87 };
-        var more = Trip(45) with { Percent = 86.9 };
+        var frozen = TargetSocRule.Freeze(null, "trip-1", Trip(45), T0, Defaults); // 85 %
+        var exactly = Trip(45) with { Percent = 82 };
+        var more = Trip(45) with { Percent = 81.9 };
 
         Assert.Same(frozen, TargetSocRule.Freeze(frozen, "trip-1", exactly, T0.AddHours(1), Defaults));
         var moved = TargetSocRule.Freeze(frozen, "trip-1", more, T0.AddHours(1), Defaults);
-        Assert.Equal(86.9, moved.Target.Percent);
+        Assert.Equal(81.9, moved.Target.Percent);
         Assert.Equal(T0.AddHours(1), moved.FrozenAt);
 
         var wide = Defaults with { TargetChangeThresholdPoints = 10 };
@@ -200,19 +203,20 @@ public sealed class TargetSocTests
     [Fact]
     public void The_spec_rows_have_no_floating_point_noise()
     {
-        // Why: 54 km x 0.20 / 18 x 100 is 60.00000000000001 in doubles. The row "60 % needs 100 %" reaches full, it does not ask for more, so it is not clamped
-        // and exactly the rows 50 -> 90 and 60 -> 100 hold without a tolerance in the assertion.
+        // Why: 54 km x 0.20 / 18 x 100 is 60.00000000000001 in doubles. With a floor of 30 and the margin of 10, 60 points reach full exactly; they do not
+        // ask for more, so they are not clamped, and the rows 50 -> 85 and 60 -> 100 hold without a tolerance in the assertion.
         var fifty = Trip(45);
         Assert.Equal(50, fifty.TripSocPercent);
-        Assert.Equal(90, fifty.Percent);
+        Assert.Equal(85, fifty.Percent);
 
-        var sixty = Trip(54);
+        var floor30 = Defaults with { FloorPercent = 30 };
+        var sixty = Trip(54, p: floor30);
         Assert.Equal(60, sixty.TripSocPercent);
         Assert.Equal(100, sixty.Percent);
         Assert.False(sixty.Clamped);
         Assert.False(sixty.ExceedsElectricRange);
 
-        Assert.True(Trip(54.1).Clamped);
+        Assert.True(Trip(54.1, p: floor30).Clamped);
     }
 
     [Fact]

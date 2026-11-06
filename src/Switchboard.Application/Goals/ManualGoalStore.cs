@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Switchboard.Application.Configuration;
 using Switchboard.Application.Signals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Economics;
 using Switchboard.Domain.Goals;
 
 namespace Switchboard.Application.Goals;
@@ -99,8 +100,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
 
     /// <summary>
     /// The goal spec a manual goal on <paramref name="declared"/> follows: the device's own <c>goal:</c>, else, for the device the <c>ev:</c> section names, the
-    /// module's synthetic SoC spec (EV B9): capacity and loss from the section and <c>control.ev</c>, the SoC read from the module, the device's own sources.
-    /// Null when the device has neither.
+    /// module's synthetic SoC spec (EV B9): capacity and loss from the section and <c>control.ev</c>, the SoC read from the module, any zone (a "charge now"
+    /// charges now, from whatever the protection limits leave, 2026-11-06; the device's own sources may be <c>pv_only</c>). Null when the device has neither.
     /// </summary>
     private static GoalSpec? SpecFor(SwitchboardConfiguration configuration, DeviceDefinition declared)
     {
@@ -125,7 +126,7 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
             GoalNumber.Of(p.ChargeNow.TargetPercent),
             Deadline: null,
             Want: null,
-            declared.Sources,
+            SourceSet.Any,
             Escalate: true,
             GoalOnMet.Opportunistic,
             ModuleOwned: true);
@@ -355,7 +356,8 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
 
             if (spec.ModuleOwned)
             {
-                // The module's estimate, not the raw signal: a sleeping car reports every few hours while it charges.
+                // The module's estimate, not the raw signal: a sleeping car reports every few hours while it charges. A "charge now" is placed as soon as possible
+                // (2026-11-06), not in the cheapest hours before its deadline.
                 if (_moduleSoc?.Read(device) is not { Percent: { } estimate })
                 {
                     inactive.Add(new InactiveGoal(device, GoalInactiveReason.InputStale, GoalInputKind.Soc, GoalOrigin.Manual, GoalKind.Soc, goal.Hard));
@@ -363,7 +365,7 @@ public sealed class ManualGoalStore : IManualGoalControl, IGoalSource
                 }
 
                 var moduleSoc = new SocTarget(goal.Target, estimate);
-                requests.Add(new GoalRequest(device, moduleSoc, moduleSoc.Remaining(capacity, loss), goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, GoalOrigin.Manual, revision));
+                requests.Add(new GoalRequest(device, moduleSoc, moduleSoc.Remaining(capacity, loss), goal.Deadline, TimeSpan.Zero, goal.Hard, spec.Sources, goal.Hard, GoalOnMet.Opportunistic, GoalOrigin.Manual, revision, Asap: true));
                 continue;
             }
 

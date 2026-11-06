@@ -11,8 +11,8 @@ namespace Switchboard.Application.Reports;
 /// <param name="Expired">The snapshot is past <c>ValidUntil</c> (the guard no longer sees its goals); always true for a failed computation.</param>
 public sealed record EvAssessmentReport(bool Failed, EvSnapshot? Snapshot, bool Expired);
 
-/// <summary>The user's side of the module as GET api/ev reports it: the mode and the charge-now while it still runs (null once it expired or when none was started).</summary>
-public sealed record EvManualReport(EvMode Mode, EvChargeNow? Running);
+/// <summary>The user's side of the module as GET api/ev reports it: the mode, and the charge-now and "don't charge now" while they still run (null once expired or when none was started).</summary>
+public sealed record EvManualReport(EvMode Mode, EvChargeNow? Running, EvHold? Hold = null);
 
 /// <summary>
 /// What GET api/ev says, as the application decided it and before it is worded: the configuration it stands on, the configuration issues (the calendar zone
@@ -94,7 +94,7 @@ public sealed partial record EvReport(
             $"The calendar entity says its times are in '{stated}', the add-on reads them in '{addOn.Id}'; a trip would start at the wrong hour. Set the add-on's time zone to the calendar's.");
 
     private static EvManualReport ManualOf(EvManual manual, DateTimeOffset now) =>
-        new(manual.Mode, manual.ChargeNow is { } running && now < running.ExpiresAt ? running : null);
+        new(manual.Mode, manual.ChargeNow is { } running && now < running.ExpiresAt ? running : null, manual.Hold is { } hold && now < hold.ExpiresAt ? hold : null);
 
     private static EvAssessmentReport? AssessmentOf(EvPublished? published, DateTimeOffset now)
     {

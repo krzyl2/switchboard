@@ -164,6 +164,16 @@ internal static partial class EvSectionParser
             Invalid("floor", "ev.floor may not be above ev.cap: the floor would be held above the surplus ceiling.");
         }
 
+        if (p.FloorBy == TimeOnly.MinValue)
+        {
+            Invalid("floor_by", "ev.floor_by may not be 00:00: the floor would share its deadline with the surplus cap and the weekly charge (due at local midnight) and merge into one of them.");
+        }
+
+        if (p.FloorSocMaxAge > TimeSpan.Zero && p.FloorSocMaxAge < p.SocMaxAge)
+        {
+            Invalid("floor_soc_max_age", "ev.floor_soc_max_age may not be below ev.soc_max_age: it only relaxes the age for the floor.");
+        }
+
         if (p.WeeklyFull.TargetPercent > 0 && p.WeeklyFull.TargetPercent < p.CapPercent)
         {
             Invalid("weekly_full.target", "ev.weekly_full.target may not be below ev.cap: a weekly full charge that charges less than the cap is no full charge.");
@@ -182,6 +192,11 @@ internal static partial class EvSectionParser
         if (p.ChargeNow.Duration > MaxChargeNowDuration)
         {
             Invalid("charge_now.duration", "ev.charge_now.duration may be at most 7 days.");
+        }
+
+        if (p.Hold.Duration > MaxChargeNowDuration)
+        {
+            Invalid("hold.duration", "ev.hold.duration may be at most 7 days.");
         }
     }
 

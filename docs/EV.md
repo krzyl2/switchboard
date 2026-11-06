@@ -231,3 +231,17 @@ A manual hard SoC goal for the EV device in the existing manual goal store (`Man
 - `control.ev.power_bands` (default `[]`): `{ hours, max_power_w }` ceilings of grid charging, as `GoalRequest.PowerCaps` on every module goal; kept only when the goal still places as much at no higher cost. Maintainer: 21:00-24:00 2000 W, 00:00-07:00 3000 W.
 - 2026-11-03: the bands are also a standing ceiling in dispatch. Whenever no plan entry sets the charger's ceiling (no entry, a stale, suspended or changing plan, a restart, `planner.dispatch: off`), the band of the local hour caps its grid power (reason `power_band`, list version 9); a run or urgent entry with a usable ceiling stands for the band, surplus no other device draws comes on top of it, an override is not capped.
 - Details and reasons: `DECISIONS.md` 2026-11-02 and 2026-11-03.
+
+## 13. As built: reserve by tomorrow's sun, charge now, hold (2026-11-06)
+
+Maintainer's model (`DECISIONS.md` 2026-11-06): the car as cheap as possible; a night charge must not take the place of the next day's PV.
+
+- `control.ev.floor` is the reserve R, due at the next local `control.ev.floor_by` (default `"15:00"`, never 00:00), hard, PV and the cheapest zone, no escalation. The planner places the window's forecast PV first and the rest in the earliest cheap hours: sunny forecast, empty night; dull forecast, the night charges to R. Beside a trip ready before `floor_by` the floor is due at the ready moment and escalates (2026-11-02 rule kept). Maintainer: 50.
+- Trip target `clamp(floor + trip SoC + control.ev.trip_margin, 100)`; `floor_after` and `reserve` are removed (`unknown_key`). Maintainer: margin 10.
+- `control.ev.floor_soc_max_age` (default 12h, at least `soc_max_age`): past `soc_max_age` only for its age, the estimate still feeds the floor (`SocEstimate.AgedPercent`); the floor is then the only goal, with the note `ev_soc_stale`.
+- The weekly full charge counts on any day: the first time in a local week the estimate reaches the weekly target, `LastFullAt` is recorded.
+- Charge now (manual goal on the EV device): any zone (`SourceSet.Any`), `GoalRequest.Asap` (earliest slots, whatever they cost), no power bands; default target 100 %, 12 h. Still needs `planner.dispatch: full`.
+- Hold ("don't charge now"): `POST api/ev/hold` (`{}` or `{"durationMinutes":n}`), `DELETE api/ev/hold`, `manual.hold { active, until }` in `GET api/ev`, `holdDurationS` in parameters, refusal `no_hold`. The module offers what PV only offers (cap on surplus, no grid) until `control.ev.hold.duration` (default 3h, at most 7 days), an explicit unplug or a cancel; any planner mode. Persisted in `ev.json` (`hold`, optional, no schema bump). Hold and charge now end each other.
+- MQTT: `select.switchboard_ev_command` (`auto | charge_now | hold`, state = what runs) replaces `button.switchboard_ev_charge_now` (retracted on upgrade). Without `mqtt_enabling_commands` MQTT may take the grid away (`hold`, `auto` ending a charge-now, mode `pv_only`, the number), not give it (`charge_now`, `auto` ending a hold, modes `auto`/`full_charge`).
+- The device card offers no "Want now" on the EV device; it points to the EV controls.
+- Live migration: `ev_charger.sources: pv_only` and `planner.dispatch: full`, so the grid reaches the car only through the plan.

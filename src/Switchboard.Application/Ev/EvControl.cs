@@ -43,9 +43,12 @@ public enum EvControlResult
 
     /// <summary>There is no charge-now to cancel.</summary>
     NoChargeNow,
+
+    /// <summary>There is no "don't charge now" to cancel.</summary>
+    NoHold,
 }
 
-/// <summary>The manual side of the EV module (EV-09): the mode and "charge now".</summary>
+/// <summary>The manual side of the EV module (EV-09): the mode, "charge now" and "don't charge now" (2026-11-06). The two commands exclude each other.</summary>
 public interface IEvControl
 {
     /// <summary>The mode and the running charge-now as the user last set them (the engine persists them to <c>ev.json</c> on its next computation).</summary>
@@ -67,6 +70,12 @@ public interface IEvControl
     EvControlResult StartChargeNow(double? targetPercent, TimeSpan? duration);
 
     EvControlResult CancelChargeNow();
+
+    /// <summary>"Don't charge now": no grid, PV surplus still allowed, until <paramref name="duration"/> passes, the car is unplugged or it is cancelled. Ends a running charge-now.</summary>
+    /// <param name="duration">Null takes <c>control.ev.hold.duration</c>.</param>
+    EvControlResult StartHold(TimeSpan? duration);
+
+    EvControlResult CancelHold();
 }
 
 /// <summary>
@@ -175,8 +184,51 @@ public sealed class EvControl(
                 return EvControlResult.NotConfigured;
         }
 
-        manual.Update(m => m with { ChargeNow = new EvChargeNow(now, target, expires) });
+        // The two commands exclude each other: asking to charge now ends a "don't charge now".
+        manual.Update(m => m with { ChargeNow = new EvChargeNow(now, target, expires), Hold = null });
         logger.LogInformation("EV charge now: target {Target} % by {Expires}", target, expires);
+        planner.Wake();
+        return EvControlResult.Done;
+    }
+
+    /// <summary>The longest "don't charge now"; a schema bound against a typo, as for <c>ev.hold.duration</c>, not a control parameter.</summary>
+    private static readonly TimeSpan MaxHold = TimeSpan.FromDays(7);
+
+    public EvControlResult StartHold(TimeSpan? duration)
+    {
+        if (inputs.Current.Configuration?.Configuration is not { Ev: { } ev } configuration)
+        {
+            return EvControlResult.NotConfigured;
+        }
+
+        var length = duration ?? configuration.Control.Ev.Hold.Duration;
+        if (length <= TimeSpan.Zero || length > MaxHold)
+        {
+            return EvControlResult.DurationOutOfRange;
+        }
+
+        // It only takes the grid away, so it needs neither full dispatch, nor a plugged car, nor a SoC. A running charge-now ends with it.
+        var now = clock.Time.GetUtcNow();
+        goals.End(ev.Device);
+        manual.Update(m => m with { ChargeNow = null, Hold = new EvHold(now, now + length) });
+        logger.LogInformation("EV don't charge now until {Expires}", now + length);
+        planner.Wake();
+        return EvControlResult.Done;
+    }
+
+    public EvControlResult CancelHold()
+    {
+        if (Configured != true)
+        {
+            return EvControlResult.NotConfigured;
+        }
+
+        if (!manual.Update(m => m.Hold is null ? m : m with { Hold = null }))
+        {
+            return EvControlResult.NoHold;
+        }
+
+        logger.LogInformation("EV don't charge now cancelled");
         planner.Wake();
         return EvControlResult.Done;
     }

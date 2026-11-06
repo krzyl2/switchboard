@@ -57,16 +57,19 @@ public sealed class EvEngine(
 
         // The user's side (mode, charge-now) lives in EvManualState, where the API and the MQTT entities change it; this loop is the one writer of ev.json, so it
         // takes the change here and persists it below. A charge-now that ran out, or whose manual goal has ended (target reached, unplugged, cancelled), ends.
-        _manual.Seed(state.Mode, state.ChargeNow);
+        _manual.Seed(state.Mode, state.ChargeNow, state.Hold);
         // The manual goal is read inside the atomic update, never before it: a charge-now that begins (goal first, then the state) between a read here and the
         // update must not be cleared on the strength of a goal that did not exist yet.
         _manual.Update(m => m.ChargeNow is { } running && (now >= running.ExpiresAt || !manualGoalActive(ev.Device)) ? m with { ChargeNow = null } : m);
+        // A "don't charge now" ends at its time or when the car is unplugged (an unknown plugged state ends nothing): the next plug-in is the module's again.
+        var unplugged = ev1.Plugged.Configured && ev1.IsPlugged == false;
+        _manual.Update(m => m.Hold is { } hold && (now >= hold.ExpiresAt || unplugged) ? m with { Hold = null } : m);
         var manualGoal = manualGoalActive(ev.Device);
         var manual = _manual.Current;
         var dirty = false;
-        if (manual.Mode != state.Mode || manual.ChargeNow != state.ChargeNow)
+        if (manual.Mode != state.Mode || manual.ChargeNow != state.ChargeNow || manual.Hold != state.Hold)
         {
-            state = state with { Mode = manual.Mode, ChargeNow = manual.ChargeNow };
+            state = state with { Mode = manual.Mode, ChargeNow = manual.ChargeNow, Hold = manual.Hold };
             dirty = true;
         }
 
@@ -112,9 +115,11 @@ public sealed class EvEngine(
             CapacityKwh = ev.CapacityKwh,
             Parameters = p,
             Mode = state.Mode,
+            Hold = state.Hold is not null,
             ManualGoalActive = manualGoal,
             Plugged = plugged,
             SocPercent = step.Estimate.Percent,
+            FloorSocPercent = step.Estimate.FloorPercent,
             KwhPerKm = kwhPerKm,
             NextTrip = next,
             Frozen = state.LastTrip?.ToFrozen(),

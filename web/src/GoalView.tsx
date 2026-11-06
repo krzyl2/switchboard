@@ -194,9 +194,10 @@ function WantNow({ device, plan, control }: { device: string; plan: PlanDevice |
 
 /**
  * The goal row of the device card (UI-12): every goal of the device with its status, the next planned runs, what the merge set aside, and
- * the "want now" action. Without a goal it says so; without an answer it says the goal is not available instead of showing none.
+ * the "want now" action. Without a goal it says so; without an answer it says the goal is not available instead of showing none. The EV module's device has
+ * no "want now" (2026-11-06): its one manual path is the EV controls ("charge now", "do not charge now").
  */
-export function GoalRow({ device, control, ...ctx }: { device: string; control: PlanControl } & Ctx) {
+export function GoalRow({ device, control, evDevice = false, ...ctx }: { device: string; control: PlanControl; evDevice?: boolean } & Ctx) {
   const t = useT();
   const { lang } = ctx;
   const view: PollView<Plan> = control.view;
@@ -263,7 +264,12 @@ export function GoalRow({ device, control, ...ctx }: { device: string; control: 
           {t['plan.goal.preview']}
         </span>
       )}
-      {plan.enabled && <WantNow device={device} plan={entry} control={control} />}
+      {plan.enabled && !evDevice && <WantNow device={device} plan={entry} control={control} />}
+      {plan.enabled && evDevice && (
+        <span class="line sub" data-goal-row="ev-controls">
+          {t['plan.goal.evControls']}
+        </span>
+      )}
     </>
   );
 }

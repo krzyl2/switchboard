@@ -12,17 +12,17 @@ using MsOptions = Microsoft.Extensions.Options.Options;
 namespace Switchboard.Tests.Infrastructure;
 
 /// <summary>
-/// The EV module's manual controls as MQTT entities (EV-09) through the real link and the real topic guard. Why it matters: a select, a number and a button on
+/// The EV module's manual controls as MQTT entities (EV-09) through the real link and the real topic guard. Why it matters: two selects and a number on
 /// Home Assistant's dashboard are a way into the add-on, so they exist and are listened to only while an <c>ev:</c> section is in force, a command is exactly one of
-/// the select's options, a number in (0, 100] or the button's PRESS, a retained message never acts on its own, and the add-on can never publish to a command topic
-/// of its own (it would command itself). Without the add-on option <c>mqtt_enabling_commands</c> MQTT may only choose PV only and set the number: any client of
-/// the broker can publish there, and auto, full charge and the button can buy grid power.
+/// a select's options or a number in (0, 100], a retained message never acts on its own, and the add-on can never publish to a command topic of its own (it would
+/// command itself). Without the add-on option <c>mqtt_enabling_commands</c> MQTT may only take the grid away (PV only, hold, the end of a charge-now) and set the
+/// number: any client of the broker can publish there, and auto, full charge, charge now and the end of a hold can buy grid power.
 /// </summary>
 public sealed class EvEntitiesTests : IAsyncDisposable
 {
     private const string ModeTopic = "switchboard/ev_mode/set";
     private const string TargetTopic = "switchboard/ev_charge_now_target/set";
-    private const string ButtonTopic = "switchboard/ev_charge_now/set";
+    private const string CommandTopic = "switchboard/ev_command/set";
 
     private readonly Control _control = new();
     private readonly ObservableTimeProvider _time = new();
@@ -64,8 +64,32 @@ public sealed class EvEntitiesTests : IAsyncDisposable
             return EvControlResult.Done;
         }
 
-        public EvControlResult CancelChargeNow() => EvControlResult.NoChargeNow;
+        public EvControlResult CancelChargeNow()
+        {
+            Calls.Add("cancel charge now");
+            Manual = Manual with { ChargeNow = null };
+            Changed?.Invoke(this, EventArgs.Empty);
+            return EvControlResult.Done;
+        }
+
+        public EvControlResult StartHold(TimeSpan? duration)
+        {
+            Calls.Add("hold");
+            Manual = Manual with { ChargeNow = null, Hold = new EvHold(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddHours(3)) };
+            Changed?.Invoke(this, EventArgs.Empty);
+            return EvControlResult.Done;
+        }
+
+        public EvControlResult CancelHold()
+        {
+            Calls.Add("cancel hold");
+            Manual = Manual with { Hold = null };
+            Changed?.Invoke(this, EventArgs.Empty);
+            return EvControlResult.Done;
+        }
     }
+
+    private static EvChargeNow Running => new(DateTimeOffset.UnixEpoch, 80, DateTimeOffset.UnixEpoch.AddHours(12));
 
     [Fact]
     public async Task The_three_entities_are_announced_with_the_frozen_identity_and_their_command_topics_are_subscribed()
@@ -74,22 +98,53 @@ public sealed class EvEntitiesTests : IAsyncDisposable
 
         var configs = session.Where(o => o.Topic.EndsWith("/config", StringComparison.Ordinal) && o.Payload.Length > 0 && o.Topic.Contains("/ev_", StringComparison.Ordinal)).ToList();
         Assert.Equal(
-            ["homeassistant/button/switchboard/ev_charge_now/config", "homeassistant/number/switchboard/ev_charge_now_target/config", "homeassistant/select/switchboard/ev_mode/config"],
+            ["homeassistant/number/switchboard/ev_charge_now_target/config", "homeassistant/select/switchboard/ev_command/config", "homeassistant/select/switchboard/ev_mode/config"],
             configs.Select(o => o.Topic).Order());
         Assert.All(configs, o => Assert.True(o.Retain));
-        var select = JsonDocument.Parse(configs.Single(o => o.Topic.Contains("select/", StringComparison.Ordinal)).Payload).RootElement;
+        var select = JsonDocument.Parse(configs.Single(o => o.Topic.Contains("select/switchboard/ev_mode", StringComparison.Ordinal)).Payload).RootElement;
         Assert.Equal(["auto", "pv_only", "full_charge"], select.GetProperty("options").EnumerateArray().Select(o => o.GetString()));
         Assert.Equal("switchboard_ev_mode", select.GetProperty("unique_id").GetString());
         Assert.Equal(ModeTopic, select.GetProperty("command_topic").GetString());
         Assert.False(select.GetProperty("retain").GetBoolean());
-        var button = JsonDocument.Parse(configs.Single(o => o.Topic.Contains("button/", StringComparison.Ordinal)).Payload).RootElement;
-        Assert.False(button.TryGetProperty("state_topic", out _));
-        Assert.Equal("PRESS", button.GetProperty("payload_press").GetString());
+        var command = JsonDocument.Parse(configs.Single(o => o.Topic.Contains("select/switchboard/ev_command", StringComparison.Ordinal)).Payload).RootElement;
+        Assert.Equal(["auto", "charge_now", "hold"], command.GetProperty("options").EnumerateArray().Select(o => o.GetString()));
+        Assert.Equal("switchboard_ev_command", command.GetProperty("unique_id").GetString());
+        Assert.Equal(CommandTopic, command.GetProperty("command_topic").GetString());
+        Assert.False(command.GetProperty("optimistic").GetBoolean());
         Assert.Equal(
-            new[] { ModeTopic, TargetTopic, ButtonTopic }.Order(StringComparer.Ordinal),
+            new[] { ModeTopic, TargetTopic, CommandTopic }.Order(StringComparer.Ordinal),
             session.Where(o => o.Kind == "subscribe" && o.Topic.Contains("/ev_", StringComparison.Ordinal)).Select(o => o.Topic).Order(StringComparer.Ordinal));
         Assert.Contains(session, o => o.Topic == "switchboard/ev_mode/state" && o.Payload == "auto");
+        Assert.Contains(session, o => o.Topic == "switchboard/ev_command/state" && o.Payload == "auto");
         Assert.Contains(session, o => o.Topic == "switchboard/ev_charge_now_target/state" && o.Payload == "90");
+    }
+
+    [Fact]
+    public async Task The_command_select_shows_the_command_in_force_and_auto_once_it_ended()
+    {
+        // Why: the select is not optimistic; it must say what runs (a charge-now that ended at its target shows auto again, without anyone choosing it).
+        _control.Manual = _control.Manual with { ChargeNow = Running };
+        var session = await StartAsync(enablingCommands: true);
+        Assert.Contains(session, o => o.Topic == "switchboard/ev_command/state" && o.Payload == "charge_now");
+
+        await _transport.DeliverAsync(CommandTopic, "hold");
+        await _transport.UntilAsync(o => o.Topic == "switchboard/ev_command/state" && o.Payload == "hold");
+
+        await _transport.DeliverAsync(CommandTopic, "auto");
+        await _transport.UntilAsync(o => o.Topic == "switchboard/ev_command/state" && o.Payload == "auto");
+        Assert.Equal(["hold", "cancel hold"], _control.Calls);
+    }
+
+    [Fact]
+    public async Task An_upgrade_retracts_the_old_charge_now_button()
+    {
+        // Why: 2026-11-06 the button became the command select; a button left in Home Assistant would publish to a topic nobody listens to.
+        var ledger = new MemoryLedger("select/ev_mode", "number/ev_charge_now_target", "button/ev_charge_now");
+
+        var session = await StartAsync(ledger);
+
+        Assert.Contains(session, o => o.Topic == "homeassistant/button/switchboard/ev_charge_now/config" && o.Payload.Length == 0 && o.Retain);
+        Assert.Contains(session, o => o.Topic == "homeassistant/select/switchboard/ev_command/config" && o.Payload.Length > 0);
     }
 
     [Fact]
@@ -111,17 +166,20 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task The_button_starts_a_charge_now_with_the_number_that_was_set_and_nothing_else_presses_it()
+    public async Task Charge_now_starts_a_charge_now_with_the_number_that_was_set_and_nothing_else_does()
     {
         await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(TargetTopic, "75");
         await _transport.UntilAsync(o => o.Topic == "switchboard/ev_charge_now_target/state" && o.Payload == "75");
-        await _transport.DeliverAsync(ButtonTopic, "press");
-        await _transport.DeliverAsync(ButtonTopic, "ON");
+        foreach (var payload in new[] { "PRESS", "Charge_now", "charge-now", "", "charge_now\n", "force_on" })
+        {
+            await _transport.DeliverAsync(CommandTopic, payload);
+        }
+
         Assert.Empty(_control.Calls);
 
-        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+        await _transport.DeliverAsync(CommandTopic, "charge_now");
 
         Assert.Equal(["start 75"], _control.Calls);
     }
@@ -138,16 +196,16 @@ public sealed class EvEntitiesTests : IAsyncDisposable
         await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(TargetTopic, payload);
-        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+        await _transport.DeliverAsync(CommandTopic, "charge_now");
 
         Assert.Equal(["start 90"], _control.Calls);
     }
 
     [Fact]
-    public async Task Without_the_option_MQTT_can_only_choose_pv_only_and_set_the_target()
+    public async Task Without_the_option_MQTT_can_only_take_the_grid_away_and_set_the_target()
     {
-        // auto and full_charge can charge from the grid and the button starts a grid charge at once: by default no broker client may do either. PV only
-        // lowers what the module plans and the number changes nothing by itself, so both stay open.
+        // auto and full_charge can charge from the grid, charge_now starts a grid charge at once and ending a hold gives the grid back: by default no broker
+        // client may do any of it. PV only, hold and ending a charge-now lower what the module draws, and the number changes nothing by itself, so they stay open.
         _control.Manual = _control.Manual with { Mode = EvMode.PvOnly };
         await StartAsync();
 
@@ -158,25 +216,35 @@ public sealed class EvEntitiesTests : IAsyncDisposable
         await _transport.DeliverAsync(ModeTopic, "auto");
         await _transport.DeliverAsync(TargetTopic, "75");
         await _transport.UntilAsync(o => o.Topic == "switchboard/ev_charge_now_target/state" && o.Payload == "75");
-        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+        await _transport.DeliverAsync(CommandTopic, "charge_now");
         Assert.Empty(_control.Calls);
 
         await _transport.DeliverAsync(ModeTopic, "pv_only");
+        await _transport.DeliverAsync(CommandTopic, "hold");
+        await _transport.DeliverAsync(CommandTopic, "auto");
+        await _transport.UntilAsync(o => o.Topic == "switchboard/ev_command/state" && o.Payload == "hold");
 
-        Assert.Equal(["mode PvOnly"], _control.Calls);
+        Assert.Equal(["mode PvOnly", "hold"], _control.Calls);
+
+        _control.Manual = _control.Manual with { Hold = null, ChargeNow = Running };
+        await _transport.DeliverAsync(CommandTopic, "auto");
+
+        Assert.Equal(["mode PvOnly", "hold", "cancel charge now"], _control.Calls);
     }
 
     [Fact]
-    public async Task With_the_option_MQTT_can_choose_every_mode_and_press_the_button()
+    public async Task With_the_option_MQTT_can_choose_every_mode_and_every_command()
     {
         await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(ModeTopic, "pv_only");
         await _transport.DeliverAsync(ModeTopic, "auto");
         await _transport.DeliverAsync(ModeTopic, "full_charge");
-        await _transport.DeliverAsync(ButtonTopic, "PRESS");
+        await _transport.DeliverAsync(CommandTopic, "charge_now");
+        await _transport.DeliverAsync(CommandTopic, "hold");
+        await _transport.DeliverAsync(CommandTopic, "auto");
 
-        Assert.Equal(["mode PvOnly", "mode Auto", "mode FullCharge", "start 90"], _control.Calls);
+        Assert.Equal(["mode PvOnly", "mode Auto", "mode FullCharge", "start 90", "hold", "cancel hold"], _control.Calls);
     }
 
     [Fact]
@@ -186,7 +254,8 @@ public sealed class EvEntitiesTests : IAsyncDisposable
         await StartAsync(enablingCommands: true);
 
         await _transport.DeliverAsync(ModeTopic, "pv_only", retained: true);
-        await _transport.DeliverAsync(ButtonTopic, "PRESS", retained: true);
+        await _transport.DeliverAsync(CommandTopic, "charge_now", retained: true);
+        await _transport.DeliverAsync(CommandTopic, "hold", retained: true);
         await _transport.DeliverAsync(TargetTopic, "50", retained: true);
 
         Assert.Empty(_control.Calls);
@@ -197,13 +266,13 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     {
         // Why: the module is not configured, so its controls must not exist; entities no longer declared are retracted like any other (identity is an API).
         _control.Configured = false;
-        var ledger = new MemoryLedger("select/ev_mode", "number/ev_charge_now_target", "button/ev_charge_now");
+        var ledger = new MemoryLedger("select/ev_mode", "number/ev_charge_now_target", "select/ev_command");
 
         var session = await StartAsync(ledger);
 
         Assert.DoesNotContain(session, o => o.Kind == "subscribe" && o.Topic.Contains("/ev_", StringComparison.Ordinal));
         Assert.Contains(session, o => o.Topic == "homeassistant/select/switchboard/ev_mode/config" && o.Payload.Length == 0 && o.Retain);
-        Assert.Contains(session, o => o.Topic == "homeassistant/button/switchboard/ev_charge_now/config" && o.Payload.Length == 0 && o.Retain);
+        Assert.Contains(session, o => o.Topic == "homeassistant/select/switchboard/ev_command/config" && o.Payload.Length == 0 && o.Retain);
     }
 
     [Fact]
@@ -211,7 +280,7 @@ public sealed class EvEntitiesTests : IAsyncDisposable
     {
         // Why: a broken switchboard.yaml must never delete the user's entities, and must not open a command topic either.
         _control.Configured = null;
-        var ledger = new MemoryLedger("select/ev_mode", "number/ev_charge_now_target", "button/ev_charge_now");
+        var ledger = new MemoryLedger("select/ev_mode", "number/ev_charge_now_target", "select/ev_command");
 
         var session = await StartAsync(ledger);
 
@@ -226,7 +295,7 @@ public sealed class EvEntitiesTests : IAsyncDisposable
         var without = new MqttTopicGuard("homeassistant", "switchboard", null, () => false);
         var plain = new MqttTopicGuard("homeassistant", "switchboard");
 
-        Assert.All(new[] { ModeTopic, TargetTopic, ButtonTopic }, topic =>
+        Assert.All(new[] { ModeTopic, TargetTopic, CommandTopic }, topic =>
         {
             Assert.True(with.IsSubscriptionAllowed(topic), topic);
             Assert.False(without.IsSubscriptionAllowed(topic), topic);

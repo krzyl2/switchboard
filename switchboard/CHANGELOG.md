@@ -2,6 +2,18 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.0
+
+### Changed
+
+- The EV reserve (`control.ev.floor`) is due at the next local `control.ev.floor_by` (default 15:00), after the day's PV: the night charges only what the forecast will not bring. A trip asks for `floor + trip SoC + control.ev.trip_margin`; `floor_after` and `reserve` are removed (a file that sets them is refused by name).
+- The floor may plan with a SoC estimate up to `control.ev.floor_soc_max_age` (12h) old, so a sleeping car keeps its reserve goal; the weekly full charge counts on any day it is reached.
+- Charge now draws from any zone as soon as possible (no power bands); default target 100 %.
+
+### Added
+
+- "Don't charge now" (hold): no grid, PV surplus still allowed, for `control.ev.hold.duration` (3h) or until unplugged; `POST`/`DELETE api/ev/hold`, a button on the EV card, and `select.switchboard_ev_command` (`auto`, `charge_now`, `hold`) in Home Assistant, which replaces the charge-now button.
+
 ## 0.12.6
 
 ### Fixed

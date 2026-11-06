@@ -35,9 +35,9 @@ public sealed record EvDefinition(
 /// The EV module's parameters (<c>ev:</c> in control-defaults, docs/EV.md section 6 S1). Every value comes from configuration; none is a
 /// literal in code. Bound and range-checked in S1, read by nothing before the module exists (S3 onwards).
 /// </summary>
-/// <param name="FloorPercent">SoC held from the cheapest zone: below it the car charges in the earliest cheap hours (with a trip ahead, before the departure). Not the hybrid threshold.</param>
-/// <param name="FloorAfterPercent">SoC that must remain after a trip.</param>
-/// <param name="ReservePoints">Extra percentage points on top of the trip's SoC and the floor after it.</param>
+/// <param name="FloorPercent">The reserve: the SoC the car is brought to by the next local <paramref name="FloorBy"/> from PV and the cheapest zone (the planner takes the window's forecast PV first and the rest in the earliest cheap hours); with a trip ready earlier, due then. It stays in the car after a trip. Not the hybrid threshold.</param>
+/// <param name="FloorBy">The local time of day the floor is due at; after the day's PV, so a sunny forecast leaves the night empty.</param>
+/// <param name="TripMarginPoints">Percentage points on top of the floor and the trip's SoC (target = floor + trip SoC + margin).</param>
 /// <param name="CapPercent">Ceiling of surplus-only charging.</param>
 /// <param name="WeeklyFull">The weekly full charge.</param>
 /// <param name="ReadyMargin">The car is ready this long before a trip starts.</param>
@@ -46,16 +46,18 @@ public sealed record EvDefinition(
 /// <param name="Learn">How consumption is learned from SoC and range pairs.</param>
 /// <param name="MaxTripKm">A trip longer than this is a typo and is ignored.</param>
 /// <param name="SocMaxAge">Beyond this the SoC estimate is not trusted and the goals are inactive.</param>
+/// <param name="FloorSocMaxAge">The floor alone may plan with an estimate up to this old once it is too old for <paramref name="SocMaxAge"/> (only the age is relaxed).</param>
 /// <param name="DriftLimitKwh">Energy that may flow into the car, unseen by the SoC, before the estimate is dropped.</param>
 /// <param name="TargetChangeThresholdPoints">A frozen trip target is recomputed only when it moves by more than this many points.</param>
 /// <param name="ChargeNow">The manual "charge now" action.</param>
+/// <param name="Hold">The manual "don't charge now" action.</param>
 /// <param name="Spread">Spread a charge evenly over a long window instead of running at the ceiling.</param>
 /// <param name="SnapshotMaxAge">The module's offer is computed beside the control loop and published as a snapshot; one older than this is no offer at all (its goals are reported as failed, never the old ones).</param>
 /// <param name="PowerBands">Ceilings of grid charging by local hours, used only while the charge still fits its window under them; empty: none.</param>
 public sealed record EvParameters(
     double FloorPercent,
-    double FloorAfterPercent,
-    double ReservePoints,
+    TimeOnly FloorBy,
+    double TripMarginPoints,
     double CapPercent,
     EvWeeklyFullParameters WeeklyFull,
     TimeSpan ReadyMargin,
@@ -64,9 +66,11 @@ public sealed record EvParameters(
     EvLearnParameters Learn,
     double MaxTripKm,
     TimeSpan SocMaxAge,
+    TimeSpan FloorSocMaxAge,
     double DriftLimitKwh,
     double TargetChangeThresholdPoints,
     EvChargeNowParameters ChargeNow,
+    EvHoldParameters Hold,
     bool Spread,
     TimeSpan SnapshotMaxAge,
     ImmutableArray<PowerBand> PowerBands = default);
@@ -93,3 +97,6 @@ public sealed record EvLearnParameters(double Smoothing, double MinSoc, double M
 /// <param name="TargetPercent">The SoC "charge now" runs to when the request names none.</param>
 /// <param name="Duration">A "charge now" that has not reached its target ends after this long.</param>
 public sealed record EvChargeNowParameters(double TargetPercent, TimeSpan Duration);
+
+/// <param name="Duration">A "don't charge now" ends after this long unless the car is unplugged or it is cancelled first.</param>
+public sealed record EvHoldParameters(TimeSpan Duration);

@@ -19,6 +19,9 @@ public enum EvMode
 /// <summary>A running "charge now": it ends at its target, on unplug, or at <paramref name="ExpiresAt"/>.</summary>
 public sealed record EvChargeNow(DateTimeOffset StartedAt, double TargetPercent, DateTimeOffset ExpiresAt);
 
+/// <summary>A running "don't charge now" (2026-11-06): no grid, PV surplus still allowed; it ends on unplug, when cancelled, or at <paramref name="ExpiresAt"/>.</summary>
+public sealed record EvHold(DateTimeOffset StartedAt, DateTimeOffset ExpiresAt);
+
 /// <summary>The trip last planned for, with the target frozen for it, so a restart does not recompute it.</summary>
 public sealed record EvLastTrip(string TripKey, double TargetPercent, double TripSocPercent, bool ExceedsElectricRange, bool Clamped, DateTimeOffset FrozenAt)
 {
@@ -35,7 +38,8 @@ public sealed record EvLastTrip(string TripKey, double TargetPercent, double Tri
 
 /// <summary>Everything the EV module remembers across a restart (<c>ev.json</c>, own file, never <c>state.json</c>).</summary>
 /// <param name="LastFullAt">When the weekly full charge last reached its target (S5): one a week. Optional in <c>ev.json</c>: a file without it reads as never.</param>
-public sealed record EvState(EvMode Mode, EvChargeNow? ChargeNow, KwhPerKmState Learned, EvLastTrip? LastTrip, DateTimeOffset? LastFullAt = null)
+/// <param name="Hold">A running "don't charge now". Optional in <c>ev.json</c>: a file without it reads as none.</param>
+public sealed record EvState(EvMode Mode, EvChargeNow? ChargeNow, KwhPerKmState Learned, EvLastTrip? LastTrip, DateTimeOffset? LastFullAt = null, EvHold? Hold = null)
 {
     public static EvState Default { get; } = new(EvMode.Auto, null, KwhPerKmState.Empty, null);
 }

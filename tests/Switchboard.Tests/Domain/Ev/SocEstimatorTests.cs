@@ -338,5 +338,32 @@ public sealed class SocEstimatorTests
 
         Assert.Equal(SocEstimateGap.ChargerStale, later.Estimate.Gap);
     }
+
+    [Fact]
+    public void Past_soc_max_age_only_the_floor_keeps_the_value_and_only_up_to_floor_soc_max_age()
+    {
+        // Why: 2026-11-06. The car reports every few hours while it sleeps; with the estimate gone at 6 h the night had no reserve goal and charged nothing.
+        // The floor (a few kWh at the cheap price if wrong) may plan with the aged value; the estimate itself stays gone, so a trip never plans on it.
+        var aged = Step(Anchored(), T0 + Defaults.SocMaxAge + TimeSpan.FromMinutes(1));
+        Assert.Null(aged.Estimate.Percent);
+        Assert.Equal(SocEstimateGap.TooOld, aged.Estimate.Gap);
+        Assert.Equal(50, aged.Estimate.FloorPercent);
+
+        var tooOld = Step(Anchored(), T0 + Defaults.FloorSocMaxAge + TimeSpan.FromSeconds(1));
+        Assert.Null(tooOld.Estimate.FloorPercent);
+
+        Assert.Equal(50, Step(Anchored(), T0 + TimeSpan.FromHours(1)).Estimate.FloorPercent);
+    }
+
+    [Fact]
+    public void An_aged_value_is_not_kept_past_the_drift_limit_or_across_a_charger_gap()
+    {
+        // Why: only the age is relaxed. Energy the SoC never saw, or a gap that may have hidden a charge, makes the old value wrong, not just old.
+        var drifted = Step(Anchored(), T0 + TimeSpan.FromHours(1), charger: new ChargerEnergy(Defaults.DriftLimitKwh + 0.1, true));
+        Assert.Null(Step(drifted.State, T0 + Defaults.SocMaxAge + TimeSpan.FromMinutes(1)).Estimate.FloorPercent);
+
+        var gap = Step(Anchored(), T0 + TimeSpan.FromHours(1), charger: new ChargerEnergy(0, false));
+        Assert.Null(Step(gap.State, T0 + Defaults.SocMaxAge + TimeSpan.FromMinutes(1)).Estimate.FloorPercent);
+    }
 }
 

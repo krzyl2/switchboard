@@ -39,7 +39,12 @@ public sealed record EvResponse(
 
 /// <summary>The user's side of the module (EV-09): what the user set, read from memory at once (the assessment follows on the module's next computation).</summary>
 /// <param name="Mode">auto, pv_only or full_charge. "Off" is the device's own force_off override, not a mode.</param>
-public sealed record EvManualDto(string Mode, EvChargeNowDto ChargeNow);
+/// <param name="Hold">"Don't charge now" (2026-11-06): no grid, PV surplus still allowed.</param>
+public sealed record EvManualDto(string Mode, EvChargeNowDto ChargeNow, EvHoldDto Hold);
+
+/// <param name="Active">A "don't charge now" is running.</param>
+/// <param name="Until">When it ends at the latest (it also ends when the car is unplugged); null when none is running.</param>
+public sealed record EvHoldDto(bool Active, DateTimeOffset? Until);
 
 /// <param name="Active">A charge-now is running.</param>
 /// <param name="TargetPct">The SoC it runs to; null when none is running.</param>
@@ -136,8 +141,8 @@ public sealed record EvConfigDto(
 /// <summary>The <c>control.ev</c> parameters; durations in seconds.</summary>
 public sealed record EvParametersDto(
     double FloorPercent,
-    double FloorAfterPercent,
-    double ReservePoints,
+    string FloorBy,
+    double TripMarginPoints,
     double CapPercent,
     IReadOnlyList<string> WeeklyFullDays,
     double WeeklyFullTargetPercent,
@@ -152,10 +157,12 @@ public sealed record EvParametersDto(
     double LearnPairToleranceS,
     double MaxTripKm,
     double SocMaxAgeS,
+    double FloorSocMaxAgeS,
     double DriftLimitKwh,
     double TargetChangeThresholdPoints,
     double ChargeNowTargetPercent,
     double ChargeNowDurationS,
+    double HoldDurationS,
     bool Spread,
     double SnapshotMaxAgeS);
 
@@ -231,6 +238,38 @@ internal static class EvEndpoint
             EvControlResult.NoChargeNow => Refused(StatusCodes.Status404NotFound, NoChargeNow, "No charge-now is running."),
             _ => TypedResults.Json(new { ended = true }),
         });
+
+        // "Don't charge now" (2026-11-06): no grid, PV surplus still allowed, for control.ev.hold.duration or the durationMinutes given; it ends a charge-now.
+        endpoints.MapPost("/ev/hold", async Task<IResult> (
+            HttpRequest request,
+            [FromServices] IEvControl control,
+            CancellationToken cancellationToken) =>
+        {
+            var body = (await request.ReadBodyAsync(cancellationToken).ConfigureAwait(false)).AsObject();
+            if (body is null || !TryOptionalNumber(body.Value, out var target, out var minutes) || target is not null)
+            {
+                return Refused(StatusCodes.Status400BadRequest, BadRequest, "Send {} or an object with only durationMinutes (minutes), a number.");
+            }
+
+            switch (control.StartHold(ChargeNowDuration.FromMinutes(minutes)))
+            {
+                case EvControlResult.NotConfigured:
+                    return Refused(StatusCodes.Status404NotFound, NotConfigured, "There is no ev: section in the valid configuration.");
+                case EvControlResult.DurationOutOfRange:
+                    return Refused(StatusCodes.Status422UnprocessableEntity, DurationOutOfRange, "The duration must be above zero and at most 7 days.");
+            }
+
+            return control.Manual.Hold is { } hold
+                ? TypedResults.Json(new EvHoldDto(true, hold.ExpiresAt))
+                : Refused(StatusCodes.Status409Conflict, NoHold, "The hold ended as it began.");
+        }).WithBodyLimit(MaxBodyBytes);
+
+        endpoints.MapDelete("/ev/hold", ([FromServices] IEvControl control) => control.CancelHold() switch
+        {
+            EvControlResult.NotConfigured => Refused(StatusCodes.Status404NotFound, NotConfigured, "There is no ev: section in the valid configuration."),
+            EvControlResult.NoHold => Refused(StatusCodes.Status404NotFound, NoHold, "No hold is running."),
+            _ => TypedResults.Json(new { ended = true }),
+        });
         return endpoints;
     }
 
@@ -247,6 +286,7 @@ internal static class EvEndpoint
     public const string DurationOutOfRange = "duration_out_of_range";
     public const string DeadlineBeyondHorizon = "deadline_beyond_horizon";
     public const string NoChargeNow = "no_charge_now";
+    public const string NoHold = "no_hold";
 
     private static IResult Refused(int status, string code, string message) => ApiResults.Refusal(status, code, message);
 
@@ -334,7 +374,8 @@ internal static class EvEndpoint
             ApiText.Snake(manual.Mode),
             manual.Running is { } running
                 ? new EvChargeNowDto(true, running.TargetPercent, running.ExpiresAt)
-                : new EvChargeNowDto(false, null, null));
+                : new EvChargeNowDto(false, null, null),
+            manual.Hold is { } hold ? new EvHoldDto(true, hold.ExpiresAt) : new EvHoldDto(false, null));
 
     private static EvAssessmentDto Assessment(EvAssessmentReport report)
     {
@@ -386,8 +427,8 @@ internal static class EvEndpoint
     private static EvParametersDto Parameters(EvParameters p) =>
         new(
             p.FloorPercent,
-            p.FloorAfterPercent,
-            p.ReservePoints,
+            p.FloorBy.ToString("HH:mm", CultureInfo.InvariantCulture),
+            p.TripMarginPoints,
             p.CapPercent,
             [.. p.WeeklyFull.Days.Select(d => d.ToString().ToLowerInvariant())],
             p.WeeklyFull.TargetPercent,
@@ -402,10 +443,12 @@ internal static class EvEndpoint
             p.Learn.PairTolerance.TotalSeconds,
             p.MaxTripKm,
             p.SocMaxAge.TotalSeconds,
+            p.FloorSocMaxAge.TotalSeconds,
             p.DriftLimitKwh,
             p.TargetChangeThresholdPoints,
             p.ChargeNow.TargetPercent,
             p.ChargeNow.Duration.TotalSeconds,
+            p.Hold.Duration.TotalSeconds,
             p.Spread,
             p.SnapshotMaxAge.TotalSeconds);
 }

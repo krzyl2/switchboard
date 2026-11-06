@@ -46,9 +46,9 @@ ev:
 #
 # control:
 #   ev:
-#     floor: 25                  # SoC held from the cheapest zone, charged in the earliest cheap hours (percent); not the hybrid threshold
-#     floor_after: 25            # SoC that must remain after a trip
-#     reserve: 15                # percentage points on top: target = trip SoC + floor_after + reserve
+#     floor: 25                  # the reserve (percent): reached by the next floor_by from PV and the cheapest zone; not the hybrid threshold
+#     floor_by: "15:00"          # local time the reserve is due at: after the day's sun, so a sunny forecast leaves the night empty
+#     trip_margin: 10            # percentage points on top: trip target = floor + trip SoC + trip_margin (the reserve stays after the trip)
 #     cap: 90                    # ceiling of surplus-only charging
 #     weekly_full:
 #       days: [saturday, sunday] # one full charge a week on one of these local weekdays; [] switches it off
@@ -65,10 +65,11 @@ ev:
 #       pair_tolerance: 60s      # a SoC and a range this close in time count as one report
 #     max_trip_km: 500           # a longer trip is a typo and is ignored
 #     soc_max_age: 6h            # beyond this the SoC estimate is not trusted
+#     floor_soc_max_age: 12h     # the reserve alone may plan with an estimate this old (a sleeping car reports every few hours)
 #     drift_limit_kwh: 1.5       # energy into the car unseen by the SoC before the estimate is dropped
 #     target_change_threshold: 3 # a frozen trip target is recomputed only when it moves by more than this many points
 #     charge_now:
-#       target: 90
+#       target: 100
 #       duration: 12h
 #     spread: true               # spread a charge over a long window instead of running at the ceiling
 #     power_bands: []            # grid-charging ceilings by local hours while there is time, e.g.

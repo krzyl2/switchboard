@@ -126,8 +126,8 @@ public sealed class EvManualControlTests
     public void Charge_now_is_a_manual_hard_goal_that_replaces_the_modules_goals_and_never_double_counts()
     {
         // Why: B8/B9. The module's own goals and a manual goal on one device would add up in the plan; the manual goal wins and the module offers nothing. The goal
-        // runs on the module's SoC estimate and on the device's own sources, and is hard (a person asked), without margin; the plan makes it Urgent only when the
-        // margin is within the escalation margin.
+        // runs on the module's SoC estimate and is hard (a person asked), without margin. 2026-11-06: "charge now" means now, so it may use any zone (the device's
+        // own sources may be pv_only) and the plan places it in the earliest slots, not the cheapest before its deadline.
         var rig = PlugedAt(40);
         Assert.NotEmpty(rig.Offer().Requests);
 
@@ -139,7 +139,8 @@ public sealed class EvManualControlTests
         var request = Assert.Single(rig.ManualOffer().Requests);
         Assert.Equal((GoalOrigin.Manual, true, true, TimeSpan.Zero, 80.0, 40.0), (request.Origin, request.Hard, request.Escalate, request.Margin, ((SocTarget)request.Target).TargetPercent, ((SocTarget)request.Target).CurrentPercent));
         Assert.Equal(40 / 100.0 * 18 * 1.10, request.RemainingKwh, 9);
-        Assert.Equal("pv_and_zone:offpeak", request.Sources!.ToText());
+        Assert.Equal("any", request.Sources!.ToText());
+        Assert.True(request.Asap);
 
         var snapshot = rig.Tick();
         Assert.Equal(EvAssessmentCode.Manual, snapshot.Composition.Code);
@@ -272,6 +273,86 @@ public sealed class EvManualControlTests
 
         rig.Tick();
         Assert.NotEmpty(rig.Offer().Requests);
+    }
+
+    [Fact]
+    public void Hold_takes_the_grid_away_for_its_duration_and_the_module_takes_over_again()
+    {
+        // Why: 2026-11-06, the maintainer's Saturday with the washer, the dishwasher and the oven: "don't charge now" for a while, PV surplus still allowed. It
+        // needs no full dispatch (it only takes the grid away), every goal it leaves is PV only, and it must end by itself, or a forgotten hold would leave the
+        // car without its reserve for days.
+        var rig = PlugedAt(10, planner: "planner:\n  dispatch: narrow\n");
+        Assert.Contains(rig.Offer().Requests, r => r.Sources!.ToText() != "pv_only");
+
+        Assert.Equal(EvControlResult.Done, rig.Control.StartHold(null));
+        var hold = rig.Control.Manual.Hold!;
+        Assert.Equal(rig.Now + rig.Configuration.Control.Ev.Hold.Duration, hold.ExpiresAt);
+        Assert.Equal(TimeSpan.FromHours(3), rig.Configuration.Control.Ev.Hold.Duration);
+
+        var snapshot = rig.Tick();
+        Assert.Equal(EvAssessmentCode.PvOnly, snapshot.Composition.Code);
+        Assert.All(rig.Offer().Requests, r => Assert.Equal("pv_only", r.Sources!.ToText()));
+        Assert.Equal(hold, rig.Saved!.Hold);
+        Assert.Equal(EvMode.Auto, rig.Control.Manual.Mode);
+
+        rig.Cruise(hold.ExpiresAt - rig.Now);
+        rig.Tick();
+
+        Assert.Null(rig.Control.Manual.Hold);
+        Assert.Null(rig.Saved!.Hold);
+        Assert.Contains(rig.Offer().Requests, r => r.Sources!.ToText() != "pv_only");
+    }
+
+    [Fact]
+    public void Hold_ends_when_the_car_is_unplugged_and_survives_an_unknown_state_and_a_restart()
+    {
+        // Why: the next plug-in is the module's again; but a blip of the plugged state ends nothing, and a restart in the middle of a busy afternoon must not
+        // give the grid back.
+        var rig = PlugedAt(40);
+        rig.Control.StartHold(TimeSpan.FromHours(2));
+        rig.Tick();
+
+        rig.Restart();
+        rig.PushSoc(40);
+        rig.Advance(TimeSpan.FromMinutes(1));
+        rig.PushPlugged("unavailable");
+        rig.Tick();
+        Assert.NotNull(rig.Control.Manual.Hold);
+
+        rig.Advance(TimeSpan.FromMinutes(1));
+        rig.PushPlugged("Idle");
+        rig.Tick();
+        Assert.Null(rig.Control.Manual.Hold);
+    }
+
+    [Fact]
+    public void Hold_and_charge_now_exclude_each_other()
+    {
+        // Why: one command select in Home Assistant; asking for one is the end of the other, never both at once (a hold under a charge-now would be meaningless).
+        var rig = PlugedAt(40);
+        rig.Control.StartChargeNow(80, TimeSpan.FromHours(6));
+
+        Assert.Equal(EvControlResult.Done, rig.Control.StartHold(null));
+        Assert.Null(rig.Control.Manual.ChargeNow);
+        Assert.Empty(rig.GoalStore.Current.Goals);
+
+        Assert.Equal(EvControlResult.Done, rig.Control.StartChargeNow(80, TimeSpan.FromHours(6)));
+        Assert.Null(rig.Control.Manual.Hold);
+        Assert.NotNull(rig.Control.Manual.ChargeNow);
+    }
+
+    [Fact]
+    public void Hold_is_cancelled_by_the_user_and_refuses_what_cannot_work()
+    {
+        var rig = PlugedAt(40);
+        Assert.Equal(EvControlResult.NoHold, rig.Control.CancelHold());
+        Assert.Equal(EvControlResult.DurationOutOfRange, rig.Control.StartHold(TimeSpan.Zero));
+        Assert.Equal(EvControlResult.DurationOutOfRange, rig.Control.StartHold(TimeSpan.FromDays(8)));
+        Assert.Null(rig.Control.Manual.Hold);
+
+        rig.Control.StartHold(null);
+        Assert.Equal(EvControlResult.Done, rig.Control.CancelHold());
+        Assert.Null(rig.Control.Manual.Hold);
     }
 
     [Fact]

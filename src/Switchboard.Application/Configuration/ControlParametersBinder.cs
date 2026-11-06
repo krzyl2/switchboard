@@ -466,11 +466,12 @@ internal static class ControlParametersBinder
         var weekly = ev.Child("weekly_full");
         var learn = ev.Child("learn");
         var chargeNow = ev.Child("charge_now");
+        var hold = ev.Child("hold");
 
         var parameters = new EvParameters(
             ev.Number("floor", Percent) ?? 0,
-            ev.Number("floor_after", Percent) ?? 0,
-            ev.Number("reserve", Percent) ?? 0,
+            ev.TimeOfDay("floor_by") ?? TimeOnly.MinValue,
+            ev.Number("trip_margin", Percent) ?? 0,
             ev.Number("cap", Percent) ?? 0,
             new EvWeeklyFullParameters(weekly.DayList("days"), weekly.Number("target", Percent) ?? 0),
             ev.NonNegativeDuration("ready_margin") ?? TimeSpan.Zero,
@@ -485,11 +486,13 @@ internal static class ControlParametersBinder
                 learn.NonNegativeDuration("pair_tolerance") ?? TimeSpan.Zero),
             ev.Number("max_trip_km", new Range(0, MaxTripKmLimit, MinExclusive: true)) ?? 0,
             ev.PositiveDuration("soc_max_age") ?? TimeSpan.Zero,
+            ev.PositiveDuration("floor_soc_max_age") ?? TimeSpan.Zero,
             ev.Number("drift_limit_kwh", Range.Above(0)) ?? 0,
             ev.Number("target_change_threshold", new Range(0, 100, MinExclusive: true)) ?? 0,
             new EvChargeNowParameters(
                 chargeNow.Number("target", new Range(0, 100, MinExclusive: true)) ?? 0,
                 chargeNow.PositiveDuration("duration") ?? TimeSpan.Zero),
+            new EvHoldParameters(hold.PositiveDuration("duration") ?? TimeSpan.Zero),
             ev.Boolean("spread") ?? false,
             ev.PositiveDuration("snapshot_max_age") ?? TimeSpan.Zero,
             BindPowerBands(ev, issues));
@@ -826,6 +829,23 @@ internal static class ControlParametersBinder
 
         public bool? Boolean(string key) =>
             Node(key) is { } node ? ConfigRead.Boolean(node, ConfigRead.Join(Path, key), _issues) : null;
+
+        /// <summary>A required local time of day, written "HH:mm".</summary>
+        public TimeOnly? TimeOfDay(string key)
+        {
+            if (Node(key) is not { } node || ConfigRead.String(node, ConfigRead.Join(Path, key), _issues) is not { } text)
+            {
+                return null;
+            }
+
+            if (TimeOnly.TryParseExact(text.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time))
+            {
+                return time;
+            }
+
+            _issues.Error(ConfigurationIssueCodes.InvalidValue, ConfigRead.Join(Path, key), node, $"'{text}' is not a local time of day; write it as \"HH:mm\", for example \"15:00\".");
+            return null;
+        }
 
         /// <summary>A required list of weekday names (an empty list is allowed: it switches the feature off).</summary>
         public ImmutableArray<DayOfWeek> DayList(string key)

@@ -63,6 +63,24 @@ public sealed class EvControlEndpointTests
             Calls.Add("cancel");
             return Result;
         }
+
+        public EvControlResult StartHold(TimeSpan? duration)
+        {
+            Calls.Add($"hold {duration?.TotalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}");
+            if (Result == EvControlResult.Done)
+            {
+                var now = DateTimeOffset.Parse("2026-10-30T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+                Manual = Manual with { ChargeNow = null, Hold = new EvHold(now, now + (duration ?? TimeSpan.FromHours(3))) };
+            }
+
+            return Result;
+        }
+
+        public EvControlResult CancelHold()
+        {
+            Calls.Add("cancel hold");
+            return Result;
+        }
     }
 
     private static SwitchboardHostFactory Host(string root, FakeControl control) => new(root, replaceLinks: services =>
@@ -243,6 +261,44 @@ public sealed class EvControlEndpointTests
         Assert.Equal(StatusCodes.Status200OK, ended.Response.StatusCode);
         Assert.Equal(StatusCodes.Status404NotFound, none.Response.StatusCode);
         Assert.Equal("no_charge_now", Json(none).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Hold_starts_with_the_configured_or_given_duration_and_answers_until_when()
+    {
+        // Why: 2026-11-06, "don't charge now" from the panel; it takes only durationMinutes, never a target (it charges nothing).
+        using var root = new TempWebRoot();
+        var control = new FakeControl();
+        using var factory = Host(root.Path, control);
+        _ = factory.Server;
+
+        var configured = await Send(factory, "POST", "/api/ev/hold", "application/json", "{}");
+        var given = await Send(factory, "POST", "/api/ev/hold", "application/json", """{"durationMinutes":90}""");
+        var withTarget = await Send(factory, "POST", "/api/ev/hold", "application/json", """{"targetPct":80}""");
+
+        Assert.Equal(StatusCodes.Status200OK, configured.Response.StatusCode);
+        var body = Json(given);
+        Assert.Equal(["active", "until"], body.EnumerateObject().Select(p => p.Name));
+        Assert.True(body.GetProperty("active").GetBoolean());
+        Assert.Equal(StatusCodes.Status400BadRequest, withTarget.Response.StatusCode);
+        Assert.Equal(["hold -", "hold 90"], control.Calls);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_hold_ends_it_and_cancelling_nothing_is_404()
+    {
+        using var root = new TempWebRoot();
+        var control = new FakeControl();
+        using var factory = Host(root.Path, control);
+        _ = factory.Server;
+
+        var ended = await Send(factory, "DELETE", "/api/ev/hold");
+        control.Result = EvControlResult.NoHold;
+        var none = await Send(factory, "DELETE", "/api/ev/hold");
+
+        Assert.Equal(StatusCodes.Status200OK, ended.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status404NotFound, none.Response.StatusCode);
+        Assert.Equal("no_hold", Json(none).GetProperty("code").GetString());
     }
 
     [Fact]

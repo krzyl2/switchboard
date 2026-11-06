@@ -2,8 +2,8 @@ using Switchboard.Domain.Ev;
 
 namespace Switchboard.Application.Ev;
 
-/// <summary>The user's side of the module: the manual mode and a running "charge now" (EV-09). Pure data.</summary>
-public sealed record EvManual(EvMode Mode, EvChargeNow? ChargeNow)
+/// <summary>The user's side of the module: the manual mode, a running "charge now" (EV-09) and a running "don't charge now" (2026-11-06). Pure data.</summary>
+public sealed record EvManual(EvMode Mode, EvChargeNow? ChargeNow, EvHold? Hold = null)
 {
     public static EvManual Default { get; } = new(EvMode.Auto, null);
 }
@@ -21,6 +21,7 @@ public sealed class EvManualState
     private bool _seeded;
     private bool _modeTouched;
     private bool _chargeNowTouched;
+    private bool _holdTouched;
 
     /// <summary>Raised after every change, outside the lock; handlers must not block (MQTT notes it, the planner is woken).</summary>
     public event EventHandler? Changed;
@@ -37,7 +38,7 @@ public sealed class EvManualState
     }
 
     /// <summary>Takes over what <c>ev.json</c> held, once; a field changed before this wins (the user acted first), the other comes from the file.</summary>
-    public void Seed(EvMode mode, EvChargeNow? chargeNow)
+    public void Seed(EvMode mode, EvChargeNow? chargeNow, EvHold? hold = null)
     {
         lock (_gate)
         {
@@ -47,7 +48,7 @@ public sealed class EvManualState
             }
 
             _seeded = true;
-            _value = new EvManual(_modeTouched ? _value.Mode : mode, _chargeNowTouched ? _value.ChargeNow : chargeNow);
+            _value = new EvManual(_modeTouched ? _value.Mode : mode, _chargeNowTouched ? _value.ChargeNow : chargeNow, _holdTouched ? _value.Hold : hold);
         }
     }
 
@@ -67,6 +68,7 @@ public sealed class EvManualState
             {
                 _modeTouched |= next.Mode != _value.Mode;
                 _chargeNowTouched |= next.ChargeNow != _value.ChargeNow;
+                _holdTouched |= next.Hold != _value.Hold;
             }
 
             _value = next;

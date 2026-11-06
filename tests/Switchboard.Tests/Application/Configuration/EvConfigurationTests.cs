@@ -346,14 +346,15 @@ public sealed class EvConfigurationTests
         // maintainer's full charge of 18 kWh is about 90 km.
         var ev = TestConfigurations.Valid(Document(ev: string.Empty)).Configuration!.Control.Ev;
 
-        Assert.Equal((25.0, 25.0, 15.0, 90.0), (ev.FloorPercent, ev.FloorAfterPercent, ev.ReservePoints, ev.CapPercent));
+        Assert.Equal((25.0, new TimeOnly(15, 0), 10.0, 90.0), (ev.FloorPercent, ev.FloorBy, ev.TripMarginPoints, ev.CapPercent));
+        Assert.Equal(TimeSpan.FromHours(12), ev.FloorSocMaxAge);
         Assert.Equal([DayOfWeek.Saturday, DayOfWeek.Sunday], ev.WeeklyFull.Days);
         Assert.Equal(100.0, ev.WeeklyFull.TargetPercent);
         Assert.Equal((TimeSpan.FromMinutes(30), 0.10, 0.20), (ev.ReadyMargin, ev.LossFraction, ev.FallbackKwhPerKm));
         Assert.Equal((0.12, 0.60, 20.0), (ev.Learn.MinKwhPerKm, ev.Learn.MaxKwhPerKm, ev.Learn.MinSoc));
         Assert.Equal((0.2, 50), (ev.Learn.Smoothing, ev.Learn.MaxSamples));
         Assert.Equal((500.0, TimeSpan.FromHours(6), 1.5, 3.0), (ev.MaxTripKm, ev.SocMaxAge, ev.DriftLimitKwh, ev.TargetChangeThresholdPoints));
-        Assert.Equal((90.0, TimeSpan.FromHours(12)), (ev.ChargeNow.TargetPercent, ev.ChargeNow.Duration));
+        Assert.Equal((100.0, TimeSpan.FromHours(12)), (ev.ChargeNow.TargetPercent, ev.ChargeNow.Duration));
         Assert.True(ev.Spread);
     }
 
@@ -386,6 +387,8 @@ public sealed class EvConfigurationTests
     [InlineData("kwh_per_km: 0.05", "control.ev.kwh_per_km")]
     [InlineData("learn:\n      min_kwh_per_km: 0.7", "control.ev.learn.min_kwh_per_km")]
     [InlineData("charge_now:\n      duration: 240h", "control.ev.charge_now.duration")]
+    [InlineData("floor_by: \"00:00\"", "control.ev.floor_by")]
+    [InlineData("floor_soc_max_age: 1h", "control.ev.floor_soc_max_age")]
     public void Keys_that_contradict_each_other_are_an_error_when_the_ev_section_exists_and_only_then(string line, string path)
     {
         // Why: a floor above the cap or a fallback the learner rejects makes the module nonsensical, but a file with no ev: section never
@@ -405,8 +408,12 @@ public sealed class EvConfigurationTests
     [Theory]
     [InlineData("floor: 120", "control.ev.floor")]
     [InlineData("floor: -1", "control.ev.floor")]
-    [InlineData("floor_after: 101", "control.ev.floor_after")]
-    [InlineData("reserve: -5", "control.ev.reserve")]
+    [InlineData("trip_margin: -5", "control.ev.trip_margin")]
+    [InlineData("trip_margin: 101", "control.ev.trip_margin")]
+    [InlineData("floor_by: \"25:00\"", "control.ev.floor_by")]
+    [InlineData("floor_by: soon", "control.ev.floor_by")]
+    [InlineData("floor_by: \"7:00\"", "control.ev.floor_by")]
+    [InlineData("floor_soc_max_age: 0s", "control.ev.floor_soc_max_age")]
     [InlineData("cap: 101", "control.ev.cap")]
     [InlineData("weekly_full:\n      target: 120", "control.ev.weekly_full.target")]
     [InlineData("weekly_full:\n      days: [funday]", "control.ev.weekly_full.days")]
@@ -440,5 +447,29 @@ public sealed class EvConfigurationTests
 
         Assert.Equal(ConfigurationStatus.Invalid, result.Status);
         Assert.Contains(result.Errors, e => e.Path == path || e.Path.StartsWith(path + ".", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("floor_after: 25", "control.ev.floor_after")]
+    [InlineData("reserve: 15", "control.ev.reserve")]
+    public void A_key_of_the_old_trip_rule_is_refused_by_name_not_silently_dropped(string line, string path)
+    {
+        // Why: 2026-11-06 the trip target became floor + trip + trip_margin. A file that still sets floor_after or reserve (points) meant the old
+        // rule; reading it as anything, or ignoring it, would change the target behind the owner's back. unknown_key names the allowed keys.
+        var result = Parse(ev: string.Empty, control: $"  ev:\n    {line}\n");
+
+        Assert.Equal(ConfigurationStatus.Invalid, result.Status);
+        var error = Assert.Single(result.Errors, e => e.Path == path);
+        Assert.Equal(ConfigurationIssueCodes.UnknownKey, error.Code);
+        Assert.Contains("trip_margin", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Floor_by_is_a_local_time_of_day()
+    {
+        // Why: the floor's deadline recurs at this local time; "06:30" must read as half past six, not as minutes or a sexagesimal number.
+        var ev = TestConfigurations.Valid(Document(ev: string.Empty, control: "  ev:\n    floor_by: \"06:30\"\n")).Configuration!.Control.Ev;
+
+        Assert.Equal(new TimeOnly(6, 30), ev.FloorBy);
     }
 }

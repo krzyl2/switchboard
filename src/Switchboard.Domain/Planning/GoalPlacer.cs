@@ -52,8 +52,14 @@ internal static class GoalPlacer
 
     private static List<Cell> RegularCells(PlanContext ctx, GoalWork w)
     {
-        // A spread goal finishes as late as its window allows (the equal-cost tie goes to the later slot); every other goal keeps the earliest.
+        // A spread goal finishes as late as its window allows (the equal-cost tie goes to the later slot); every other goal keeps the earliest. An asap goal
+        // (a manual "charge now") takes the earliest slots whatever they cost, the cheaper source first within a slot.
         var regularCells = ctx.Cells(w, anyZone: false, valueTest: !w.Hard);
+        if (w.Request.Asap)
+        {
+            return regularCells.OrderBy(c => c.Slot).ThenBy(c => PlanContext.Key(c.Cost)).ThenBy(c => c.Source, EnergySource.Ordering).ToList();
+        }
+
         return (w.Request.Spread ? regularCells.OrderBy(c => PlanContext.Key(c.Cost)).ThenByDescending(c => c.Slot) : regularCells.OrderBy(c => PlanContext.Key(c.Cost)).ThenBy(c => c.Slot))
             .ThenBy(c => c.Source, EnergySource.Ordering).ToList();
     }

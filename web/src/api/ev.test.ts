@@ -22,7 +22,7 @@ describe('parseEv', () => {
 
     expect(ev).toMatchObject({ enabled: true, addOnZone: 'Europe/Warsaw', manual: { mode: 'auto', chargeNow: { active: true, targetPct: 80 } } });
     expect(ev.config).toMatchObject({ device: 'ev_charger', capacityKwh: 18, cheapZone: null, plannerDispatch: 'off', pluggedStates: ['Charging', 'Wait for car', 'complete'] });
-    expect(ev.parameters).toEqual({ chargeNowTargetPercent: 90, chargeNowDurationS: 43200 });
+    expect(ev.parameters).toEqual({ chargeNowTargetPercent: 100, chargeNowDurationS: 43200, holdDurationS: 10800 });
     expect(ev.inputs).toMatchObject({ socPercent: 40, rangeKm: 54, isPlugged: true, pluggedState: 'Charging' });
     expect(ev.inputs!.plugged).toMatchObject({ state: 'fresh', maxAgeS: 3600 });
     expect(ev.trips!.nextTrip).toMatchObject({ title: 'Kurs Warszawa', km: 42 });
@@ -49,8 +49,9 @@ describe('parseEv', () => {
   });
 
   it('accepts the manual control of S6, with or without a running charge', () => {
+    // An add-on from before the hold (2026-11-06) writes no hold key: nothing runs.
     const idle = parseEv(payload((p) => (p.manual = { mode: 'pv_only', chargeNow: { active: false, targetPct: null, until: null } })));
-    expect(idle.manual).toEqual({ mode: 'pv_only', chargeNow: { active: false, targetPct: null, until: null } });
+    expect(idle.manual).toEqual({ mode: 'pv_only', chargeNow: { active: false, targetPct: null, until: null }, hold: { active: false, until: null } });
 
     const running = parseEv(payload((p) => (p.manual = { mode: 'auto', chargeNow: { active: true, targetPct: 90, until: '2026-10-27T05:00:00+00:00' } })));
     expect(running.manual!.chargeNow).toMatchObject({ active: true, targetPct: 90 });
@@ -94,7 +95,14 @@ describe('parseEv', () => {
   it('knows the closed lists the add-on writes: every EV code, and the three modes (never "off", the device override)', () => {
     expect(EV_CAUSES).toHaveLength(14);
     expect([...EV_MODES]).toEqual(['auto', 'pv_only', 'full_charge']);
-    expect(EV_REFUSALS).toHaveLength(10);
+    expect(EV_REFUSALS).toHaveLength(11);
+  });
+
+  it('reads a running "do not charge now"', () => {
+    const held = parseEv(payload((p) => (p.manual.hold = { active: true, until: '2026-10-27T05:00:00+00:00' })));
+    expect(held.manual!.hold.active).toBe(true);
+    expect(held.manual!.hold.until).toBeInstanceOf(Date);
+    expect(() => parseEv(payload((p) => (p.manual.hold = { active: 'yes', until: null })))).toThrow(/Payload: ev\.manual\.hold/);
   });
 
   it.each([
