@@ -245,3 +245,4 @@ Maintainer's model (`DECISIONS.md` 2026-11-06): the car as cheap as possible; a 
 - MQTT: `select.switchboard_ev_command` (`auto | charge_now | hold`, state = what runs) replaces `button.switchboard_ev_charge_now` (retracted on upgrade). Without `mqtt_enabling_commands` MQTT may take the grid away (`hold`, `auto` ending a charge-now, mode `pv_only`, the number), not give it (`charge_now`, `auto` ending a hold, modes `auto`/`full_charge`).
 - The device card offers no "Want now" on the EV device; it points to the EV controls.
 - Live migration: `ev_charger.sources: pv_only` and `planner.dispatch: full`, so the grid reaches the car only through the plan.
+- 0.13.1: the trip goal draws from PV and the cheapest zone like the floor, never from the charger's own sources (live they are `pv_only`).

@@ -2,6 +2,12 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.1
+
+### Fixed
+
+- The EV trip goal draws from PV and the cheapest zone, like the reserve, instead of the charger's own sources: with the charger on `pv_only` a dull day left the trip to escalation, which may buy the dearest zone.
+
 ## 0.13.0
 
 ### Changed

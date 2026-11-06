@@ -79,7 +79,6 @@ public sealed class DuplicateCharacterizationTests
             FullChargeRequested = false,
             IsHoliday = _ => false,
             CheapZone = "offpeak",
-            DeviceSources = SourceSet.Any,
         });
 
         Assert.Equal(EvRevision, Assert.Single(composition.Goals).Request.Revision);

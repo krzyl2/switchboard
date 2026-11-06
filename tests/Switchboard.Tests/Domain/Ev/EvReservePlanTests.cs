@@ -35,7 +35,6 @@ public sealed class EvReservePlanTests
             KwhPerKm = 0.20,
             IsHoliday = _ => false,
             CheapZone = "offpeak",
-            DeviceSources = SourceSet.PvOnly,
         });
 
         // The maintainer's weekday G13: afternoon peak to 21:00, off-peak through the night, morning peak 07:00-13:00 with the sun from 08:00 to 12:00, off-peak

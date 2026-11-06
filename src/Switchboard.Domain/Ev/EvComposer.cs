@@ -90,9 +90,6 @@ public sealed record EvComposerInput
     /// <summary>Whether a local date is a holiday (<c>economics.holidays</c>); a holiday counts as a weekend day.</summary>
     public required Func<DateOnly, bool> IsHoliday { get; init; }
 
-    /// <summary>The device's own <c>sources</c>, used for the trip goal; null when it declares none.</summary>
-    public SourceSet? DeviceSources { get; init; }
-
     /// <summary>The cheapest tariff zone id (configuration, never a name in code); null when there is none.</summary>
     public string? CheapZone { get; init; }
 
@@ -217,8 +214,10 @@ public static class EvComposer
                 var key = TripKey(trip);
                 var fresh = TargetSocRule.ForTrip(trip.Km, input.KwhPerKm, input.CapacityKwh, p);
                 frozen = TargetSocRule.Freeze(input.Frozen, key, fresh, input.Now, p);
+                // PV and the cheapest zone, like the floor, whatever the charger's own sources say (2026-11-06: live, the charger is pv_only so the grid comes
+                // only through the plan); a dearer zone only through escalation, for what the departure still needs.
                 candidates.Add(new Candidate(
-                    EvGoalKind.Trip, frozen.Target.Percent, trip.Start, true, input.DeviceSources, true, p.ReadyMargin, p.Spread, key));
+                    EvGoalKind.Trip, frozen.Target.Percent, trip.Start, true, cheapSources, true, p.ReadyMargin, p.Spread, key));
             }
 
             if (fullRequested || WeeklyFullWanted(input))

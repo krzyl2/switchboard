@@ -50,7 +50,6 @@ public sealed class EvComposerTests
             FullChargeRequested = fullRequested,
             IsHoliday = holiday ?? (_ => false),
             CheapZone = "offpeak",
-            DeviceSources = SourceSet.Any,
         };
 
     private static double Total(EvComposition c) => c.Goals.Sum(g => g.Request.RemainingKwh);
@@ -87,7 +86,18 @@ public sealed class EvComposerTests
         Assert.Equal(GoalKind.Soc, r.Kind);
         Assert.Equal(GoalOrigin.Module, r.Origin);
         Assert.Equal(GoalOnMet.Stop, r.OnMet);
-        Assert.Same(SourceSet.Any, r.Sources);
+        Assert.Equal("pv_and_zone:offpeak", r.Sources!.ToText());
+    }
+
+    [Fact]
+    public void The_trip_charges_from_pv_and_the_cheapest_zone_whatever_the_chargers_own_sources()
+    {
+        // Why: 2026-11-06, live after the migration. The charger is pv_only so the grid reaches the car only through the plan; a trip that took the charger's
+        // sources was PV only, and a dull day would have left it to escalation, which buys any zone, the dearest included. The cheap zone comes first.
+        var c = EvComposer.Compose(Input(Friday, 40, new Trip("t", Local(2026, 10, 31, 6), 49.5)) with { CheapZone = "offpeak" });
+
+        Assert.Equal("pv_and_zone:offpeak", c.Goals.Single(g => g.Kind == EvGoalKind.Trip).Request.Sources!.ToText());
+        Assert.Equal("pv_only", EvComposer.Compose(Input(Friday, 40, new Trip("t", Local(2026, 10, 31, 6), 49.5)) with { CheapZone = null }).Goals.Single().Request.Sources!.ToText());
     }
 
     [Fact]
@@ -480,7 +490,7 @@ public sealed class EvComposerTests
         Assert.NotEqual(baseline, Rev(Defaults with { Spread = false }));
         Assert.NotEqual(baseline, Rev(Defaults with { ReadyMargin = TimeSpan.FromMinutes(45) }));
         Assert.NotEqual(baseline, Rev(Defaults with { LossFraction = 0.12 }));
-        Assert.NotEqual(baseline, EvComposer.Compose(Input(Friday, 40, trip) with { DeviceSources = SourceSet.PvOnly }).Goals.Single().Request.Revision);
+        Assert.NotEqual(baseline, EvComposer.Compose(Input(Friday, 40, trip) with { CheapZone = "night" }).Goals.Single().Request.Revision);
     }
 
     [Fact]

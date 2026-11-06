@@ -125,7 +125,6 @@ public sealed class EvEngine(
             Frozen = state.LastTrip?.ToFrozen(),
             LastFullAt = state.LastFullAt,
             IsHoliday = holidays.IsHoliday,
-            DeviceSources = configuration.Devices.FirstOrDefault(d => d.Id == ev.Device)?.Sources,
             CheapZone = CheapZone(ev, economics),
             CalendarUnavailable = ev1.Calendar.Configured && !ev1.Calendar.IsFresh,
             RangeUnusable = ev1.Range.Configured && ev1.RangeKm is not > 0,
