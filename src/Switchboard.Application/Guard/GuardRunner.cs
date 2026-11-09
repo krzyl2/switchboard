@@ -65,6 +65,7 @@ public sealed class GuardRunner : IDisposable
     private readonly IControlSwitchView? _control;
     private readonly SelfTestSlot? _selfTest;
     private readonly IBalanceSource? _balance;
+    private readonly IDeviceReadinessSource? _readiness;
     private readonly Lock _sync = new();
     private DateTimeOffset? _lastStep;
     private bool _started;
@@ -93,7 +94,8 @@ public sealed class GuardRunner : IDisposable
         ILogger<GuardRunner> logger,
         IControlSwitchView? control = null,
         SelfTestSlot? selfTest = null,
-        IBalanceSource? balance = null)
+        IBalanceSource? balance = null,
+        IDeviceReadinessSource? readiness = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         ArgumentNullException.ThrowIfNull(clock);
@@ -114,6 +116,7 @@ public sealed class GuardRunner : IDisposable
         _control = control;
         _selfTest = selfTest;
         _balance = balance;
+        _readiness = readiness;
         _inputs.Published += OnPublished;
     }
 
@@ -268,7 +271,7 @@ public sealed class GuardRunner : IDisposable
     {
         try
         {
-            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current, Prices = inputs.Prices }, now);
+            var dispatch = _dispatch.Evaluate(new DispatchInput(inputs.Dispatch, inputs.DispatchSetup, evaluation, _gate.Ledger, overrides, _lockouts, mode) { SelfTest = _selfTest?.Current, Balance = _balance?.Current, Prices = inputs.Prices, NotReady = _readiness?.NotReady ?? [] }, now);
             if (_dispatchFaultSince is { } since)
             {
                 _logger.LogInformation("Dispatch evaluates again after {Steps} failed step(s) since {Since:O}; dispatch_fault ended", _dispatchFaultSteps, since);

@@ -160,9 +160,19 @@ public sealed record DispatchDecisionInputs(
 /// <summary>
 /// The hourly balance a dispatch decision was made beside (BAL-07). Wh and W with positive = export; a
 /// value is null while it is not known. <paramref name="RemainingS"/> is the time to the :00 the rule used
-/// (zero when the balance was not of the running hour).
+/// (zero when the balance was not of the running hour). <paramref name="LoadW"/> and <paramref name="ProjectionWh"/>
+/// are what the own devices draw and the projection with it; the rule may judge a device with another load
+/// (a gated device counts at its planned level while its command settles, or in shadow mode), which
+/// <see cref="RuleLoadW"/> and <see cref="RuleProjectionWh"/> carry.
 /// </summary>
-public sealed record BalanceDecisionInputs(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double RemainingS, bool Burning);
+public sealed record BalanceDecisionInputs(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double RemainingS, bool Burning)
+{
+    /// <summary>The load the allowance rule judged the device with (W); null where it did not judge it, and on lines written before list version 10.</summary>
+    public double? RuleLoadW { get; init; }
+
+    /// <summary>The projection to the next :00 with <see cref="RuleLoadW"/> (Wh); null where either is not known.</summary>
+    public double? RuleProjectionWh { get; init; }
+}
 
 /// <summary>
 /// What the economics of a dispatch decision were (ECO-09, 14-ECONOMICS): the tariff zone and the prices in force, the device's

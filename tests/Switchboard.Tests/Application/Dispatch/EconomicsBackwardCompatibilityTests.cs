@@ -43,11 +43,12 @@ public sealed partial class EconomicsBackwardCompatibilityTests(DispatchSyntheti
     {
         foreach (var decision in decisions)
         {
-            // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes), 8 (dispatch_fault) and 9 (power_band) changed that one
-            // number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything else that moved still shows. The
-            // phase trigger (2026-11-03) is the same kind of addition: it records what a guard reaction followed and decides nothing, so it is left out too.
-            var line = DecisionJson.Serialize(decision).Replace("\"codes\":9", "\"codes\":6", StringComparison.Ordinal);
-            text.Append(TriggerBlock().Replace(line, string.Empty)).Append('\n');
+            // The digests are of what dispatch decided, not of the list version the log line is stamped with: versions 7 (the planner codes), 8 (dispatch_fault), 9 (power_band)
+            // and 10 (device_not_ready) changed that one number and no decision, so a line is read as the version the digests were taken at (6, the economics list) and anything
+            // else that moved still shows. The phase trigger (2026-11-03) is the same kind of addition: it records what a guard reaction followed and decides nothing, so it is
+            // left out too, and so is the load the allowance rule judged a device with (2026-11-09: rule_load_w and rule_projection_wh in the balance block).
+            var line = DecisionJson.Serialize(decision).Replace("\"codes\":10", "\"codes\":6", StringComparison.Ordinal);
+            text.Append(RuleFields().Replace(TriggerBlock().Replace(line, string.Empty), string.Empty)).Append('\n');
         }
 
         if (dispatch is null)
@@ -81,6 +82,9 @@ public sealed partial class EconomicsBackwardCompatibilityTests(DispatchSyntheti
 
     [GeneratedRegex(",\"trigger\":\\{[^{}]*\\}")]
     private static partial Regex TriggerBlock();
+
+    [GeneratedRegex(",\"rule_(load_w|projection_wh)\":[^,}]*")]
+    private static partial Regex RuleFields();
 
     /// <summary>The digest must be the 0.9 one; a mismatch says both in full so it can be inspected or, deliberately, renewed.</summary>
     internal static void Same(string expected, string actual) =>

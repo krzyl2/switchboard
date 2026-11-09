@@ -193,6 +193,8 @@ Every decision carries one. The list is closed and versioned; the UI renders a h
 
 **Version 9** (2026-11-03, live decision log review): added `power_band` (a start or increase refused, or a run lowered, because the device's power band for this local hour caps what it may take from the grid, `control.ev.power_bands`, and no plan entry sets its ceiling; surplus no other device draws comes on top of the band). Versions 1–8 had no ceiling outside the plan, whose own one is `plan_slot_target`.
 
+**Version 10** (2026-11-09, live decision log review of 2026-11-08): added `device_not_ready` (a start or increase refused, or a run ended, because the device says it cannot take energy now: the EV charger while the EV module knows the car is unplugged; `IDeviceReadinessSource`, a set of device names, the one exception to EV-02, `DECISIONS.md` 2026-11-09). Versions 1–9 had no such input and dispatched the charger as if a car were there. The balance block of a dispatch decision also carries `rule_load_w` and `rule_projection_wh`, the load the allowance rule judged the device with and the projection with it, written only where the rule judged the device. The log reads versions 10 to 2.
+
 ```
 guard_tier_exceeded         guard_budget_low          guard_stale_signal
 reserve_threshold           headroom_insufficient     lockout_min_on
@@ -207,6 +209,7 @@ zone_allowed                source_not_allowed        value_below_cost
 surplus_available           surplus_low               plan_deferred
 goal_deadline_urgent        plan_discharge            soc_floor
 soc_ceiling                 dispatch_fault            power_band
+device_not_ready
 ```
 
 ## 7. Default parameters

@@ -106,7 +106,7 @@ public static class DecisionJson
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || Int(root, "v") is not (FormatVersion or LegacyFormatVersion)
-                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
+                || Int(root, "codes") is not (ReasonCodes.ListVersion or ReasonCodes.PowerBandListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion or ReasonCodes.EconomicsListVersion or ReasonCodes.PreviousListVersion or ReasonCodes.EarlierListVersion or ReasonCodes.OlderListVersion or ReasonCodes.OldestListVersion))
             {
                 return null;
             }
@@ -326,6 +326,13 @@ public static class DecisionJson
             WriteOptional(writer, "hi_wh", balance.HiWh);
             writer.WriteNumber("t_rem_s", balance.RemainingS);
             writer.WriteBoolean("burning", balance.Burning);
+
+            // List version 10: only where the rule judged the device, so a line that carries no judgement reads as it was written before.
+            if (balance.RuleLoadW is { } ruleLoad)
+            {
+                writer.WriteNumber("rule_load_w", ruleLoad);
+                WriteOptional(writer, "rule_projection_wh", balance.RuleProjectionWh);
+            }
             writer.WriteEndObject();
         }
 
@@ -449,7 +456,7 @@ public static class DecisionJson
             Reasserted = d.TryGetProperty("reasserted", out var reasserted) && reasserted.ValueKind == JsonValueKind.True,
             Balance = d.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.Object ? Balance(balance) : null,
             Economics = d.TryGetProperty("economics", out var economics) && economics.ValueKind != JsonValueKind.Null ? Economics(economics) : null,
-            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes is ReasonCodes.ListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
+            Plan = d.TryGetProperty("plan", out var plan) && plan.ValueKind != JsonValueKind.Null ? codes is ReasonCodes.ListVersion or ReasonCodes.PowerBandListVersion or ReasonCodes.DispatchFaultListVersion or ReasonCodes.PlannerListVersion ? Plan(plan) : throw new FormatException("plan in an older list version") : null,
         };
     }
 
@@ -526,7 +533,11 @@ public static class DecisionJson
         OptionalDouble(b, "lo_wh"),
         OptionalDouble(b, "hi_wh"),
         Double(b, "t_rem_s"),
-        b.TryGetProperty("burning", out var burning) && burning.ValueKind == JsonValueKind.True);
+        b.TryGetProperty("burning", out var burning) && burning.ValueKind == JsonValueKind.True)
+    {
+        RuleLoadW = b.TryGetProperty("rule_load_w", out _) ? OptionalDouble(b, "rule_load_w") : null,
+        RuleProjectionWh = b.TryGetProperty("rule_projection_wh", out _) ? OptionalDouble(b, "rule_projection_wh") : null,
+    };
 
     private static ConstraintKey Key(JsonElement element) =>
         new(

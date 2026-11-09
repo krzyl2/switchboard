@@ -115,6 +115,24 @@ public sealed class DispatchPersistenceTests : IDisposable
         Assert.Equal(unknown.Inputs.Dispatch!.Balance, DecisionJson.TryParse(DecisionJson.Serialize(unknown))!.Inputs.Dispatch!.Balance);
     }
 
+    // 2026-11-09: the load the rule judged a device with is what explains its decision (a charger counted at its setpoint once hid the surplus);
+    // it is written only where the rule judged the device, so a line without it is exactly a line of list version 9 and still reads.
+    [Fact]
+    public void The_load_the_rule_judged_with_round_trips_and_a_line_without_it_reads_as_before()
+    {
+        var judged = Start(new BalanceDecisionInputs(-4, 2439, 1700, 723, 50, 250, 3540, false) { RuleLoadW = 6070, RuleProjectionWh = -3575 });
+        var notJudged = Start(new BalanceDecisionInputs(-4, 2439, 1700, 723, 50, 250, 3540, false));
+
+        var line = DecisionJson.Serialize(judged);
+        var plain = DecisionJson.Serialize(notJudged);
+
+        Assert.Contains("\"burning\":false,\"rule_load_w\":6070,\"rule_projection_wh\":-3575}", line, StringComparison.Ordinal);
+        Assert.Equal(judged.Inputs.Dispatch!.Balance, DecisionJson.TryParse(line)!.Inputs.Dispatch!.Balance);
+        Assert.DoesNotContain("rule_", plain, StringComparison.Ordinal);
+        Assert.Equal(notJudged.Inputs.Dispatch!.Balance, DecisionJson.TryParse(plain.Replace("\"codes\":10", "\"codes\":9", StringComparison.Ordinal))!.Inputs.Dispatch!.Balance);
+        Assert.Null(DecisionJson.TryParse(line.Replace("\"rule_load_w\":6070", "\"rule_load_w\":\"6070\"", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void A_line_written_before_the_balance_existed_still_reads_without_one()
     {

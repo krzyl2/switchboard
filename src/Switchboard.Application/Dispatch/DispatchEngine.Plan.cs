@@ -36,6 +36,19 @@ public sealed partial class DispatchEngine
     }
 
     /// <summary>
+    /// A device that cannot take energy now (2026-11-09: a charger with no car plugged in) does not start or rise, and a running one comes down to its
+    /// lowest level (or what a min_on lockout holds) through the usual persistence. No plan entry or power band applies on top: it is at the bottom already.
+    /// The increase it would have taken is not one: its persistence starts again, so a car plugged in later starts on its own agreeing boundaries.
+    /// </summary>
+    private static void NarrowNotReady(Plan plan)
+    {
+        plan.MaxAllowed = Math.Max(plan.MinAllowed, Math.Min(plan.MaxAllowed, 0));
+        plan.CeilingRefusal = ReasonCode.DeviceNotReady;
+        plan.CeilingStop = plan.MaxAllowed < plan.BasisIndex ? ReasonCode.DeviceNotReady : null;
+        plan.BalanceAllows = false;
+    }
+
+    /// <summary>
     /// The plan's narrowing: a done goal that stays off (nothing starts or rises, a running device comes down through the usual persistence), the slot's power
     /// ceiling, and the slot's energy budget (no increase once it is delivered).
     /// </summary>

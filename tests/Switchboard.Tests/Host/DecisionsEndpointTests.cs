@@ -71,7 +71,7 @@ public sealed class DecisionsEndpointTests
         var items = (await GetAsync(factory, "/api/decisions")).GetProperty("items");
         var balance = items.EnumerateArray().Single(i => i.GetProperty("device").GetString() == "heater_l1").GetProperty("inputs").GetProperty("dispatch").GetProperty("balance");
 
-        Assert.Equal(["balanceWh", "freeW", "loadW", "projectionWh", "loWh", "hiWh", "tRemS", "burning"], balance.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["balanceWh", "freeW", "loadW", "projectionWh", "loWh", "hiWh", "tRemS", "burning", "ruleLoadW", "ruleProjectionWh"], balance.EnumerateObject().Select(p => p.Name));
         Assert.Equal((240.5, 3100, 1650, JsonValueKind.Null, 1320), (balance.GetProperty("balanceWh").GetDouble(), balance.GetProperty("freeW").GetDouble(), balance.GetProperty("loadW").GetDouble(), balance.GetProperty("projectionWh").ValueKind, balance.GetProperty("tRemS").GetDouble()));
         Assert.Equal(JsonValueKind.Null, items.EnumerateArray().Single(i => i.GetProperty("device").GetString() == "heater_l2").GetProperty("inputs").GetProperty("dispatch").GetProperty("balance").ValueKind);
     }

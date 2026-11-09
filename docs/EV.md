@@ -75,7 +75,7 @@ For the module to do anything on the live system the chain `economics:` (present
 New requirement ids to add to `docs/02-REQUIREMENTS.md` (unticked; tick only when verified):
 
 - **EV-01** `ev:` section (device, capacity, signals SoC / range / plugged / calendar, thresholds from `control.ev`), parser, issues, wizard keeps, read-only `GET api/ev`
-- **EV-02** signals: calendar-event kind (bounded attributes `message`, `description`, `start_time`, `end_time`, `all_day`; description length limit), distance kind (km, mi), roles `ev_range` and `ev_plugged`, `on_change` freshness for `ev_plugged` only; none of these enter `ProtectionInputs` or `DispatchInputs`
+- **EV-02** signals: calendar-event kind (bounded attributes `message`, `description`, `start_time`, `end_time`, `all_day`; description length limit), distance kind (km, mi), roles `ev_range` and `ev_plugged`, `on_change` freshness for `ev_plugged` only; none of these enter `ProtectionInputs` or `DispatchInputs` (one exception, 2026-11-09: a known unplugged car makes the charger not ready, which reaches dispatch as its device name only and never the guard)
 - **EV-03** `TripParser` (pure domain): `km:` rules, naive local times, DST, unparsed list, bound `ev.max_trip_km`, trip removed at its start
 - **EV-04** kWh/km learning (smoothing, fallback, plausibility, same-report pairs, outside charging, persisted in `ev.json`)
 - **EV-05** target SoC rule (floor, floor_after, reserve, losses, ready_margin, cap 90 %, weekly 100 %); table tests 50 % -> 90 %, 60 % -> 100 %
@@ -166,7 +166,7 @@ Order: S0 -> S1 -> (S2 || S3) -> S5 -> (S6 || S7) -> S8. About 10 to 13 agent-da
 | Trip in progress or departure already passed (B4) | trip removed at its start | none |
 | Trip added just before departure | `infeasible` with the shortfall shown | plan note |
 | No time at home before the departure | hard goal shows `infeasible` | plan note |
-| Not plugged | no goal, no control, nothing reserved | `ev_not_plugged` |
+| Not plugged | no goal, no control, nothing reserved; dispatch keeps the charger off (`device_not_ready`, 2026-11-09) and its surplus goes to the devices behind it | `ev_not_plugged` |
 | Plugged but the go-e is unavailable or its link is lost (plugged state `unavailable`) | goals inactive | `ev_not_plugged` or input reason |
 | PV forecast missing or stale | existing `pv_forecast_missing`, zero PV, zones in `sources`, hard goals by escalation | `ev_forecast_missing` |
 | Clock step, DST (23 and 25 hour days, ambiguous or nonexistent local calendar times), weekly day in local time | absolute deadlines, naive calendar times in the add-on zone | tests on 2026-03-29 and 2026-10-25 |

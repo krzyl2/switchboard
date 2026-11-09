@@ -325,6 +325,9 @@ public static class SwitchboardServices
 
         // The EV module's own typed view of its signals (EV-02, B7), read-only; GoalInputs is not widened for it.
         services.AddSingleton<IEvInputSource, DiagnosticsEvInputSource>();
+
+        // Its one answer to dispatch (2026-11-09): a charger with no car plugged in is not ready, by name only; the guard runner hands it to dispatch.
+        services.AddSingleton<IDeviceReadinessSource, EvDeviceReadiness>();
         services.AddSingleton<GoalLedger>();
         services.AddSingleton<IGoalSource, ConfigGoalSource>();
 

@@ -226,6 +226,7 @@ public sealed partial class DispatchEngine
             var plan = new Plan(device, i + 1, levels, basis, basisIndex, capIndex, constraints, mode, unresponsive && !probeDue)
             {
                 Entry = _planReader.Entry(spec.Id),
+                NotReady = input.NotReady.Contains(spec.Id),
                 GuardAllows = guardAllows,
                 WindowFree = windowFree,
                 OwnWindow = blocking.Any(w => w.Device.Id == spec.Id),
@@ -297,7 +298,14 @@ public sealed partial class DispatchEngine
 
             if (plan.Mode == OverrideMode.Auto && !plan.Excluded)
             {
-                NarrowByCeilings(plan, setup, now);
+                if (plan.NotReady)
+                {
+                    NarrowNotReady(plan);
+                }
+                else
+                {
+                    NarrowByCeilings(plan, setup, now);
+                }
             }
 
             plan.MinAllowed = Math.Min(plan.MinAllowed, plan.MaxAllowed);
@@ -539,7 +547,7 @@ public sealed partial class DispatchEngine
             ledger?.Deferred?.Since,
             plan.Mode)
         {
-            Balance = balance?.ToDecisionInputs(),
+            Balance = balance?.ToDecisionInputs() is { } read ? read with { RuleLoadW = plan.RuleLoadW, RuleProjectionWh = plan.RuleProjectionWh } : null,
             Economics = economics,
             Plan = planBlock,
         };
@@ -709,5 +717,14 @@ public sealed partial class DispatchEngine
 
         /// <summary>The plan keeps the device running on its class (full mode: a grid slot of a goal device, or an urgent hard goal), so the allowance gate does not stop it for the price or the sources.</summary>
         public bool PlanKeeps { get; set; }
+
+        /// <summary>The device says it cannot take energy now (<see cref="IDeviceReadinessSource"/>): in auto it is kept off and the allowance gate does not judge it.</summary>
+        public bool NotReady { get; init; }
+
+        /// <summary>The load the allowance rule judged the device with in this step (W, Switchboard's own devices); null where the gate did not judge it.</summary>
+        public double? RuleLoadW { get; set; }
+
+        /// <summary>The balance projected to the next :00 with <see cref="RuleLoadW"/> (Wh); null where either is not known.</summary>
+        public double? RuleProjectionWh { get; set; }
     }
 }

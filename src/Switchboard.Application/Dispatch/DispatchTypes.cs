@@ -37,6 +37,9 @@ public sealed record DispatchInput(
 
     /// <summary>The price signals of the store cycle (economics only); null when none is mapped, and then a dynamic price is at its fallback.</summary>
     public PriceInputs? Prices { get; init; }
+
+    /// <summary>The devices that cannot take energy now (<see cref="IDeviceReadinessSource"/>): kept off in auto. Empty without a source.</summary>
+    public ImmutableHashSet<DeviceName> NotReady { get; init; } = [];
 }
 
 public enum DispatchChange

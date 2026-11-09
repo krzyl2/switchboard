@@ -288,6 +288,9 @@ internal sealed class GuardScenario
     /// <summary>The price signals of the store cycle as the signal layer would hand them over; null leaves a dynamic price at its fallback.</summary>
     public Switchboard.Domain.Economics.PriceInputs? Prices { get; set; }
 
+    /// <summary>The devices that cannot take energy now, as the readiness source would hand them to dispatch (a charger with no car plugged in).</summary>
+    public ImmutableHashSet<DeviceName> NotReady { get; set; } = [];
+
     public DispatchInputs DispatchInputs() =>
         new(_sequence, Now, [.. Setup.Phases.Select(p => _power.TryGetValue(p, out var entry) ? entry : new PhaseDispatch(p, false, DispatchInvalidReason.PowerNotFresh, null, null, null, null))])
         {
@@ -306,7 +309,7 @@ internal sealed class GuardScenario
         DispatchEvaluation? dispatch = null;
         if (_dispatch)
         {
-            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode) { Balance = Balance, Prices = Prices }, Now);
+            dispatch = DispatchEngine.Evaluate(new DispatchInput(dispatchInputs, controls?.DispatchSetup, evaluation, Targets, Overrides, Lockouts, Mode) { Balance = Balance, Prices = Prices, NotReady = NotReady }, Now);
             Dispatches.Add(dispatch);
         }
 

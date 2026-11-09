@@ -477,6 +477,7 @@ export const pl: Messages = {
   // Wersja listy 8: błąd rozdziału mocy; wersje 1 do 7 nie miały kodu (błąd zatrzymywał dodatek).
   'reason.dispatch_fault': 'Rozdział mocy zakończył się błędem: ochrona działa dalej, ale rozdział mocy niczego nie włącza, nie zwiększa ani nie zmniejsza, dopóki znów nie zadziała.',
   'reason.power_band': 'Pasmo mocy dla tej godziny ogranicza, ile urządzenie może pobrać z sieci.',
+  'reason.device_not_ready': 'Urządzenie nie może teraz przyjąć energii: do ładowarki nie jest podłączony samochód.',
   'reason.kill_switch.released': 'Wstrzymanie sterowania zostało wyłączone.',
   'reason.safe_state.exited': 'Dane znów są poprawne; stan bezpieczny zakończony.',
   'reason.device_unresponsive.cleared': 'Próba się zgodziła: urządzenie znów reaguje i bierze udział w rozdziale mocy.',

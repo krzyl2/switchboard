@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Switchboard.Application.Modes;
 using Switchboard.Domain.Balance;
 using Switchboard.Domain.Decisions;
 using Switchboard.Domain.Devices;
@@ -51,6 +52,7 @@ public sealed partial class DispatchEngine
         var gated = plans.Where(p => p.Mode == OverrideMode.Auto
             && p.Device.Spec.Start == StartPolicy.Headroom
             && !p.Excluded
+            && !p.NotReady
             && input.SelfTest?.Device != p.Device.Id).ToList();
 
         // Who is judged how. A device without sources is the 0.9 balance gate and exists only while the balance view does.
@@ -105,16 +107,34 @@ public sealed partial class DispatchEngine
         // The load is what Switchboard would run: the measured draw of every device, except that a gated
         // device counts at its planned level, so a start decided but not yet drawing (a command in flight,
         // or shadow mode, where nothing is ever applied) is already in the projection and is not started twice.
+        // A device that measures its own draw counts at that draw once its last command has settled in active
+        // mode (2026-11-09): a charger whose car takes nothing (unplugged, full) draws nothing at any setpoint,
+        // and counting its setpoint kept the surplus from every device behind it.
+        var active = input.Mode.Effective == OperatingMode.Active;
         double? load = view is { Known: true } ? view.Load!.Value.Value : _balanceTracker.OwnLoad?.Value;
         if (load is { } baseLoad)
         {
-            foreach (var plan in gated)
+            foreach (var plan in gated.Where(p => !(active && !p.OwnWindow && DrawMeasured(p, powers))))
             {
                 var measured = powers.Where(p => p.Device == plan.Device.Id).Sum(p => p.Power?.Value ?? 0);
                 baseLoad += PlannedPower(plan, plan.BasisIndex, config) - measured;
             }
 
             load = baseLoad;
+        }
+
+        // What the rule judged each device with, for its decision line (BAL-07): the load, and the projection with it.
+        void Judged(Plan plan, double? at)
+        {
+            plan.RuleLoadW = at;
+            plan.RuleProjectionWh = view is { BalanceWh: { } balance, Free: { } free } && at is { } judged
+                ? HourlyBalanceRule.Project(balance, free, new Watts(judged), view.UntilNext, parameters)
+                : null;
+        }
+
+        foreach (var plan in gated)
+        {
+            Judged(plan, null);
         }
 
         var surplus = Surplus(view);
@@ -126,6 +146,8 @@ public sealed partial class DispatchEngine
             {
                 continue;
             }
+
+            Judged(plan, load);
 
             // The allowance's answer with the device at a level (the rest of the load as it is): why it should come down from there, or null while that level is allowed.
             ReasonCode? StopAt(int level)
@@ -171,6 +193,7 @@ public sealed partial class DispatchEngine
 
             var top = Math.Min(wants, plan.CapIndex);
             var index = plan.BasisIndex;
+            Judged(plan, load);
             if (kind == GateKind.Balance)
             {
                 while (index < top)
@@ -277,6 +300,10 @@ public sealed partial class DispatchEngine
 
         return false;
     }
+
+    /// <summary>Whether every phase of the device is its own fresh measured draw in this step (never a rated model, never unknown).</summary>
+    private static bool DrawMeasured(Plan plan, ImmutableArray<DevicePhasePower> powers) =>
+        plan.Device.Spec.Phases.All(phase => powers.Any(p => p.Device == plan.Device.Id && p.Phase == phase && p.Source == PowerSource.Measured && p.Power is not null));
 
     /// <summary>Limits what a device may reach to a level index (never below what a lockout holds on); true when that lowered it.</summary>
     private static bool Cap(Plan plan, int index)

@@ -158,7 +158,7 @@ Checkboxes stay unchecked until the requirement is verified against a running bu
 ## EV module (`EV.md`, supersedes `12-EV-MODULE.md` where they differ)
 
 - [ ] **EV-01**: `ev:` section (device, capacity, signals SoC / range / plugged / calendar, thresholds from `control.ev`), parser, issues, wizard keeps, read-only `GET api/ev`
-- [ ] **EV-02**: Signals: calendar-event kind (bounded attributes `message`, `description`, `start_time`, `end_time`, `all_day`; description length limit), distance kind (km, mi), roles `ev_range` and `ev_plugged`, `on_change` freshness for `ev_plugged` only; none of these enter `ProtectionInputs` or `DispatchInputs`
+- [ ] **EV-02**: Signals: calendar-event kind (bounded attributes `message`, `description`, `start_time`, `end_time`, `all_day`; description length limit), distance kind (km, mi), roles `ev_range` and `ev_plugged`, `on_change` freshness for `ev_plugged` only; none of these enter `ProtectionInputs` or `DispatchInputs` (one exception, 2026-11-09: a known unplugged car makes the charger not ready, which reaches dispatch as its device name only and never the guard)
 - [ ] **EV-03**: `TripParser` (pure domain): `km:` rules, naive local times, DST, unparsed list, bound `ev.max_trip_km`, trip removed at its start
 - [ ] **EV-04**: kWh/km learning (smoothing, fallback, plausibility, same-report pairs, outside charging, persisted in `ev.json`)
 - [ ] **EV-05**: Target SoC rule (floor, floor_after, reserve, losses, ready_margin, cap 90 %, weekly 100 %); table tests 50 % to 90 %, 60 % to 100 %

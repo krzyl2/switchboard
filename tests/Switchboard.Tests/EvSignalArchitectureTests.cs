@@ -23,7 +23,8 @@ public sealed partial class EvSignalArchitectureTests
     public void No_type_the_guard_or_dispatch_is_built_from_reaches_an_ev_type()
     {
         // Why: a calendar or a SoC in anything the guard or dispatch holds would be the first step to letting a trip, a plugged flag or a battery level move a
-        // limit. Protection decides from breaker data alone.
+        // limit. Protection decides from breaker data alone. (The plugged state reaches dispatch only as device names, and only to keep a charger off: see
+        // The_plugged_state_reaches_dispatch_only_as_device_names_and_never_the_guard.)
         var roots = new[]
         {
             typeof(ProtectionInputs),
@@ -39,6 +40,32 @@ public sealed partial class EvSignalArchitectureTests
         var offenders = roots.SelectMany(r => SignalArchitectureTests.TypeGraph(r).Where(IsEvType).Select(t => $"{r.Name} -> {t.FullName}")).ToList();
 
         Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void The_plugged_state_reaches_dispatch_only_as_device_names_and_never_the_guard()
+    {
+        // Why: the one exception the maintainer made (2026-11-09): with no car plugged in Switchboard does not start charging, so the energy goes elsewhere,
+        // and once the car is plugged in it goes to the car. The plugged state reaches dispatch as a set of device names (IDeviceReadinessSource), which can
+        // only keep a device off; no state, SoC, trip or limit comes with it. Protection still decides from breaker data alone: no guard or protection type
+        // reaches the readiness, and of the guard and effector sources only the runner that builds the dispatch input names it.
+        var guardRoots = new[]
+        {
+            typeof(ProtectionInputs),
+            typeof(Switchboard.Domain.Devices.DeviceSpec),
+            typeof(Switchboard.Domain.Guard.ProtectionSetup),
+            typeof(Switchboard.Application.Guard.GuardInput),
+        };
+        var reached = guardRoots.SelectMany(r => SignalArchitectureTests.TypeGraph(r).Where(t => t == typeof(Switchboard.Application.Dispatch.IDeviceReadinessSource)).Select(_ => r.Name)).ToList();
+        var naming = new[] { "src/Switchboard.Domain/Guard", "src/Switchboard.Application/Guard", "src/Switchboard.Application/Effector" }
+            .SelectMany(SourceFiles)
+            .Where(f => Regex.IsMatch(File.ReadAllText(f), @"\bIDeviceReadinessSource\b|\bNotReady\b"))
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.Empty(reached);
+        Assert.Equal(typeof(System.Collections.Immutable.ImmutableHashSet<Switchboard.Domain.Devices.DeviceName>), typeof(Switchboard.Application.Dispatch.DispatchInput).GetProperty(nameof(Switchboard.Application.Dispatch.DispatchInput.NotReady))!.PropertyType);
+        Assert.Equal(["GuardRunner.cs"], naming);
     }
 
     [Fact]

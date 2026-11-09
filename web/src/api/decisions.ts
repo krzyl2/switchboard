@@ -4,11 +4,11 @@ import { bool, count, fail, field, instant, list, nullable, number, object, oneO
 import { getJson } from './http';
 
 // Contract of a decision as GET api/decisions and GET api/guard write it
-// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason code lists 2 to 8). Every closed list mirrors a backend enum;
+// (src/Switchboard.Host/Web/DecisionsEndpoint.cs), decision log format 2 (reason code lists 2 to 10). Every closed list mirrors a backend enum;
 // GuardSpaContractTests (tests/Switchboard.Tests) compares them, so a value added on one side only
 // fails the build instead of blanking the page.
 
-/** The closed reason-code list, version 9 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent, version 6 the five economic codes (zone_allowed to surplus_low), version 7 the five planner codes (plan_deferred to soc_ceiling), version 8 dispatch_fault, version 9 power_band. */
+/** The closed reason-code list, version 10 (04-ALGORITHMS §6); version 3 appended foreign_load and change_limit, version 4 the three balance codes, version 5 mode_active, command_failed and command_not_sent, version 6 the five economic codes (zone_allowed to surplus_low), version 7 the five planner codes (plan_deferred to soc_ceiling), version 8 dispatch_fault, version 9 power_band, version 10 device_not_ready. */
 export const REASON_CODES = [
   'guard_tier_exceeded',
   'guard_budget_low',
@@ -49,6 +49,7 @@ export const REASON_CODES = [
   'soc_ceiling',
   'dispatch_fault',
   'power_band',
+  'device_not_ready',
 ] as const;
 /** A group decision is about a circuit group (CONN-03): its own safe state, reserve request or budget. */
 export const DECISION_SCOPES = ['system', 'phase', 'device', 'group'] as const;
@@ -267,6 +268,10 @@ export interface BalanceInputs {
   tRemS: number;
   /** Inside the burn window: the upper edge ramps down to the floor. */
   burning: boolean;
+  /** The load the allowance rule judged the device with (a gated device counts at its planned level while its command settles); null where it was not judged. */
+  ruleLoadW: number | null;
+  /** The projection to the :00 with ruleLoadW; null where not known. */
+  ruleProjectionWh: number | null;
 }
 
 /**
@@ -367,6 +372,8 @@ function balanceInputs(raw: unknown, path: string): BalanceInputs {
     hiWh: n('hiWh'),
     tRemS: number(field(r, 'tRemS', path), `${path}.tRemS`),
     burning: bool(field(r, 'burning', path), `${path}.burning`),
+    ruleLoadW: n('ruleLoadW'),
+    ruleProjectionWh: n('ruleProjectionWh'),
   };
 }
 

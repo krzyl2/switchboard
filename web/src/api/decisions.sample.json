@@ -454,7 +454,9 @@
             "loWh": 150,
             "hiWh": 525,
             "tRemS": 1320,
-            "burning": false
+            "burning": false,
+            "ruleLoadW": 1650,
+            "ruleProjectionWh": 410.25
           },
           "economics": {
             "zone": "offpeak",

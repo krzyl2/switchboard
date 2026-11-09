@@ -258,7 +258,7 @@ describe('parseDecisionsPage, hourly balance inputs', () => {
     const parsed = parseDecisionsPage(payload());
     const unresponsive = parsed.items.find((d) => d.action === 'marked_unresponsive');
 
-    expect(unresponsive?.inputs.dispatch?.balance).toEqual({ balanceWh: 240.5, freeW: 3100, loadW: 1650, projectionWh: 410.25, loWh: 150, hiWh: 525, tRemS: 1320, burning: false });
+    expect(unresponsive?.inputs.dispatch?.balance).toEqual({ balanceWh: 240.5, freeW: 3100, loadW: 1650, projectionWh: 410.25, loWh: 150, hiWh: 525, tRemS: 1320, burning: false, ruleLoadW: 1650, ruleProjectionWh: 410.25 });
   });
 
   it('has no balance on a dispatch decision of a step without energy counters', () => {

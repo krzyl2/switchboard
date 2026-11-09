@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.2
+
+### Fixed
+
+- A charger with no car plugged in is not started, and a running one comes down (new reason code `device_not_ready`, list version 10): its surplus goes to the heaters, and once the car is plugged in the value order moves the energy back to the car. An unknown plugged state never stops it.
+- In active mode the hourly balance counts a device that measures its own draw at that draw once its command has settled, so a charger whose car takes nothing (unplugged, full) no longer hides the surplus behind its setpoint. On 2026-11-08 this sold about 3.5 kWh instead of heating water.
+- The balance block of a dispatch decision records the load the rule judged the device with and its projection (`rule_load_w`, `rule_projection_wh`), so a stop reads with the numbers that made it.
+
 ## 0.13.1
 
 ### Fixed

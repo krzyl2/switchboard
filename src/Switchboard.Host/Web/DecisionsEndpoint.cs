@@ -69,7 +69,9 @@ public sealed record DispatchInputsDto(
 
 /// <summary>The hourly balance of the step (BAL-07): Wh and W, positive = export; null values were not known.</summary>
 /// <param name="TRemS">Seconds to the :00 the rule used; zero when the balance was not of the running hour.</param>
-public sealed record BalanceInputsDto(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double TRemS, bool Burning);
+/// <param name="RuleLoadW">The load the allowance rule judged the device with (W): a gated device counts at its planned level while its command settles; null where it was not judged.</param>
+/// <param name="RuleProjectionWh">The projection to the :00 with that load (Wh); null where not known.</param>
+public sealed record BalanceInputsDto(double? BalanceWh, double? FreeW, double? LoadW, double? ProjectionWh, double? LoWh, double? HiWh, double TRemS, bool Burning, double? RuleLoadW, double? RuleProjectionWh);
 
 /// <summary>
 /// The economics of the step (ECO-09): prices in currency per kWh of the user's label, the device's effective value and order key,
@@ -302,7 +304,7 @@ internal static class DecisionsEndpoint
         dispatch.DeferredSince,
         ApiText.Snake(dispatch.Override),
         dispatch.Reasserted,
-        dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning) : null,
+        dispatch.Balance is { } b ? new BalanceInputsDto(b.BalanceWh, b.FreeW, b.LoadW, b.ProjectionWh, b.LoWh, b.HiWh, b.RemainingS, b.Burning, b.RuleLoadW, b.RuleProjectionWh) : null,
         dispatch.Economics is { } e ? new EconomicsInputsDto(e.Zone, e.ImportPrice, e.ExportPrice, ApiText.SnakeOrNull(e.PriceBasis), e.VEff, ApiText.Snake(e.ValueBasis), e.OrderKey, e.Class is { } energyClass ? EnergySourceText.Class(energyClass) : "none", e.Sources, ApiText.Snake(e.Settlement)) : null,
         dispatch.Plan is { } p ? new DecisionPlanDto(PlanDecisionInputs.FreshStatus, p.PlanId, p.ComputedAt, p.SlotStart, p.SlotEnd, p.Want, p.Class is { } planClass ? EnergySourceText.Plan(planClass) : null, p.EnergyKwh, p.DeliveredKwh, p.MaxPowerW, p.Mode) : null);
 }
