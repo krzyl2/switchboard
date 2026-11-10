@@ -171,7 +171,8 @@ public sealed class EvEngine(
             state.Mode,
             ev1.Plugged.Configured && ev1.IsPlugged is null,
             state.LastFullAt,
-            plugged);
+            plugged,
+            step.Estimate.Percent ?? step.Estimate.LowerBoundPercent ?? (step.Estimate.Gap == SocEstimateGap.NoReading ? 0 : null));
     }
 
     private Trip? NextTrip(EvInputs ev, DateTimeOffset now, double maxTripKm)
@@ -226,23 +227,33 @@ public sealed class EvEngine(
         }
 
         var watts = Math.Max(0, total.Value);
+        var maxW = MaxWatts(view, device);
         if (_held is not { } held)
         {
             _held = (view.EvaluatedAt, watts);
-            return (new ChargerEnergy(0, true, couldFlow), watts);
+            return (new ChargerEnergy(0, true, couldFlow, maxW), watts);
         }
 
         if (view.EvaluatedAt <= held.At)
         {
-            return (new ChargerEnergy(0, true, couldFlow), watts);
+            return (new ChargerEnergy(0, true, couldFlow, maxW), watts);
         }
 
         var elapsed = view.EvaluatedAt - held.At;
         _held = (view.EvaluatedAt, watts);
         return elapsed > _maxGap
             ? (new ChargerEnergy(0, false, couldFlow), watts)
-            : (new ChargerEnergy((new Watts(held.Watts) * elapsed).Value, true, couldFlow), watts);
+            : (new ChargerEnergy((new Watts(held.Watts) * elapsed).Value, true, couldFlow, maxW), watts);
     }
+
+    /// <summary>
+    /// The charger's highest power (W): its top level as the guard's setup declares it, at the highest phase voltage of the power picture. It bounds what a
+    /// gap in the charger's data can have hidden; null without a guard step that knows the device.
+    /// </summary>
+    private double? MaxWatts(PowerView view, DeviceName device) =>
+        presentation.LastStep?.Evaluation.Setup?.Device(device) is { } spec && !view.Phases.IsDefaultOrEmpty
+            ? DeviceLevels.Total(spec, DeviceLevels.Max(spec)) * view.Phases.Max(p => p.Voltage.Value)
+            : null;
 
     private EvState Restore()
     {

@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.3
+
+### Fixed
+
+- A short meter outage no longer costs the EV its SoC estimate for hours: once the charger's data is back, what the gap can have hidden (the charger's highest power over its length) counts against `drift_limit_kwh` and the estimate stays. On 2026-11-10 a 2.5-minute outage at 04:03 left the car at 78 % with two cheap hours unused.
+- Charge now works without a SoC estimate: it plans from the last changed reading plus the energy seen since, or from 0 with no reading. That morning "Szybko do 100 %" from Home Assistant was refused three times with `soc_unknown`.
+
 ## 0.13.2
 
 ### Fixed

@@ -26,10 +26,10 @@ public enum EvControlResult
     /// <summary>The car is not plugged in.</summary>
     NotPlugged,
 
-    /// <summary>There is no usable SoC estimate, so there is nothing to compute the energy from.</summary>
+    /// <summary>The module has no offer to plan with (none computed yet, expired or failed, or no SoC can be computed); a missing estimate alone is not this.</summary>
     SocUnknown,
 
-    /// <summary>The estimate is already at or above the target.</summary>
+    /// <summary>The estimate (or, without one, the lowest SoC the car can hold) is already at or above the target.</summary>
     AlreadyAtTarget,
 
     /// <summary>The target is not above 0 and at most 100 percent.</summary>
@@ -158,8 +158,10 @@ public sealed class EvControl(
             return EvControlResult.NotPlugged;
         }
 
+        // Without an estimate the charge plans from the lowest SoC the car can hold (2026-11-10): a meter outage or a sleeping car must not make "charge now"
+        // do nothing. Only no offer at all (none computed yet, expired, failed, invalid capacity) leaves nothing to plan with.
         var now = clock.Time.GetUtcNow();
-        if (snapshots.Current.Snapshot is not { SocPercent: { } soc } offer || now > offer.ValidUntil)
+        if (snapshots.Current.Snapshot is not { ChargeNowSocPercent: { } soc } offer || now > offer.ValidUntil)
         {
             return EvControlResult.SocUnknown;
         }
@@ -186,7 +188,14 @@ public sealed class EvControl(
 
         // The two commands exclude each other: asking to charge now ends a "don't charge now".
         manual.Update(m => m with { ChargeNow = new EvChargeNow(now, target, expires), Hold = null });
-        logger.LogInformation("EV charge now: target {Target} % by {Expires}", target, expires);
+        if (offer.SocPercent is null)
+        {
+            logger.LogInformation("EV charge now: target {Target} % by {Expires}, planned from {Soc} % (no SoC estimate: {Gap})", target, expires, soc, offer.SocGap);
+        }
+        else
+        {
+            logger.LogInformation("EV charge now: target {Target} % by {Expires}", target, expires);
+        }
         planner.Wake();
         return EvControlResult.Done;
     }

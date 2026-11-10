@@ -166,8 +166,8 @@ public sealed class SocEstimatorTests
     [Fact]
     public void A_gap_in_charger_data_makes_the_estimate_unavailable_until_a_changed_reading()
     {
-        // Why: energy that arrives while the charger's data is stale is invisible; if the gap were forgotten the moment data returned, the estimate would
-        // silently miss it and the car would leave short. Stale data adds nothing, the gap is remembered, and only a changed reading (the truth) ends it.
+        // Why: energy that arrives while the charger's data is stale is invisible; with the charger's highest power unknown nothing bounds it, so forgetting the
+        // gap the moment data returned would leave the drift limit blind. Stale data adds nothing, the gap is remembered, and only a changed reading ends it.
         var idleStale = Step(Anchored(), T0.AddMinutes(5), charger: new ChargerEnergy(2.0, false));
         Assert.Equal(0, idleStale.State.DrawnKwhSinceAnchor);
         Assert.Equal(SocEstimateGap.ChargerStale, idleStale.Estimate.Gap);
@@ -191,6 +191,55 @@ public sealed class SocEstimatorTests
         Assert.Equal(SocEstimateGap.ChargerStale, stale.Estimate.Gap);
 
         Assert.False(Step(stale.State, T0.AddMinutes(15), charger: new ChargerEnergy(0, true)).Estimate.Available);
+    }
+
+    [Fact]
+    public void A_gap_closes_when_charger_data_returns_with_its_highest_power_and_the_value_stays_a_lower_bound()
+    {
+        // Why: live 2026-11-10. The meter lost L1 for 2.5 minutes at 04:03, the guard switched the charging car off, and the gap kept the estimate (and with it
+        // every EV goal) away for three hours while the car slept: it stopped at 78 % with two cheap hours left. What the gap can have hidden is bounded by the
+        // charger's highest power since its data was last fresh; that bound counts against the drift limit, while the value never grows by energy nobody saw
+        // (missing energy only plans more, never too little).
+        var maxW = 4600.0;
+        var fresh = Step(Anchored(), T0.AddMinutes(1), charger: new ChargerEnergy(0, true, MaxW: maxW));
+        var gap = Step(fresh.State, T0.AddMinutes(2), charger: new ChargerEnergy(0, false, MaxW: maxW));
+        Assert.Equal(SocEstimateGap.ChargerStale, gap.Estimate.Gap);
+
+        var back = Step(gap.State, T0.AddMinutes(5), charger: new ChargerEnergy(0, true, MaxW: maxW));
+
+        Assert.Equal(50, back.Estimate.Percent);
+        Assert.Null(back.State.ChargerGapSince);
+        Assert.Equal(maxW / 1000 * 4 / 60, back.State.UnseenKwhSinceAnchor, 6);
+    }
+
+    [Fact]
+    public void A_closed_gap_whose_bound_passes_the_drift_limit_still_drops_the_estimate()
+    {
+        // Why: the bound must be able to fail. A long outage at full power could have charged more than the drift limit allows to go unseen, and then only a
+        // changed reading may say where the battery is.
+        var maxW = 4600.0;
+        var minutes = Defaults.DriftLimitKwh / (maxW / 1000) * 60 + 1;
+        var fresh = Step(Anchored(), T0.AddMinutes(1), charger: new ChargerEnergy(0, true, MaxW: maxW));
+        var gap = Step(fresh.State, T0.AddMinutes(2), charger: new ChargerEnergy(0, false, MaxW: maxW));
+
+        var back = Step(gap.State, T0.AddMinutes(1 + minutes), charger: new ChargerEnergy(0, true, MaxW: maxW));
+
+        Assert.Equal(SocEstimateGap.DriftExceeded, back.Estimate.Gap);
+        Assert.Equal(52, Step(back.State, T0.AddMinutes(2 + minutes), new SocReading(52, T0.AddMinutes(2 + minutes))).Estimate.Percent);
+    }
+
+    [Fact]
+    public void Without_an_estimate_the_lower_bound_is_the_last_changed_reading_plus_the_energy_seen()
+    {
+        // Why: a charge-now plans from it when there is no estimate (2026-11-10, "Szybko do 100 %" refused three times that morning). A plugged car that was not
+        // driven holds at least this much: unseen energy only adds. With no reading at all there is no bound.
+        var grown = Step(Anchored(), T0.AddMinutes(5), charger: new ChargerEnergy(1.1, true));
+        var stale = Step(grown.State, T0.AddMinutes(10), charger: new ChargerEnergy(0, false));
+
+        Assert.Null(stale.Estimate.Percent);
+        Assert.Equal(50 + 1.1 / 1.1 / CapacityKwh * 100, stale.Estimate.LowerBoundPercent!.Value, 6);
+        Assert.Equal(grown.Estimate.Percent, grown.Estimate.LowerBoundPercent);
+        Assert.Null(Step(SocEstimatorState.Empty, T0).Estimate.LowerBoundPercent);
     }
 
     [Fact]

@@ -24,7 +24,8 @@ namespace Switchboard.Tests.Application.Ev;
 /// guard's step would see. Index (row of the table: test):
 /// <list type="number">
 /// <item>SoC stale or unavailable: <see cref="Row01_soc_stale_goals_are_inactive_never_the_last_value"/>, <see cref="Row01_without_charger_data_a_plugged_car_loses_the_estimate_at_once"/>,
-/// <see cref="Row01_a_power_picture_gap_while_the_charger_reports_off_keeps_the_estimate"/>, <see cref="Row01_a_gap_whose_start_or_end_finds_the_charger_on_is_a_gap"/></item>
+/// <see cref="Row01_a_power_picture_gap_while_the_charger_reports_off_keeps_the_estimate"/>, <see cref="Row01_a_gap_whose_start_or_end_finds_the_charger_on_is_a_gap"/>,
+/// <see cref="Row01_a_meter_outage_that_ends_while_the_car_sleeps_gives_the_goals_back"/></item>
 /// <item>Range stale, 0 or unknown: <see cref="Row02_range_zero_uses_the_fallback_and_rejects_the_sample"/>, <see cref="Row02_a_usable_pair_is_learned_and_saved"/></item>
 /// <item>Calendar unavailable: <see cref="Row03_calendar_unavailable_keeps_the_last_trip_until_its_start"/></item>
 /// <item>Calendar not updated for long: <see cref="Row04_a_calendar_older_than_its_max_age_is_unavailable_and_the_trip_stands"/></item>
@@ -160,8 +161,8 @@ public sealed class EvGoalSourceFailureTableTests
     [InlineData(false, true)]
     public void Row01_a_gap_whose_start_or_end_finds_the_charger_on_is_a_gap(bool onBefore, bool onDuring)
     {
-        // Why: the conservative side of the rule above. A charger on at either end of the gap may have charged during it, and the car's next changed reading is
-        // the only truth that can say how much.
+        // Why: the conservative side of the rule above. A charger on at either end of the gap may have charged during it, so there is no estimate while the gap
+        // lasts (how it closes: the next test).
         var rig = new EvRig(charger: EvRig.ChargerWithStop);
         rig.PlugInCar(40);
         var spec = rig.ChargerSpec;
@@ -176,6 +177,35 @@ public sealed class EvGoalSourceFailureTableTests
         Assert.Null(snapshot.SocPercent);
         Assert.Equal(SocEstimateGap.ChargerStale, snapshot.SocGap);
         Assert.Equal(rig.Now, snapshot.SocGapSince);
+    }
+
+    [Fact]
+    public void Row01_a_meter_outage_that_ends_while_the_car_sleeps_gives_the_goals_back()
+    {
+        // Why: live 2026-11-10 04:03. The meter lost L1 for 2.5 minutes while the car charged at 78 % for a 10:00 trip, the guard switched the charger off, and
+        // the car fell asleep: no changed reading came for three hours, so the trip goal stayed inactive and the cheap zone ended unused. Once the power picture
+        // is back, the gap is bounded by the charger's highest power and the goals return without waiting for the car.
+        var rig = new EvRig(charger: EvRig.ChargerWithStop);
+        rig.PlugInCar(78);
+        rig.PushCalendar(rig.Trip(TimeSpan.FromHours(6), 100));
+        var spec = rig.ChargerSpec;
+        rig.ChargerReported = DeviceLevels.Max(spec);
+        rig.ChargerWatts = 3000;
+        Assert.NotEmpty(rig.TickAndOffer().Requests);
+
+        rig.ChargerWatts = null;
+        rig.Advance(TimeSpan.FromMinutes(1));
+        Assert.Empty(rig.TickAndOffer().Requests);
+
+        rig.ChargerWatts = 0;
+        rig.ChargerReported = DeviceLevels.Off(spec);
+        rig.Advance(TimeSpan.FromMinutes(3));
+        var offer = rig.TickAndOffer();
+
+        var snapshot = rig.Keeper.Current.Snapshot!;
+        Assert.Equal(78, snapshot.SocPercent);
+        Assert.Null(snapshot.SocGap);
+        Assert.NotEmpty(offer.Requests);
     }
 
     // ---- 2 ----

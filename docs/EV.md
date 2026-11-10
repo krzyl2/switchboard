@@ -158,7 +158,7 @@ Order: S0 -> S1 -> (S2 || S3) -> S5 -> (S6 || S7) -> S8. About 10 to 13 agent-da
 
 | Condition | Reaction | Visible as |
 |---|---|---|
-| SoC stale or unavailable (`max_age` from `last_reported`, estimate beyond `ev.soc_max_age` or the drift limit) | goals inactive (never the last value), no new plan, warning "trip goal at risk", entries expire and the car returns to v2 | `ev_soc_stale`, `goalsInactive input_stale` |
+| SoC stale or unavailable (`max_age` from `last_reported`, estimate beyond `ev.soc_max_age` or the drift limit) | goals inactive (never the last value), no new plan, warning "trip goal at risk", entries expire and the car returns to v2; a charger-data gap closes when fresh data returns, its worst case (highest power × time) counted against the drift limit (2026-11-10); charge-now plans from a lower bound | `ev_soc_stale`, `goalsInactive input_stale` |
 | Range stale, 0 or unknown | last smoothed kWh/km or the fallback, sample rejected | `ev_range_unusable` |
 | Calendar unavailable | keep the last parsed next trip until its start, no new trips, floor holds | `ev_calendar_unavailable` |
 | Calendar entity not updated for long | `max_age` large (for example 24 h) and based on availability; verify live | note |
@@ -207,7 +207,7 @@ Refusals are `{"code","message"}` with a closed code: `400 bad_request`; `404 no
 
 ### Charge now
 
-A manual hard SoC goal for the EV device in the existing manual goal store (`ManualGoalStore`), deadline now + duration, SoC from the module's estimate (not the raw signal), the device's own `sources`, escalating like any hard goal (the plan makes it `Urgent` only when the margin is within `escalation_margin`, using the device's static `CeilingW`). It suppresses the module's own goals for the device (B8, no double counting). It ends at its target (the estimate reaches it), when the car is unplugged (an unknown plugged state ends nothing), at its deadline, or by `DELETE`. `ModuleOwned` synthetic `GoalSpec` (B9): built from `ev:` and `control.ev` for the EV device only; any other device without a `goal:` still refuses a SoC goal. The guard and the dispatch envelope bound the charger as for any goal.
+A manual hard SoC goal for the EV device in the existing manual goal store (`ManualGoalStore`), deadline now + duration, SoC from the module's estimate (not the raw signal; without one the lowest SoC the car can hold, its last changed reading plus the energy seen since, or 0 with no reading, 2026-11-10), the device's own `sources`, escalating like any hard goal (the plan makes it `Urgent` only when the margin is within `escalation_margin`, using the device's static `CeilingW`). It suppresses the module's own goals for the device (B8, no double counting). It ends at its target (the estimate reaches it), when the car is unplugged (an unknown plugged state ends nothing), at its deadline, or by `DELETE`. `ModuleOwned` synthetic `GoalSpec` (B9): built from `ev:` and `control.ev` for the EV device only; any other device without a `goal:` still refuses a SoC goal. The guard and the dispatch envelope bound the charger as for any goal.
 
 ### MQTT (only while a valid configuration holds an `ev:` section)
 

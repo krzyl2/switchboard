@@ -18,6 +18,11 @@ namespace Switchboard.Application.Ev;
 /// <param name="PluggedUnavailable">A plugged signal is declared but has no usable value (an unplugged car is not this: nothing is reserved for it, an unreadable state leaves the goal inactive).</param>
 /// <param name="LastFullAt">When the weekly full charge last reached its target.</param>
 /// <param name="Plugged">True when plugged (or when no plugged signal is declared), false when unplugged, null when the state is unknown or unavailable; read by the manual goal to end on unplug.</param>
+/// <param name="ChargeNowSocPercent">
+/// The SoC a charge-now plans with and ends on (2026-11-10): the estimate; without one the lowest value the car can hold (its last changed reading plus the
+/// energy seen since); with no reading at all 0, so the whole battery is asked for. The user asked for charging now: a lower value only plans more energy, and the
+/// car stops itself when full. Null only when no SoC can be computed at all (invalid capacity).
+/// </param>
 public sealed record EvSnapshot(
     DateTimeOffset ComputedAt,
     DateTimeOffset ValidUntil,
@@ -31,7 +36,8 @@ public sealed record EvSnapshot(
     EvMode Mode,
     bool PluggedUnavailable,
     DateTimeOffset? LastFullAt,
-    bool? Plugged = true);
+    bool? Plugged = true,
+    double? ChargeNowSocPercent = null);
 
 /// <summary>
 /// The latest published snapshot, or the fact that computing it failed. A null <paramref name="Snapshot"/> without a failure means nothing has been computed

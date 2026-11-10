@@ -49,7 +49,7 @@ public enum ManualGoalResult
 }
 
 /// <summary>What a module knows of the state of charge behind a device whose goal it owns: the estimate the module plans with, and whether the car is plugged in.</summary>
-/// <param name="Percent">The estimate; null when there is none (stale, drifted, no reading): the goal is inactive, never computed from the last value.</param>
+/// <param name="Percent">The SoC the module's manual goal plans with (the EV module's charge-now value: the estimate, else a lower bound); null when the module has none: the goal is inactive.</param>
 /// <param name="Plugged">True when plugged, false when unplugged, null when unknown.</param>
 public readonly record struct ModuleSocReading(double? Percent, bool? Plugged);
 

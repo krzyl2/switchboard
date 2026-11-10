@@ -1,6 +1,7 @@
 using Switchboard.Application.Ev;
 using Switchboard.Application.Goals;
 using Switchboard.Domain.Devices;
+using Switchboard.Domain.Dispatch;
 using Switchboard.Domain.Ev;
 using Switchboard.Domain.Goals;
 using Switchboard.Tests.Support;
@@ -182,19 +183,44 @@ public sealed class EvManualControlTests
     }
 
     [Fact]
-    public void Charge_now_is_refused_for_an_unplugged_car_and_without_a_soc_estimate()
+    public void Charge_now_is_refused_for_an_unplugged_car_and_before_the_module_has_an_offer()
     {
         var unplugged = PlugedAt(40);
         unplugged.PushPlugged("Idle");
         unplugged.Tick();
         Assert.Equal(EvControlResult.NotPlugged, unplugged.Control.StartChargeNow(80, null));
 
+        var early = new EvRig(planner: Full);
+        early.PushPlugged();
+        Assert.Equal(EvControlResult.SocUnknown, early.Control.StartChargeNow(80, null));
+        Assert.Empty(early.GoalStore.Current.Goals);
+    }
+
+    [Fact]
+    public void Charge_now_without_a_soc_estimate_plans_from_the_lowest_soc_the_car_can_hold()
+    {
+        // Why: live 2026-11-10. After a meter outage the estimate was gone while the car slept, and "Szybko do 100 %" from HA was refused three times (the
+        // select fell back to auto with no reason shown). The user asked for charging now: a lower SoC only plans more energy and the car stops itself when
+        // full, so the charge plans from the last changed reading plus the energy seen since, or from 0 with no reading at all.
+        var gap = new EvRig(planner: Full, charger: EvRig.ChargerWithStop);
+        gap.PlugInCar(78);
+        gap.ChargerReported = DeviceLevels.Max(gap.ChargerSpec);
+        gap.Tick();
+        gap.ChargerWatts = null;
+        gap.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(gap.Tick().SocPercent);
+
+        Assert.Equal(EvControlResult.Done, gap.Control.StartChargeNow(100, null));
+        var request = Assert.Single(gap.ManualOffer().Requests);
+        Assert.Equal(78, ((SocTarget)request.Target).CurrentPercent);
+
         var blind = new EvRig(planner: Full);
         blind.PushPlugged();
         blind.PushCalendar(null);
-        blind.Tick();
-        Assert.Equal(EvControlResult.SocUnknown, blind.Control.StartChargeNow(80, null));
-        Assert.Empty(blind.GoalStore.Current.Goals);
+        Assert.Null(blind.Tick().SocPercent);
+
+        Assert.Equal(EvControlResult.Done, blind.Control.StartChargeNow(80, null));
+        Assert.Equal(0, ((SocTarget)Assert.Single(blind.ManualOffer().Requests).Target).CurrentPercent);
     }
 
     [Fact]
