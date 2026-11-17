@@ -71,6 +71,7 @@ public sealed record EvOfferedGoalDto(string Kind, double TargetPercent, double 
 /// <param name="SocGap">Why there is no SoC estimate (no_reading, too_old, drift_exceeded, charger_stale, invalid_capacity).</param>
 /// <param name="SocGapSince">When that gap began (too_old, charger_stale); null for any other gap and with an estimate.</param>
 /// <param name="KwhPerKm">The consumption the target was computed with.</param>
+/// <param name="KwhPerKmSource">Where it came from: sensor (the car's consumption figure), soc_and_range (learned from SoC and range) or fallback.</param>
 public sealed record EvAssessmentDto(
     bool Failed,
     string? Reason,
@@ -85,7 +86,8 @@ public sealed record EvAssessmentDto(
     double? KwhPerKm,
     EvTripDto? NextTrip,
     DateTimeOffset? LastFullAt,
-    IReadOnlyList<EvOfferedGoalDto> Goals);
+    IReadOnlyList<EvOfferedGoalDto> Goals,
+    string? KwhPerKmSource = null);
 
 /// <param name="Configured">False when the section declares no such input.</param>
 /// <param name="State">The signal's state (fresh, stale, rejected, unavailable, unmapped).</param>
@@ -97,6 +99,7 @@ public sealed record EvReadDto(bool Configured, string State, string Detail, Dat
 
 /// <summary>The EV inputs; a value is present only while its input is fresh.</summary>
 /// <param name="PluggedState">The plugged entity's own state text, for display.</param>
+/// <param name="ConsumptionKwhPerKm">The car's consumption figure in kWh per km (converted in the signal layer).</param>
 public sealed record EvInputsDto(
     EvReadDto Soc,
     double? SocPercent,
@@ -105,7 +108,9 @@ public sealed record EvInputsDto(
     EvReadDto Plugged,
     bool? IsPlugged,
     string? PluggedState,
-    EvReadDto Calendar);
+    EvReadDto Calendar,
+    EvReadDto Consumption,
+    double? ConsumptionKwhPerKm);
 
 public sealed record EvTripDto(string Title, DateTimeOffset Start, double Km);
 
@@ -127,6 +132,7 @@ public sealed record EvTripsDto(EvTripDto? NextTrip, IReadOnlyList<EvUnparsedDto
 /// <param name="PluggedSignal">The logical name of the plugged-state signal; null when not declared.</param>
 /// <param name="PluggedStates">The states of the plugged signal that mean plugged in.</param>
 /// <param name="CalendarSignal">The logical name of the calendar signal; null when not declared.</param>
+/// <param name="ConsumptionSignal">The logical name of the consumption signal; null when not declared (consumption is then learned from SoC and range).</param>
 public sealed record EvConfigDto(
     string Device,
     double CapacityKwh,
@@ -136,7 +142,8 @@ public sealed record EvConfigDto(
     string? RangeSignal = null,
     string? PluggedSignal = null,
     IReadOnlyList<string>? PluggedStates = null,
-    string? CalendarSignal = null);
+    string? CalendarSignal = null,
+    string? ConsumptionSignal = null);
 
 /// <summary>The <c>control.ev</c> parameters; durations in seconds.</summary>
 public sealed record EvParametersDto(
@@ -359,7 +366,8 @@ internal static class EvEndpoint
                     ev.Range?.Value,
                     ev.Plugged?.Value,
                     ev.Plugged is null ? null : ev.PluggedStates,
-                    ev.Calendar?.Value),
+                    ev.Calendar?.Value,
+                    ev.Consumption?.Value),
             configuration is null ? null : Parameters(configuration.Control.Ev),
             report.Issues,
             report.AddOnZone,
@@ -381,7 +389,7 @@ internal static class EvEndpoint
     {
         if (report.Snapshot is not { } snapshot)
         {
-            return new EvAssessmentDto(true, null, [], null, null, true, null, null, null, null, null, null, null, []);
+            return new EvAssessmentDto(true, null, [], null, null, true, null, null, null, null, null, null, null, [], null);
         }
 
         var composition = snapshot.Composition;
@@ -406,11 +414,22 @@ internal static class EvEndpoint
                 g.Request.Deadline,
                 g.Request.Hard,
                 g.Request.Sources?.ToText(),
-                g.Spread))]);
+                g.Spread))],
+            snapshot.KwhPerKmSource is { } source ? ApiText.Snake(source) : "fallback");
     }
 
     private static EvInputsDto Inputs(EvInputs inputs, DateTimeOffset now) =>
-        new(Read(inputs.Soc, now), inputs.SocPercent, Read(inputs.Range, now), inputs.RangeKm, Read(inputs.Plugged, now), inputs.IsPlugged, inputs.PluggedState, Read(inputs.Calendar, now));
+        new(
+            Read(inputs.Soc, now),
+            inputs.SocPercent,
+            Read(inputs.Range, now),
+            inputs.RangeKm,
+            Read(inputs.Plugged, now),
+            inputs.IsPlugged,
+            inputs.PluggedState,
+            Read(inputs.Calendar, now),
+            Read(inputs.Consumption, now),
+            inputs.ConsumptionKwhPerKm);
 
     private static EvReadDto Read(EvRead read, DateTimeOffset now) =>
         new(

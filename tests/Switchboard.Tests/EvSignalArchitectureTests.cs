@@ -17,7 +17,7 @@ public sealed partial class EvSignalArchitectureTests
     private static bool IsEvType(Type type) =>
         type.Namespace is { } ns && ns.StartsWith("Switchboard.Domain.Ev", StringComparison.Ordinal)
         || type == typeof(EvInputs) || type == typeof(EvRead) || type == typeof(EvInputView) || type == typeof(IEvInputSource)
-        || type == typeof(CalendarEvent) || type == typeof(CalendarEventValue) || type == typeof(DistanceValue) || type == typeof(ParsedCalendar);
+        || type == typeof(CalendarEvent) || type == typeof(CalendarEventValue) || type == typeof(DistanceValue) || type == typeof(ConsumptionValue) || type == typeof(ParsedCalendar);
 
     [Fact]
     public void No_type_the_guard_or_dispatch_is_built_from_reaches_an_ev_type()
@@ -177,7 +177,7 @@ public sealed partial class EvSignalArchitectureTests
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
-    [GeneratedRegex(@"SignalRole\.Ev|SignalKind\.(Distance|CalendarEvent)|\bEvInputs?\b|\bEvInputView\b|\bIEvInputSource\b|\bEvRead\b|\bEvDefinition\b|\bTripParser\b|\bTripAssessment\b|\bCalendarEvent(Value)?\b|\bDistanceValue\b|Switchboard\.Domain\.Ev", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"SignalRole\.Ev|SignalKind\.(Distance|CalendarEvent|Consumption)|\bEvInputs?\b|\bEvInputView\b|\bIEvInputSource\b|\bEvRead\b|\bEvDefinition\b|\bTripParser\b|\bTripAssessment\b|\bCalendarEvent(Value)?\b|\bDistanceValue\b|\bConsumptionValue\b|Switchboard\.Domain\.Ev", RegexOptions.CultureInvariant)]
     private static partial Regex EvWord();
 
     [GeneratedRegex(@"SignalRole\.Ev|\bEvInputs?\b|\bEvInputView\b|\bIEvInputSource\b|\bEvRead\b|\bTripParser\b", RegexOptions.CultureInvariant)]

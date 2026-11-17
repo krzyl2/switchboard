@@ -229,5 +229,51 @@ public sealed class KwhPerKmLearnerTests
         Assert.Equal(EvSampleRejection.SocBelowMinimum, Run(KwhPerKmState.Empty, Valid(soc: 0, range: 30)).Rejection);
         Assert.Equal(EvSampleRejection.Implausible, Run(KwhPerKmState.Empty, Valid(soc: 0, range: 30), Learn with { MinSoc = 0 }).Rejection);
     }
-}
 
+    [Fact]
+    public void The_cars_own_figure_is_a_sample_as_reported_and_is_smoothed_like_any_other()
+    {
+        // Why: ev.consumption (2026-11-17): in winter the car reports 0.186 kWh/km while SoC and range gave 0.145, so trips were planned 22 % short. The
+        // figure is taken as it comes (already kWh/km from the signal layer) and smoothed with learn.smoothing, so a trip's within-drive jitter is damped.
+        var first = KwhPerKmLearner.LearnReported(KwhPerKmState.Empty, new EvReportedConsumption(0.186, T0), Learn);
+        var second = KwhPerKmLearner.LearnReported(first.State, new EvReportedConsumption(0.236, T0.AddMinutes(15)), Learn);
+
+        Assert.Equal((0.186, 0.186, KwhPerKmSource.Sensor), (first.Accepted!.Value, first.State.Smoothed!.Value, first.State.Source));
+        Assert.Equal(0.196, second.State.Smoothed!.Value, 9);
+        Assert.Equal(KwhPerKmSource.Sensor, KwhPerKmLearner.CurrentSource(second.State, Learn));
+        Assert.Equal(0.196, KwhPerKmLearner.Current(second.State, Defaults.FallbackKwhPerKm, Learn), 9);
+    }
+
+    [Fact]
+    public void A_figure_the_bounds_refuse_one_already_taken_or_none_moves_nothing()
+    {
+        // Why: an electricity-only average after a leg on fuel reads 1.8 kWh/100 km (live, 2026-09-06): taken, it would plan a 50 km trip with 1 kWh. The same
+        // report twice is one report, and a stale figure (null here) is no new information.
+        var state = KwhPerKmLearner.LearnReported(KwhPerKmState.Empty, new EvReportedConsumption(0.186, T0), Learn).State;
+
+        Assert.Equal(EvSampleRejection.Implausible, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(0.018, T0.AddHours(1)), Learn).Rejection);
+        Assert.Equal(EvSampleRejection.Implausible, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(0.9, T0.AddHours(1)), Learn).Rejection);
+        Assert.Equal(EvSampleRejection.AlreadySampled, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(0.2, T0), Learn).Rejection);
+        Assert.Equal(EvSampleRejection.ValueMissing, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(null, T0.AddHours(1)), Learn).Rejection);
+        Assert.Equal(EvSampleRejection.ValueMissing, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(double.NaN, T0.AddHours(1)), Learn).Rejection);
+        Assert.Equal(0.186, KwhPerKmLearner.LearnReported(state, new EvReportedConsumption(0.018, T0.AddHours(1)), Learn).State.Smoothed!.Value, 9);
+    }
+
+    [Fact]
+    public void Switching_the_source_drops_what_the_other_one_learned()
+    {
+        // Why: the 0.145 learned from SoC and range would otherwise pull the car's 0.186 down for many reports after ev.consumption is declared, and the car's
+        // figure kept after the key is removed would never be replaced by what SoC and range say.
+        var fromRange = Run(KwhPerKmState.Empty, Valid()).State;
+        var toSensor = KwhPerKmLearner.LearnReported(fromRange, new EvReportedConsumption(0.186, T0.AddHours(1)), Learn).State;
+
+        Assert.Equal(0.186, toSensor.Smoothed!.Value, 9);
+        Assert.Single(toSensor.Samples);
+
+        var back = KwhPerKmLearner.Align(toSensor, 0);
+        Assert.Null(back.Smoothed);
+        Assert.Equal(KwhPerKmSource.SocAndRange, back.Source);
+        Assert.Same(toSensor, KwhPerKmLearner.Align(toSensor, 25, KwhPerKmSource.Sensor));
+        Assert.Null(KwhPerKmLearner.CurrentSource(back, Learn));
+    }
+}

@@ -91,6 +91,21 @@ public sealed class EvStateFileTests : IDisposable
     }
 
     [Fact]
+    public void The_source_of_the_samples_survives_a_restart_and_a_file_without_it_was_learned_from_soc_and_range()
+    {
+        // Why: the engine drops samples of the other source. Lost at a restart, the car's own figure would be thrown away every time the add-on starts; a
+        // file written before the key (2026-11-17) holds SoC and range samples, which the first sensor sample must replace, not be averaged with.
+        var learned = KwhPerKmLearner.LearnReported(KwhPerKmState.Empty, new EvReportedConsumption(0.186, T0), Defaults.Learn).State;
+        File().Save(EvState.Default with { Learned = learned });
+
+        var after = File().Load().State!.Learned;
+
+        Assert.Equal((KwhPerKmSource.Sensor, 0.186), (after.Source, after.Smoothed!.Value));
+        Assert.Equal(KwhPerKmSource.SocAndRange, LoadText(Valid).State!.Learned.Source);
+        Assert.Null(LoadText(Valid.Replace("\"samples\":", "\"source\":\"guess\",\"samples\":", StringComparison.Ordinal)).State);
+    }
+
+    [Fact]
     public void An_absent_file_is_a_fresh_start()
     {
         var loaded = File().Load();

@@ -73,10 +73,20 @@ public sealed class SharedHelperTests
             return;
         }
 
-        var day = EconomicsEndpoint.LocalDay(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.FromHours(-5)), havana);
+        // The zone's rules change (Windows' data of November 2026 keeps Cuba on summer time through 2026), so the day is found, not assumed.
+        var midnight = Enumerable.Range(0, 6 * 366).Select(i => new DateTime(2025, 1, 1).AddDays(i)).FirstOrDefault(havana.IsAmbiguousTime);
+        if (midnight == default)
+        {
+            return;
+        }
 
-        Assert.Equal(new DateTimeOffset(2026, 11, 1, 4, 0, 0, TimeSpan.Zero), day.From);
-        Assert.Equal(new DateTimeOffset(2026, 11, 2, 5, 0, 0, TimeSpan.Zero), day.To);
+        var noon = midnight.AddHours(12);
+        var next = midnight.AddDays(1);
+        var day = EconomicsEndpoint.LocalDay(new DateTimeOffset(noon, havana.GetUtcOffset(noon)), havana);
+
+        Assert.Equal(new DateTimeOffset(midnight, havana.GetAmbiguousTimeOffsets(midnight).Max()).ToUniversalTime(), day.From);
+        Assert.Equal(new DateTimeOffset(next, havana.GetUtcOffset(next)).ToUniversalTime(), day.To);
+        Assert.Equal(TimeSpan.FromHours(25), day.To - day.From);
     }
 
     [Theory]

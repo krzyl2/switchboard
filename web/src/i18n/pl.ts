@@ -178,6 +178,7 @@ export const pl: Messages = {
   'role.ev_range': 'zasięg elektryczny auta (wejście modułu EV)',
   'role.ev_plugged': 'auto podłączone (wejście modułu EV)',
   'role.ev_calendar': 'kalendarz wyjazdów (wejście modułu EV)',
+  'role.ev_consumption': 'zużycie podawane przez auto (wejście modułu EV)',
   'directionSource.signed_signal': 'wartość ze znakiem',
   'directionSource.deadband': 'blisko zera, liczony jako pobór',
   'directionSource.pending': 'czeka na moc z tego samego odczytu, liczony jako pobór',

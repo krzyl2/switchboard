@@ -178,6 +178,7 @@ export const en = {
   'role.ev_range': 'car electric range (EV module input)',
   'role.ev_plugged': 'car plugged in (EV module input)',
   'role.ev_calendar': 'trip calendar (EV module input)',
+  'role.ev_consumption': 'car consumption figure (EV module input)',
   'directionSource.signed_signal': 'signed value',
   'directionSource.deadband': 'near zero, counted as import',
   'directionSource.pending': 'waiting for the power of the same reading, counted as import',

@@ -58,6 +58,9 @@ public sealed class EvSpaContractTests
         Assert.Equal(Names<UnparsedReason>(), Spa(Contract, "EV_UNPARSED_REASONS"));
         Assert.Equal(Names<TripWarningKind>(), Spa(Contract, "EV_TRIP_WARNINGS"));
         Assert.Equal(Names<PlannerDispatchMode>(), Spa(Contract, "EV_PLANNER_DISPATCH"));
+
+        // The consumption's source is the learner's (sensor, soc_and_range) or the fallback, which no learner state carries.
+        Assert.Equal([.. Names<KwhPerKmSource>().Append("fallback").Order(StringComparer.Ordinal)], Spa(Contract, "EV_KWH_PER_KM_SOURCES"));
         Assert.Equal([.. EvAssessmentCodes.All.Select(EvAssessmentCodes.Text).Order(StringComparer.Ordinal)], Spa(PlanContract, "EV_CAUSES"));
         Assert.Equal(14, Spa(PlanContract, "EV_CAUSES").Length);
     }
@@ -97,6 +100,7 @@ public sealed class EvSpaContractTests
         Both(Sentences, "ev.socGap.", Spa(Contract, "EV_SOC_GAPS"));
         Both(Sentences, "ev.unparsed.", Spa(Contract, "EV_UNPARSED_REASONS"));
         Both(Sentences, "ev.warn.", Spa(Contract, "EV_TRIP_WARNINGS"));
+        Both(Sentences, "ev.consumption.source.", Spa(Contract, "EV_KWH_PER_KM_SOURCES"));
         Both(PlanSentences, "plan.cause.", Spa(PlanContract, "EV_CAUSES"));
     }
 

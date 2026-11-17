@@ -24,11 +24,15 @@ internal static partial class EvSectionParser
     /// <summary>The longest battery the section accepts; a schema bound against a typo (18 vs 180), not a control parameter.</summary>
     private const double MaxCapacityKwh = 500;
 
-    private static readonly string[] SectionKeys = ["device", "capacity_kwh", "hybrid_threshold", "soc", "range", "plugged", "calendar", "cheap_zone"];
+    /// <summary>The most kWh a litre may stand for; a schema bound against a typo (3.5 vs 35), not a control parameter (petrol holds about 9 kWh per litre).</summary>
+    private const double MaxKwhPerLitre = 20;
+
+    private static readonly string[] SectionKeys = ["device", "capacity_kwh", "hybrid_threshold", "soc", "range", "plugged", "calendar", "cheap_zone", "consumption"];
     private static readonly string[] SocKeys = ["entity", "max_age"];
     private static readonly string[] RangeKeys = ["entity", "unit", "max_age"];
     private static readonly string[] PluggedKeys = ["entity", "states", "state_reports", "max_age"];
     private static readonly string[] CalendarKeys = ["entity", "state_reports", "max_age"];
+    private static readonly string[] ConsumptionKeys = ["entity", "unit", "kwh_per_litre", "max_age"];
 
     // A car's SoC is a sensor, or a helper that mirrors it; never an actuator-like entity.
     private static readonly ImmutableArray<string> SocDomains = ["sensor", "input_number", "number"];
@@ -89,6 +93,8 @@ internal static partial class EvSectionParser
         created = plugged is null ? created : created.Add(plugged.Value.Definition);
         var calendar = ReadCalendar(mapping, device, devices, signals.AddRange(created), control, issues);
         created = calendar is null ? created : created.Add(calendar);
+        var consumption = ReadConsumption(mapping, device, devices, signals.AddRange(created), control, issues);
+        created = consumption is null ? created : created.Add(consumption);
         var cheapZone = ReadCheapZone(mapping, economics, issues);
 
         if (issues.Errors.Count > errorsBefore || device is null || capacity is null || soc is null || hybridThreshold is null)
@@ -143,7 +149,8 @@ internal static partial class EvSectionParser
             plugged?.Definition.Name,
             plugged?.States ?? [],
             calendar?.Name,
-            hybridThreshold.Value);
+            hybridThreshold.Value,
+            consumption?.Name);
         return (definition, created);
     }
 
@@ -384,6 +391,67 @@ internal static partial class EvSectionParser
         return new SignalDefinition(Signal(device.Id, "range"), read.Entity, SignalKind.Distance, unit, null, null, false, maxAge.Value, null, SignalRole.EvRange, null, false, read.Path)
         {
             MaxAgeKey = maxAgePath,
+        };
+    }
+
+    /// <summary>
+    /// The car's own consumption figure: optional; when declared it is what the consumption is learned from instead of SoC and range (EV-04). <c>unit</c>
+    /// (required) is kWh/km, kWh/100km or L/100km; L/100km needs <c>kwh_per_litre</c>, the kWh the car maker counts one litre as (no vendor's figure is in
+    /// code), and nothing else takes it. Converted in the signal layer.
+    /// </summary>
+    private static SignalDefinition? ReadConsumption(
+        ConfigMapping mapping,
+        DeviceDefinition? device,
+        ImmutableArray<DeviceDefinition> devices,
+        ImmutableArray<SignalDefinition> signals,
+        ControlParameters? control,
+        ConfigIssues issues)
+    {
+        var errorsBefore = issues.Errors.Count;
+        if (ReadEntity(mapping, "consumption", false, "the consumption", ConsumptionKeys, RangeDomains, devices, signals, issues) is not { } read)
+        {
+            return null;
+        }
+
+        var allowed = SignalUnits.AllowedFor(SignalKind.Consumption);
+        var unitPath = ConfigRead.Join(read.Path, "unit");
+        string? unit = null;
+        if (ConfigRead.Required(read.Block, "unit", read.Path, issues) is { } unitNode && ConfigRead.String(unitNode, unitPath, issues) is { } text)
+        {
+            if (allowed.Contains(text))
+            {
+                unit = text;
+            }
+            else
+            {
+                issues.Error(ConfigurationIssueCodes.UnitNotAllowedForKind, unitPath, unitNode, $"'{text}' is not a consumption unit; use one of: {string.Join(", ", allowed)}.");
+            }
+        }
+
+        var perLitrePath = ConfigRead.Join(read.Path, "kwh_per_litre");
+        var perLitreNode = ConfigRead.Optional(read.Block, "kwh_per_litre");
+        double? kwhPerLitre = null;
+        if (unit == SignalUnits.LitresPer100Km)
+        {
+            kwhPerLitre = ConfigRead.Required(read.Block, "kwh_per_litre", read.Path, issues) is { } node
+                ? ConfigRead.Number(node, perLitrePath, issues, new Range(0, MaxKwhPerLitre, MinExclusive: true))
+                : null;
+        }
+        else if (unit is not null && perLitreNode is not null)
+        {
+            issues.Error(ConfigurationIssueCodes.InvalidValue, perLitrePath, perLitreNode, $"kwh_per_litre converts L/100km only; the unit is {unit}.");
+        }
+
+        var (maxAge, maxAgePath) = ReadMaxAge(read, control?.Planner.Goal.InputMaxAge, control, issues);
+        if (issues.Errors.Count > errorsBefore || unit is null || maxAge is null || device is null)
+        {
+            return null;
+        }
+
+        return new SignalDefinition(Signal(device.Id, "consumption"), read.Entity, SignalKind.Consumption, unit, null, null, false, maxAge.Value, null, SignalRole.EvConsumption, null, false, read.Path)
+        {
+            MaxAgeKey = maxAgePath,
+            KwhPerLitre = kwhPerLitre,
         };
     }
 

@@ -20,6 +20,7 @@ namespace Switchboard.Domain.Ev;
 /// <param name="PluggedStates">The states of the plugged signal that mean the car is plugged in (compared without regard to case); empty without a plugged signal.</param>
 /// <param name="Calendar">The logical name of the calendar signal whose current or next event is the next trip; null when the section declares none (EV-02).</param>
 /// <param name="HybridThresholdPercent">The SoC at which the car's electric range reaches zero (a PHEV runs as a hybrid below it); 0 for a car whose whole battery drives it. Consumption is learned from the energy above it.</param>
+/// <param name="Consumption">The logical name of the car's own consumption signal (kWh per km); null when the section declares none. When declared, consumption is learned from it instead of SoC and range (EV-04).</param>
 public sealed record EvDefinition(
     DeviceName Device,
     double CapacityKwh,
@@ -29,7 +30,8 @@ public sealed record EvDefinition(
     SignalName? Plugged = null,
     ImmutableArray<string> PluggedStates = default,
     SignalName? Calendar = null,
-    double HybridThresholdPercent = 0);
+    double HybridThresholdPercent = 0,
+    SignalName? Consumption = null);
 
 /// <summary>
 /// The EV module's parameters (<c>ev:</c> in control-defaults, docs/EV.md section 6 S1). Every value comes from configuration; none is a

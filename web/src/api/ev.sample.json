@@ -14,7 +14,8 @@
       "Wait for car",
       "complete"
     ],
-    "calendarSignal": "device_ev_charger_ev_calendar"
+    "calendarSignal": "device_ev_charger_ev_calendar",
+    "consumptionSignal": null
   },
   "parameters": {
     "floorPercent": 25,
@@ -92,7 +93,16 @@
       "readAt": "2026-10-23T12:00:00.005+00:00",
       "ageS": 0,
       "maxAgeS": 86400
-    }
+    },
+    "consumption": {
+      "configured": false,
+      "state": "unmapped",
+      "detail": "none",
+      "readAt": null,
+      "ageS": null,
+      "maxAgeS": null
+    },
+    "consumptionKwhPerKm": null
   },
   "trips": {
     "nextTrip": {
@@ -143,7 +153,8 @@
         "sources": "pv_and_zone:offpeak",
         "spread": true
       }
-    ]
+    ],
+    "kwhPerKmSource": "soc_and_range"
   },
   "manual": {
     "mode": "auto",

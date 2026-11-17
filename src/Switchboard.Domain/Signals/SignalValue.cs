@@ -32,6 +32,9 @@ public sealed record StateValue(string State) : SignalValue;
 /// <summary>A distance in km (the signal layer converted mi). Never negative.</summary>
 public sealed record DistanceValue(double Kilometers) : SignalValue;
 
+/// <summary>A consumption in kWh per km (the signal layer converted kWh/100km and L/100km). Never negative.</summary>
+public sealed record ConsumptionValue(double KwhPerKm) : SignalValue;
+
 /// <summary>
 /// One event of a calendar as its entity exposes it. <see cref="Start"/> and <see cref="End"/> are instants: the entity writes naive local
 /// times, and the signal layer read them in the add-on's zone. <see cref="Description"/> is never longer than the schema bound

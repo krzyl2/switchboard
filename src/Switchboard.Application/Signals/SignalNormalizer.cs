@@ -25,10 +25,15 @@ public static class SignalUnits
         ["%"] = 1,
         ["km"] = 1,
         ["mi"] = KilometersPerMile,
+        ["kWh/km"] = 1,
+        ["kWh/100km"] = 1.0 / 100,
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
     /// <summary>The international mile, exactly; the one place a distance is converted (to km).</summary>
     private const double KilometersPerMile = 1.609344;
+
+    /// <summary>A consumption in litres per 100 km: its kWh per litre is the signal's own (<see cref="SignalDefinition.KwhPerLitre"/>), so it has no fixed factor.</summary>
+    public const string LitresPer100Km = "L/100km";
 
     public static ImmutableArray<string> AllowedFor(SignalKind kind) => kind switch
     {
@@ -39,11 +44,19 @@ public static class SignalUnits
         SignalKind.Percentage => ["%"],
         SignalKind.EnergyForecast => ["Wh", "kWh", "MWh"],
         SignalKind.Distance => ["km", "mi"],
+        SignalKind.Consumption => ["kWh/km", "kWh/100km", LitresPer100Km],
         _ => [],
     };
 
-    /// <summary>The factor from <paramref name="unit"/> to the internal unit of its kind (not for a price unit, see <see cref="TryParsePrice"/>).</summary>
+    /// <summary>The factor from <paramref name="unit"/> to the internal unit of its kind (not for a price unit, see <see cref="TryParsePrice"/>, nor for <see cref="LitresPer100Km"/>, see <see cref="ConsumptionToKwhPerKm"/>).</summary>
     public static double Factor(string unit) => Factors[unit];
+
+    /// <summary>
+    /// A consumption in the declared unit as kWh per km: the one place a consumption is converted. Litres per 100 km take the signal's kWh per litre
+    /// (the car maker's equivalence, from configuration); null when that is missing, so the sample is refused rather than converted on a guess.
+    /// </summary>
+    public static double? ConsumptionToKwhPerKm(double raw, string unit, double? kwhPerLitre) =>
+        unit == LitresPer100Km ? kwhPerLitre is { } perLitre ? raw * perLitre / 100 : null : raw * Factor(unit);
 
     private const string PerKwh = "/kWh";
     private const string PerMwh = "/MWh";
@@ -173,6 +186,13 @@ public static class SignalNormalizer
             return Reject(SignalDetail.NotNumeric);
         }
 
+        if (definition.Kind == SignalKind.Consumption)
+        {
+            return SignalUnits.ConsumptionToKwhPerKm(raw, declared, definition.KwhPerLitre) is not { } kwhPerKm || !double.IsFinite(kwhPerKm)
+                ? Reject(SignalDetail.UnitMismatch)
+                : kwhPerKm < 0 ? Reject(SignalDetail.SignViolation) : Accept(new ConsumptionValue(kwhPerKm));
+        }
+
         var value = raw * SignalUnits.Factor(declared);
         if (definition.Kind == SignalKind.EnergyForecast)
         {
@@ -283,6 +303,7 @@ public static class SignalNormalizer
         PriceValue p => p.PerKwh,
         EnergyForecastValue f => f.Energy.Value,
         DistanceValue d => d.Kilometers,
+        ConsumptionValue c => c.KwhPerKm,
         PercentageValue p => p.Percentage.Value,
         _ => null,
     };

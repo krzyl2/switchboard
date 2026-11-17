@@ -27,6 +27,9 @@ public enum SignalKind
 
     /// <summary>The current or next event of a calendar entity, read from its bounded attributes; the EV module's input only, never protection or dispatch (EV-02).</summary>
     CalendarEvent,
+
+    /// <summary>A car's energy consumption in kWh per km, from a scalar state in kWh/km, kWh/100km or L/100km (a litre is worth the configured kWh); the EV module's input only, never protection or dispatch (EV-04).</summary>
+    Consumption,
 }
 
 /// <summary>
@@ -148,6 +151,9 @@ public enum SignalRole
 
     /// <summary>The calendar whose current or next event is the next trip, created from <c>ev:</c>; the EV module's input only (EV-02).</summary>
     EvCalendar,
+
+    /// <summary>The car's own consumption figure (kWh per km), created from <c>ev:</c>; the source of the learned consumption, the EV module's input only (EV-04).</summary>
+    EvConsumption,
 }
 
 /// <summary>

@@ -28,6 +28,8 @@ public sealed record EvRead(bool Configured, SignalState State, SignalDetail Det
 /// <param name="PluggedState">The plugged signal's state as Home Assistant wrote it, for display; null unless fresh.</param>
 /// <param name="CalendarEvent">The calendar's current or next event; null when none or unless fresh. <see cref="Calendar"/> says which.</param>
 /// <param name="CalendarZoneName">The zone the calendar entity says its times are in, when it says so; null otherwise.</param>
+/// <param name="Consumption">How the car's own consumption figure was read; not configured unless the section declares one.</param>
+/// <param name="ConsumptionKwhPerKm">That figure in kWh per km (kWh/100km and L/100km were converted in the signal layer); null unless fresh.</param>
 public sealed record EvInputs(
     EvRead Soc,
     double? SocPercent,
@@ -38,12 +40,17 @@ public sealed record EvInputs(
     string? PluggedState,
     EvRead Calendar,
     CalendarEvent? CalendarEvent,
-    string? CalendarZoneName)
+    string? CalendarZoneName,
+    EvRead? Consumption = null,
+    double? ConsumptionKwhPerKm = null)
 {
     public static EvInputs Empty { get; } = new(EvRead.NotConfigured, null, EvRead.NotConfigured, null, EvRead.NotConfigured, null, null, EvRead.NotConfigured, null, null);
 
+    /// <summary>How the consumption figure was read; not configured when the section declares none.</summary>
+    public EvRead Consumption { get; init; } = Consumption ?? EvRead.NotConfigured;
+
     /// <summary>The roles this view reads, and no others.</summary>
-    public static IReadOnlyList<SignalRole> Roles { get; } = [SignalRole.EvSoc, SignalRole.EvRange, SignalRole.EvPlugged, SignalRole.EvCalendar];
+    public static IReadOnlyList<SignalRole> Roles { get; } = [SignalRole.EvSoc, SignalRole.EvRange, SignalRole.EvPlugged, SignalRole.EvCalendar, SignalRole.EvConsumption];
 
     /// <summary>Takes the EV signals the section declares out of a snapshot.</summary>
     public static EvInputs From(SignalSnapshot snapshot, EvDefinition ev)
@@ -55,6 +62,7 @@ public sealed record EvInputs(
         var range = Find(snapshot, ev.Range, SignalRole.EvRange);
         var plugged = Find(snapshot, ev.Plugged, SignalRole.EvPlugged);
         var calendar = Find(snapshot, ev.Calendar, SignalRole.EvCalendar);
+        var consumption = Find(snapshot, ev.Consumption, SignalRole.EvConsumption);
 
         var pluggedState = plugged is { State: SignalState.Fresh, Value: StateValue state } ? state.State : null;
         var calendarValue = calendar is { State: SignalState.Fresh, Value: CalendarEventValue value } ? value : null;
@@ -68,7 +76,9 @@ public sealed record EvInputs(
             pluggedState,
             Read(calendar),
             calendarValue?.Event,
-            calendarValue?.ZoneName);
+            calendarValue?.ZoneName,
+            Read(consumption),
+            consumption is { State: SignalState.Fresh, Value: ConsumptionValue figure } ? figure.KwhPerKm : null);
     }
 
     /// <summary>A disconnected feed means nothing is known now: an on-change state would otherwise stay Fresh for ever after a lost link, and a plugged car would be read from a state that may have changed.</summary>

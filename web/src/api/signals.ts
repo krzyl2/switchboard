@@ -111,6 +111,7 @@ export const SIGNAL_KINDS = [
   'timestamp',
   'distance',
   'calendar_event',
+  'consumption',
 ] as const;
 export const SIGNAL_ROLES = [
   'none',
@@ -146,6 +147,7 @@ export const SIGNAL_ROLES = [
   'ev_range',
   'ev_plugged',
   'ev_calendar',
+  'ev_consumption',
 ] as const;
 export const SIGNAL_STATES = ['fresh', 'stale', 'rejected', 'unavailable', 'unmapped'] as const;
 export const SIGNAL_DETAILS = [
@@ -198,6 +200,7 @@ export const INTERNAL_UNITS = {
   percentage: '%',
   energy_forecast: 'kWh',
   distance: 'km',
+  consumption: 'kWh/km',
 } as const satisfies Record<Exclude<SignalKind, 'state' | 'price' | 'series' | 'timestamp' | 'calendar_event'>, string>;
 
 /** A price value always travels per kWh (the add-on converted a per-MWh unit); the label before the slash is the user's own. */

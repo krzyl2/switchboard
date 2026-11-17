@@ -202,4 +202,42 @@ public sealed class EvSignalConfigurationTests
 
         Assert.DoesNotContain(result.Configuration!.Signals, s => s.Role is SignalRole.EvSoc or SignalRole.EvRange or SignalRole.EvPlugged or SignalRole.EvCalendar);
     }
+
+    [Fact]
+    public void The_consumption_block_creates_one_signal_and_litres_carry_the_kwh_the_car_counts_per_litre()
+    {
+        // Why: the car's equivalent consumption is in L/100km; its maker counts a litre as 3.5 kWh (live: the figure is the EV average / 3.50 on every electric
+        // leg). That number is the car's, so it comes from the file, never from code; without it a litre cannot be read as kWh at all.
+        var result = Parse("  consumption: { entity: sensor.car_equivalent_consumption, unit: L/100km, kwh_per_litre: 3.5, max_age: 2h }\n");
+
+        Assert.Empty(EvIssues(result));
+        var consumption = Signal(result, SignalRole.EvConsumption);
+        Assert.Equal((SignalKind.Consumption, "L/100km", 3.5, TimeSpan.FromHours(2), "ev.consumption"), (consumption.Kind, consumption.Unit, consumption.KwhPerLitre, consumption.MaxAge, consumption.Path));
+        Assert.Equal(consumption.Name, result.Configuration!.Ev!.Consumption);
+        Assert.StartsWith("device_", consumption.Name.Value, StringComparison.Ordinal);
+        Assert.Null(Parse(string.Empty).Configuration!.Ev!.Consumption);
+    }
+
+    [Fact]
+    public void A_consumption_unit_is_required_and_kwh_per_litre_belongs_to_litres_only()
+    {
+        // Why: no unit is a safe guess (kWh/100km read as kWh/km is a 100x error); a kwh_per_litre beside kWh/100km would be silently ignored.
+        Assert.Contains(Parse("  consumption: { entity: sensor.c }\n").Errors, e => e.Code == ConfigurationIssueCodes.MissingKey && e.Path.StartsWith("ev.consumption", StringComparison.Ordinal));
+        Assert.Contains(Parse("  consumption: { entity: sensor.c, unit: L/100km }\n").Errors, e => e.Code == ConfigurationIssueCodes.MissingKey && e.Path.StartsWith("ev.consumption", StringComparison.Ordinal));
+        Assert.Contains(Parse("  consumption: { entity: sensor.c, unit: kWh/100km, kwh_per_litre: 3.5 }\n").Errors, e => e.Path == "ev.consumption.kwh_per_litre");
+        Assert.Contains(Parse("  consumption: { entity: sensor.c, unit: L/100km, kwh_per_litre: 0 }\n").Errors, e => e.Path == "ev.consumption.kwh_per_litre");
+        Assert.Contains(Parse("  consumption: { entity: sensor.c, unit: L/100km, kwh_per_litre: 35 }\n").Errors, e => e.Path == "ev.consumption.kwh_per_litre");
+        Assert.Contains(Parse("  consumption: { entity: sensor.c, unit: kWh }\n").Errors, e => e.Code == ConfigurationIssueCodes.UnitNotAllowedForKind && e.Path == "ev.consumption.unit");
+        Assert.Equal(
+            ("kWh/100km", (double?)null, TimeSpan.FromHours(1)),
+            Signal(Parse("  consumption: { entity: sensor.c, unit: kWh/100km }\n"), SignalRole.EvConsumption) is var s ? (s.Unit, s.KwhPerLitre, s.MaxAge) : default);
+    }
+
+    [Fact]
+    public void The_consumption_entity_follows_the_rules_of_every_other_block()
+    {
+        Assert.Contains(Parse("  consumption: { entity: sensor.car_battery_level, unit: kWh/km }\n").Errors, e => e.Code == ConfigurationIssueCodes.DuplicateEntity && e.Path == "ev.consumption.entity");
+        Assert.Contains(Parse("  consumption: { entity: calendar.c, unit: kWh/km }\n").Errors, e => e.Path == "ev.consumption.entity");
+        Assert.Throws<ArgumentException>(() => Signal(Parse("  consumption: { entity: sensor.c, unit: kWh/km }\n"), SignalRole.EvConsumption) with { Freshness = StateFreshness.OnChange });
+    }
 }

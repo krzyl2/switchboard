@@ -37,7 +37,11 @@ public sealed record EvSnapshot(
     bool PluggedUnavailable,
     DateTimeOffset? LastFullAt,
     bool? Plugged = true,
-    double? ChargeNowSocPercent = null);
+    double? ChargeNowSocPercent = null)
+{
+    /// <summary>Where <see cref="KwhPerKm"/> came from: learned from the car's consumption figure or from its SoC and range; null when the fallback stood.</summary>
+    public KwhPerKmSource? KwhPerKmSource { get; init; }
+}
 
 /// <summary>
 /// The latest published snapshot, or the fact that computing it failed. A null <paramref name="Snapshot"/> without a failure means nothing has been computed

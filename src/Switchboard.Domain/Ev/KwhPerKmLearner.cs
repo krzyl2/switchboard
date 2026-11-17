@@ -33,12 +33,26 @@ public enum EvSampleRejection
 /// <summary>One accepted sample: the report time of the pair (the later of its two) and the consumption it gave.</summary>
 public sealed record KwhPerKmSample(DateTimeOffset At, double KwhPerKm);
 
+/// <summary>What the consumption is learned from (EV-04).</summary>
+public enum KwhPerKmSource
+{
+    /// <summary>The car's SoC and electric range: the energy above the hybrid threshold over the range.</summary>
+    SocAndRange,
+
+    /// <summary>The car's own consumption figure (<c>ev.consumption</c>), taken as reported.</summary>
+    Sensor,
+}
+
 /// <summary>What has been learned: the smoothed consumption (null until the first sample) and the newest samples, bounded by <c>learn.max_samples</c>.</summary>
-/// <param name="HybridThresholdPercent">The hybrid threshold the samples were computed with; samples of another threshold measure another quantity.</param>
-public sealed record KwhPerKmState(double? Smoothed, ImmutableArray<KwhPerKmSample> Samples, double HybridThresholdPercent = 0)
+/// <param name="HybridThresholdPercent">The hybrid threshold the samples were computed with; samples of another threshold measure another quantity. 0 for <see cref="KwhPerKmSource.Sensor"/>, which does not use it.</param>
+/// <param name="Source">What the samples came from; samples of another source measure another quantity.</param>
+public sealed record KwhPerKmState(double? Smoothed, ImmutableArray<KwhPerKmSample> Samples, double HybridThresholdPercent = 0, KwhPerKmSource Source = KwhPerKmSource.SocAndRange)
 {
     public static KwhPerKmState Empty { get; } = new(null, []);
 }
+
+/// <summary>The car's own consumption figure as it came in one report, in kWh per km. A null value or time means the signal had none (or was not fresh).</summary>
+public sealed record EvReportedConsumption(double? KwhPerKm, DateTimeOffset? ReportedAt);
 
 /// <summary>
 /// The car's electric SoC and range as they came in one report. A null value or time means the signal had none. "Charging" is true when the
@@ -54,11 +68,12 @@ public sealed record EvConsumptionObservation(
 public sealed record LearnOutcome(KwhPerKmState State, double? Accepted, EvSampleRejection? Rejection);
 
 /// <summary>
-/// Learns kWh per km from the car's own SoC and electric range (EV-04, EV.md section 3 point 9): consumption = energy in the battery above the
-/// hybrid threshold ((SoC - threshold) x capacity) / electric range, since the range is zero at the threshold. Samples learned with another threshold
-/// are dropped (<see cref="Align"/>). Smoothed exponentially with <c>learn.smoothing</c>; until a sample is accepted the configured fallback
-/// stands. A SoC and a range are one report when their times differ by at most <c>learn.pair_tolerance</c> (Home Assistant stamps the two entities of one
-/// car update apart); the pair is deduplicated by the later of the two times. Pure: the caller keeps the state (it is persisted in ev.json).
+/// Learns kWh per km (EV-04, EV.md section 3 point 9) from one of two sources. Without <c>ev.consumption</c>, from the car's own SoC and electric range:
+/// consumption = energy in the battery above the hybrid threshold ((SoC - threshold) x capacity) / electric range, since the range is zero at the threshold.
+/// With it, from the car's own consumption figure (<see cref="LearnReported"/>). Samples learned with another threshold or from another source are dropped
+/// (<see cref="Align"/>). Smoothed exponentially with <c>learn.smoothing</c>; until a sample is accepted the configured fallback stands. A SoC and a range
+/// are one report when their times differ by at most <c>learn.pair_tolerance</c> (Home Assistant stamps the two entities of one car update apart); the pair
+/// is deduplicated by the later of the two times. Pure: the caller keeps the state (it is persisted in ev.json).
 /// </summary>
 public static class KwhPerKmLearner
 {
@@ -80,31 +95,77 @@ public static class KwhPerKmLearner
             return new LearnOutcome(state, null, EvSampleRejection.Implausible);
         }
 
+        return Accept(state, Later(observation.SocReportedAt!.Value, observation.RangeReportedAt!.Value), sample, learn);
+    }
+
+    /// <summary>
+    /// One report of the car's own consumption figure (<c>ev.consumption</c>, already in kWh per km). The figure is the car's average over its recent
+    /// distance, so it holds on a leg driven on fuel as long as its unit counts the fuel too (the configuration's choice). Taken once per report time, within
+    /// the plausibility bounds, smoothed as a SoC and range sample is; whether the car is charging does not matter, the figure does not move with the SoC.
+    /// </summary>
+    public static LearnOutcome LearnReported(KwhPerKmState state, EvReportedConsumption observation, EvLearnParameters learn)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        ArgumentNullException.ThrowIfNull(learn);
+        state = Align(state, 0, KwhPerKmSource.Sensor);
+
+        if (observation.KwhPerKm is not { } sample || !double.IsFinite(sample) || observation.ReportedAt is not { } at)
+        {
+            return new LearnOutcome(state, null, EvSampleRejection.ValueMissing);
+        }
+
+        if (state.Samples.Any(s => s.At == at))
+        {
+            return new LearnOutcome(state, null, EvSampleRejection.AlreadySampled);
+        }
+
+        if (sample < learn.MinKwhPerKm || sample > learn.MaxKwhPerKm)
+        {
+            return new LearnOutcome(state, null, EvSampleRejection.Implausible);
+        }
+
+        return Accept(state, at, sample, learn);
+    }
+
+    /// <summary>
+    /// The state if it was learned from <paramref name="source"/> (and, from SoC and range, with <paramref name="hybridThresholdPercent"/>), else nothing
+    /// learned: its samples measured another quantity.
+    /// </summary>
+    public static KwhPerKmState Align(KwhPerKmState state, double hybridThresholdPercent, KwhPerKmSource source = KwhPerKmSource.SocAndRange)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (source == KwhPerKmSource.Sensor)
+        {
+            return state.Source == KwhPerKmSource.Sensor ? state : KwhPerKmState.Empty with { Source = KwhPerKmSource.Sensor };
+        }
+
+        return state.Source == KwhPerKmSource.SocAndRange && state.HybridThresholdPercent.Equals(hybridThresholdPercent)
+            ? state
+            : KwhPerKmState.Empty with { HybridThresholdPercent = hybridThresholdPercent };
+    }
+
+    /// <summary>The consumption to plan with: the smoothed value while it is inside the plausibility bounds (configuration may have narrowed them since it was learned), else the fallback.</summary>
+    public static double Current(KwhPerKmState state, double fallbackKwhPerKm, EvLearnParameters learn) =>
+        CurrentSource(state, learn) is null ? fallbackKwhPerKm : state.Smoothed!.Value;
+
+    /// <summary>Where <see cref="Current"/> comes from: the source of the learned value, or null when the fallback stands.</summary>
+    public static KwhPerKmSource? CurrentSource(KwhPerKmState state, EvLearnParameters learn)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(learn);
+        return state.Smoothed is { } value && double.IsFinite(value) && value >= learn.MinKwhPerKm && value <= learn.MaxKwhPerKm ? state.Source : null;
+    }
+
+    private static LearnOutcome Accept(KwhPerKmState state, DateTimeOffset at, double sample, EvLearnParameters learn)
+    {
         var smoothed = state.Smoothed is { } previous ? previous + learn.Smoothing * (sample - previous) : sample;
-        var samples = state.Samples.Add(new KwhPerKmSample(Later(observation.SocReportedAt!.Value, observation.RangeReportedAt!.Value), sample));
+        var samples = state.Samples.Add(new KwhPerKmSample(at, sample));
         if (samples.Length > learn.MaxSamples)
         {
             samples = samples.RemoveRange(0, samples.Length - learn.MaxSamples);
         }
 
-        return new LearnOutcome(new KwhPerKmState(smoothed, samples, hybridThresholdPercent), sample, null);
-    }
-
-    /// <summary>The state if it was learned with <paramref name="hybridThresholdPercent"/>, else nothing learned: its samples measured another quantity.</summary>
-    public static KwhPerKmState Align(KwhPerKmState state, double hybridThresholdPercent)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        return state.HybridThresholdPercent.Equals(hybridThresholdPercent) ? state : KwhPerKmState.Empty with { HybridThresholdPercent = hybridThresholdPercent };
-    }
-
-    /// <summary>The consumption to plan with: the smoothed value while it is inside the plausibility bounds (configuration may have narrowed them since it was learned), else the fallback.</summary>
-    public static double Current(KwhPerKmState state, double fallbackKwhPerKm, EvLearnParameters learn)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        ArgumentNullException.ThrowIfNull(learn);
-        return state.Smoothed is { } value && double.IsFinite(value) && value >= learn.MinKwhPerKm && value <= learn.MaxKwhPerKm
-            ? value
-            : fallbackKwhPerKm;
+        return new LearnOutcome(state with { Smoothed = smoothed, Samples = samples }, sample, null);
     }
 
     private static DateTimeOffset Later(DateTimeOffset a, DateTimeOffset b) => a >= b ? a : b;

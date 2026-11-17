@@ -140,6 +140,7 @@ function Inputs({ ev, lang }: { ev: Ev } & Ctx) {
     ['range', inputs.range],
     ['plugged', inputs.plugged],
     ['calendar', inputs.calendar],
+    ...(inputs.consumption === null ? [] : ([['consumption', inputs.consumption]] as [string, EvRead][])),
   ];
   // A problem opens the list by itself: the quiet case needs no space.
   const problem = reads.some(([, r]) => r.configured && r.state !== 'fresh');
@@ -434,6 +435,7 @@ export function EvCard({ control, lang }: { control: EvControl } & Ctx) {
         {a?.kwhPerKm != null && (
           <Row name={t['ev.row.consumption']} row="ev-consumption">
             <span class="mono">{fill(t['ev.consumption.value'], { value: formatFixed(a.kwhPerKm, lang, 3) })}</span>
+            {a.kwhPerKmSource !== null && <span class="sub-inline"> · {t[`ev.consumption.source.${a.kwhPerKmSource}`]}</span>}
           </Row>
         )}
         <Row name={t['ev.row.trip']} row="ev-trip">

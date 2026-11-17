@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest version first; format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.13.4
+
+### Added
+
+- `ev.consumption`: the car's own consumption figure (`kWh/km`, `kWh/100km`, or `L/100km` with `kwh_per_litre`, the kWh the car maker counts one litre as) is what kWh/km is learned from instead of SoC and range. In November the live car reported 0.186 kWh/km while SoC and range gave 0.145, so trip targets were about a fifth short.
+- The EV card and `GET api/ev` say where the consumption came from: the car's figure, SoC and range, or the default.
+
 ## 0.13.3
 
 ### Fixed

@@ -209,6 +209,7 @@ internal static class SignalsEndpoint
         SignalKind.EnergyForecast => "kWh",
         SignalKind.Percentage => "%",
         SignalKind.Distance => "km",
+        SignalKind.Consumption => "kWh/km",
         _ => null,
     };
 

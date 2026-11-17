@@ -89,6 +89,7 @@ describe('EV card: what the module reports', () => {
     expect(row('ev-trip').textContent).toContain('Kurs Warszawa: 42 km');
     expect(row('ev-mode').textContent).toBe('Automatic');
     expect(row('ev-consumption').textContent).toContain('0.133 kWh/km');
+    expect(row('ev-consumption').textContent).toContain('learned from SoC and range');
     expect(row('ev-last-full').textContent).not.toBe('');
     const goal = card().querySelector('[data-ev-goal="trip"]') as HTMLElement;
     expect(goal.textContent).toContain('Trip: charge to 71 %');
@@ -194,6 +195,21 @@ describe('EV card: what the module reports', () => {
     await openPlan();
 
     expect(card().querySelector('[data-ev-input="range"]')!.textContent).toContain('not mapped');
+  });
+
+  it('says the consumption is the car’s own figure and lists that figure among the inputs', async () => {
+    // Why: 2026-11-17: the trip energy follows the car's consumption figure once ev.consumption is declared; the user must see which number planned it.
+    evAnswer = changed(ev, (p) => {
+      p.config.consumptionSignal = 'device_ev_charger_ev_consumption';
+      p.inputs.consumption = { configured: true, state: 'stale', detail: 'max_age_exceeded', readAt: '2026-10-22T12:00:00+00:00', ageS: 86400, maxAgeS: 3600 };
+      p.assessment.kwhPerKm = 0.1855;
+      p.assessment.kwhPerKmSource = 'sensor';
+    });
+    await openPlan('pl');
+
+    expect(row('ev-consumption').textContent).toContain('0,186 kWh/km');
+    expect(row('ev-consumption').textContent).toContain('z odczytu zużycia auta');
+    expect(card().querySelector('[data-ev-input="consumption"]')!.textContent).toContain('Zużycie');
   });
 
   it('shows the configuration issues in words, falling back to the add-on’s message for a code it has no sentence for', async () => {

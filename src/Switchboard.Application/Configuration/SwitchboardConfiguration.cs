@@ -65,6 +65,9 @@ public sealed record SignalDefinition(
     /// <summary>For a series signal: what its numbers mean (power W, period energy Wh, or a price); null otherwise.</summary>
     public SeriesValueKind? SeriesMeaning { get; init; }
 
+    /// <summary>For a consumption signal in L/100km: the kWh one litre stands for (<c>ev.consumption.kwh_per_litre</c>); null otherwise, and then a litre sample is refused.</summary>
+    public double? KwhPerLitre { get; init; }
+
     /// <summary>The dotted path of the key that sets this signal's max_age.</summary>
     public string MaxAgePath => DeclaredAt is null ? $"{Path}.max_age" : MaxAgeKey ?? $"{Path}.state_max_age";
 

@@ -18,6 +18,8 @@ export const EV_GOAL_KINDS = ['trip', 'weekly_full', 'cap', 'floor'] as const;
 export const EV_UNPARSED_REASONS = ['all_day', 'no_km', 'km_out_of_bounds', 'km_unreadable'] as const;
 export const EV_TRIP_WARNINGS = ['next_trip_may_be_hidden'] as const;
 export const EV_PLANNER_DISPATCH = ['off', 'narrow', 'full'] as const;
+/** Where the consumption the target was computed with came from: the car's own figure (ev.consumption), learned from SoC and range, or the fallback. */
+export const EV_KWH_PER_KM_SOURCES = ['sensor', 'soc_and_range', 'fallback'] as const;
 /** Why a manual request was not taken: the closed `code` of the refusal body (docs/EV.md section 11; 400, 404, 409 and 422 answers). */
 export const EV_REFUSALS = [
   'bad_request',
@@ -38,6 +40,7 @@ export type EvSocGap = (typeof EV_SOC_GAPS)[number];
 export type EvGoalKind = (typeof EV_GOAL_KINDS)[number];
 export type EvUnparsedReason = (typeof EV_UNPARSED_REASONS)[number];
 export type EvTripWarningKind = (typeof EV_TRIP_WARNINGS)[number];
+export type EvKwhPerKmSource = (typeof EV_KWH_PER_KM_SOURCES)[number];
 export type EvRefusal = (typeof EV_REFUSALS)[number] | 'failed';
 
 export interface EvIssue {
@@ -57,6 +60,8 @@ export interface EvConfig {
   pluggedSignal: string | null;
   pluggedStates: string[] | null;
   calendarSignal: string | null;
+  /** The consumption signal; null when not declared (consumption is learned from SoC and range) and from an add-on before it. */
+  consumptionSignal: string | null;
 }
 
 /** The control.ev values the page shows or offers as defaults. */
@@ -85,6 +90,10 @@ export interface EvInputs {
   isPlugged: boolean | null;
   pluggedState: string | null;
   calendar: EvRead;
+  /** The car's consumption figure; null from an add-on before it. */
+  consumption: EvRead | null;
+  /** That figure in kWh per km; null unless fresh. */
+  consumptionKwhPerKm: number | null;
 }
 
 export interface EvTrip {
@@ -140,6 +149,8 @@ export interface EvAssessment {
   /** When that gap began (too_old, charger_stale); null for any other gap and with an estimate. */
   socGapSince: Date | null;
   kwhPerKm: number | null;
+  /** Null for a failed computation and from an add-on before it. */
+  kwhPerKmSource: EvKwhPerKmSource | null;
   nextTrip: EvTrip | null;
   lastFullAt: Date | null;
   goals: EvOfferedGoal[];
@@ -197,6 +208,8 @@ function config(raw: unknown, path: string): EvConfig {
     pluggedSignal: nullable(field(r, 'pluggedSignal', path), `${path}.pluggedSignal`, text),
     pluggedStates: nullable(field(r, 'pluggedStates', path), `${path}.pluggedStates`, (v, p) => list(v, p, text)),
     calendarSignal: nullable(field(r, 'calendarSignal', path), `${path}.calendarSignal`, text),
+    // An answer without the key is an add-on from before the consumption signal.
+    consumptionSignal: 'consumptionSignal' in r ? nullable(r.consumptionSignal, `${path}.consumptionSignal`, text) : null,
   };
 }
 
@@ -242,6 +255,8 @@ function inputs(raw: unknown, path: string): EvInputs {
     isPlugged: nullable(field(r, 'isPlugged', path), `${path}.isPlugged`, bool),
     pluggedState: nullable(field(r, 'pluggedState', path), `${path}.pluggedState`, text),
     calendar: read(field(r, 'calendar', path), `${path}.calendar`),
+    consumption: 'consumption' in r ? read(r.consumption, `${path}.consumption`) : null,
+    consumptionKwhPerKm: 'consumptionKwhPerKm' in r ? nullable(r.consumptionKwhPerKm, `${path}.consumptionKwhPerKm`, number) : null,
   };
 }
 
@@ -306,6 +321,8 @@ function assessment(raw: unknown, path: string): EvAssessment {
     socGap: nullable(field(r, 'socGap', path), `${path}.socGap`, (v, p) => oneOf(EV_SOC_GAPS, v, p)),
     socGapSince: nullable(field(r, 'socGapSince', path), `${path}.socGapSince`, instant),
     kwhPerKm: nullable(field(r, 'kwhPerKm', path), `${path}.kwhPerKm`, number),
+    kwhPerKmSource:
+      'kwhPerKmSource' in r ? nullable(r.kwhPerKmSource, `${path}.kwhPerKmSource`, (v, p) => oneOf(EV_KWH_PER_KM_SOURCES, v, p)) : null,
     nextTrip: nullable(field(r, 'nextTrip', path), `${path}.nextTrip`, trip),
     lastFullAt: nullable(field(r, 'lastFullAt', path), `${path}.lastFullAt`, instant),
     goals: list(field(r, 'goals', path), `${path}.goals`, offeredGoal),

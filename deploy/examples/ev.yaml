@@ -35,6 +35,11 @@ ev:
   #   entity: calendar.trips
   #   state_reports: on_change   # default without max_age: a calendar entity writes only when an event starts, ends or changes, so it is fresh while available
   #   max_age: 24h            # optional; declaring it judges the calendar by age instead (default control.signals.max_age_limit)
+  # consumption:              # the car's own consumption figure; when declared, kWh/km is learned from it instead of SoC and range
+  #   entity: sensor.car_last_50km_equivalent_consumption
+  #   unit: L/100km           # kWh/km, kWh/100km or L/100km; converted to kWh/km by the signal layer, nowhere else
+  #   kwh_per_litre: 3.5      # L/100km only: the kWh the car maker counts one litre as (BYD: 3.5); required with L/100km
+  #   max_age: 1h             # optional; default control.planner.goal.input_max_age. A stale figure only stops new samples: the learned value stays
   #
   # A trip is an event whose description contains "km: 42" (case-insensitive, comma or dot as the decimal sign, the first one counts).
   # All-day events, events without km: and a km: above control.ev.max_trip_km are ignored and listed at GET api/ev. The calendar entity
@@ -56,7 +61,7 @@ ev:
 #     ready_margin: 30m          # the car is ready this long before a trip starts
 #     loss: 0.10                 # charging losses: energy drawn = energy stored x (1 + loss)
 #     kwh_per_km: 0.20           # consumption while nothing is learned
-#     learn:
+#     learn:                     # from SoC and range, or from ev.consumption when declared
 #       smoothing: 0.2           # weight of a new sample
 #       min_soc: 20              # a SoC and range pair below this SoC is not used
 #       min_kwh_per_km: 0.12     # plausibility bounds of one sample

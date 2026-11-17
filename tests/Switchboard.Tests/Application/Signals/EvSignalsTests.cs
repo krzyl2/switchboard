@@ -135,6 +135,35 @@ public sealed class EvSignalsTests
         Assert.Equal(new[] { "km", "mi" }, SignalUnits.AllowedFor(SignalKind.Distance).ToArray());
     }
 
+    private static SignalDefinition Consumption(string unit, double? kwhPerLitre = null) =>
+        new(SignalName.Parse("device_ev_charger_ev_consumption"), EntityId.Parse("sensor.car_consumption"), SignalKind.Consumption, unit, null, null, false, TimeSpan.FromHours(1), null, SignalRole.EvConsumption, null, false)
+        {
+            KwhPerLitre = kwhPerLitre,
+        };
+
+    [Theory]
+    [InlineData("kWh/km", null, "0.186", 0.186)]
+    [InlineData("kWh/100km", null, "18.6", 0.186)]
+    [InlineData("L/100km", 3.5, "5.3", 0.1855)]
+    public void A_consumption_is_converted_to_kwh_per_km_in_the_signal_layer_and_nowhere_else(string unit, double? kwhPerLitre, string state, double kwhPerKm)
+    {
+        // Why: the live car writes 18.6 kWh/100km and 5.3 L/100km for the same drive; read without its unit either is a 100x (or 35x) error in every trip target.
+        var result = SignalNormalizer.Normalize(Consumption(unit, kwhPerLitre), state, unit);
+
+        Assert.Equal(NormalizationOutcome.Accepted, result.Outcome);
+        Assert.Equal(kwhPerKm, ((ConsumptionValue)result.Value!).KwhPerKm, 9);
+    }
+
+    [Fact]
+    public void A_consumption_in_another_unit_without_its_litre_figure_or_below_zero_is_refused()
+    {
+        // Why: kWh/100km read as L/100km is a 3.5x error; a litre without the car's kWh per litre cannot be converted, so it is refused, never guessed.
+        Assert.Equal(SignalDetail.UnitMismatch, SignalNormalizer.Normalize(Consumption("L/100km", 3.5), "18.6", "kWh/100km").Detail);
+        Assert.Equal(SignalDetail.UnitMismatch, SignalNormalizer.Normalize(Consumption("L/100km"), "5.3", "L/100km").Detail);
+        Assert.Equal(SignalDetail.SignViolation, SignalNormalizer.Normalize(Consumption("kWh/100km"), "-1", "kWh/100km").Detail);
+        Assert.Equal(new[] { "kWh/km", "kWh/100km", "L/100km" }, SignalUnits.AllowedFor(SignalKind.Consumption).ToArray());
+    }
+
     [Fact]
     public void A_calendar_event_is_accepted_with_its_instants_and_a_calendar_without_one_is_a_valid_empty_answer()
     {
@@ -335,7 +364,7 @@ public sealed class EvSignalsTests
         Assert.Equal(4, evNames.Count);
         Assert.Empty(GoalInputs.From(snapshot).Samples.Keys.Intersect(evNames));
         Assert.Equal(
-            new[] { SignalRole.EvSoc, SignalRole.EvRange, SignalRole.EvPlugged, SignalRole.EvCalendar },
+            new[] { SignalRole.EvSoc, SignalRole.EvRange, SignalRole.EvPlugged, SignalRole.EvCalendar, SignalRole.EvConsumption },
             EvInputs.Roles.ToArray());
     }
 

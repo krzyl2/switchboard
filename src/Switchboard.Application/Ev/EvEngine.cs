@@ -81,8 +81,9 @@ public sealed class EvEngine(
         var step = SocEstimator.Step(_estimator, reading, charger.Energy, now, ev.CapacityKwh, p);
         _estimator = step.State;
 
-        // A changed hybrid threshold drops what was learned with the old one at once, so the planner never plans with it again.
-        var learned = KwhPerKmLearner.Align(state.Learned, ev.HybridThresholdPercent);
+        // A changed hybrid threshold or source drops what was learned with the old one at once, so the planner never plans with it again.
+        var source = ev.Consumption is null ? KwhPerKmSource.SocAndRange : KwhPerKmSource.Sensor;
+        var learned = KwhPerKmLearner.Align(state.Learned, ev.HybridThresholdPercent, source);
         if (learned != state.Learned)
         {
             state = state with { Learned = learned };
@@ -90,12 +91,14 @@ public sealed class EvEngine(
         }
 
         var charging = couldFlow && !(charger.Energy.Fresh && charger.Watts <= 0);
-        var outcome = KwhPerKmLearner.Learn(
-            learned,
-            new EvConsumptionObservation(ev1.SocPercent, ev1.Soc.ReadAt, ev1.RangeKm, ev1.Range.ReadAt, charging),
-            ev.CapacityKwh,
-            ev.HybridThresholdPercent,
-            p.Learn);
+        var outcome = source == KwhPerKmSource.Sensor
+            ? KwhPerKmLearner.LearnReported(learned, new EvReportedConsumption(ev1.ConsumptionKwhPerKm, ev1.Consumption.ReadAt), p.Learn)
+            : KwhPerKmLearner.Learn(
+                learned,
+                new EvConsumptionObservation(ev1.SocPercent, ev1.Soc.ReadAt, ev1.RangeKm, ev1.Range.ReadAt, charging),
+                ev.CapacityKwh,
+                ev.HybridThresholdPercent,
+                p.Learn);
         if (outcome.Accepted is not null)
         {
             state = state with { Learned = outcome.State };
@@ -103,6 +106,7 @@ public sealed class EvEngine(
         }
 
         var kwhPerKm = KwhPerKmLearner.Current(state.Learned, p.FallbackKwhPerKm, p.Learn);
+        var kwhPerKmSource = KwhPerKmLearner.CurrentSource(state.Learned, p.Learn);
         var next = NextTrip(ev1, now, p.MaxTripKm);
         var planner = configuration.Planner;
         var economics = configuration.Economics;
@@ -127,7 +131,8 @@ public sealed class EvEngine(
             IsHoliday = holidays.IsHoliday,
             CheapZone = CheapZone(ev, economics),
             CalendarUnavailable = ev1.Calendar.Configured && !ev1.Calendar.IsFresh,
-            RangeUnusable = ev1.Range.Configured && ev1.RangeKm is not > 0,
+            // The range matters only while consumption is learned from it.
+            RangeUnusable = source == KwhPerKmSource.SocAndRange && ev1.Range.Configured && ev1.RangeKm is not > 0,
             ForecastMissing = planner is not null && plans.Current.Notes.Contains(PlanNote.PvForecastMissing),
             DispatchOff = planner is null || planner.Dispatch == PlannerDispatchMode.Off,
             PlanHorizon = configuration.Control.Planner.Horizon,
@@ -172,7 +177,10 @@ public sealed class EvEngine(
             ev1.Plugged.Configured && ev1.IsPlugged is null,
             state.LastFullAt,
             plugged,
-            step.Estimate.Percent ?? step.Estimate.LowerBoundPercent ?? (step.Estimate.Gap == SocEstimateGap.NoReading ? 0 : null));
+            step.Estimate.Percent ?? step.Estimate.LowerBoundPercent ?? (step.Estimate.Gap == SocEstimateGap.NoReading ? 0 : null))
+        {
+            KwhPerKmSource = kwhPerKmSource,
+        };
     }
 
     private Trip? NextTrip(EvInputs ev, DateTimeOffset now, double maxTripKm)

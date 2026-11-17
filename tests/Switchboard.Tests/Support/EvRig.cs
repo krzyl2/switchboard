@@ -63,6 +63,9 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
 
         """;
 
+    /// <summary><see cref="EvBlock"/> with the car's equivalent consumption declared, a litre counted as 3.5 kWh (the live car's figure).</summary>
+    public const string EvBlockWithConsumption = EvBlock + "  consumption: { entity: sensor.car_equivalent_consumption, unit: L/100km, kwh_per_litre: 3.5, max_age: 1h }\n\n";
+
     public static readonly TimeZoneInfo Warsaw = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw");
 
     private readonly Func<EvState?> _initial;
@@ -180,6 +183,13 @@ internal sealed class EvRig : IEvInputSource, IPresentationSource, IPresentation
     {
         Tock();
         H.Push("sensor.car_electric_range", km.ToString(System.Globalization.CultureInfo.InvariantCulture), unit: "km");
+    }
+
+    /// <summary>The car's own consumption figure, as the BYD integration writes it (L/100km for the equivalent figure, kWh/100km for the electric one).</summary>
+    public void PushConsumption(double value, string unit = "L/100km")
+    {
+        Tock();
+        H.Push("sensor.car_equivalent_consumption", value.ToString(System.Globalization.CultureInfo.InvariantCulture), unit: unit);
     }
 
     public void PushPlugged(string state = "Charging")

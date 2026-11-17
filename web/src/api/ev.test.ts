@@ -48,6 +48,38 @@ describe('parseEv', () => {
     expect(ev.assessment).toMatchObject({ failed: true, reason: null, goals: [] });
   });
 
+  it('reads the car consumption figure and where the consumption came from', () => {
+    // Why: the card says whether the trip energy was planned with the car's own figure, with what SoC and range taught, or with the default (2026-11-17).
+    const ev = parseEv(
+      payload((p) => {
+        p.config.consumptionSignal = 'device_ev_charger_ev_consumption';
+        p.inputs.consumption = { configured: true, state: 'fresh', detail: 'none', readAt: '2026-10-23T12:00:00+00:00', ageS: 1, maxAgeS: 3600 };
+        p.inputs.consumptionKwhPerKm = 0.1855;
+        p.assessment.kwhPerKmSource = 'sensor';
+      }),
+    );
+
+    expect(ev.config!.consumptionSignal).toBe('device_ev_charger_ev_consumption');
+    expect(ev.inputs).toMatchObject({ consumption: { configured: true, state: 'fresh' }, consumptionKwhPerKm: 0.1855 });
+    expect(ev.assessment!.kwhPerKmSource).toBe('sensor');
+    expect(() => parseEv(payload((p) => (p.assessment.kwhPerKmSource = 'guess')))).toThrow();
+  });
+
+  it('reads an add-on from before the consumption figure as one without it', () => {
+    const ev = parseEv(
+      payload((p) => {
+        delete p.config.consumptionSignal;
+        delete p.inputs.consumption;
+        delete p.inputs.consumptionKwhPerKm;
+        delete p.assessment.kwhPerKmSource;
+      }),
+    );
+
+    expect(ev.config!.consumptionSignal).toBeNull();
+    expect(ev.inputs).toMatchObject({ consumption: null, consumptionKwhPerKm: null });
+    expect(ev.assessment!.kwhPerKmSource).toBeNull();
+  });
+
   it('accepts the manual control of S6, with or without a running charge', () => {
     // An add-on from before the hold (2026-11-06) writes no hold key: nothing runs.
     const idle = parseEv(payload((p) => (p.manual = { mode: 'pv_only', chargeNow: { active: false, targetPct: null, until: null } })));
